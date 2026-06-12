@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * HEIMDALL global styles.
+ * Brand colors are also exposed as CSS custom properties so values from
+ * `settings/global` (brandPrimaryColor / brandAccentColor) can override the
+ * compiled defaults at runtime — see BrandProvider in src/app/providers.tsx.
+ */
+:root {
+  --brand-primary: #16203a; /* watch-900 */
+  --brand-accent: #d99320;  /* bifrost-500 */
+}
+
+html {
+  @apply antialiased;
+}
+
+body {
+  @apply bg-watch-50 text-slate-800 font-sans;
+}
+
+/* ── FullCalendar theming: calm, command-center ─────────────────────────── */
+.fc {
+  --fc-border-color: theme('colors.watch.200');
+  --fc-today-bg-color: theme('colors.bifrost.50');
+  --fc-button-bg-color: theme('colors.watch.800');
+  --fc-button-border-color: theme('colors.watch.800');
+  --fc-button-hover-bg-color: theme('colors.watch.700');
+  --fc-button-hover-border-color: theme('colors.watch.700');
+  --fc-button-active-bg-color: theme('colors.watch.600');
+  --fc-button-active-border-color: theme('colors.watch.600');
+  font-size: 0.875rem;
+}
+.fc .fc-toolbar-title {
+  @apply text-lg font-semibold text-watch-900;
+}
+
+/* ── Focus visibility (keyboard accessibility) ──────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--brand-accent);
+  outline-offset: 2px;
+}
+
+/* ── Print stylesheet: schedules print clean on white ───────────────────── */
+@media print {
+  body {
+    @apply bg-white text-black;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  a {
+    text-decoration: none;
+    color: inherit;
+  }
+}
+.print-only {
+  display: none;
+}
