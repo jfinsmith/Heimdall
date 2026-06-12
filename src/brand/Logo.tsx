@@ -1,15 +1,15 @@
 /**
- * HEIMDALL brand mark — the Gjallarhorn.
+ * HEIMDALL brand mark — Gjallarhorn + clock.
  *
- * A stylized curved Norse horn, drawn as a single currentColor glyph so it
- * inherits theme color and works in monochrome (sidebar, print, email mono
- * fallback). Three restrained band lines suggest the horn's binding rings —
- * the only ornament, and it survives 32px.
+ * A clock face set in a knotwork ring (the watch), cradled by a flared
+ * drinking horn (the alert) — echoing the engraved horn-and-clock insignia
+ * the brand is based on. Single currentColor glyph: works in monochrome,
+ * inherits theme color, verified legible at 32px.
  *
  * Exports:
- *   <GjallarhornGlyph />     — the horn alone (square viewBox, icon use)
- *   <WordmarkHorizontal />   — horn + HEIMDALL side by side (topbar, email header)
- *   <WordmarkStacked />      — horn above HEIMDALL (login screen, print header)
+ *   <GjallarhornGlyph />     — the mark alone (square viewBox, icon use)
+ *   <WordmarkHorizontal />   — mark + HEIMDALL/SCHEDULING (topbar, email)
+ *   <WordmarkStacked />      — mark above HEIMDALL/SCHEDULING (login, print)
  */
 import React from 'react';
 
@@ -18,15 +18,11 @@ export interface LogoProps {
   size?: number;
   className?: string;
   title?: string;
+  /** Show the SCHEDULING sub-line in lockups. Defaults to true. */
+  subtitle?: boolean;
 }
 
-/**
- * The horn path: a bold crescent sweeping up-right from a narrow mouthpiece to
- * a wide flared bell, with a small sound-wave arc at the bell to read as
- * "alert" at a glance. Built from filled shapes (not strokes) so it scales
- * crisply and stays legible at favicon size.
- */
-export function GjallarhornGlyph({ size = 32, className, title = 'Gjallarhorn — HEIMDALL' }: LogoProps) {
+export function GjallarhornGlyph({ size = 32, className, title = 'HEIMDALL — Gjallarhorn' }: LogoProps) {
   return (
     <svg
       width={size}
@@ -39,58 +35,62 @@ export function GjallarhornGlyph({ size = 32, className, title = 'Gjallarhorn �
       className={className}
     >
       <title>{title}</title>
-      {/* Horn body: crescent from mouthpiece (lower-left) to bell (upper-right) */}
+      {/* Horn: tapered crescent cradling the clock — flared bell upper-right
+          with a scooped mouth, tip narrowing at the left */}
       <path
-        d="M9 50
-           C 7 47 7.5 43.5 10 41.5
-           L 13.5 44.5
-           C 17 36 24 27.5 33 21.5
-           C 39.5 17.2 46.5 14.2 52.5 13
-           L 50 8.5
-           C 50 8.5 56.5 9.5 59 13.5
-           C 61.5 17.5 60 24 60 24
-           L 55.5 19.5
-           C 50.5 21 44.5 23.8 39 27.5
-           C 30.5 33.2 24 41 21 48.5
-           L 24.5 51.5
-           C 22.5 54 19 54.5 16 53
-           Z"
+        d="M 56.8 20.6 C 61 22, 63.3 26.5, 62 30.8 C 56.5 44.5, 44.5 54.8, 31 55.6
+           C 19.5 56.4, 10 50, 6.5 39.5 C 5.6 36, 6.1 32.6, 7.8 29.8 L 10.6 31.8
+           C 9.9 33.5, 10 35.3, 10.8 37.3 C 13.8 44.6, 21 49.3, 30.5 48.8
+           C 41 48, 50.2 40.6, 54.2 30.2 C 54.9 28.2, 55 26.3, 54.6 24.6
+           C 53.8 23.2, 54.6 21.6, 56.8 20.6 Z"
         fill="currentColor"
       />
-      {/* Horn band rings — restrained Norse binding detail */}
-      <path d="M28.2 25.2 L 33.4 31.5" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" opacity="0.45" />
-      <path d="M40.5 17.8 L 44.5 24" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" opacity="0.45" />
-      {/* Sound arcs at the bell — the horn is sounding */}
-      <path d="M57 30 a 12 12 0 0 0 4 -9" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" fill="none" opacity="0.85" />
+      {/* Horn band near the bell */}
+      <path d="M 54.2 33.6 L 60.8 30.8" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" opacity="0.5" />
+      {/* Knotwork ring (rope-segment suggestion — survives 32px) */}
+      <circle cx="32" cy="22" r="15" stroke="currentColor" strokeWidth="2" strokeDasharray="2.8 2.2" opacity="0.45" />
+      {/* Clock face */}
+      <circle cx="32" cy="22" r="11.5" stroke="currentColor" strokeWidth="2.5" />
+      <path d="M 32 22 L 27.4 19.3" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" />
+      <path d="M 32 22 L 38.4 18.3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="32" cy="22" r="1.7" fill="currentColor" />
     </svg>
   );
 }
 
-/** Horn + HEIMDALL wordmark, horizontal lockup. Inherits currentColor. */
-export function WordmarkHorizontal({ size = 28, className }: LogoProps) {
+/** Mark + HEIMDALL (with SCHEDULING sub-line), horizontal lockup. */
+export function WordmarkHorizontal({ size = 28, className, subtitle = true }: LogoProps) {
   return (
-    <span className={`inline-flex items-center gap-2 ${className ?? ''}`}>
+    <span className={`inline-flex items-center gap-2.5 ${className ?? ''}`}>
       <GjallarhornGlyph size={size} />
-      <span
-        className="font-display font-bold tracking-[0.18em] leading-none select-none"
-        style={{ fontSize: size * 0.62 }}
-      >
-        HEIMDALL
+      <span className="flex flex-col leading-none select-none">
+        <span className="font-display font-bold tracking-[0.22em]" style={{ fontSize: size * 0.56 }}>
+          HEIMDALL
+        </span>
+        {subtitle && (
+          <span className="mt-1 font-sans font-medium tracking-[0.34em] opacity-60" style={{ fontSize: size * 0.26 }}>
+            SCHEDULING
+          </span>
+        )}
       </span>
     </span>
   );
 }
 
-/** Horn above HEIMDALL, stacked lockup — login screen and print headers. */
-export function WordmarkStacked({ size = 56, className }: LogoProps) {
+/** Mark above HEIMDALL / SCHEDULING, stacked lockup — login and print. */
+export function WordmarkStacked({ size = 56, className, subtitle = true }: LogoProps) {
   return (
-    <span className={`inline-flex flex-col items-center gap-2 ${className ?? ''}`}>
+    <span className={`inline-flex flex-col items-center gap-2.5 ${className ?? ''}`}>
       <GjallarhornGlyph size={size} />
-      <span
-        className="font-display font-bold tracking-[0.28em] leading-none select-none"
-        style={{ fontSize: size * 0.4 }}
-      >
-        HEIMDALL
+      <span className="flex flex-col items-center gap-1.5 leading-none select-none">
+        <span className="font-display font-bold tracking-[0.3em]" style={{ fontSize: size * 0.36, marginLeft: size * 0.3 * 0.36 }}>
+          HEIMDALL
+        </span>
+        {subtitle && (
+          <span className="font-sans font-medium tracking-[0.42em] opacity-60" style={{ fontSize: size * 0.16, marginLeft: size * 0.42 * 0.16 }}>
+            SCHEDULING
+          </span>
+        )}
       </span>
     </span>
   );

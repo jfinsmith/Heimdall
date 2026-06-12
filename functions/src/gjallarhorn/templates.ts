@@ -8,8 +8,8 @@
 const BRAND_NAVY = '#16203a';
 const BRAND_AMBER = '#d99320';
 
-/** Inline-safe horn mark for email headers (simple path, renders broadly). */
-const HORN_SVG = `<svg width="28" height="28" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="M9 50 C 7 47 7.5 43.5 10 41.5 L 13.5 44.5 C 17 36 24 27.5 33 21.5 C 39.5 17.2 46.5 14.2 52.5 13 L 50 8.5 C 50 8.5 56.5 9.5 59 13.5 C 61.5 17.5 60 24 60 24 L 55.5 19.5 C 50.5 21 44.5 23.8 39 27.5 C 30.5 33.2 24 41 21 48.5 L 24.5 51.5 C 22.5 54 19 54.5 16 53 Z" fill="${BRAND_AMBER}"/></svg>`;
+/** Inline-safe horn+clock mark for email headers (renders broadly; clients that strip SVG still get the wordmark text). */
+const HORN_SVG = `<svg width="30" height="30" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="M 56.8 20.6 C 61 22, 63.3 26.5, 62 30.8 C 56.5 44.5, 44.5 54.8, 31 55.6 C 19.5 56.4, 10 50, 6.5 39.5 C 5.6 36, 6.1 32.6, 7.8 29.8 L 10.6 31.8 C 9.9 33.5, 10 35.3, 10.8 37.3 C 13.8 44.6, 21 49.3, 30.5 48.8 C 41 48, 50.2 40.6, 54.2 30.2 C 54.9 28.2, 55 26.3, 54.6 24.6 C 53.8 23.2, 54.6 21.6, 56.8 20.6 Z" fill="${BRAND_AMBER}"/><circle cx="32" cy="22" r="11.5" stroke="${BRAND_AMBER}" stroke-width="2.5" fill="none"/><path d="M 32 22 L 27.4 19.3" stroke="${BRAND_AMBER}" stroke-width="2.3" stroke-linecap="round"/><path d="M 32 22 L 38.4 18.3" stroke="${BRAND_AMBER}" stroke-width="2" stroke-linecap="round"/><circle cx="32" cy="22" r="1.7" fill="${BRAND_AMBER}"/></svg>`;
 
 export interface EmailContent {
   subject: string;
