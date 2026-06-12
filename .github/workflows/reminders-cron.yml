@@ -1,0 +1,37 @@
+# HEIMDALL — Option B (free Spark plan) Gjallarhorn sweeps.
+#
+# Runs the daily reminder + understaffing sweep from GitHub Actions instead of
+# Cloud Functions / Cloud Scheduler, using the Admin SDK + an email API.
+#
+# ── TOGGLE ───────────────────────────────────────────────────────────────────
+# DISABLED by default (Option A — Cloud Functions — is primary). To enable:
+#   1. Uncomment the `schedule:` block below.
+#   2. Add secrets: FIREBASE_SERVICE_ACCOUNT (the JSON content),
+#      SENDGRID_API_KEY (or adapt scripts/gjallarhorn-cron.ts to your provider),
+#      MAIL_FROM.
+#   3. Do NOT also deploy the scheduled Cloud Functions, or users get
+#      double reminders.
+# ─────────────────────────────────────────────────────────────────────────────
+name: Gjallarhorn cron (Option B)
+
+on:
+  workflow_dispatch: {}
+  # schedule:
+  #   - cron: '0 11 * * *'   # 11:00 UTC = 07:00 America/New_York (EDT)
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Run Gjallarhorn sweep
+        run: npm run reminders:cron
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          MAIL_FROM: ${{ secrets.MAIL_FROM }}
