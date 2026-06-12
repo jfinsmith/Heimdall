@@ -49,6 +49,7 @@ async function ensureUserDoc(user: FirebaseUser, displayName?: string): Promise<
     role: 'instructor',   // self-registered users start at the bottom of the chain
     status: 'pending',    // requires admin approval before active
     qualifications: [],
+    verifiedQualKeys: [],
     notificationPrefs: { email: true, reminderLeadHours: 48, digest: true },
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),

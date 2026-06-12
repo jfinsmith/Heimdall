@@ -144,7 +144,13 @@ function QualificationsModal({ user, onClose }: { user: WithId<UserDoc>; onClose
       q.key === key ? { ...q, verified, verifiedBy: verified ? firebaseUser!.uid : '' } : q
     );
     setQuals(next);
-    await updateDoc(doc(db, 'users', user.id), { qualifications: next, updatedAt: serverTimestamp() });
+    // verifiedQualKeys is the rule-protected source of truth for sign-ups.
+    const verifiedQualKeys = next.filter((q) => q.verified).map((q) => q.key);
+    await updateDoc(doc(db, 'users', user.id), {
+      qualifications: next,
+      verifiedQualKeys,
+      updatedAt: serverTimestamp(),
+    });
     await logAudit(
       firebaseUser!.uid,
       verified ? 'qualification.verify' : 'qualification.unverify',

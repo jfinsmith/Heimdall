@@ -1,0 +1,179 @@
+rules_version = '2';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HEIMDALL Firestore security rules — enforces the §4 RBAC matrix.
+//
+// Roles ride on a custom auth claim (request.auth.token.role) written by the
+// `setUserRole` callable. Chain of command:
+//   instructor → coordinator → sergeant → lieutenant → director
+//
+// Known rules-language limits, mitigated in code:
+//  • `roleSlots[].filledBy.length <= count` cannot be fully expressed here —
+//    the client transaction enforces it; a guard below restricts which fields
+//    non-staff may touch on a session.
+//  • `qualifications[].verified` (array of maps) cannot be iterated — the
+//    authoritative gate is the flat `verifiedQualKeys` array, which self-edits
+//    must keep unchanged.
+// ─────────────────────────────────────────────────────────────────────────────
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ────────────────────────────────────────────────────────────
+    function signedIn() {
+      return request.auth != null;
+    }
+    function role() {
+      return signedIn() && 'role' in request.auth.token ? request.auth.token.role : 'instructor';
+    }
+    // Coordinator and above: may build schedules, approve sign-ups, verify quals.
+    function isStaff() {
+      return signedIn() && role() in ['director', 'lieutenant', 'sergeant', 'coordinator'];
+    }
+    // Command: may manage users, roles, and org settings.
+    function isAdmin() {
+      return signedIn() && role() in ['director', 'lieutenant'];
+    }
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+    function unchanged(field) {
+      return request.resource.data.get(field, null) == resource.data.get(field, null);
+    }
+
+    // ── users ──────────────────────────────────────────────────────────────
+    // Own doc: read + create + limited update. role / status / verifiedQualKeys
+    // are admin-or-staff-set only.
+    match /users/{uid} {
+      allow read: if isOwner(uid) || isStaff();
+      allow create: if isOwner(uid)
+        && request.resource.data.role == 'instructor'
+        && request.resource.data.status == 'pending'
+        && request.resource.data.verifiedQualKeys == []
+        && request.resource.data.email is string
+        && request.resource.data.displayName is string
+        && request.resource.data.qualifications is list;
+      allow update: if isAdmin()
+        // Staff (coordinator/sergeant) may approve accounts and verify quals,
+        // but may not change roles (that's the admin callable's job).
+        || (isStaff() && unchanged('role'))
+        // Self-service: profile fields only.
+        || (isOwner(uid)
+            && unchanged('role')
+            && unchanged('status')
+            && unchanged('verifiedQualKeys')
+            && unchanged('email'));
+      allow delete: if isAdmin();
+    }
+
+    // ── settings/global ────────────────────────────────────────────────────
+    match /settings/{docId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    // ── courseCatalog ──────────────────────────────────────────────────────
+    match /courseCatalog/{courseId} {
+      allow read: if signedIn();
+      allow write: if isStaff();
+    }
+
+    // ── academies ──────────────────────────────────────────────────────────
+    // Instructors see published lifecycle states only; staff see everything.
+    match /academies/{academyId} {
+      allow read: if isStaff()
+        || (signedIn() && resource.data.status in ['published', 'in_progress', 'completed']);
+      allow create, delete: if isStaff();
+      allow update: if isStaff();
+    }
+
+    // ── sessions ───────────────────────────────────────────────────────────
+    match /sessions/{sessionId} {
+      allow read: if isStaff() || (signedIn() && resource.data.status != 'draft');
+      allow create, delete: if isStaff()
+        && request.resource.data.roleSlots is list;
+      // Staff edit freely. Non-staff updates exist only for the sign-up
+      // transaction: they may touch ONLY roleSlots / status / updatedAt, and
+      // may not invent new slots (guard for the filledBy invariant — the
+      // count math itself is enforced in the transaction).
+      allow update: if isStaff()
+        || (signedIn()
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['roleSlots', 'status', 'updatedAt'])
+            && request.resource.data.roleSlots.size() == resource.data.roleSlots.size()
+            && request.resource.data.status in ['open', 'fully_staffed']);
+
+      // ── signups subcollection ────────────────────────────────────────────
+      // A user manages only their own signup doc; coordinators+ may write any
+      // (approve/override). Qualification gating happens in the transaction
+      // against the rule-protected users.verifiedQualKeys.
+      match /signups/{uid} {
+        allow read: if signedIn();
+        allow create: if isStaff()
+          || (isOwner(uid)
+              && request.resource.data.uid == uid
+              && request.resource.data.status in ['confirmed', 'waitlist']
+              && get(/databases/$(database)/documents/users/$(uid)).data.status == 'active');
+        allow update: if isStaff() || isOwner(uid);
+        allow delete: if isStaff();
+      }
+    }
+
+    // ── assignments ────────────────────────────────────────────────────────
+    // Denormalized mirror. Readable by owner + staff. Written by the sign-up
+    // transaction (owner, own uid only) and by Cloud Functions (Admin SDK
+    // bypasses rules). Waitlist promotion of another user is coordinator work
+    // or function work, never an arbitrary client.
+    match /assignments/{assignmentId} {
+      allow read: if isStaff() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow create: if isStaff()
+        || (signedIn() && request.resource.data.uid == request.auth.uid);
+      allow update: if isStaff()
+        || (signedIn()
+            && resource.data.uid == request.auth.uid
+            && request.resource.data.uid == request.auth.uid);
+      allow delete: if isStaff();
+    }
+
+    // ── notifications ──────────────────────────────────────────────────────
+    // Function-written; owner may read and mark read.
+    match /notifications/{notificationId} {
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+      allow create: if false; // Gjallarhorn (Admin SDK) only
+      allow update: if signedIn()
+        && resource.data.uid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    // ── mail ───────────────────────────────────────────────────────────────
+    // Watched by the Trigger Email extension. Server-written ONLY.
+    match /mail/{mailId} {
+      allow read: if isAdmin();
+      allow write: if false; // functions/Admin SDK only
+    }
+
+    // ── bulkMessages ───────────────────────────────────────────────────────
+    // Staff queue a message; the Gjallarhorn fan-out function (Admin SDK)
+    // marks it sent.
+    match /bulkMessages/{id} {
+      allow read: if isStaff();
+      allow create: if isStaff()
+        && request.resource.data.requestedBy == request.auth.uid
+        && request.resource.data.status == 'pending';
+      allow update, delete: if false;
+    }
+
+    // ── auditLog ───────────────────────────────────────────────────────────
+    // Append-only from clients (must stamp their own uid); admin read.
+    match /auditLog/{logId} {
+      allow read: if isAdmin();
+      allow create: if signedIn() && request.resource.data.actorUid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // Default deny everything else.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

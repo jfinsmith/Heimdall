@@ -63,6 +63,14 @@ export interface UserDoc {
   role: Role;
   status: UserStatus;
   qualifications: Qualification[];
+  /**
+   * Authoritative list of verified qualification keys, maintained ONLY by
+   * staff (admin verify action). Security rules forbid self-edits to this
+   * field, which is what actually gates restricted slots — the `verified`
+   * flag inside `qualifications` is display metadata (rules cannot iterate
+   * arrays of maps to protect it).
+   */
+  verifiedQualKeys: QualificationKey[];
   notificationPrefs: NotificationPrefs;
   createdAt: Timestamp;
   updatedAt: Timestamp;

@@ -27,6 +27,8 @@ export interface UserDoc {
   role: Role;
   status: UserStatus;
   qualifications: Qualification[];
+  /** Staff-maintained authoritative verified keys (see web app types). */
+  verifiedQualKeys: string[];
   notificationPrefs: { email: boolean; reminderLeadHours: number; digest: boolean };
 }
 
