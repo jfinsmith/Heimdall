@@ -1,0 +1,37 @@
+/**
+ * App-level providers: Auth + runtime brand theming.
+ * BrandProvider reads `settings/global` and applies brandPrimaryColor /
+ * brandAccentColor as CSS custom properties so admins can retheme without a
+ * code change.
+ */
+import React, { createContext, useContext, useEffect } from 'react';
+import { AuthProvider } from '../auth/AuthContext';
+import { useDoc } from '../lib/firestore';
+import type { GlobalSettings } from '../types';
+
+const SettingsContext = createContext<GlobalSettings | null>(null);
+
+export function useGlobalSettings(): GlobalSettings | null {
+  return useContext(SettingsContext);
+}
+
+function BrandProvider({ children }: { children: React.ReactNode }) {
+  const { data: settings } = useDoc<GlobalSettings>('settings/global');
+
+  useEffect(() => {
+    if (!settings) return;
+    const root = document.documentElement;
+    if (settings.brandPrimaryColor) root.style.setProperty('--brand-primary', settings.brandPrimaryColor);
+    if (settings.brandAccentColor) root.style.setProperty('--brand-accent', settings.brandAccentColor);
+  }, [settings]);
+
+  return <SettingsContext.Provider value={settings}>{children}</SettingsContext.Provider>;
+}
+
+export function Providers({ children }: { children: React.ReactNode }) {
+  return (
+    <AuthProvider>
+      <BrandProvider>{children}</BrandProvider>
+    </AuthProvider>
+  );
+}
