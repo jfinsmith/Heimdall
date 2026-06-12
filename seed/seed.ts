@@ -304,7 +304,9 @@ function buildSessions(): SeedSession[] {
     ],
   });
   sessions.push({ id: 'firearms-17', courseId: 'firearms', day: 17, startH: 8, endH: 17, room: 'Range A', signups: [] });
-  // DT day with role players; fully staffed to show the green path.
+  // DT day — lead/assistants/safety covered, but 3 of 4 role-player slots
+  // open (only two role-player-qualified instructors exist), so the staffing
+  // board has a realistic high-liability gap to chase.
   sessions.push({
     id: 'dt-21', courseId: 'dt', day: 21, startH: 8, endH: 17, room: 'Mat Room',
     signups: [
@@ -312,7 +314,6 @@ function buildSessions(): SeedSession[] {
       { uid: 'inst-nguyen', role: 'assistant' },
       { uid: 'inst-pratt', role: 'assistant' },
       { uid: 'inst-reyes', role: 'role_player' },
-      { uid: 'inst-pratt', role: 'role_player' }, // pratt can't double-book — replaced below
     ],
   });
   // Vehicle ops + first aid + DFST round out the calendar.

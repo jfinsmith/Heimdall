@@ -143,7 +143,7 @@ export function SessionDetailModal({ sessionId, onClose, onEdit }: Props) {
 
       {onEdit && can.buildSchedules(role) && (
         <div className="mt-4 flex justify-end border-t border-watch-50 pt-3">
-          <Button onClick={() => onEdit({ id: sessionId, ...session } as WithId<SessionDoc>)}>Edit session</Button>
+          <Button onClick={() => onEdit(session as WithId<SessionDoc>)}>Edit session</Button>
         </div>
       )}
     </Modal>
