@@ -95,6 +95,23 @@ export function AcademyBuilderPage() {
     return () => cancelAnimationFrame(id);
   }, [hoursInfo]);
 
+  // In the 2-week view, draw a bold black divider on the Monday that starts the
+  // second week (separating the two weeks of the pay period).
+  React.useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      const root = document.getElementById('builder-calendar');
+      if (!root) return;
+      root.querySelectorAll('.hd-week-split').forEach((e) => e.classList.remove('hd-week-split'));
+      if (viewRange?.type !== 'twoWeek') return;
+      const mid = new Date(viewRange.start);
+      mid.setDate(mid.getDate() + 7);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const ds = `${mid.getFullYear()}-${pad(mid.getMonth() + 1)}-${pad(mid.getDate())}`;
+      root.querySelectorAll(`[data-date="${ds}"]`).forEach((e) => e.classList.add('hd-week-split'));
+    });
+    return () => cancelAnimationFrame(id);
+  }, [viewRange, showWeekends]);
+
   /** Jump the calendar to a pay period's two weeks in the 2-week time-grid view. */
   function viewPayPeriod(start: Date) {
     calRef.current?.getApi().changeView('twoWeek', start);

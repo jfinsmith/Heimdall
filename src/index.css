@@ -168,6 +168,11 @@ body {
 .fc-timegrid-event-harness-inset .fc-timegrid-event,
 .fc-timegrid-event { box-shadow: none; }
 
+/* 2-week view: bold black divider on the column that starts the second week */
+#builder-calendar .hd-week-split {
+  border-left: 3px solid #000 !important;
+}
+
 /* Center the toolbar's middle chunk so the hours label sits centered above the title */
 .fc .fc-header-toolbar > .fc-toolbar-chunk:nth-child(2) {
   display: flex;

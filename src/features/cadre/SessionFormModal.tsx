@@ -33,6 +33,11 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
   const { firebaseUser } = useAuth();
   const { data: courses } = useCollection<CourseDoc>('courseCatalog');
   const { data: coordinatorUsers } = useCollection<UserDoc>('users', [where('role', '==', 'coordinator')]);
+  // Everyone who could be reserved into a slot in advance (any active user).
+  const { data: activeUsers } = useCollection<UserDoc>('users', [where('status', '==', 'active')]);
+
+  const userName = (uid: string) =>
+    activeUsers.find((u) => u.id === uid)?.displayName ?? coordinatorUsers.find((u) => u.id === uid)?.displayName ?? uid;
 
   const isCustomSession = session ? session.courseId === 'custom' : false;
   const [courseId, setCourseId] = useState(isCustomSession ? CUSTOM : session?.courseId ?? '');
@@ -94,6 +99,33 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
 
   function updateSlot(slotId: string, patch: Partial<RoleSlot>) {
     setSlots((prev) => prev.map((s) => (s.slotId === slotId ? { ...s, ...patch } : s)));
+  }
+
+  /** Reserve a specific instructor into a slot (up to its count). */
+  function reserve(slotId: string, uid: string) {
+    if (!uid) return;
+    setSlots((prev) =>
+      prev.map((s) =>
+        s.slotId === slotId && s.filledBy.length < s.count && !s.filledBy.includes(uid)
+          ? { ...s, filledBy: [...s.filledBy, uid] }
+          : s
+      )
+    );
+  }
+  function unreserve(slotId: string, uid: string) {
+    setSlots((prev) => prev.map((s) => (s.slotId === slotId ? { ...s, filledBy: s.filledBy.filter((u) => u !== uid) } : s)));
+  }
+
+  /** Active users eligible to fill a slot (hold the verified qualification it requires). */
+  function eligibleFor(slot: RoleSlot) {
+    const req = slot.requiredQualificationKey;
+    const reservedAnywhere = new Set(slots.flatMap((s) => s.filledBy)); // no double-booking within the session
+    return activeUsers.filter(
+      (u) =>
+        !slot.filledBy.includes(u.id) &&
+        !reservedAnywhere.has(u.id) &&
+        (!req || (u.verifiedQualKeys ?? []).includes(req))
+    );
   }
 
   function changeSlotRole(slot: RoleSlot, role: SlotRole) {
@@ -178,35 +210,50 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
         await logAudit(firebaseUser.uid, 'session.create', 'session', ref.id, `Scheduled ${courseName} on ${date}`);
       }
 
-      // Mirror coordinator-slot assignments into signups/assignments so the
-      // coordinator's My Schedule and Gjallarhorn reminders see them.
-      for (const slot of slots) {
-        if (slot.role !== 'coordinator' || !slot.filledBy[0] || !sessionId) continue;
-        const uid = slot.filledBy[0];
-        const u = coordinatorUsers.find((x) => x.id === uid);
+      // Sync pre-assigned / reserved people (coordinators AND reserved
+      // instructors) into signups + assignments so they show on My Schedule
+      // and get Gjallarhorn reminders. Only newly-added uids get created and
+      // un-reserved ones get removed — existing sign-ups are left untouched.
+      if (sessionId) {
+        const desired = new Map<string, { slotId: string; role: string }>();
+        for (const slot of slots) {
+          for (const uid of slot.filledBy) if (!desired.has(uid)) desired.set(uid, { slotId: slot.slotId, role: slot.role });
+        }
+        const prevUids = new Set<string>();
+        if (session) for (const slot of session.roleSlots) for (const uid of slot.filledBy) prevUids.add(uid);
         const now = Timestamp.now();
-        await setDoc(doc(db, 'sessions', sessionId, 'signups', uid), {
-          uid,
-          displayName: u?.displayName ?? 'Coordinator',
-          role: 'coordinator',
-          slotId: slot.slotId,
-          status: 'confirmed',
-          signedUpAt: now,
-        });
-        await setDoc(doc(db, 'assignments', `${sessionId}_${uid}`), {
-          uid,
-          sessionId,
-          academyId: academy.id,
-          role: 'coordinator',
-          courseName,
-          location,
-          room,
-          start: tsFromDate(start),
-          end: tsFromDate(end),
-          status: 'confirmed',
-          reminderSent: false,
-          createdAt: now,
-        });
+
+        for (const [uid, info] of desired) {
+          if (prevUids.has(uid)) continue; // unchanged
+          await setDoc(doc(db, 'sessions', sessionId, 'signups', uid), {
+            uid,
+            displayName: userName(uid),
+            role: info.role,
+            slotId: info.slotId,
+            status: 'confirmed',
+            signedUpAt: now,
+          });
+          await setDoc(doc(db, 'assignments', `${sessionId}_${uid}`), {
+            uid,
+            sessionId,
+            academyId: academy.id,
+            role: info.role,
+            courseName,
+            location,
+            room,
+            start: tsFromDate(start),
+            end: tsFromDate(end),
+            status: 'confirmed',
+            reminderSent: false,
+            createdAt: now,
+          });
+        }
+        // Remove people who were un-reserved.
+        for (const uid of prevUids) {
+          if (desired.has(uid)) continue;
+          await deleteDoc(doc(db, 'assignments', `${sessionId}_${uid}`)).catch(() => {});
+          await deleteDoc(doc(db, 'sessions', sessionId, 'signups', uid)).catch(() => {});
+        }
       }
 
       onClose();
@@ -329,68 +376,110 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
           <legend className="px-1 text-sm font-medium text-watch-800">Role slots</legend>
           <div className="space-y-2">
             {slots.map((slot) => (
-              <div key={slot.slotId} className="grid grid-cols-[1fr_5rem_1fr_2rem] items-center gap-2">
-                <Select value={slot.role} onChange={(e) => changeSlotRole(slot, e.target.value as SlotRole)}>
-                  {(Object.keys(SLOT_ROLE_LABELS) as SlotRole[]).map((r) => (
-                    <option key={r} value={r}>
-                      {SLOT_ROLE_LABELS[r]}
-                    </option>
-                  ))}
-                </Select>
-                {slot.role === 'coordinator' ? (
-                  <>
-                    <span className="text-center text-xs text-slate-400">assigned</span>
-                    <Select
-                      value={slot.filledBy[0] ?? ''}
-                      aria-label="Assigned coordinator"
-                      onChange={(e) => updateSlot(slot.slotId, { filledBy: e.target.value ? [e.target.value] : [] })}
-                    >
-                      <option value="">Unassigned</option>
-                      {coordinatorUsers.map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.displayName}
-                          {u.id === defaultCoordinator ? ' (academy #1)' : ''}
-                        </option>
-                      ))}
-                    </Select>
-                  </>
-                ) : (
-                  <>
-                    <Input
-                      type="number"
-                      min={Math.max(1, slot.filledBy.length)}
-                      value={slot.count}
-                      aria-label="Slot count"
-                      onChange={(e) => updateSlot(slot.slotId, { count: Number(e.target.value) })}
-                    />
-                    <Select
-                      value={slot.requiredQualificationKey ?? ''}
-                      aria-label="Required qualification"
-                      onChange={(e) =>
-                        updateSlot(slot.slotId, {
-                          requiredQualificationKey: (e.target.value || undefined) as QualificationKey | undefined,
-                        })
-                      }
-                    >
-                      <option value="">No qualification required</option>
-                      {(Object.keys(QUALIFICATION_LABELS) as QualificationKey[]).map((k) => (
-                        <option key={k} value={k}>
-                          {QUALIFICATION_LABELS[k]}
-                        </option>
-                      ))}
-                    </Select>
-                  </>
+              <div key={slot.slotId} className="rounded-md border border-watch-100 p-2">
+                <div className="grid grid-cols-[1fr_5rem_1fr_2rem] items-center gap-2">
+                  <Select value={slot.role} onChange={(e) => changeSlotRole(slot, e.target.value as SlotRole)}>
+                    {(Object.keys(SLOT_ROLE_LABELS) as SlotRole[]).map((r) => (
+                      <option key={r} value={r}>
+                        {SLOT_ROLE_LABELS[r]}
+                      </option>
+                    ))}
+                  </Select>
+                  {slot.role === 'coordinator' ? (
+                    <>
+                      <span className="text-center text-xs text-slate-400">assigned</span>
+                      <Select
+                        value={slot.filledBy[0] ?? ''}
+                        aria-label="Assigned coordinator"
+                        onChange={(e) => updateSlot(slot.slotId, { filledBy: e.target.value ? [e.target.value] : [] })}
+                      >
+                        <option value="">Unassigned</option>
+                        {coordinatorUsers.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.displayName}
+                            {u.id === defaultCoordinator ? ' (academy #1)' : ''}
+                          </option>
+                        ))}
+                      </Select>
+                    </>
+                  ) : (
+                    <>
+                      <Input
+                        type="number"
+                        min={Math.max(1, slot.filledBy.length)}
+                        value={slot.count}
+                        aria-label="Slot count"
+                        onChange={(e) => updateSlot(slot.slotId, { count: Number(e.target.value) })}
+                      />
+                      <Select
+                        value={slot.requiredQualificationKey ?? ''}
+                        aria-label="Required qualification"
+                        onChange={(e) =>
+                          updateSlot(slot.slotId, {
+                            requiredQualificationKey: (e.target.value || undefined) as QualificationKey | undefined,
+                          })
+                        }
+                      >
+                        <option value="">No qualification required</option>
+                        {(Object.keys(QUALIFICATION_LABELS) as QualificationKey[]).map((k) => (
+                          <option key={k} value={k}>
+                            {QUALIFICATION_LABELS[k]}
+                          </option>
+                        ))}
+                      </Select>
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    aria-label="Remove slot"
+                    className="text-slate-400 hover:text-red-600 disabled:opacity-30"
+                    disabled={slot.filledBy.length > 0}
+                    title={slot.filledBy.length > 0 ? 'Clear the assigned person first' : 'Remove slot'}
+                    onClick={() => setSlots((prev) => prev.filter((s) => s.slotId !== slot.slotId))}
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Reserve specific instructors for this slot (pre-assigned, no sign-up needed). */}
+                {slot.role !== 'coordinator' && (
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5 pl-0.5">
+                    <span className="text-xs font-medium text-slate-500">Reserved:</span>
+                    {slot.filledBy.length === 0 && (
+                      <span className="text-xs text-slate-400">none — open for sign-up</span>
+                    )}
+                    {slot.filledBy.map((uid) => (
+                      <span
+                        key={uid}
+                        className="inline-flex items-center gap-1 rounded-full bg-bifrost-50 px-2 py-0.5 text-xs font-medium text-bifrost-800 ring-1 ring-inset ring-bifrost-200"
+                      >
+                        {userName(uid)}
+                        <button
+                          type="button"
+                          aria-label={`Unreserve ${userName(uid)}`}
+                          className="text-bifrost-400 hover:text-red-600"
+                          onClick={() => unreserve(slot.slotId, uid)}
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ))}
+                    {slot.filledBy.length < slot.count && (
+                      <select
+                        className="rounded border border-watch-200 px-1.5 py-1 text-xs"
+                        value=""
+                        onChange={(e) => reserve(slot.slotId, e.target.value)}
+                      >
+                        <option value="">+ Reserve instructor…</option>
+                        {eligibleFor(slot).map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.displayName}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
                 )}
-                <button
-                  type="button"
-                  aria-label="Remove slot"
-                  className="text-slate-400 hover:text-red-600 disabled:opacity-30"
-                  disabled={slot.role !== 'coordinator' && slot.filledBy.length > 0}
-                  title={slot.role !== 'coordinator' && slot.filledBy.length > 0 ? 'Slot has sign-ups' : 'Remove slot'}
-                  onClick={() => setSlots((prev) => prev.filter((s) => s.slotId !== slot.slotId))}
-                >
-                  ✕
-                </button>
               </div>
             ))}
           </div>
