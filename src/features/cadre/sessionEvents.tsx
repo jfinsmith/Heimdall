@@ -40,6 +40,11 @@ export interface SessionEventOpts {
   academyColor?: string;
 }
 
+/** Tests / scenarios get a bold colored border to stand out from normal days. */
+export function isFlaggedSession(s: SessionDoc): boolean {
+  return /\b(test|scenario)/i.test(s.notes ?? '');
+}
+
 export function sessionToEvent(s: WithId<SessionDoc>, opts: SessionEventOpts = {}): EventInput {
   const status = sessionColor(s);
   const bg = opts.academyColor ?? status;
@@ -50,6 +55,7 @@ export function sessionToEvent(s: WithId<SessionDoc>, opts: SessionEventOpts = {
     end: s.end.toDate(),
     backgroundColor: bg,
     borderColor: opts.academyColor ? status : bg,
+    classNames: isFlaggedSession(s) ? ['hd-flagged'] : [],
     editable: opts.editable ?? false,
     extendedProps: { session: s, academyPrefix: opts.academyPrefix },
   };

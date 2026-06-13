@@ -131,7 +131,8 @@ export function AcademyBuilderPage() {
   /** Only FDLE-countable sessions feed the program-hours tally — agency-only
    *  blocks (PSO assignments, resiliency days, formation…) are excluded. */
   const fdleSessions = useMemo(() => liveSessions.filter((s) => s.countsTowardFdle !== false), [liveSessions]);
-  const scheduledHours = useMemo(() => fdleSessions.reduce((sum, s) => sum + (s.hours || 0), 0), [fdleSessions]);
+  // Round to the quarter-hour so float accumulation never shows e.g. 769.99999.
+  const scheduledHours = useMemo(() => q(fdleSessions.reduce((sum, s) => sum + (s.hours || 0), 0)), [fdleSessions]);
 
   const events = useMemo(
     () => [...sessions.map((s) => sessionToEvent(s, { editable: true })), ...holidayBackgroundEvents(disabledHolidays, observedHolidays)],
@@ -152,8 +153,8 @@ export function AcademyBuilderPage() {
       hoursByCourse.set(norm(s.courseName), (hoursByCourse.get(norm(s.courseName)) ?? 0) + (s.hours || 0));
     }
     return curriculum.courses.map((c) => {
-      const scheduled = hoursByCourse.get(norm(c.name)) ?? 0;
-      return { ...c, scheduled, delta: scheduled - c.minHours };
+      const scheduled = q(hoursByCourse.get(norm(c.name)) ?? 0);
+      return { ...c, scheduled, delta: q(scheduled - c.minHours) };
     });
   }, [curriculum, fdleSessions]);
 
@@ -195,7 +196,7 @@ export function AcademyBuilderPage() {
 
   if (!academy) return null;
 
-  const hoursGap = academy.targetTotalHours - scheduledHours;
+  const hoursGap = q(academy.targetTotalHours - scheduledHours);
   const published = academy.status !== 'draft' && academy.status !== 'archived';
 
   async function onEventChange(arg: EventDropArg | EventResizeDoneArg) {

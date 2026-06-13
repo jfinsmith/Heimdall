@@ -81,6 +81,16 @@ body {
 .fc-event {
   cursor: pointer;
 }
+
+/* Tests & scenarios (the word "test" or "scenario" in notes): bold amber border */
+.fc-event.hd-flagged {
+  box-shadow: inset 0 0 0 3px #f59e0b;
+  border-color: #f59e0b !important;
+}
+.fc-event.hd-flagged .hd-event-notes {
+  color: #fde68a;
+  opacity: 1;
+}
 .hd-event {
   position: relative;
   height: 100%;
