@@ -168,6 +168,14 @@ body {
 .fc-timegrid-event-harness-inset .fc-timegrid-event,
 .fc-timegrid-event { box-shadow: none; }
 
+/* Center the toolbar's middle chunk so the hours label sits centered above the title */
+.fc .fc-header-toolbar > .fc-toolbar-chunk:nth-child(2) {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
 /* In-calendar hours readout: a toolbar label styled as plain text, not a button */
 .fc .fc-hoursLabel-button,
 .fc .fc-hoursLabel-button:hover,
