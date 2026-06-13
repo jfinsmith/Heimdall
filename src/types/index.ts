@@ -94,6 +94,7 @@ export const EMAIL_AUTOMATIONS = [
   { key: 'qualification_approved', label: 'Qualification verified', description: 'Emails the instructor when a coordinator verifies a qualification.' },
   { key: 'course_published', label: 'Course opened for sign-up', description: 'Emails eligible instructors when coordinators open a course’s sessions for sign-up.' },
   { key: 'account_approved', label: 'Account approved', description: 'Emails a new user when their account is activated.' },
+  { key: 'new_account_pending', label: 'New account request', description: 'Emails command when someone self-registers and is waiting for approval.' },
   { key: 'reminder', label: 'Assignment reminders', description: 'Daily sweep: emails instructors ahead of their upcoming assignments.' },
   { key: 'understaffing_alert', label: 'Understaffing alerts', description: 'Daily sweep: emails coordinators + command about unfilled slots inside the alert window.' },
   { key: 'digest', label: 'Weekly digest', description: 'Monday summary of staffing health for coordinators and command.' },
@@ -123,7 +124,21 @@ export interface GlobalSettings {
   emailMasterEnabled: boolean;
   /** Per-automation email toggles; missing key = enabled. */
   emailAutomations: Partial<Record<EmailAutomationKey, boolean>>;
+  /**
+   * Per-automation recipient-role filter. If a key maps to a non-empty list,
+   * only recipients whose role is in the list receive that email (the in-app
+   * bell still fires for everyone). Missing/empty = every role receives it.
+   */
+  emailAutomationRoles?: Partial<Record<EmailAutomationKey, Role[]>>;
+  /** Lead-withdrawal escalation window (days before a session) — default 7. */
+  escalationWindowDays?: number;
 }
+
+/** Who a "course opened for sign-up" announcement email targets. */
+export type CoursePublishTarget =
+  | { mode: 'all' }
+  | { mode: 'qualification'; qualificationKey: QualificationKey }
+  | { mode: 'users'; uids: string[] };
 
 // ── Curriculum ─────────────────────────────────────────────────────────────
 export type Discipline = 'law_enforcement' | 'corrections' | 'cross_over' | 'all';
@@ -296,6 +311,7 @@ export type NotificationType =
   | 'qualification_approved'
   | 'course_published'
   | 'account_approved'
+  | 'new_account_pending'
   | 'reminder'
   | 'understaffing_alert'
   | 'digest'

@@ -8,7 +8,7 @@
  */
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { renderEmail, detailRows, escapeHtml, EmailContent } from './templates';
-import { emailAllowed, GlobalSettings, SessionDoc, UserDoc } from '../types';
+import { emailAllowed, GlobalSettings, Role, SessionDoc, UserDoc } from '../types';
 
 const db = () => getFirestore();
 
@@ -37,6 +37,7 @@ export async function notify(opts: NotifyOptions): Promise<void> {
   const settings = await getSettings();
   let email = opts.email ?? null;
   let prefsAllowEmail = true;
+  let recipientRole: Role | undefined;
 
   if (opts.uid) {
     // In-app notification (bell)
@@ -53,6 +54,7 @@ export async function notify(opts: NotifyOptions): Promise<void> {
     if (userSnap.exists) {
       const user = userSnap.data() as UserDoc;
       email = email ?? user.email;
+      recipientRole = user.role;
       // Personal opt-outs apply ONLY to the user's own reminder/digest emails;
       // operational and command emails are governed by the admin toggles.
       if (opts.type === 'reminder') prefsAllowEmail = user.notificationPrefs?.email !== false;
@@ -63,9 +65,10 @@ export async function notify(opts: NotifyOptions): Promise<void> {
 
   if (!email) return;
   if (!prefsAllowEmail && !opts.force) return;
-  // Admin-level controls: master switch + per-automation toggles
-  // (Admin → Gjallarhorn & Email). In-app notifications above already fired.
-  if (!emailAllowed(settings, opts.type)) return;
+  // Admin-level controls: master switch + per-automation toggle + per-automation
+  // recipient-role filter (Admin → Gjallarhorn & Email). The in-app bell above
+  // already fired regardless.
+  if (!emailAllowed(settings, opts.type, recipientRole)) return;
 
   const content =
     opts.emailContent ??
@@ -102,6 +105,16 @@ export async function notifyCoordinators(
   const coordinatorIds: string[] = academy.exists ? (academy.data()!.coordinatorIds ?? []) : [];
   const targets = [...new Set([...coordinatorIds, ...extraUids])];
   await Promise.all(targets.map((uid) => notify({ ...payload, uid })));
+}
+
+/** Notify every command-level admin (active directors + lieutenants). */
+export async function notifyAdmins(payload: Omit<NotifyOptions, 'uid' | 'email'>): Promise<void> {
+  const admins = await db()
+    .collection('users')
+    .where('role', 'in', ['director', 'lieutenant'])
+    .where('status', '==', 'active')
+    .get();
+  await Promise.all(admins.docs.map((d) => notify({ ...payload, uid: d.id })));
 }
 
 /** Escalate to the configured command recipients (uids or raw emails). */

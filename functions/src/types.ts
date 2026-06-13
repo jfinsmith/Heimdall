@@ -52,13 +52,23 @@ export interface GlobalSettings {
   emailMasterEnabled?: boolean;
   /** Per-automation email toggles, keyed by NotificationType; missing key = enabled. */
   emailAutomations?: Record<string, boolean>;
+  /** Per-automation recipient-role filter; non-empty list = only those roles get the email. */
+  emailAutomationRoles?: Record<string, Role[]>;
+  /** Lead-withdrawal escalation window (days before a session) — default 7. */
+  escalationWindowDays?: number;
 }
 
-/** Email for a notification type is allowed unless the master switch or its toggle is off. */
-export function emailAllowed(settings: GlobalSettings | null, type: string): boolean {
+/**
+ * Email for a notification type is allowed unless the master switch is off, its
+ * per-automation toggle is off, or a recipient-role filter excludes this role.
+ */
+export function emailAllowed(settings: GlobalSettings | null, type: string, recipientRole?: Role): boolean {
   if (!settings) return true;
   if (settings.emailMasterEnabled === false) return false;
-  return settings.emailAutomations?.[type] !== false;
+  if (settings.emailAutomations?.[type] === false) return false;
+  const roles = settings.emailAutomationRoles?.[type];
+  if (roles && roles.length > 0 && recipientRole && !roles.includes(recipientRole)) return false;
+  return true;
 }
 
 export interface RoleSlot {

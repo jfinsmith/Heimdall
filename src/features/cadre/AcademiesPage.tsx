@@ -34,6 +34,7 @@ export function AcademiesPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [templateCreateOpen, setTemplateCreateOpen] = useState(false);
   const [cloneSource, setCloneSource] = useState<WithId<AcademyDoc> | null>(null);
+  const [deleteSource, setDeleteSource] = useState<WithId<AcademyDoc> | null>(null);
 
   // Global "+ Create" action deep-links here with ?create=1
   useEffect(() => {
@@ -46,7 +47,10 @@ export function AcademiesPage() {
 
   const { data: allAcademies, loading } = useCollection<AcademyDoc>('academies', [orderBy('startDate', 'desc')]);
   const [showArchived, setShowArchived] = useState(false);
-  const templates = allAcademies.filter((a) => a.isTemplate);
+  // Quarterly start templates, shown in calendar order: January, April, July, October.
+  const templates = allAcademies
+    .filter((a) => a.isTemplate)
+    .sort((a, b) => a.startDate.toDate().getMonth() - b.startDate.toDate().getMonth());
   const academies = allAcademies
     .filter((a) => !a.isTemplate)
     .filter((a) => showArchived || a.status !== 'archived');
@@ -120,6 +124,9 @@ export function AcademiesPage() {
                       Archive
                     </Button>
                   )}
+                  <Button variant="ghost" className="text-red-700" onClick={() => setDeleteSource(a)}>
+                    Delete
+                  </Button>
                 </td>
               </tr>
             ))}
@@ -165,6 +172,9 @@ export function AcademiesPage() {
                       <Button variant="primary" onClick={() => setCloneSource(t)}>
                         Use template
                       </Button>
+                      <Button variant="ghost" className="text-red-700" onClick={() => setDeleteSource(t)}>
+                        Delete
+                      </Button>
                     </td>
                   </tr>
                 ))}
@@ -183,7 +193,90 @@ export function AcademiesPage() {
           actorUid={firebaseUser?.uid ?? ''}
         />
       )}
+      {deleteSource && (
+        <DeleteAcademyModal
+          academy={deleteSource}
+          onClose={() => setDeleteSource(null)}
+          actorUid={firebaseUser?.uid ?? ''}
+        />
+      )}
     </div>
+  );
+}
+
+// ── Delete (cascade: academy + sessions + sign-ups + assignments) ───────────
+function DeleteAcademyModal({
+  academy,
+  onClose,
+  actorUid,
+}: {
+  academy: WithId<AcademyDoc>;
+  onClose: () => void;
+  actorUid: string;
+}) {
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState('');
+  const canDelete = confirm === 'DELETE';
+
+  async function doDelete() {
+    if (!canDelete) return;
+    setBusy(true);
+    try {
+      setProgress('Finding sessions…');
+      const sessionsSnap = await getDocs(query(collection(db, 'sessions'), where('academyId', '==', academy.id)));
+      // Collect every doc to remove: each session's sign-ups, the sessions, the
+      // assignment mirrors, and finally the academy itself.
+      const refs: ReturnType<typeof doc>[] = [];
+      setProgress('Clearing sign-ups…');
+      for (const sess of sessionsSnap.docs) {
+        const signups = await getDocs(collection(db, 'sessions', sess.id, 'signups'));
+        signups.forEach((su) => refs.push(su.ref));
+        refs.push(sess.ref);
+      }
+      const assignmentsSnap = await getDocs(query(collection(db, 'assignments'), where('academyId', '==', academy.id)));
+      assignmentsSnap.forEach((a) => refs.push(a.ref));
+      refs.push(doc(db, 'academies', academy.id));
+
+      setProgress(`Deleting ${refs.length} records…`);
+      for (let i = 0; i < refs.length; i += 400) {
+        const batch = writeBatch(db);
+        refs.slice(i, i + 400).forEach((r) => batch.delete(r));
+        await batch.commit();
+      }
+      await logAudit(actorUid, 'academy.delete', 'academy', academy.id, `Deleted ${academy.name} (${sessionsSnap.size} sessions)`);
+      onClose();
+    } catch (err) {
+      setBusy(false);
+      setProgress('');
+      window.alert(`Delete failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  return (
+    <Modal open onClose={busy ? () => {} : onClose} title={`Delete "${academy.name}"`}>
+      <div className="space-y-4 text-sm">
+        <div className="rounded-md bg-red-50 px-3 py-3 text-red-800">
+          <p className="font-semibold">This permanently deletes the academy and everything in it.</p>
+          <p className="mt-1">
+            All sessions, sign-ups, and assignments for <strong>{academy.shortName || academy.name}</strong> will be
+            erased. This cannot be undone.
+          </p>
+        </div>
+        <Field label="Type DELETE (all caps) to confirm">
+          <Input value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="DELETE" autoFocus disabled={busy} />
+        </Field>
+        {progress && <p className="text-bifrost-700">{progress}</p>}
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button variant="danger" disabled={!canDelete || busy} onClick={doDelete}>
+            {busy ? 'Deleting…' : 'Delete academy'}
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

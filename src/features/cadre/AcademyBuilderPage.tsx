@@ -20,7 +20,8 @@ import { useCollection, useDoc, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import { addDays, hoursBetween, tsFromDate, fmtDate } from '../../lib/time';
 import { holidaysForYear, holidayBackgroundEvents, observedHolidayDatesInRange, HOLIDAY_PAY_HOURS } from '../../lib/holidays';
-import type { AcademyDoc, CourseDoc, CurriculumDoc, SessionDoc, UserDoc } from '../../types';
+import type { AcademyDoc, CourseDoc, CoursePublishTarget, CurriculumDoc, QualificationKey, SessionDoc, UserDoc } from '../../types';
+import { QUALIFICATION_LABELS } from '../../types';
 import { Badge, Button, Field, Input, PageHeader, Select } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import { SessionFormModal } from './SessionFormModal';
@@ -57,6 +58,11 @@ export function AcademyBuilderPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [showWeekends, setShowWeekends] = useState(false);
   const [detailSession, setDetailSession] = useState<WithId<SessionDoc> | null>(null);
+  const [signupModal, setSignupModal] = useState<{
+    label: string;
+    mode: 'open' | 'announce';
+    group: { open: number; scheduled: number; total: number };
+  } | null>(null);
 
   const liveSessions = useMemo(() => sessions.filter((s) => s.status !== 'cancelled'), [sessions]);
 
@@ -242,9 +248,9 @@ export function AcademyBuilderPage() {
     await logAudit(firebaseUser.uid, `academy.${next === 'published' ? 'publish' : 'unpublish'}`, 'academy', academyId, academy!.name);
   }
 
-  /** Open (or close) sign-ups for every session of a course. */
-  async function setCourseSignups(courseLabel: string, open: boolean) {
-    if (!firebaseUser) return;
+  /** Open (or close) sign-ups for every session of a course. Returns the count changed. */
+  async function setCourseSignups(courseLabel: string, open: boolean): Promise<number> {
+    if (!firebaseUser) return 0;
     const batch = writeBatch(db);
     let n = 0;
     for (const s of liveSessions) {
@@ -260,16 +266,6 @@ export function AcademyBuilderPage() {
       }
     }
     await batch.commit();
-    if (open && n > 0) {
-      // One aggregated event → Gjallarhorn emails each eligible instructor once.
-      await addDoc(collection(db, 'coursePublishEvents'), {
-        academyId: academyId!,
-        courseLabel,
-        sessionCount: n,
-        requestedBy: firebaseUser.uid,
-        createdAt: serverTimestamp(),
-      });
-    }
     await logAudit(
       firebaseUser.uid,
       open ? 'course.open_signups' : 'course.close_signups',
@@ -277,6 +273,39 @@ export function AcademyBuilderPage() {
       academyId!,
       `${open ? 'Opened' : 'Closed'} sign-ups for ${n} "${courseLabel}" sessions`
     );
+    return n;
+  }
+
+  /**
+   * Queue the "sign-ups open" announcement for a course. Gjallarhorn emails the
+   * chosen target (everyone eligible / a qualification / specific people). The
+   * course is visible to all eligible instructors regardless — this only drives
+   * the email blast, so a coordinator can soft-launch then notify the rest later.
+   */
+  async function announceCourse(courseLabel: string, target: CoursePublishTarget, sessionCount: number) {
+    if (!firebaseUser || sessionCount <= 0) return;
+    await addDoc(collection(db, 'coursePublishEvents'), {
+      academyId: academyId!,
+      courseLabel,
+      sessionCount,
+      target,
+      requestedBy: firebaseUser.uid,
+      createdAt: serverTimestamp(),
+    });
+    await logAudit(firebaseUser.uid, 'course.announce', 'academy', academyId!, `Announced "${courseLabel}" sign-ups (${target.mode})`);
+  }
+
+  /** Confirm handler for the Open-sign-ups modal. */
+  async function confirmCourseSignups(emailTarget: CoursePublishTarget | null) {
+    if (!signupModal) return;
+    const { label, group, mode } = signupModal;
+    if (mode === 'open') {
+      const opened = await setCourseSignups(label, true);
+      if (emailTarget) await announceCourse(label, emailTarget, group.open + opened);
+    } else if (emailTarget) {
+      await announceCourse(label, emailTarget, group.open);
+    }
+    setSignupModal(null);
   }
 
   /** Move a holiday-conflicted session to the next weekday that is neither a weekend nor a holiday. */
@@ -426,12 +455,17 @@ export function AcademyBuilderPage() {
                       {g.open}/{g.total} open
                     </span>
                     {g.scheduled > 0 && (
-                      <Button onClick={() => setCourseSignups(label, true)}>Open sign-ups</Button>
+                      <Button onClick={() => setSignupModal({ label, mode: 'open', group: g })}>Open sign-ups</Button>
                     )}
                     {g.open > 0 && (
-                      <Button variant="ghost" onClick={() => setCourseSignups(label, false)}>
-                        Close
-                      </Button>
+                      <>
+                        <Button variant="ghost" onClick={() => setSignupModal({ label, mode: 'announce', group: g })}>
+                          Notify…
+                        </Button>
+                        <Button variant="ghost" onClick={() => setCourseSignups(label, false)}>
+                          Close
+                        </Button>
+                      </>
                     )}
                   </span>
                 </li>
@@ -504,7 +538,129 @@ export function AcademyBuilderPage() {
           }}
         />
       )}
+      {signupModal && (
+        <OpenSignupsModal
+          courseLabel={signupModal.label}
+          mode={signupModal.mode}
+          sessionCount={signupModal.mode === 'open' ? signupModal.group.scheduled : signupModal.group.open}
+          onConfirm={confirmCourseSignups}
+          onClose={() => setSignupModal(null)}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * Confirmation for opening (or re-announcing) a course's sign-ups, with control
+ * over who gets the email. The course becomes visible to every eligible
+ * instructor either way — the target only decides who gets pushed an email, so
+ * a coordinator can soft-launch to a few people, then notify the rest later.
+ */
+function OpenSignupsModal({
+  courseLabel,
+  mode,
+  sessionCount,
+  onConfirm,
+  onClose,
+}: {
+  courseLabel: string;
+  mode: 'open' | 'announce';
+  sessionCount: number;
+  onConfirm: (target: CoursePublishTarget | null) => Promise<void>;
+  onClose: () => void;
+}) {
+  const { data: users } = useCollection<UserDoc>('users', [where('status', '==', 'active')]);
+  type Choice = 'all' | 'qualification' | 'users' | 'none';
+  const [choice, setChoice] = useState<Choice>('all');
+  const [qualKey, setQualKey] = useState<QualificationKey>('handgun');
+  const [selectedUids, setSelectedUids] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+
+  const instructors = users
+    .filter((u) => u.role === 'instructor' || u.qualifications.length > 0)
+    .sort((a, b) => a.displayName.localeCompare(b.displayName));
+  const valid = choice !== 'users' || selectedUids.length > 0;
+
+  async function submit() {
+    setBusy(true);
+    let target: CoursePublishTarget | null = null;
+    if (choice === 'all') target = { mode: 'all' };
+    else if (choice === 'qualification') target = { mode: 'qualification', qualificationKey: qualKey };
+    else if (choice === 'users') target = { mode: 'users', uids: selectedUids };
+    // 'none' → leave target null (open without emailing)
+    try {
+      await onConfirm(target);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const toggleUid = (uid: string) =>
+    setSelectedUids((prev) => (prev.includes(uid) ? prev.filter((u) => u !== uid) : [...prev, uid]));
+
+  const Radio = ({ value, label, hint }: { value: Choice; label: string; hint?: string }) => (
+    <label className="flex cursor-pointer items-start gap-2 rounded-md border border-watch-100 px-3 py-2 hover:bg-watch-50">
+      <input type="radio" className="mt-1" checked={choice === value} onChange={() => setChoice(value)} />
+      <span>
+        <span className="block text-sm font-medium text-watch-900">{label}</span>
+        {hint && <span className="block text-xs text-slate-500">{hint}</span>}
+      </span>
+    </label>
+  );
+
+  return (
+    <Modal open onClose={onClose} title={mode === 'open' ? `Open sign-ups — ${courseLabel}` : `Notify instructors — ${courseLabel}`}>
+      <div className="space-y-3 text-sm">
+        <p className="text-slate-600">
+          {mode === 'open'
+            ? `This opens ${sessionCount} ${courseLabel} session${sessionCount === 1 ? '' : 's'} for instructor sign-up.`
+            : `Send another sign-up announcement for ${courseLabel}. Sessions stay open.`}{' '}
+          Choose who gets an email:
+        </p>
+
+        <div className="space-y-2">
+          <Radio value="all" label="Everyone eligible for this course" hint="All active instructors who qualify for an open slot." />
+          <Radio value="qualification" label="Only a specific qualification" hint="e.g. open Firearms to Handgun instructors only." />
+          {choice === 'qualification' && (
+            <div className="pl-7">
+              <Select value={qualKey} onChange={(e) => setQualKey(e.target.value as QualificationKey)}>
+                {(Object.keys(QUALIFICATION_LABELS) as QualificationKey[]).map((k) => (
+                  <option key={k} value={k}>
+                    {QUALIFICATION_LABELS[k]}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
+          <Radio value="users" label="Only specific people" hint="Soft-launch to a hand-picked few; notify the rest later." />
+          {choice === 'users' && (
+            <div className="ml-7 max-h-48 space-y-1 overflow-y-auto rounded-md border border-watch-100 p-2">
+              {instructors.length === 0 && <p className="px-1 text-xs text-slate-400">No instructors yet.</p>}
+              {instructors.map((u) => (
+                <label key={u.id} className="flex items-center gap-2 rounded px-1 py-0.5 hover:bg-watch-50">
+                  <input type="checkbox" checked={selectedUids.includes(u.id)} onChange={() => toggleUid(u.id)} />
+                  <span className="text-watch-800">{u.displayName}</span>
+                  <span className="text-xs text-slate-400">
+                    {u.verifiedQualKeys?.length ? u.verifiedQualKeys.join(', ') : 'no verified quals'}
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+          {mode === 'open' && <Radio value="none" label="Open without emailing anyone" hint="Sessions become open; send announcements later." />}
+        </div>
+
+        <div className="flex justify-end gap-2 pt-1">
+          <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button variant="primary" disabled={busy || !valid} onClick={submit}>
+            {busy ? 'Working…' : mode === 'open' ? 'Open sign-ups' : 'Send announcement'}
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

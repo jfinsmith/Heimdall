@@ -13,7 +13,7 @@ initializeApp();
 setGlobalOptions({ region: 'us-east1', maxInstances: 10 });
 
 // Gjallarhorn — event triggers
-export { onSignupWritten, onSessionUpdated, onUserUpdated, onBulkMessageCreated, onCoursePublished } from './gjallarhorn/triggers';
+export { onSignupWritten, onSessionUpdated, onUserCreated, onUserUpdated, onBulkMessageCreated, onCoursePublished } from './gjallarhorn/triggers';
 // Gjallarhorn — personal ICS calendar feed (perpetual subscription URL)
 export { calendarFeed } from './gjallarhorn/icsFeed';
 // Gjallarhorn — scheduled sweeps (2 Cloud Scheduler jobs, within the 3 free)

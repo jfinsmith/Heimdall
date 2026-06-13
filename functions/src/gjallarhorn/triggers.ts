@@ -19,6 +19,7 @@ import {
   escalateToCommand,
   getSettings,
   notify,
+  notifyAdmins,
   notifyCoordinators,
   sessionDetails,
   sessionIcs,
@@ -141,7 +142,8 @@ export const onSignupWritten = onDocumentWritten('sessions/{sessionId}/signups/{
 
       // 3) Lead withdrawal close to the session date → escalate up the chain
       const daysOut = (session.start.toMillis() - Date.now()) / 864e5;
-      if (after.role === 'lead' && daysOut <= LEAD_ESCALATION_DAYS && daysOut > 0) {
+      const escWindow = settings?.escalationWindowDays ?? LEAD_ESCALATION_DAYS;
+      if (after.role === 'lead' && daysOut <= escWindow && daysOut > 0) {
         await escalateToCommand({
           type: 'lead_withdrawal_escalation',
           title: `ESCALATION — lead withdrew ${Math.ceil(daysOut)} days out`,
@@ -233,6 +235,20 @@ export const onSessionUpdated = onDocumentUpdated('sessions/{sessionId}', async 
   );
 });
 
+// ── New self-registered account → notify command for approval ──────────────
+export const onUserCreated = onDocumentCreated('users/{uid}', async (event) => {
+  const data = event.data?.data() as UserDoc | undefined;
+  // Admin-created accounts come in as 'active' (and email their own credentials);
+  // only self-registrations land as 'pending' and need command's attention.
+  if (!data || data.status !== 'pending') return;
+  await notifyAdmins({
+    type: 'new_account_pending',
+    title: 'New account request',
+    body: `${data.displayName || data.email} requested a HEIMDALL account and is awaiting approval.`,
+    link: '/admin/users',
+  });
+});
+
 // ── User account / qualification approvals ─────────────────────────────────
 export const onUserUpdated = onDocumentUpdated('users/{uid}', async (event) => {
   const before = event.data?.before.data() as UserDoc | undefined;
@@ -272,8 +288,15 @@ export const onCoursePublished = onDocumentCreated('coursePublishEvents/{id}', a
   const data = event.data?.data();
   if (!data) return;
   const { academyId, courseLabel, sessionCount } = data as { academyId: string; courseLabel: string; sessionCount: number };
+  // The coordinator chose who to notify when they opened sign-ups (Open sign-ups
+  // modal). Default to everyone eligible for back-compat with older events.
+  const target = (data.target ?? { mode: 'all' }) as
+    | { mode: 'all' }
+    | { mode: 'qualification'; qualificationKey: string }
+    | { mode: 'users'; uids: string[] };
 
-  // Union of qualification requirements across the course's open, unfilled slots.
+  // Scan the course's open sessions for the earliest start (email copy) and,
+  // for the 'all' target, the union of qualifications on unfilled slots.
   const sessions = await db().collection('sessions').where('academyId', '==', academyId).get();
   const slotQuals = new Set<string>();
   let anyUnrestricted = false;
@@ -293,19 +316,31 @@ export const onCoursePublished = onDocumentCreated('coursePublishEvents/{id}', a
   const academy = await db().doc(`academies/${academyId}`).get();
   const academyLabel = academy.exists ? (academy.data()!.shortName || academy.data()!.name) : '';
 
-  const users = await db().collection('users').where('status', '==', 'active').get();
-  const eligible = users.docs.filter((d) => {
-    const u = d.data() as UserDoc;
-    return anyUnrestricted || (u.verifiedQualKeys ?? []).some((k) => slotQuals.has(k));
-  });
+  // Resolve recipients for the email blast (the course is visible to all eligible
+  // instructors regardless — this only controls who gets pushed an email).
+  let recipientIds: string[];
+  if (target.mode === 'users') {
+    recipientIds = target.uids ?? [];
+  } else {
+    const users = await db().collection('users').where('status', '==', 'active').get();
+    recipientIds = users.docs
+      .filter((d) => {
+        const u = d.data() as UserDoc;
+        if (target.mode === 'qualification') {
+          return (u.verifiedQualKeys ?? []).includes(target.qualificationKey);
+        }
+        return anyUnrestricted || (u.verifiedQualKeys ?? []).some((k) => slotQuals.has(k));
+      })
+      .map((d) => d.id);
+  }
 
   const firstDay = earliest
     ? earliest.toDate().toLocaleDateString('en-US', { timeZone: 'America/New_York', dateStyle: 'medium' })
     : '';
   await Promise.all(
-    eligible.map((d) =>
+    recipientIds.map((uid) =>
       notify({
-        uid: d.id,
+        uid,
         type: 'course_published',
         title: `Sign-ups open: ${academyLabel} ${courseLabel}`,
         body: `${courseLabel} (${sessionCount} session${sessionCount === 1 ? '' : 's'}${firstDay ? `, starting ${firstDay}` : ''}) is now open for instructor sign-up in ${academyLabel}.`,
