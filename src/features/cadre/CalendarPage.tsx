@@ -12,6 +12,7 @@ import listPlugin from '@fullcalendar/list';
 import interactionPlugin from '@fullcalendar/interaction';
 import { useCollection, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
+import { useGlobalSettings } from '../../app/providers';
 import { can } from '../../lib/rbac';
 import type { AcademyDoc, CurriculumDoc, SessionDoc } from '../../types';
 import { unfilledSlots } from '../../types';
@@ -26,6 +27,8 @@ type StaffingFilter = 'all' | 'open' | 'understaffed' | 'fully_staffed';
 
 export function CalendarPage() {
   const { profile, role } = useAuth();
+  const settings = useGlobalSettings();
+  const disabledHolidays = useMemo(() => new Set(settings?.disabledHolidays ?? []), [settings]);
   const staff = can.viewStaffing(role);
   const canEdit = can.buildSchedules(role);
 
@@ -44,7 +47,10 @@ export function CalendarPage() {
   const [editSession, setEditSession] = useState<WithId<SessionDoc> | null>(null);
 
   const visibleAcademies = useMemo(
-    () => (staff ? academies : academies.filter((a) => a.status !== 'draft' && a.status !== 'archived')),
+    () =>
+      academies
+        .filter((a) => !a.isTemplate) // templates never appear on calendars
+        .filter((a) => staff || (a.status !== 'draft' && a.status !== 'archived')),
     [academies, staff]
   );
   const academyIds = useMemo(() => new Set(visibleAcademies.map((a) => a.id)), [visibleAcademies]);
@@ -95,9 +101,9 @@ export function CalendarPage() {
           academyColor: academyColorFor(academy),
         });
       }),
-      ...holidayBackgroundEvents(),
+      ...holidayBackgroundEvents(disabledHolidays),
     ],
-    [filtered, academyById]
+    [filtered, academyById, disabledHolidays]
   );
 
   // Color legend for whichever academies are currently shown.

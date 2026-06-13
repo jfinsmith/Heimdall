@@ -28,6 +28,7 @@ import { RecurringGeneratorModal } from './RecurringGeneratorModal';
 import { SessionDetailModal } from '../sessions/SessionDetailModal';
 import { sessionToEvent, renderEventContent } from './sessionEvents';
 import { ACADEMY_COLORS } from '../../lib/academyColors';
+import { useGlobalSettings } from '../../app/providers';
 import { logAudit } from '../sessions/audit';
 
 export function AcademyBuilderPage() {
@@ -41,8 +42,12 @@ export function AcademyBuilderPage() {
     [academyId]
   );
 
+  const settings = useGlobalSettings();
+  const disabledHolidays = useMemo(() => new Set(settings?.disabledHolidays ?? []), [settings]);
+
   const [formSession, setFormSession] = useState<WithId<SessionDoc> | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [formDate, setFormDate] = useState<string | undefined>(undefined);
   const [recurringOpen, setRecurringOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [showWeekends, setShowWeekends] = useState(false);
@@ -55,8 +60,8 @@ export function AcademyBuilderPage() {
   const scheduledHours = useMemo(() => fdleSessions.reduce((sum, s) => sum + (s.hours || 0), 0), [fdleSessions]);
 
   const events = useMemo(
-    () => [...sessions.map((s) => sessionToEvent(s, { editable: true })), ...holidayBackgroundEvents()],
-    [sessions]
+    () => [...sessions.map((s) => sessionToEvent(s, { editable: true })), ...holidayBackgroundEvents(disabledHolidays)],
+    [sessions, disabledHolidays]
   );
 
   /**
@@ -82,7 +87,7 @@ export function AcademyBuilderPage() {
   const holidayConflicts = useMemo(() => {
     const holidayDates = new Map<string, string>();
     for (let y = new Date().getFullYear() - 1; y <= new Date().getFullYear() + 2; y++) {
-      for (const h of holidaysForYear(y)) holidayDates.set(h.date.toDateString(), h.name);
+      for (const h of holidaysForYear(y, disabledHolidays)) holidayDates.set(h.date.toDateString(), h.name);
     }
     return liveSessions
       .map((s) => ({ session: s, holiday: holidayDates.get(s.start.toDate().toDateString()) }))
@@ -193,7 +198,7 @@ export function AcademyBuilderPage() {
     if (!firebaseUser) return;
     const holidaySet = new Set<string>();
     for (let y = new Date().getFullYear() - 1; y <= new Date().getFullYear() + 2; y++) {
-      for (const h of holidaysForYear(y)) holidaySet.add(h.date.toDateString());
+      for (const h of holidaysForYear(y, disabledHolidays)) holidaySet.add(h.date.toDateString());
     }
     let start = s.start.toDate();
     let end = s.end.toDate();
@@ -223,6 +228,7 @@ export function AcademyBuilderPage() {
               variant="primary"
               onClick={() => {
                 setFormSession(null);
+                setFormDate(undefined);
                 setFormOpen(true);
               }}
             >
@@ -370,6 +376,12 @@ export function AcademyBuilderPage() {
             const s = arg.event.extendedProps.session as WithId<SessionDoc> | undefined;
             if (s) setDetailSession(s);
           }}
+          // Click an empty day/slot to add a session prefilled to that date.
+          dateClick={(arg) => {
+            setFormSession(null);
+            setFormDate(arg.dateStr.slice(0, 10));
+            setFormOpen(true);
+          }}
           height="auto"
           slotMinTime="05:00:00"
           slotMaxTime="22:00:00"
@@ -381,7 +393,7 @@ export function AcademyBuilderPage() {
         />
         <div className="mt-2 flex items-center justify-between">
           <p className="text-xs text-slate-400">
-            Drag to move, drag edges to resize — changes save immediately. ▲ marks high-liability sessions.
+            Click any empty day or time slot to add a session there. Drag to move, drag edges to resize. ▲ marks high-liability.
           </p>
           <label className="flex items-center gap-2 text-xs text-watch-700">
             <input type="checkbox" checked={showWeekends} onChange={(e) => setShowWeekends(e.target.checked)} />
@@ -390,7 +402,9 @@ export function AcademyBuilderPage() {
         </div>
       </div>
 
-      {formOpen && <SessionFormModal academy={academy} session={formSession} onClose={() => setFormOpen(false)} />}
+      {formOpen && (
+        <SessionFormModal academy={academy} session={formSession} defaultDate={formDate} onClose={() => setFormOpen(false)} />
+      )}
       {recurringOpen && <RecurringGeneratorModal academy={academy} onClose={() => setRecurringOpen(false)} />}
       {editOpen && <EditAcademyModal academy={academy} onClose={() => setEditOpen(false)} />}
       {detailSession && (
@@ -419,7 +433,8 @@ function EditAcademyModal({ academy, onClose }: { academy: WithId<AcademyDoc>; o
   const [color, setColor] = useState(academy.color ?? ACADEMY_COLORS[0].value);
   const [defaultRoom, setDefaultRoom] = useState(academy.defaultRoom ?? '');
   const [targetHours, setTargetHours] = useState(academy.targetTotalHours);
-  const [coordinatorIds, setCoordinatorIds] = useState<string[]>(academy.coordinatorIds);
+  const [primary, setPrimary] = useState(academy.coordinatorIds[0] ?? '');
+  const [secondary, setSecondary] = useState(academy.coordinatorIds[1] ?? '');
   const [busy, setBusy] = useState(false);
 
   // If the discipline isn't among the active curricula (e.g. an older value),
@@ -442,7 +457,8 @@ function EditAcademyModal({ academy, onClose }: { academy: WithId<AcademyDoc>; o
       fdleProgram: curriculum?.fdleProgram ?? academy.fdleProgram,
       defaultRoom,
       targetTotalHours: targetHours,
-      coordinatorIds,
+      // [0] = primary, [1] = secondary; drop empties and de-dup.
+      coordinatorIds: [...new Set([primary, secondary].filter(Boolean))],
       updatedAt: serverTimestamp(),
     });
     await logAudit(firebaseUser!.uid, 'academy.update', 'academy', academy.id, `Edited ${name}`);
@@ -496,20 +512,24 @@ function EditAcademyModal({ academy, onClose }: { academy: WithId<AcademyDoc>; o
             <Input type="number" min={1} value={targetHours} onChange={(e) => setTargetHours(Number(e.target.value))} />
           </Field>
         </div>
-        <Field label="Coordinators">
-          <Select
-            multiple
-            size={4}
-            value={coordinatorIds}
-            onChange={(e) => setCoordinatorIds([...e.target.selectedOptions].map((o) => o.value))}
-          >
-            {coordinators.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.displayName}
-              </option>
-            ))}
-          </Select>
-        </Field>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Primary coordinator" hint="Default owner for assigned blocks">
+            <Select value={primary} onChange={(e) => setPrimary(e.target.value)}>
+              <option value="">— none —</option>
+              {coordinators.map((u) => (
+                <option key={u.id} value={u.id}>{u.displayName}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Secondary coordinator">
+            <Select value={secondary} onChange={(e) => setSecondary(e.target.value)}>
+              <option value="">— none —</option>
+              {coordinators.filter((u) => u.id !== primary).map((u) => (
+                <option key={u.id} value={u.id}>{u.displayName}</option>
+              ))}
+            </Select>
+          </Field>
+        </div>
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose}>
             Cancel

@@ -26,12 +26,15 @@ export function StaffingBoardPage() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [messageOpen, setMessageOpen] = useState(false);
 
-  const { data: academies } = useCollection<AcademyDoc>('academies');
-  const { data: sessions } = useCollection<SessionDoc>(
+  const { data: allAcademies } = useCollection<AcademyDoc>('academies');
+  const academies = useMemo(() => allAcademies.filter((a) => !a.isTemplate), [allAcademies]);
+  const templateIds = useMemo(() => new Set(allAcademies.filter((a) => a.isTemplate).map((a) => a.id)), [allAcademies]);
+  const { data: allSessions } = useCollection<SessionDoc>(
     'sessions',
     [where('start', '>=', Timestamp.now()), orderBy('start')],
     []
   );
+  const sessions = useMemo(() => allSessions.filter((s) => !templateIds.has(s.academyId)), [allSessions, templateIds]);
   const { data: assignments } = useCollection<AssignmentDoc>(
     'assignments',
     [where('status', '==', 'confirmed')],

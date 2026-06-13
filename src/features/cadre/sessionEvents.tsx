@@ -95,7 +95,12 @@ export function renderEventContent(arg: EventContentArg): React.ReactNode | unde
         {s.courseName}
       </div>
       {s.notes && <div className="hd-event-notes">{s.notes}</div>}
-      {s.room && <div className="hd-event-room">{s.room}</div>}
+      {(s.room || s.lunchMinutes) && (
+        <div className="hd-event-room">
+          {s.room}
+          {s.lunchMinutes ? `${s.room ? ' · ' : ''}${s.lunchMinutes}m lunch` : ''}
+        </div>
+      )}
     </div>
   );
 }

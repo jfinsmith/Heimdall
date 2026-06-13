@@ -32,6 +32,7 @@ export function AcademiesPage() {
   const { firebaseUser } = useAuth();
   const [params, setParams] = useSearchParams();
   const [createOpen, setCreateOpen] = useState(false);
+  const [templateCreateOpen, setTemplateCreateOpen] = useState(false);
   const [cloneSource, setCloneSource] = useState<WithId<AcademyDoc> | null>(null);
 
   // Global "+ Create" action deep-links here with ?create=1
@@ -45,7 +46,10 @@ export function AcademiesPage() {
 
   const { data: allAcademies, loading } = useCollection<AcademyDoc>('academies', [orderBy('startDate', 'desc')]);
   const [showArchived, setShowArchived] = useState(false);
-  const academies = showArchived ? allAcademies : allAcademies.filter((a) => a.status !== 'archived');
+  const templates = allAcademies.filter((a) => a.isTemplate);
+  const academies = allAcademies
+    .filter((a) => !a.isTemplate)
+    .filter((a) => showArchived || a.status !== 'archived');
 
   async function setArchived(a: WithId<AcademyDoc>, archived: boolean) {
     if (archived && !window.confirm(`Archive "${a.name}"? It disappears from instructor views; you can unarchive any time.`)) return;
@@ -64,6 +68,7 @@ export function AcademiesPage() {
               <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
               Show archived
             </label>
+            <Button onClick={() => setTemplateCreateOpen(true)}>New template</Button>
             <Button variant="primary" onClick={() => setCreateOpen(true)}>
               New academy
             </Button>
@@ -129,16 +134,71 @@ export function AcademiesPage() {
         </table>
       </div>
 
+      {/* Templates — reusable schedule patterns; "Use" clones one into a real academy */}
+      {templates.length > 0 && (
+        <section className="mt-8">
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-watch-600">Schedule templates</h2>
+          <div className="overflow-x-auto rounded-lg border border-watch-100 bg-white shadow-sm">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-watch-50 text-xs uppercase tracking-wider text-watch-600">
+                <tr>
+                  <th className="px-4 py-3">Template</th>
+                  <th className="px-4 py-3">Discipline</th>
+                  <th className="px-4 py-3">Sessions span</th>
+                  <th className="px-4 py-3" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-watch-50">
+                {templates.map((t) => (
+                  <tr key={t.id} className="hover:bg-watch-50/50">
+                    <td className="px-4 py-3 font-medium text-watch-900">
+                      <Link to={`/cadre/academies/${t.id}`} className="hover:underline">
+                        {t.shortName ? <span className="mr-2 font-bold text-bifrost-700">{t.shortName}</span> : null}
+                        {t.name}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3">{t.fdleProgram?.replace(/^FDLE\s*/, '') || t.discipline}</td>
+                    <td className="px-4 py-3 text-slate-500">
+                      {fmtDate(t.startDate)} → {fmtDate(t.endDate)}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <Button variant="primary" onClick={() => setCloneSource(t)}>
+                        Use template
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
       <CreateAcademyModal open={createOpen} onClose={() => setCreateOpen(false)} actorUid={firebaseUser?.uid ?? ''} />
+      <CreateAcademyModal open={templateCreateOpen} onClose={() => setTemplateCreateOpen(false)} actorUid={firebaseUser?.uid ?? ''} isTemplate />
       {cloneSource && (
-        <CloneAcademyModal source={cloneSource} onClose={() => setCloneSource(null)} actorUid={firebaseUser?.uid ?? ''} />
+        <CloneAcademyModal
+          source={cloneSource}
+          onClose={() => setCloneSource(null)}
+          actorUid={firebaseUser?.uid ?? ''}
+        />
       )}
     </div>
   );
 }
 
 // ── Create ──────────────────────────────────────────────────────────────────
-function CreateAcademyModal({ open, onClose, actorUid }: { open: boolean; onClose: () => void; actorUid: string }) {
+function CreateAcademyModal({
+  open,
+  onClose,
+  actorUid,
+  isTemplate = false,
+}: {
+  open: boolean;
+  onClose: () => void;
+  actorUid: string;
+  isTemplate?: boolean;
+}) {
   const [name, setName] = useState('');
   const [shortName, setShortName] = useState('');
   const [discipline, setDiscipline] = useState('');
@@ -147,7 +207,8 @@ function CreateAcademyModal({ open, onClose, actorUid }: { open: boolean; onClos
   const [location, setLocation] = useState(DEFAULT_LOCATION);
   const [defaultRoom, setDefaultRoom] = useState('');
   const [targetHours, setTargetHours] = useState(0);
-  const [coordinators, setCoordinators] = useState<string[]>([]);
+  const [primary, setPrimary] = useState('');
+  const [secondary, setSecondary] = useState('');
   const [busy, setBusy] = useState(false);
 
   // Disciplines come from the admin-editable curricula collection; the
@@ -177,7 +238,8 @@ function CreateAcademyModal({ open, onClose, actorUid }: { open: boolean; onClos
       location,
       defaultRoom,
       status: 'draft',
-      coordinatorIds: coordinators,
+      isTemplate,
+      coordinatorIds: [...new Set([primary, secondary].filter(Boolean))],
       targetTotalHours: targetHours,
       createdBy: actorUid,
       createdAt: serverTimestamp(),
@@ -188,13 +250,19 @@ function CreateAcademyModal({ open, onClose, actorUid }: { open: boolean; onClos
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="New academy (cohort)">
+    <Modal open={open} onClose={onClose} title={isTemplate ? 'New schedule template' : 'New academy (cohort)'}>
       <form onSubmit={submit} className="space-y-4">
+        {isTemplate && (
+          <p className="rounded-md bg-watch-50 px-3 py-2 text-sm text-slate-600">
+            Build this like a normal academy. It won't appear on calendars or rosters — coordinators
+            create real academies from it later, shifting the dates.
+          </p>
+        )}
         <div className="grid grid-cols-[1fr_2fr] gap-4">
           <Field label="Class designation" hint='Short label, e.g. "LE 131", "CO 67" — leads calendar entries'>
-            <Input value={shortName} onChange={(e) => setShortName(e.target.value)} required placeholder="LE 133" />
+            <Input value={shortName} onChange={(e) => setShortName(e.target.value)} required placeholder={isTemplate ? 'LE — Jan Start' : 'LE 133'} />
           </Field>
-          <Field label="Name" hint='e.g. "LE 133 (October Start)"'>
+          <Field label="Name" hint={isTemplate ? 'e.g. "LE — January Start Template"' : 'e.g. "LE 133 (October Start)"'}>
             <Input value={name} onChange={(e) => setName(e.target.value)} required />
           </Field>
         </div>
@@ -247,20 +315,24 @@ function CreateAcademyModal({ open, onClose, actorUid }: { open: boolean; onClos
             <span className="h-7 w-7 shrink-0 rounded-md ring-1 ring-watch-200" style={{ backgroundColor: defaultColor }} />
           </div>
         </Field>
-        <Field label="Coordinators" hint="Sergeants and above can always edit — assign the hands-on coordinators here">
-          <Select
-            multiple
-            value={coordinators}
-            onChange={(e) => setCoordinators([...e.target.selectedOptions].map((o) => o.value))}
-            size={4}
-          >
-            {coordinatorUsers.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.displayName}
-              </option>
-            ))}
-          </Select>
-        </Field>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Primary coordinator" hint="Default owner for assigned blocks">
+            <Select value={primary} onChange={(e) => setPrimary(e.target.value)}>
+              <option value="">— none —</option>
+              {coordinatorUsers.map((u) => (
+                <option key={u.id} value={u.id}>{u.displayName}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Secondary coordinator">
+            <Select value={secondary} onChange={(e) => setSecondary(e.target.value)}>
+              <option value="">— none —</option>
+              {coordinatorUsers.filter((u) => u.id !== primary).map((u) => (
+                <option key={u.id} value={u.id}>{u.displayName}</option>
+              ))}
+            </Select>
+          </Field>
+        </div>
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose}>
             Cancel
@@ -284,7 +356,9 @@ function CloneAcademyModal({
   onClose: () => void;
   actorUid: string;
 }) {
-  const [name, setName] = useState(`${source.name} (copy)`);
+  const isTemplate = !!source.isTemplate;
+  const [name, setName] = useState(isTemplate ? source.name.replace(/template/i, '').trim() || source.name : `${source.name} (copy)`);
+  const [shortName, setShortName] = useState(source.shortName ?? '');
   const [newStart, setNewStart] = useState('');
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState('');
@@ -301,10 +375,14 @@ function CloneAcademyModal({
       new Date(newStartDate.getFullYear(), newStartDate.getMonth(), newStartDate.getDate()).getTime() -
       new Date(oldStart.getFullYear(), oldStart.getMonth(), oldStart.getDate()).getTime();
 
+    // Strip the doc id from the source before copying (Firestore rejects an
+    // `id: undefined` field). The result is always a real academy, never a template.
+    const { id: _id, ...sourceData } = source;
     const academyRef = await addDoc(collection(db, 'academies'), {
-      ...source,
-      id: undefined,
+      ...sourceData,
       name,
+      shortName,
+      isTemplate: false,
       startDate: tsFromDate(new Date(source.startDate.toDate().getTime() + offsetMs)),
       endDate: tsFromDate(new Date(source.endDate.toDate().getTime() + offsetMs)),
       status: 'draft', // clones always start as drafts
@@ -345,15 +423,22 @@ function CloneAcademyModal({
   }
 
   return (
-    <Modal open onClose={onClose} title={`Clone "${source.name}"`}>
+    <Modal open onClose={onClose} title={isTemplate ? `Create academy from "${source.name}"` : `Clone "${source.name}"`}>
       <form onSubmit={submit} className="space-y-4">
         <p className="text-sm text-slate-600">
-          Copies the entire schedule ({fmtDate(source.startDate)} → {fmtDate(source.endDate)}) and shifts every
-          session by the same number of days to the new start date. Sign-ups are not copied.
+          {isTemplate
+            ? 'Creates a new academy from this template, shifting every session to your new start date. '
+            : 'Copies the entire schedule and shifts every session by the same number of days to the new start date. '}
+          Sign-ups are not copied. ({fmtDate(source.startDate)} → {fmtDate(source.endDate)})
         </p>
-        <Field label="New academy name">
-          <Input value={name} onChange={(e) => setName(e.target.value)} required />
-        </Field>
+        <div className="grid grid-cols-[1fr_2fr] gap-4">
+          <Field label="Class designation">
+            <Input value={shortName} onChange={(e) => setShortName(e.target.value)} required placeholder="LE 133" />
+          </Field>
+          <Field label="New academy name">
+            <Input value={name} onChange={(e) => setName(e.target.value)} required />
+          </Field>
+        </div>
         <Field label="New start date">
           <Input type="date" value={newStart} onChange={(e) => setNewStart(e.target.value)} required />
         </Field>

@@ -24,10 +24,12 @@ interface Props {
   academy: WithId<AcademyDoc>;
   /** Existing session to edit, or null to create. */
   session: WithId<SessionDoc> | null;
+  /** Prefill date (yyyy-mm-dd) when adding from a calendar day. */
+  defaultDate?: string;
   onClose: () => void;
 }
 
-export function SessionFormModal({ academy, session, onClose }: Props) {
+export function SessionFormModal({ academy, session, defaultDate, onClose }: Props) {
   const { firebaseUser } = useAuth();
   const { data: courses } = useCollection<CourseDoc>('courseCatalog');
   const { data: coordinatorUsers } = useCollection<UserDoc>('users', [where('role', '==', 'coordinator')]);
@@ -35,9 +37,11 @@ export function SessionFormModal({ academy, session, onClose }: Props) {
   const isCustomSession = session ? session.courseId === 'custom' : false;
   const [courseId, setCourseId] = useState(isCustomSession ? CUSTOM : session?.courseId ?? '');
   const [customName, setCustomName] = useState(isCustomSession ? session?.courseName ?? '' : '');
-  const [date, setDate] = useState(session ? toDateInputValue(session.start.toDate()) : '');
-  const [startTime, setStartTime] = useState(session ? toTimeInputValue(session.start.toDate()) : '08:00');
-  const [endTime, setEndTime] = useState(session ? toTimeInputValue(session.end.toDate()) : '17:00');
+  const [date, setDate] = useState(session ? toDateInputValue(session.start.toDate()) : defaultDate ?? '');
+  // New sessions default to a 07:00–18:00 academy day.
+  const [startTime, setStartTime] = useState(session ? toTimeInputValue(session.start.toDate()) : '07:00');
+  const [endTime, setEndTime] = useState(session ? toTimeInputValue(session.end.toDate()) : '18:00');
+  const [lunchMinutes, setLunchMinutes] = useState<number>(session?.lunchMinutes ?? 0);
   const [room, setRoom] = useState(session?.room ?? academy.defaultRoom ?? '');
   const [location, setLocation] = useState(session?.location ?? academy.location);
   const [notes, setNotes] = useState(session?.notes ?? '');
@@ -146,7 +150,9 @@ export function SessionFormModal({ academy, session, onClose }: Props) {
       end: tsFromDate(end),
       location,
       room,
-      hours: hoursBetween(start, end),
+      // Instructional hours exclude the lunch break.
+      hours: Math.max(0, hoursBetween(start, end) - lunchMinutes / 60),
+      lunchMinutes,
       countsTowardFdle,
       roleSlots: cleanSlots,
       notes: notes ?? '',
@@ -224,9 +230,24 @@ export function SessionFormModal({ academy, session, onClose }: Props) {
       return;
     }
     if (!window.confirm('Permanently delete this session?')) return;
-    await deleteDoc(doc(db, 'sessions', session.id));
-    await logAudit(firebaseUser.uid, 'session.delete', 'session', session.id, `Deleted ${session.courseName}`);
-    onClose();
+    setBusy(true);
+    setError(null);
+    try {
+      // Clean up any pre-assigned coordinator mirror docs so they don't orphan.
+      for (const slot of session.roleSlots) {
+        for (const uid of slot.filledBy) {
+          await deleteDoc(doc(db, 'assignments', `${session.id}_${uid}`)).catch(() => {});
+          await deleteDoc(doc(db, 'sessions', session.id, 'signups', uid)).catch(() => {});
+        }
+      }
+      await deleteDoc(doc(db, 'sessions', session.id));
+      await logAudit(firebaseUser.uid, 'session.delete', 'session', session.id, `Deleted ${session.courseName}`);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete the session.');
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -258,7 +279,7 @@ export function SessionFormModal({ academy, session, onClose }: Props) {
             </Field>
           )}
         </div>
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-4">
           <Field label="Date">
             <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
           </Field>
@@ -268,7 +289,20 @@ export function SessionFormModal({ academy, session, onClose }: Props) {
           <Field label="End">
             <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} required />
           </Field>
+          <Field label="Lunch (min)" hint="Carved out, not counted">
+            <Input
+              type="number"
+              min={0}
+              step={15}
+              value={lunchMinutes}
+              onChange={(e) => setLunchMinutes(Number(e.target.value))}
+            />
+          </Field>
         </div>
+        <p className="-mt-2 text-xs text-slate-500">
+          Instructional hours: <strong>{Math.max(0, hoursBetween(combineDateTime(date || '2000-01-01', startTime), combineDateTime(date || '2000-01-01', endTime)) - lunchMinutes / 60)}</strong>
+          {lunchMinutes > 0 && ` (after a ${lunchMinutes}-min lunch)`}
+        </p>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Room" hint="Prefilled from the academy default">
             <Input value={room} onChange={(e) => setRoom(e.target.value)} required placeholder="E-120 / Range A" />

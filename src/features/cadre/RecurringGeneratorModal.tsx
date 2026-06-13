@@ -1,33 +1,43 @@
 /**
- * CADRE — Recurring block generator: "PT every weekday 0600–0700 for 6 weeks".
- * Generates one session per matching day between two dates, batched.
+ * CADRE — Recurring block generator. Generates one session per matching
+ * weekday between two dates. Supports:
+ *  - catalog courses OR a custom/agency block (e.g. daily 0645–0700 Formation)
+ *  - auto day-count math: pick a course and the tool sizes the date range from
+ *    course hours ÷ hours-per-day (24 hrs @ 8/day → 3 days)
+ *  - a configurable lunch carved out of each block (not counted)
  */
 import React, { useMemo, useState } from 'react';
-import { collection, doc, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { collection, doc, serverTimestamp, writeBatch, Timestamp, setDoc, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { shortId, useCollection, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import { addDays, combineDateTime, hoursBetween, toDateInputValue, tsFromDate } from '../../lib/time';
-import type { AcademyDoc, CourseDoc, RoleSlot } from '../../types';
+import type { AcademyDoc, CourseDoc, RoleSlot, UserDoc } from '../../types';
 import { Button, Field, Input, Select } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import { logAudit } from '../sessions/audit';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const CUSTOM = '__custom__';
 
 export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<AcademyDoc>; onClose: () => void }) {
   const { firebaseUser } = useAuth();
   const { data: courses } = useCollection<CourseDoc>('courseCatalog');
+  const { data: coordinatorUsers } = useCollection<UserDoc>('users', [where('role', '==', 'coordinator')]);
 
   const [courseId, setCourseId] = useState('');
+  const [customName, setCustomName] = useState('');
   const [days, setDays] = useState<Set<number>>(new Set([1, 2, 3, 4, 5])); // weekdays
   const [from, setFrom] = useState(toDateInputValue(academy.startDate.toDate()));
-  const [until, setUntil] = useState(toDateInputValue(academy.endDate.toDate()));
-  const [startTime, setStartTime] = useState('06:00');
-  const [endTime, setEndTime] = useState('07:00');
+  const [until, setUntil] = useState(toDateInputValue(academy.startDate.toDate()));
+  const [perDay, setPerDay] = useState(8);
+  const [startTime, setStartTime] = useState('07:00');
+  const [endTime, setEndTime] = useState('18:00');
+  const [lunchMinutes, setLunchMinutes] = useState(60);
   const [room, setRoom] = useState(academy.defaultRoom ?? '');
   const [busy, setBusy] = useState(false);
 
+  const isCustom = courseId === CUSTOM;
   const course = courses.find((c) => c.id === courseId);
 
   const matchingDates = useMemo(() => {
@@ -42,6 +52,31 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
     return out;
   }, [from, until, days]);
 
+  /** Pick a course → auto-size the date range from hours ÷ per-day. */
+  function pickCourse(id: string) {
+    setCourseId(id);
+    if (id === CUSTOM || !id) return;
+    const c = courses.find((x) => x.id === id);
+    if (!c) return;
+    const neededDays = Math.max(1, Math.ceil(c.defaultHours / Math.max(1, perDay)));
+    setUntil(nthMatchingDay(from, days, neededDays));
+  }
+
+  /** Date of the Nth matching weekday on/after `from`. */
+  function nthMatchingDay(fromStr: string, weekdays: Set<number>, n: number): string {
+    let d = new Date(`${fromStr}T00:00:00`);
+    let count = 0;
+    // Cap the search so a bad weekday set can't loop forever.
+    for (let i = 0; i < 366 && count < n; i++) {
+      if (weekdays.has(d.getDay())) {
+        count++;
+        if (count === n) break;
+      }
+      d = addDays(d, 1);
+    }
+    return toDateInputValue(d);
+  }
+
   function toggleDay(i: number) {
     setDays((prev) => {
       const next = new Set(prev);
@@ -51,60 +86,90 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
     });
   }
 
+  const perBlockHours = Math.max(
+    0,
+    hoursBetween(combineDateTime('2000-01-01', startTime), combineDateTime('2000-01-01', endTime)) - lunchMinutes / 60
+  );
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!course || !firebaseUser) return;
+    if (!firebaseUser || (!course && !isCustom)) return;
+    if (isCustom && !customName.trim()) return;
     setBusy(true);
 
-    const slots = (): RoleSlot[] => [
-      {
-        slotId: shortId(),
-        role: 'lead',
-        count: 1,
-        requiredQualificationKey: course.leadRequiredQualificationKey,
-        filledBy: [],
-      },
-      ...course.defaultRoleSlots
-        .filter((s) => s.role !== 'lead')
-        .map((s) => ({ slotId: shortId(), filledBy: [], ...s })),
-    ];
+    const courseName = isCustom ? customName.trim() : course!.name;
+    const defaultCoord = academy.coordinatorIds[0];
+
+    const buildSlots = (): RoleSlot[] => {
+      if (isCustom) {
+        // Custom/agency block: coordinator owns it, no open sign-ups.
+        return [{ slotId: shortId(), role: 'coordinator', count: 1, filledBy: defaultCoord ? [defaultCoord] : [] }];
+      }
+      return [
+        { slotId: shortId(), role: 'lead', count: 1, ...(course!.leadRequiredQualificationKey ? { requiredQualificationKey: course!.leadRequiredQualificationKey } : {}), filledBy: [] },
+        ...course!.defaultRoleSlots.filter((s) => s.role !== 'lead').map((s) => ({ slotId: shortId(), filledBy: [], ...s })),
+      ];
+    };
 
     let batch = writeBatch(db);
     let count = 0;
+    const created: { ref: ReturnType<typeof doc>; start: Date; end: Date }[] = [];
     for (const date of matchingDates) {
       const ds = toDateInputValue(date);
       const start = combineDateTime(ds, startTime);
       const end = combineDateTime(ds, endTime);
-      batch.set(doc(collection(db, 'sessions')), {
+      const ref = doc(collection(db, 'sessions'));
+      const slots = buildSlots();
+      batch.set(ref, {
         academyId: academy.id,
-        courseId: course.id,
-        courseName: course.name,
-        highLiability: course.highLiability,
+        courseId: isCustom ? 'custom' : course!.id,
+        courseName,
+        highLiability: isCustom ? false : course!.highLiability,
         title: '',
         start: tsFromDate(start),
         end: tsFromDate(end),
         location: academy.location,
         room,
-        hours: hoursBetween(start, end),
+        hours: Math.max(0, hoursBetween(start, end) - lunchMinutes / 60),
+        lunchMinutes,
+        countsTowardFdle: !isCustom,
         status: academy.status === 'draft' ? 'draft' : 'scheduled',
-        roleSlots: slots(),
-        notes: 'Generated by recurring block tool',
+        roleSlots: slots,
+        notes: '',
         createdBy: firebaseUser.uid,
         updatedAt: serverTimestamp(),
       });
-      if (++count % 400 === 0) {
+      if (isCustom && defaultCoord) created.push({ ref, start, end });
+      if (++count % 300 === 0) {
         await batch.commit();
         batch = writeBatch(db);
       }
     }
     await batch.commit();
-    await logAudit(
-      firebaseUser.uid,
-      'session.bulk_create',
-      'academy',
-      academy.id,
-      `Generated ${matchingDates.length} recurring "${course.name}" sessions`
-    );
+
+    // Mirror coordinator assignments for custom blocks so they hit My Schedule.
+    if (isCustom && defaultCoord) {
+      const u = coordinatorUsers.find((x) => x.id === defaultCoord);
+      for (const { ref, start, end } of created) {
+        const now = Timestamp.now();
+        await setDoc(doc(db, 'assignments', `${ref.id}_${defaultCoord}`), {
+          uid: defaultCoord,
+          sessionId: ref.id,
+          academyId: academy.id,
+          role: 'coordinator',
+          courseName,
+          location: academy.location,
+          room,
+          start: tsFromDate(start),
+          end: tsFromDate(end),
+          status: 'confirmed',
+          reminderSent: false,
+          createdAt: now,
+        });
+      }
+    }
+
+    await logAudit(firebaseUser.uid, 'session.bulk_create', 'academy', academy.id, `Generated ${matchingDates.length} recurring "${courseName}" sessions`);
     setBusy(false);
     onClose();
   }
@@ -112,16 +177,39 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
   return (
     <Modal open onClose={onClose} title="Recurring block generator">
       <form onSubmit={submit} className="space-y-4">
-        <Field label="Course">
-          <Select value={courseId} onChange={(e) => setCourseId(e.target.value)} required>
-            <option value="">Select a course…</option>
-            {courses.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Course">
+            <Select value={courseId} onChange={(e) => pickCourse(e.target.value)} required>
+              <option value="">Select a course…</option>
+              {courses.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} ({c.defaultHours} hrs)
+                </option>
+              ))}
+              <option value={CUSTOM}>— Custom / agency block (e.g. Formation) —</option>
+            </Select>
+          </Field>
+          {isCustom ? (
+            <Field label="Custom block name" hint="Coordinator-run; no sign-up needed">
+              <Input value={customName} onChange={(e) => setCustomName(e.target.value)} required placeholder="Formation" />
+            </Field>
+          ) : (
+            <Field label="Hours per day" hint="Sizes the date range from course hours">
+              <Input
+                type="number"
+                min={1}
+                max={12}
+                value={perDay}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  setPerDay(v);
+                  if (course) setUntil(nthMatchingDay(from, days, Math.max(1, Math.ceil(course.defaultHours / Math.max(1, v)))));
+                }}
+              />
+            </Field>
+          )}
+        </div>
+
         <fieldset>
           <legend className="mb-1 text-sm font-medium text-watch-800">Repeat on</legend>
           <div className="flex gap-1.5">
@@ -140,33 +228,43 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
             ))}
           </div>
         </fieldset>
+
         <div className="grid grid-cols-2 gap-4">
           <Field label="From">
             <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} required />
           </Field>
-          <Field label="Until">
+          <Field label="Until" hint={course ? 'Auto-sized from hours/day — adjust freely' : undefined}>
             <Input type="date" value={until} onChange={(e) => setUntil(e.target.value)} required />
           </Field>
         </div>
-        <div className="grid grid-cols-3 gap-4">
-          <Field label="Start time">
+
+        <div className="grid grid-cols-4 gap-4">
+          <Field label="Start">
             <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} required />
           </Field>
-          <Field label="End time">
+          <Field label="End">
             <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} required />
+          </Field>
+          <Field label="Lunch (min)">
+            <Input type="number" min={0} step={15} value={lunchMinutes} onChange={(e) => setLunchMinutes(Number(e.target.value))} />
           </Field>
           <Field label="Room">
             <Input value={room} onChange={(e) => setRoom(e.target.value)} required />
           </Field>
         </div>
+
         <p className="text-sm text-slate-500">
-          Will create <strong className="text-watch-900">{matchingDates.length}</strong> sessions.
+          Will create <strong className="text-watch-900">{matchingDates.length}</strong> sessions
+          {' '}× <strong className="text-watch-900">{perBlockHours}</strong> hrs ={' '}
+          <strong className="text-watch-900">{(matchingDates.length * perBlockHours).toFixed(1)}</strong> total hrs
+          {!isCustom && course ? ` (course needs ${course.defaultHours})` : ''}.
         </p>
+
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" variant="primary" disabled={busy || !courseId || matchingDates.length === 0}>
+          <Button type="submit" variant="primary" disabled={busy || (!courseId) || matchingDates.length === 0}>
             Generate {matchingDates.length} sessions
           </Button>
         </div>

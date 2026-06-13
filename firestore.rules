@@ -104,8 +104,10 @@ service cloud.firestore {
     // ── sessions ───────────────────────────────────────────────────────────
     match /sessions/{sessionId} {
       allow read: if isStaff() || (signedIn() && resource.data.status != 'draft');
-      allow create, delete: if isStaff()
-        && request.resource.data.roleSlots is list;
+      // NOTE: delete must be separate — on a delete there is no
+      // request.resource, so a roleSlots check would always deny it.
+      allow create: if isStaff() && request.resource.data.roleSlots is list;
+      allow delete: if isStaff();
       // Staff edit freely. Non-staff updates exist only for the sign-up
       // transaction: they may touch ONLY roleSlots / status / updatedAt, and
       // may not invent new slots (guard for the filledBy invariant — the

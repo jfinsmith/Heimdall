@@ -107,6 +107,8 @@ export interface GlobalSettings {
   understaffingAlertDays: number;         // alert window for unfilled required slots
   escalationRecipients: string[];         // uids or emails for command alerts
   weeklyDigestEnabled: boolean;
+  /** Holiday keys turned OFF for this org's calendars (e.g. Juneteenth). */
+  disabledHolidays?: string[];
   /** Master kill-switch for ALL outbound email (in-app notifications still fire). */
   emailMasterEnabled: boolean;
   /** Per-automation email toggles; missing key = enabled. */
@@ -170,6 +172,9 @@ export interface AcademyDoc {
   /** Calendar color for this cohort (hex from the fixed palette). */
   color?: string;
   status: AcademyStatus;
+  /** True for reusable schedule templates (excluded from calendars & rosters). */
+  isTemplate?: boolean;
+  /** Ordered: [0] = primary coordinator, [1] = secondary. */
   coordinatorIds: string[];
   targetTotalHours: number; // defaults to the curriculum's course-hour sum; editable
   createdBy: string;
@@ -224,7 +229,10 @@ export interface SessionDoc {
   end: Timestamp;
   location: string;
   room: string;
+  /** Instructional hours = wall-clock span minus the lunch break. */
   hours: number;
+  /** Minutes of lunch carved out of the middle of the block (not instructional). */
+  lunchMinutes?: number;
   /**
    * False for agency-specific blocks (PSO assignments, resiliency days,
    * formation, drill, study halls…) that exist for member minimum-hour

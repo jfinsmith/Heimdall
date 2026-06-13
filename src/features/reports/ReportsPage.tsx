@@ -13,7 +13,8 @@ import type { AcademyDoc, AssignmentDoc, SessionDoc, UserDoc } from '../../types
 import { Badge, Button, PageHeader, Select, Field } from '../../components/ui';
 
 export function ReportsPage() {
-  const { data: academies } = useCollection<AcademyDoc>('academies');
+  const { data: allAcademies } = useCollection<AcademyDoc>('academies');
+  const academies = allAcademies.filter((a) => !a.isTemplate);
   const { data: sessions } = useCollection<SessionDoc>('sessions');
   const [academyId, setAcademyId] = useState('');
   const academy = academies.find((a) => a.id === academyId);

@@ -20,6 +20,7 @@ import { ProfilePage } from '../features/instructor/ProfilePage';
 import { UsersAdminPage } from '../features/admin/UsersAdminPage';
 import { PermissionsPage } from '../features/admin/PermissionsPage';
 import { CurriculumAdminPage } from '../features/admin/CurriculumAdminPage';
+import { HolidaysAdminPage } from '../features/admin/HolidaysAdminPage';
 import { SettingsAdminPage } from '../features/admin/SettingsAdminPage';
 import { GjallarhornSettingsPage } from '../features/admin/GjallarhornSettingsPage';
 import { AuditLogPage } from '../features/admin/AuditLogPage';
@@ -56,6 +57,7 @@ export function AppRouter() {
               <Route path="/admin/users" element={<UsersAdminPage />} />
               <Route path="/admin/permissions" element={<PermissionsPage />} />
               <Route path="/admin/curriculum" element={<CurriculumAdminPage />} />
+              <Route path="/admin/holidays" element={<HolidaysAdminPage />} />
               <Route path="/admin/settings" element={<SettingsAdminPage />} />
               <Route path="/admin/gjallarhorn" element={<GjallarhornSettingsPage />} />
               <Route path="/admin/audit" element={<AuditLogPage />} />
