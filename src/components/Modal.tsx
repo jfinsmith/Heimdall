@@ -34,7 +34,7 @@ export function Modal({
         // Click on the backdrop (the dialog element itself) closes.
         if (e.target === ref.current) onClose();
       }}
-      className={`w-full rounded-lg p-0 shadow-xl backdrop:bg-watch-950/60 ${wide ? 'max-w-3xl' : 'max-w-lg'}`}
+      className={`w-[calc(100%-2rem)] rounded-lg p-0 shadow-xl backdrop:bg-watch-950/60 ${wide ? 'max-w-4xl' : 'max-w-xl'}`}
     >
       <div className="flex items-center justify-between border-b border-watch-100 px-5 py-3">
         <h2 className="text-base font-semibold text-watch-900">{title}</h2>
