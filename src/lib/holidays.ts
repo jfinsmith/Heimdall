@@ -40,10 +40,19 @@ export const HOLIDAY_DEFS: HolidayDef[] = [
     label: 'Day after Thanksgiving',
     dates: (y) => [new Date(nthWeekday(y, 10, 4, 4).getTime() + 864e5)],
   },
+  // Christmas Day is its own holiday so it can be PSO-paid independently of the
+  // surrounding school break.
+  { key: 'christmas', label: 'Christmas Day', dates: (y) => [new Date(y, 11, 25)] },
   {
+    // The college holiday break (weeks 52–1) MINUS Christmas Day and New Year's
+    // Day, which are separate paid holidays. School-only — typically NOT a PSO
+    // paid holiday.
     key: 'winter_break',
-    label: 'Winter Break (Dec 22–31)',
-    dates: (y) => Array.from({ length: 10 }, (_, i) => new Date(y, 11, 22 + i)),
+    label: 'Winter Break (school only)',
+    dates: (y) => [
+      ...[22, 23, 24, 26, 27, 28, 29, 30, 31].map((d) => new Date(y, 11, d)),
+      new Date(y + 1, 0, 2), // Jan 2 of the next year — break usually runs into week 1
+    ],
   },
 ];
 
