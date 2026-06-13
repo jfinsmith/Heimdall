@@ -30,23 +30,28 @@ export function isoWeek(d: Date): { year: number; week: number } {
   return { year: date.getUTCFullYear(), week };
 }
 
-/** Monday (local, 00:00) of the date's week. */
-function mondayOf(d: Date): Date {
-  const x = new Date(d);
-  const day = (x.getDay() + 6) % 7;
-  x.setDate(x.getDate() - day);
-  x.setHours(0, 0, 0, 0);
-  return x;
+/**
+ * Pay periods are continuous 14-day blocks anchored to a known pay-period start.
+ * The anchor is Monday of ISO week 2, 2026 (Jan 5) — "weeks 2–3 are the first
+ * pay period of the year." Using a fixed anchor + 14-day arithmetic (instead of
+ * ISO even/odd weeks) keeps periods exactly 14 days apart and never misaligns
+ * across a 53-week ISO year (which previously created an overlapping period at
+ * the year boundary).
+ */
+const PP_ANCHOR = new Date(2026, 0, 5); // Mon, Jan 5 2026
+/** UTC midnight day-number — DST-safe integer day count. */
+function dayNum(d: Date): number {
+  return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 864e5);
 }
+const ANCHOR_DAY = dayNum(PP_ANCHOR);
 
-/** Monday that begins the pay period containing `d` (the even-week Monday). */
+/** Monday that begins the 14-day pay period containing `d`. */
 export function payPeriodStart(d: Date): Date {
-  const { week } = isoWeek(d);
-  const mon = mondayOf(d);
-  if (week % 2 === 0) return mon;
-  const prev = new Date(mon);
-  prev.setDate(prev.getDate() - 7);
-  return prev;
+  const idx = Math.floor((dayNum(d) - ANCHOR_DAY) / 14);
+  const start = new Date(PP_ANCHOR);
+  start.setDate(start.getDate() + idx * 14);
+  start.setHours(0, 0, 0, 0);
+  return start;
 }
 
 export interface PayPeriod {
