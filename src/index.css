@@ -168,6 +168,22 @@ body {
 .fc-timegrid-event-harness-inset .fc-timegrid-event,
 .fc-timegrid-event { box-shadow: none; }
 
+/* In-calendar hours readout: a toolbar label styled as plain text, not a button */
+.fc .fc-hoursLabel-button,
+.fc .fc-hoursLabel-button:hover,
+.fc .fc-hoursLabel-button:active,
+.fc .fc-hoursLabel-button:focus {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  cursor: default !important;
+  pointer-events: none;
+  padding: 0 0.75rem !important;
+  font-size: 0.95rem;
+  white-space: nowrap;
+}
+
 /* ── Focus visibility (keyboard accessibility) ──────────────────────────── */
 :focus-visible {
   outline: 2px solid var(--brand-accent);

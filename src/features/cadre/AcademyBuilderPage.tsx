@@ -60,6 +60,41 @@ export function AcademyBuilderPage() {
   // Pay periods: ALL paid time (FDLE + agency), grouped bi-weekly, vs the 85-hr target.
   const payPeriods = useMemo(() => groupPayPeriods(liveSessions), [liveSessions]);
 
+  // Live hours readout in the calendar toolbar for whatever range is visible.
+  const [viewRange, setViewRange] = useState<{ start: Date; end: Date; type: string } | null>(null);
+  const hoursInfo = useMemo(() => {
+    if (!viewRange) return null;
+    const total = q(
+      liveSessions
+        .filter((s) => {
+          const t = s.start.toMillis();
+          return t >= viewRange.start.getTime() && t < viewRange.end.getTime();
+        })
+        .reduce((a, s) => a + (s.hours || 0), 0)
+    );
+    if (viewRange.type === 'twoWeek') {
+      const onTarget = Math.abs(total - payTarget) < 0.01;
+      return { text: `Pay period: ${total} / ${payTarget} hrs`, color: onTarget ? '#15803d' : '#b91c1c', bold: true };
+    }
+    if (viewRange.type === 'timeGridWeek') {
+      return { text: `Week: ${total} hrs`, color: '#16203a', bold: true };
+    }
+    return { text: `${total} hrs in view`, color: '#64748b', bold: false };
+  }, [viewRange, liveSessions, payTarget]);
+
+  // Paint the custom toolbar label imperatively (reliable across FC re-renders).
+  React.useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      const el = document.querySelector('#builder-calendar .fc-hoursLabel-button') as HTMLElement | null;
+      if (el) {
+        el.textContent = hoursInfo?.text ?? '';
+        el.style.color = hoursInfo?.color ?? 'inherit';
+        el.style.fontWeight = hoursInfo?.bold ? '700' : '500';
+      }
+    });
+    return () => cancelAnimationFrame(id);
+  }, [hoursInfo]);
+
   /** Jump the calendar to a pay period's two weeks in the 2-week time-grid view. */
   function viewPayPeriod(start: Date) {
     calRef.current?.getApi().changeView('twoWeek', start);
@@ -385,7 +420,9 @@ export function AcademyBuilderPage() {
           firstDay={1}
           weekends={showWeekends}
           views={{ twoWeek: { type: 'timeGrid', duration: { weeks: 2 }, buttonText: '2 weeks' } }}
-          headerToolbar={{ left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,twoWeek,timeGridDay,listMonth' }}
+          customButtons={{ hoursLabel: { text: hoursInfo?.text ?? '', click: () => {} } }}
+          datesSet={(arg) => setViewRange({ start: arg.start, end: arg.end, type: arg.view.type })}
+          headerToolbar={{ left: 'prev,next today', center: 'hoursLabel title', right: 'dayGridMonth,timeGridWeek,twoWeek,timeGridDay,listMonth' }}
           events={events}
           eventContent={renderEventContent}
           editable
@@ -455,7 +492,7 @@ function PayPeriodPanel({
   target: number;
   onView: (start: Date) => void;
 }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const fmtRange = (start: Date, end: Date) => {
     const last = new Date(end);
     last.setDate(last.getDate() - 1);
