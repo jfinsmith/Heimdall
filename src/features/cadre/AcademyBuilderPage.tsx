@@ -132,7 +132,8 @@ export function AcademyBuilderPage() {
     await updateDoc(doc(db, 'sessions', s.id), {
       start: tsFromDate(start),
       end: tsFromDate(end),
-      hours: hoursBetween(start, end),
+      // Preserve the lunch carve-out — instructional hours exclude it.
+      hours: Math.max(0, hoursBetween(start, end) - (s.lunchMinutes ?? 0) / 60),
       updatedAt: serverTimestamp(),
     });
     if (firebaseUser) {
