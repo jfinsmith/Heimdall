@@ -24,6 +24,14 @@ function lastWeekday(year: number, month: number, weekday: number): Date {
   const offset = (last.getDay() - weekday + 7) % 7;
   return new Date(year, month + 1, 0 - offset);
 }
+/** Monday of the week containing `d`. */
+function mondayOf(d: Date): Date {
+  const x = new Date(d);
+  const day = (x.getDay() + 6) % 7; // Mon=0 … Sun=6
+  x.setDate(x.getDate() - day);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
 
 export const HOLIDAY_DEFS: HolidayDef[] = [
   { key: 'new_years', label: 'New Year’s Day', dates: (y) => [new Date(y, 0, 1)] },
@@ -40,19 +48,39 @@ export const HOLIDAY_DEFS: HolidayDef[] = [
     label: 'Day after Thanksgiving',
     dates: (y) => [new Date(nthWeekday(y, 10, 4, 4).getTime() + 864e5)],
   },
-  // Christmas Day is its own holiday so it can be PSO-paid independently of the
-  // surrounding school break.
+  // The four PSO paid holidays around the break — each can be observed
+  // (paid) independently of the school winter break.
+  { key: 'christmas_eve', label: 'Christmas Eve', dates: (y) => [new Date(y, 11, 24)] },
   { key: 'christmas', label: 'Christmas Day', dates: (y) => [new Date(y, 11, 25)] },
+  { key: 'new_years_eve', label: 'New Year’s Eve', dates: (y) => [new Date(y, 11, 31)] },
   {
-    // The college holiday break (weeks 52–1) MINUS Christmas Day and New Year's
-    // Day, which are separate paid holidays. School-only — typically NOT a PSO
-    // paid holiday.
+    // School winter break: Monday–Friday of week 52 (the week of Christmas) and
+    // week 1 (the week of New Year's Day), MINUS the four PSO paid holidays
+    // above. School-only — not a PSO paid holiday.
     key: 'winter_break',
     label: 'Winter Break (school only)',
-    dates: (y) => [
-      ...[22, 23, 24, 26, 27, 28, 29, 30, 31].map((d) => new Date(y, 11, d)),
-      new Date(y + 1, 0, 2), // Jan 2 of the next year — break usually runs into week 1
-    ],
+    dates: (y) => {
+      const excluded = new Set(
+        [new Date(y, 11, 24), new Date(y, 11, 25), new Date(y, 11, 31), new Date(y + 1, 0, 1)].map((d) =>
+          d.toDateString()
+        )
+      );
+      const out: Date[] = [];
+      const seen = new Set<string>();
+      // Weekdays of the Christmas week and the New Year's week.
+      for (const anchor of [new Date(y, 11, 25), new Date(y + 1, 0, 1)]) {
+        const mon = mondayOf(anchor);
+        for (let i = 0; i < 5; i++) {
+          const d = new Date(mon);
+          d.setDate(d.getDate() + i);
+          const k = d.toDateString();
+          if (excluded.has(k) || seen.has(k)) continue;
+          seen.add(k);
+          out.push(d);
+        }
+      }
+      return out;
+    },
   },
 ];
 
