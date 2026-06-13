@@ -3,7 +3,7 @@
  * Sign Up / Withdraw actions for qualifying users.
  */
 import React, { useState } from 'react';
-import { addDoc, collection, doc, serverTimestamp, updateDoc, where } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useCollection, useDoc, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
@@ -14,6 +14,7 @@ import { SLOT_ROLE_LABELS, QUALIFICATION_LABELS } from '../../types';
 import { Badge, Button, HighLiabilityBadge, StatusPill } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import { signUpForSlot, withdrawFromSession, SignupError } from './useSignup';
+import { logAudit } from './audit';
 
 interface Props {
   sessionId: string;
@@ -71,6 +72,35 @@ export function SessionDetailModal({ sessionId, onClose, onEdit }: Props) {
       await withdrawFromSession(firebaseUser.uid, sessionId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Withdrawal failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Delete the session directly from the detail view (staff only), with a warning. */
+  async function deleteSession() {
+    if (!session || !firebaseUser) return;
+    // Block deleting a session with real instructor sign-ups — cancel it instead.
+    if (session.roleSlots.some((sl) => sl.role !== 'coordinator' && sl.filledBy.length > 0)) {
+      window.alert('This session has instructor sign-ups — cancel it instead of deleting so they are notified.');
+      return;
+    }
+    if (!window.confirm(`Permanently delete "${session.title || session.courseName}"? This cannot be undone.`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      // Clean up any pre-assigned / reserved mirror docs so they don't orphan.
+      for (const slot of session.roleSlots) {
+        for (const uid of slot.filledBy) {
+          await deleteDoc(doc(db, 'assignments', `${sessionId}_${uid}`)).catch(() => {});
+          await deleteDoc(doc(db, 'sessions', sessionId, 'signups', uid)).catch(() => {});
+        }
+      }
+      await deleteDoc(doc(db, 'sessions', sessionId));
+      await logAudit(firebaseUser.uid, 'session.delete', 'session', sessionId, `Deleted ${session.courseName}`);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete the session.');
     } finally {
       setBusy(false);
     }
@@ -176,6 +206,11 @@ export function SessionDetailModal({ sessionId, onClose, onEdit }: Props) {
             </Button>
           )}
           {onEdit && <Button onClick={() => onEdit(session as WithId<SessionDoc>)}>Edit session</Button>}
+          {session.status !== 'cancelled' && session.status !== 'completed' && (
+            <Button variant="danger" disabled={busy} onClick={deleteSession}>
+              Delete
+            </Button>
+          )}
         </div>
       )}
     </Modal>
