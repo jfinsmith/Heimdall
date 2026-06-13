@@ -47,8 +47,8 @@ export function SignInPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-watch-950 px-4">
       <div className="w-full max-w-sm">
-        <div className="mb-8 flex justify-center text-bifrost-400">
-          <WordmarkStacked size={72} className="text-watch-50 [&>svg]:text-bifrost-400" />
+        <div className="mb-8 flex justify-center">
+          <WordmarkStacked size={150} />
         </div>
         <div className="rounded-xl bg-white p-6 shadow-2xl">
           <h1 className="mb-1 text-lg font-semibold text-watch-900">

@@ -39,7 +39,7 @@ export function SessionDetailModal({ sessionId, onClose, onEdit }: Props) {
   function hasQual(requiredKey?: string): boolean {
     if (!requiredKey) return true;
     const q = profile?.qualifications.find((x) => x.key === requiredKey);
-    return !!q && q.verified && (!q.expires || q.expires.toMillis() > Date.now());
+    return !!q && q.verified;
   }
 
   async function doSignup(slotId: string, allowWaitlist = false) {

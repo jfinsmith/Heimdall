@@ -3,10 +3,11 @@
  * with Gjallarhorn bell + user menu + global Create action.
  * Mobile: sidebar collapses behind a hamburger; everything keyboard-reachable.
  */
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { can, ROLE_LABELS } from '../lib/rbac';
+import { useClickOutside } from '../lib/useClickOutside';
 import { WordmarkHorizontal } from '../brand/Logo';
 import { NotificationBell } from '../components/NotificationBell';
 import { Button } from '../components/ui';
@@ -26,6 +27,48 @@ function NavItem({ to, label, end = false }: { to: string; label: string; end?: 
     >
       {label}
     </NavLink>
+  );
+}
+
+/** Avatar dropdown — closes on outside click / Escape, not just re-click. */
+function UserMenu({ displayName, onSignOut }: { displayName?: string; onSignOut: () => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useClickOutside(ref, () => setOpen(false), open);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="Account menu"
+        className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-watch-100 hover:bg-watch-800"
+      >
+        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-bifrost-500 text-xs font-bold text-watch-950">
+          {displayName?.slice(0, 1).toUpperCase() ?? '?'}
+        </span>
+      </button>
+      {open && (
+        <div role="menu" className="absolute right-0 z-40 mt-2 w-44 rounded-lg border border-watch-100 bg-white py-1 shadow-xl">
+          <NavLink
+            to="/profile"
+            role="menuitem"
+            className="block px-4 py-2 text-sm text-slate-700 hover:bg-watch-50"
+            onClick={() => setOpen(false)}
+          >
+            Profile
+          </NavLink>
+          <button
+            role="menuitem"
+            className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-watch-50"
+            onClick={onSignOut}
+          >
+            Sign out
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -66,8 +109,9 @@ export function AppShell() {
         <>
           <SectionLabel title="Administration">Admin</SectionLabel>
           <NavItem to="/admin/users" label="Users & Roles" />
+          <NavItem to="/admin/permissions" label="Roles & Permissions" />
           <NavItem to="/admin/settings" label="Org Settings" />
-          <NavItem to="/admin/gjallarhorn" label="Gjallarhorn Settings" />
+          <NavItem to="/admin/gjallarhorn" label="Gjallarhorn & Email" />
           <NavItem to="/admin/audit" label="Audit Log" />
         </>
       )}
@@ -76,9 +120,9 @@ export function AppShell() {
 
   return (
     <div className="flex min-h-screen">
-      {/* Sidebar */}
+      {/* Sidebar — sticky: stays put while the main column scrolls */}
       <aside
-        className={`no-print fixed inset-y-0 left-0 z-30 flex w-60 flex-col bg-watch-950 transition-transform md:static md:translate-x-0 ${
+        className={`no-print fixed inset-y-0 left-0 z-30 flex h-screen w-60 flex-col bg-watch-950 transition-transform md:sticky md:top-0 md:translate-x-0 ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -123,26 +167,7 @@ export function AppShell() {
               </Button>
             )}
             <NotificationBell />
-            <div className="relative">
-              <details className="group">
-                <summary className="flex cursor-pointer list-none items-center gap-2 rounded-md px-2 py-1.5 text-sm text-watch-100 hover:bg-watch-800">
-                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-bifrost-500 text-xs font-bold text-watch-950">
-                    {profile?.displayName?.slice(0, 1).toUpperCase() ?? '?'}
-                  </span>
-                </summary>
-                <div className="absolute right-0 z-40 mt-2 w-44 rounded-lg border border-watch-100 bg-white py-1 shadow-xl">
-                  <NavLink to="/profile" className="block px-4 py-2 text-sm text-slate-700 hover:bg-watch-50">
-                    Profile
-                  </NavLink>
-                  <button
-                    className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-watch-50"
-                    onClick={() => signOut()}
-                  >
-                    Sign out
-                  </button>
-                </div>
-              </details>
-            </div>
+            <UserMenu displayName={profile?.displayName} onSignOut={() => signOut()} />
           </div>
         </header>
         <main className="flex-1 px-4 py-6 md:px-8">

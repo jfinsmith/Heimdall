@@ -45,10 +45,22 @@ const ts = (d: Date) => Timestamp.fromDate(d);
 let slotSeq = 0;
 const sid = () => `slot${(++slotSeq).toString(36).padStart(4, '0')}`;
 
+// ── 0. Optional wipe (run with --wipe for a clean re-seed) ──────────────────
+async function wipe() {
+  console.log('Wiping demo collections (users & settings are preserved/overwritten in place)…');
+  for (const col of ['sessions', 'assignments', 'academies', 'courseCatalog', 'notifications', 'bulkMessages', 'auditLog']) {
+    const snap = await db.collection(col).get();
+    for (const docSnap of snap.docs) {
+      await db.recursiveDelete(docSnap.ref); // removes signups subcollections too
+    }
+    console.log(`  ✗ cleared ${col} (${snap.size} docs)`);
+  }
+}
+
 // ── 1. Settings ─────────────────────────────────────────────────────────────
 async function seedSettings() {
   await db.doc('settings/global').set({
-    orgName: 'Example County Sheriff’s Office Training Academy',
+    orgName: 'Pasco-Hernando State College — Basic Recruit Training Academy',
     brandPrimaryColor: '#16203a',
     brandAccentColor: '#d99320',
     logoUrl: '',
@@ -57,8 +69,12 @@ async function seedSettings() {
     understaffingAlertDays: 7,
     escalationRecipients: [], // filled with command uids below
     weeklyDigestEnabled: true,
+    // Email starts OFF so initial setup/testing doesn't burn email quota —
+    // flip the master switch under Admin → Gjallarhorn & Email when ready.
+    emailMasterEnabled: false,
+    emailAutomations: {}, // empty = every automation enabled (gated by master)
   });
-  console.log('✓ settings/global');
+  console.log('✓ settings/global (email master switch OFF for setup)');
 }
 
 // ── 2. Course catalog (FDLE BRTP-style) ─────────────────────────────────────
@@ -120,17 +136,16 @@ const COURSES: SeedCourse[] = [
     leadRequiredQualificationKey: 'first_aid',
     defaultRoleSlots: [
       { role: 'assistant', count: 2, requiredQualificationKey: 'first_aid' },
-      { role: 'evaluator', count: 1, requiredQualificationKey: 'evaluator' },
     ],
   },
   {
     id: 'firearms', name: 'Criminal Justice Firearms', fdleCourseCode: 'CJK_0040',
     discipline: 'all', defaultHours: 80, highLiability: true,
     description: 'Range fundamentals, qualification courses of fire, low-light. High-liability.',
-    leadRequiredQualificationKey: 'firearms',
+    leadRequiredQualificationKey: 'handgun',
     defaultRoleSlots: [
-      { role: 'assistant', count: 2, requiredQualificationKey: 'firearms' },
-      { role: 'safety_officer', count: 1, requiredQualificationKey: 'firearms' },
+      { role: 'assistant', count: 2, requiredQualificationKey: 'handgun' },
+      { role: 'safety_officer', count: 1, requiredQualificationKey: 'handgun' },
     ],
   },
   {
@@ -189,22 +204,28 @@ interface SeedUser {
   quals: { key: string; label: string; verified: boolean }[];
 }
 
-const Q = (key: string, label: string, verified = true) => ({ key, label, verified });
+/** Qualification with the date the certifying course was attended. */
+const Q = (key: string, label: string, attended: string, verified = true) => ({
+  key,
+  label,
+  verified,
+  attendedOn: Timestamp.fromDate(new Date(`${attended}T12:00:00`)),
+});
 
 const USERS: SeedUser[] = [
-  { uid: 'director-frost', email: 'captain.frost@example.org', displayName: 'Capt. Dana Frost', rank: 'Captain', role: 'director', quals: [Q('general', 'General Instructor')] },
-  { uid: 'lt-ramirez', email: 'lt.ramirez@example.org', displayName: 'Lt. Elena Ramirez', rank: 'Lieutenant', role: 'lieutenant', quals: [Q('general', 'General Instructor'), Q('firearms', 'Firearms Instructor')] },
-  { uid: 'sgt-okafor', email: 'sgt.okafor@example.org', displayName: 'Sgt. Chidi Okafor', rank: 'Sergeant', role: 'sergeant', quals: [Q('general', 'General Instructor'), Q('dt', 'Defensive Tactics / CMS Instructor')] },
-  { uid: 'coord-hale', email: 'coord.hale@example.org', displayName: 'Cpl. Morgan Hale', rank: 'Corporal', role: 'coordinator', quals: [Q('general', 'General Instructor')] },
-  { uid: 'coord-bishop', email: 'coord.bishop@example.org', displayName: 'Dep. Riley Bishop', rank: 'Deputy', role: 'coordinator', quals: [Q('general', 'General Instructor'), Q('evaluator', 'Evaluator / Proctor')] },
-  { uid: 'inst-vargas', email: 'inst.vargas@example.org', displayName: 'Dep. Sofia Vargas', rank: 'Deputy', role: 'instructor', quals: [Q('general', 'General Instructor'), Q('firearms', 'Firearms Instructor')] },
-  { uid: 'inst-cole', email: 'inst.cole@example.org', displayName: 'Dep. Marcus Cole', rank: 'Deputy', role: 'instructor', quals: [Q('general', 'General Instructor'), Q('firearms', 'Firearms Instructor')] },
-  { uid: 'inst-nguyen', email: 'inst.nguyen@example.org', displayName: 'Dep. An Nguyen', rank: 'Deputy', role: 'instructor', quals: [Q('general', 'General Instructor'), Q('dt', 'Defensive Tactics / CMS Instructor')] },
-  { uid: 'inst-pratt', email: 'inst.pratt@example.org', displayName: 'Dep. Jordan Pratt', rank: 'Deputy', role: 'instructor', quals: [Q('general', 'General Instructor'), Q('dt', 'Defensive Tactics / CMS Instructor'), Q('role_player', 'Role Player')] },
-  { uid: 'inst-kimball', email: 'inst.kimball@example.org', displayName: 'Dep. Avery Kimball', rank: 'Deputy', role: 'instructor', quals: [Q('general', 'General Instructor'), Q('first_aid', 'First Aid / CPR Instructor')] },
-  { uid: 'inst-soto', email: 'inst.soto@example.org', displayName: 'Dep. Camila Soto', rank: 'Deputy', role: 'instructor', quals: [Q('general', 'General Instructor'), Q('vehicle_ops', 'Vehicle Operations Instructor')] },
-  { uid: 'inst-reyes', email: 'inst.reyes@example.org', displayName: 'Dep. Luis Reyes', rank: 'Deputy', role: 'instructor', quals: [Q('role_player', 'Role Player'), Q('general', 'General Instructor', false)] }, // general still pending verification
-  { uid: 'inst-walsh', email: 'inst.walsh@example.org', displayName: 'Dep. Erin Walsh', rank: 'Deputy', role: 'instructor', quals: [Q('general', 'General Instructor', false)] }, // brand new, nothing verified yet
+  { uid: 'director-frost', email: 'captain.frost@example.org', displayName: 'Capt. Dana Frost', rank: 'Captain', role: 'director', quals: [Q('general', 'General Instructor', '2019-08-12')] },
+  { uid: 'lt-ramirez', email: 'lt.ramirez@example.org', displayName: 'Lt. Elena Ramirez', rank: 'Lieutenant', role: 'lieutenant', quals: [Q('general', 'General Instructor', '2020-03-02'), Q('handgun', 'Handgun Instructor', '2021-06-14')] },
+  { uid: 'sgt-okafor', email: 'sgt.okafor@example.org', displayName: 'Sgt. Chidi Okafor', rank: 'Sergeant', role: 'sergeant', quals: [Q('general', 'General Instructor', '2021-01-25'), Q('dt', 'Defensive Tactics / CMS Instructor', '2022-04-18')] },
+  { uid: 'coord-hale', email: 'coord.hale@example.org', displayName: 'Cpl. Morgan Hale', rank: 'Corporal', role: 'coordinator', quals: [Q('general', 'General Instructor', '2022-09-06')] },
+  { uid: 'coord-bishop', email: 'coord.bishop@example.org', displayName: 'Dep. Riley Bishop', rank: 'Deputy', role: 'coordinator', quals: [Q('general', 'General Instructor', '2023-02-13')] },
+  { uid: 'inst-vargas', email: 'inst.vargas@example.org', displayName: 'Dep. Sofia Vargas', rank: 'Deputy', role: 'instructor', quals: [Q('general', 'General Instructor', '2023-05-22'), Q('handgun', 'Handgun Instructor', '2024-01-29'), Q('carbine', 'Carbine Instructor', '2024-08-05')] },
+  { uid: 'inst-cole', email: 'inst.cole@example.org', displayName: 'Dep. Marcus Cole', rank: 'Deputy', role: 'instructor', quals: [Q('general', 'General Instructor', '2022-11-07'), Q('handgun', 'Handgun Instructor', '2023-07-17')] },
+  { uid: 'inst-nguyen', email: 'inst.nguyen@example.org', displayName: 'Dep. An Nguyen', rank: 'Deputy', role: 'instructor', quals: [Q('general', 'General Instructor', '2023-03-13'), Q('dt', 'Defensive Tactics / CMS Instructor', '2024-02-26')] },
+  { uid: 'inst-pratt', email: 'inst.pratt@example.org', displayName: 'Dep. Jordan Pratt', rank: 'Deputy', role: 'instructor', quals: [Q('general', 'General Instructor', '2024-04-08'), Q('dt', 'Defensive Tactics / CMS Instructor', '2024-10-21'), Q('role_player', 'Role Player', '2024-10-21')] },
+  { uid: 'inst-kimball', email: 'inst.kimball@example.org', displayName: 'Dep. Avery Kimball', rank: 'Deputy', role: 'instructor', quals: [Q('general', 'General Instructor', '2023-08-14'), Q('first_aid', 'First Aid / CPR Instructor', '2025-01-13')] },
+  { uid: 'inst-soto', email: 'inst.soto@example.org', displayName: 'Dep. Camila Soto', rank: 'Deputy', role: 'instructor', quals: [Q('general', 'General Instructor', '2024-06-02'), Q('vehicle_ops', 'Vehicle Operations Instructor', '2025-03-10')] },
+  { uid: 'inst-reyes', email: 'inst.reyes@example.org', displayName: 'Dep. Luis Reyes', rank: 'Deputy', role: 'instructor', quals: [Q('role_player', 'Role Player', '2025-02-03'), Q('general', 'General Instructor', '2025-09-15', false)] }, // general still pending verification
+  { uid: 'inst-walsh', email: 'inst.walsh@example.org', displayName: 'Dep. Erin Walsh', rank: 'Deputy', role: 'instructor', quals: [Q('general', 'General Instructor', '2026-01-12', false)] }, // brand new, nothing verified yet
 ];
 
 async function seedUsers() {
@@ -242,7 +263,7 @@ async function seedUsers() {
 }
 
 // ── 4. Academy + ~4 weeks of sessions ───────────────────────────────────────
-const ACADEMY_ID = 'ble-2026-01';
+const ACADEMY_ID = 'le-131';
 
 interface SeedSession {
   id: string;
@@ -323,7 +344,7 @@ function buildSessions(): SeedSession[] {
   });
   sessions.push({
     id: 'first-aid-23', courseId: 'first-aid', day: 23, startH: 8, endH: 17, room: 'Rm 118',
-    signups: [{ uid: 'inst-kimball', role: 'lead' }, { uid: 'coord-bishop', role: 'evaluator' }],
+    signups: [{ uid: 'inst-kimball', role: 'lead' }],
   });
   sessions.push({ id: 'dfst-24', courseId: 'dfst', day: 24, startH: 8, endH: 16, room: 'Mat Room', signups: [] });
   return sessions;
@@ -332,12 +353,13 @@ function buildSessions(): SeedSession[] {
 async function seedAcademyAndSessions() {
   const endDate = at(27, 23, 59);
   await db.doc(`academies/${ACADEMY_ID}`).set({
-    name: 'BLE Class 2026-01',
+    shortName: 'LE 131',
+    name: 'LE 131 (May Start)',
     discipline: 'law_enforcement',
-    fdleProgram: 'FDLE Basic Recruit Training Program — Law Enforcement',
+    fdleProgram: 'FDLE Basic Recruit Training Program — Law Enforcement (770 hrs)',
     startDate: ts(at(0, 0)),
     endDate: ts(endDate),
-    location: 'State College Public Safety Campus',
+    location: 'PHSC — Dade City, FL',
     status: 'published',
     coordinatorIds: ['coord-hale', 'coord-bishop'],
     targetTotalHours: 770,
@@ -380,7 +402,7 @@ async function seedAcademyAndSessions() {
       title: '',
       start: ts(start),
       end: ts(end),
-      location: 'State College Public Safety Campus',
+      location: 'PHSC — Dade City, FL',
       room: s.room,
       hours: s.endH - s.startH,
       status: fullyStaffed ? 'fully_staffed' : 'open',
@@ -407,7 +429,7 @@ async function seedAcademyAndSessions() {
         academyId: ACADEMY_ID,
         role: a.role,
         courseName: course.name,
-        location: 'State College Public Safety Campus',
+        location: 'PHSC — Dade City, FL',
         room: s.room,
         start: ts(start),
         end: ts(end),
@@ -423,6 +445,7 @@ async function seedAcademyAndSessions() {
 // ── Run ─────────────────────────────────────────────────────────────────────
 async function main() {
   console.log(`Seeding HEIMDALL demo data (academy starts ${START.toDateString()})…`);
+  if (process.argv.includes('--wipe')) await wipe();
   await seedSettings();
   await seedCourses();
   await seedUsers();

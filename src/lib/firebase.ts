@@ -20,5 +20,7 @@ const firebaseConfig = {
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
-export const functions = getFunctions(app);
+// Region must match setGlobalOptions() in functions/src/index.ts — the SDK
+// defaults to us-central1, which silently 404s every callable otherwise.
+export const functions = getFunctions(app, 'us-east1');
 export const googleProvider = new GoogleAuthProvider();

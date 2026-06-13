@@ -24,3 +24,7 @@ ui-debug.log
 .idea/
 .vscode/
 *.log
+
+# Brand source artwork (optimized copies live in public/brand/)
+/heimdall_logo.png
+/heimdall_full_logo.png

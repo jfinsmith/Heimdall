@@ -23,6 +23,7 @@ import { SessionFormModal } from './SessionFormModal';
 import { RecurringGeneratorModal } from './RecurringGeneratorModal';
 import { SessionDetailModal } from '../sessions/SessionDetailModal';
 import { sessionToEvent } from './sessionEvents';
+import { holidayBackgroundEvents } from '../../lib/holidays';
 import { logAudit } from '../sessions/audit';
 
 export function AcademyBuilderPage() {
@@ -45,7 +46,10 @@ export function AcademyBuilderPage() {
     [sessions]
   );
 
-  const events = useMemo(() => sessions.map((s) => sessionToEvent(s, true)), [sessions]);
+  const events = useMemo(
+    () => [...sessions.map((s) => sessionToEvent(s, { editable: true })), ...holidayBackgroundEvents()],
+    [sessions]
+  );
 
   if (!academy) return null;
 
@@ -89,8 +93,9 @@ export function AcademyBuilderPage() {
   return (
     <div>
       <PageHeader
+        back
         kicker="CADRE — Schedule Builder"
-        title={academy.name}
+        title={academy.shortName ? `${academy.shortName} — ${academy.name}` : academy.name}
         actions={
           <>
             <Button onClick={() => setRecurringOpen(true)}>Recurring blocks</Button>
@@ -148,8 +153,8 @@ export function AcademyBuilderPage() {
           eventDrop={onEventChange}
           eventResize={onEventChange}
           eventClick={(arg) => {
-            const s = arg.event.extendedProps.session as WithId<SessionDoc>;
-            setDetailSession(s);
+            const s = arg.event.extendedProps.session as WithId<SessionDoc> | undefined;
+            if (s) setDetailSession(s); // holiday background events carry no session
           }}
           height="auto"
           slotMinTime="05:00:00"

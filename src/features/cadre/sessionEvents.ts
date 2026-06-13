@@ -23,15 +23,21 @@ export function sessionColor(s: SessionDoc): string {
   return unfilledSlots(s).length === 0 ? STATUS_COLORS.staffed : STATUS_COLORS.open;
 }
 
-export function sessionToEvent(s: WithId<SessionDoc>, editable = false): EventInput {
+export function sessionToEvent(
+  s: WithId<SessionDoc>,
+  opts: { editable?: boolean; academyPrefix?: string } = {}
+): EventInput {
+  // Title leads with the academy class designation (e.g. "LE 131") so a mixed
+  // calendar scans by cohort; FullCalendar renders the start time itself.
+  const prefix = opts.academyPrefix ? `${opts.academyPrefix} · ` : '';
   return {
     id: s.id,
-    title: `${s.highLiability ? '▲ ' : ''}${s.title || s.courseName}${s.room ? ` · ${s.room}` : ''}`,
+    title: `${prefix}${s.highLiability ? '▲ ' : ''}${s.title || s.courseName}${s.room ? ` · ${s.room}` : ''}`,
     start: s.start.toDate(),
     end: s.end.toDate(),
     backgroundColor: sessionColor(s),
     borderColor: sessionColor(s),
-    editable,
+    editable: opts.editable ?? false,
     extendedProps: { session: s },
   };
 }

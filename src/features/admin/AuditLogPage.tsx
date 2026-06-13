@@ -12,7 +12,7 @@ export function AuditLogPage() {
 
   return (
     <div>
-      <PageHeader kicker="Admin" title="Audit Log" />
+      <PageHeader back kicker="Admin" title="Audit Log" />
       {!loading && entries.length === 0 ? (
         <EmptyState title="No audit entries yet" />
       ) : (

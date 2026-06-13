@@ -3,6 +3,7 @@
  * Kept in one module: Button, Field, Badge, StatusPill, Spinner, EmptyState.
  */
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { SessionStatus } from '../types';
 
 // ── Button ─────────────────────────────────────────────────────────────────
@@ -133,18 +134,35 @@ export function PageHeader({
   title,
   kicker,
   actions,
+  back = false,
 }: {
   title: string;
   kicker?: string;
   actions?: React.ReactNode;
+  /** Show a ← Back control that returns to the previous page. */
+  back?: boolean;
 }) {
+  const navigate = useNavigate();
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
-      <div>
-        {kicker && (
-          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-bifrost-600">{kicker}</div>
+      <div className="flex items-start gap-3">
+        {back && (
+          <button
+            onClick={() => navigate(-1)}
+            aria-label="Back to previous page"
+            className="mt-1 rounded-md p-1.5 text-watch-500 ring-1 ring-inset ring-watch-200 hover:bg-watch-50 hover:text-watch-800"
+          >
+            <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+              <path d="M12.78 4.22a.75.75 0 010 1.06L8.06 10l4.72 4.72a.75.75 0 11-1.06 1.06l-5.25-5.25a.75.75 0 010-1.06l5.25-5.25a.75.75 0 011.06 0z" />
+            </svg>
+          </button>
         )}
-        <h1 className="text-2xl font-bold text-watch-900">{title}</h1>
+        <div>
+          {kicker && (
+            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-bifrost-600">{kicker}</div>
+          )}
+          <h1 className="text-2xl font-bold text-watch-900">{title}</h1>
+        </div>
       </div>
       {actions && <div className="flex items-center gap-2">{actions}</div>}
     </div>

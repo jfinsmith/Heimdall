@@ -35,12 +35,11 @@ export class SignupError extends Error {}
 
 function qualifies(user: UserDoc, requiredKey?: string): boolean {
   if (!requiredKey) return true;
-  // verifiedQualKeys is the staff-maintained, rule-protected source of truth;
-  // the array entry only supplies expiry metadata.
+  // verifiedQualKeys is the staff-maintained, rule-protected source of truth.
+  // (Expiration is tracked in the agency's certification portal, not here.)
   if (!(user.verifiedQualKeys ?? []).includes(requiredKey as never)) return false;
   const q = user.qualifications.find((x) => x.key === requiredKey);
   if (!q) return false; // claim removed — stale verifiedQualKeys entry doesn't count
-  if (q.expires && q.expires.toMillis() < Date.now()) return false;
   return true;
 }
 

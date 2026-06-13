@@ -17,6 +17,7 @@ import { DISCIPLINE_LABELS, unfilledSlots } from '../../types';
 import { Field, PageHeader, Select } from '../../components/ui';
 import { SessionDetailModal } from '../sessions/SessionDetailModal';
 import { sessionToEvent, STATUS_COLORS } from './sessionEvents';
+import { holidayBackgroundEvents } from '../../lib/holidays';
 
 type StaffingFilter = 'all' | 'open' | 'understaffed' | 'fully_staffed';
 
@@ -43,12 +44,7 @@ export function CalendarPage() {
   const academyById = useMemo(() => new Map(visibleAcademies.map((a) => [a.id, a])), [visibleAcademies]);
 
   const myQualKeys = useMemo(
-    () =>
-      new Set(
-        (profile?.qualifications ?? [])
-          .filter((q) => q.verified && (!q.expires || q.expires.toMillis() > Date.now()))
-          .map((q) => q.key)
-      ),
+    () => new Set((profile?.qualifications ?? []).filter((q) => q.verified).map((q) => q.key)),
     [profile]
   );
 
@@ -83,7 +79,17 @@ export function CalendarPage() {
     [sessions, academyIds, academyById, staff, academyFilter, courseFilter, roomFilter, disciplineFilter, staffingFilter, qualifiedOnly, myQualKeys]
   );
 
-  const events = useMemo(() => filtered.map((s) => sessionToEvent(s as WithId<SessionDoc>)), [filtered]);
+  const events = useMemo(
+    () => [
+      ...filtered.map((s) =>
+        sessionToEvent(s as WithId<SessionDoc>, {
+          academyPrefix: academyById.get(s.academyId)?.shortName || academyById.get(s.academyId)?.name,
+        })
+      ),
+      ...holidayBackgroundEvents(),
+    ],
+    [filtered, academyById]
+  );
 
   return (
     <div>
@@ -142,7 +148,9 @@ export function CalendarPage() {
           initialView="dayGridMonth"
           headerToolbar={{ left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek' }}
           events={events}
-          eventClick={(arg) => setDetailId(arg.event.id)}
+          eventClick={(arg) => {
+            if (arg.event.extendedProps.session) setDetailId(arg.event.id);
+          }}
           height="auto"
           nowIndicator
         />
@@ -151,6 +159,10 @@ export function CalendarPage() {
           <Legend color={STATUS_COLORS.open} label="Understaffed / open" />
           <Legend color={STATUS_COLORS.critical} label="Cancelled / critical" />
           <Legend color={STATUS_COLORS.draft} label="Draft" />
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block h-3 w-3 rounded-sm" style={{ backgroundColor: '#b91c1c', opacity: 0.3 }} />
+            School holiday — avoid scheduling
+          </span>
           <span>▲ = high-liability</span>
         </div>
       </div>

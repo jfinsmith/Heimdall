@@ -2,11 +2,12 @@
  * Gjallarhorn notification bell — in-app feed of `notifications/{id}` docs
  * for the signed-in user, with unread badge and mark-as-read.
  */
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { doc, limit, orderBy, updateDoc, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useCollection } from '../lib/firestore';
+import { useClickOutside } from '../lib/useClickOutside';
 import { useAuth } from '../auth/AuthContext';
 import type { NotificationDoc } from '../types';
 import { GjallarhornGlyph } from '../brand/Logo';
@@ -14,6 +15,8 @@ import { GjallarhornGlyph } from '../brand/Logo';
 export function NotificationBell() {
   const { firebaseUser } = useAuth();
   const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useClickOutside(ref, () => setOpen(false), open);
   const { data: notifications } = useCollection<NotificationDoc>(
     firebaseUser ? 'notifications' : null,
     firebaseUser ? [where('uid', '==', firebaseUser.uid), orderBy('createdAt', 'desc'), limit(20)] : [],
@@ -26,7 +29,7 @@ export function NotificationBell() {
   }
 
   return (
-    <div className="relative">
+    <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((o) => !o)}
         aria-label={`Notifications${unread ? ` (${unread} unread)` : ''}`}

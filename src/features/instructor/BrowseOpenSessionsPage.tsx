@@ -7,7 +7,7 @@ import { orderBy, Timestamp, where } from 'firebase/firestore';
 import { useCollection } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import { fmtRange } from '../../lib/time';
-import type { SessionDoc } from '../../types';
+import type { AcademyDoc, SessionDoc } from '../../types';
 import { SLOT_ROLE_LABELS, QUALIFICATION_LABELS } from '../../types';
 import { Badge, Button, EmptyState, HighLiabilityBadge, PageHeader } from '../../components/ui';
 import { SessionDetailModal } from '../sessions/SessionDetailModal';
@@ -24,14 +24,15 @@ export function BrowseOpenSessionsPage() {
     [where('status', '==', 'open'), where('start', '>=', Timestamp.now()), orderBy('start')],
     []
   );
+  const { data: academies } = useCollection<AcademyDoc>('academies');
+  const academyLabel = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const a of academies) m.set(a.id, a.shortName || a.name);
+    return m;
+  }, [academies]);
 
   const myQuals = useMemo(
-    () =>
-      new Set(
-        (profile?.qualifications ?? [])
-          .filter((q) => q.verified && (!q.expires || q.expires.toMillis() > Date.now()))
-          .map((q) => q.key)
-      ),
+    () => new Set((profile?.qualifications ?? []).filter((q) => q.verified).map((q) => q.key)),
     [profile]
   );
 
@@ -86,6 +87,9 @@ export function BrowseOpenSessionsPage() {
                     className="text-left font-semibold text-watch-900 hover:underline"
                     onClick={() => setDetailId(session.id)}
                   >
+                    <span className="mr-2 rounded bg-watch-100 px-1.5 py-0.5 text-xs font-bold text-watch-800">
+                      {academyLabel.get(session.academyId) ?? 'Academy'}
+                    </span>
                     {session.title || session.courseName}
                   </button>
                   <div className="text-sm text-slate-500">

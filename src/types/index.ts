@@ -18,23 +18,21 @@ export type UserStatus = 'pending' | 'active' | 'inactive';
 
 export type QualificationKey =
   | 'general'
-  | 'firearms'
+  | 'handgun'
+  | 'carbine'
   | 'dt'            // Defensive Tactics / CMS
   | 'vehicle_ops'
   | 'first_aid'
-  | 'role_player'
-  | 'driving_instructor'
-  | 'evaluator';
+  | 'role_player';
 
 export const QUALIFICATION_LABELS: Record<QualificationKey, string> = {
   general: 'General Instructor',
-  firearms: 'Firearms Instructor',
+  handgun: 'Handgun Instructor',
+  carbine: 'Carbine Instructor',
   dt: 'Defensive Tactics / CMS Instructor',
   vehicle_ops: 'Vehicle Operations Instructor',
   first_aid: 'First Aid / CPR Instructor',
   role_player: 'Role Player',
-  driving_instructor: 'Driving Range Instructor',
-  evaluator: 'Evaluator / Proctor',
 };
 
 export interface Qualification {
@@ -43,7 +41,8 @@ export interface Qualification {
   /** Approval-gated: claimed by the user, verified by a supervisor/coordinator. */
   verified: boolean;
   verifiedBy?: string; // uid
-  expires?: Timestamp | null;
+  /** Date the instructor attended the certifying course (expiration is tracked in a separate portal). */
+  attendedOn: Timestamp | null;
 }
 
 export interface NotificationPrefs {
@@ -76,6 +75,24 @@ export interface UserDoc {
   updatedAt: Timestamp;
 }
 
+// ── Gjallarhorn email automations (admin-toggleable) ───────────────────────
+/** Every automated email Gjallarhorn can send. Keys match NotificationType. */
+export const EMAIL_AUTOMATIONS = [
+  { key: 'signup_confirmed', label: 'Sign-up confirmation', description: 'Emails the instructor (with calendar invite) when they sign up for a slot.' },
+  { key: 'slot_reopened', label: 'Withdrawal / slot re-opened', description: 'Emails the academy coordinators when an instructor withdraws.' },
+  { key: 'session_fully_staffed', label: 'Session fully staffed', description: 'Emails coordinators when the last required slot fills.' },
+  { key: 'lead_withdrawal_escalation', label: 'Lead withdrawal escalation', description: 'Emails command when a lead withdraws inside the escalation window.' },
+  { key: 'schedule_change', label: 'Schedule change', description: 'Emails signed-up instructors when a session is moved, re-roomed, or cancelled.' },
+  { key: 'qualification_approved', label: 'Qualification verified', description: 'Emails the instructor when a coordinator verifies a qualification.' },
+  { key: 'account_approved', label: 'Account approved', description: 'Emails a new user when their account is activated.' },
+  { key: 'reminder', label: 'Assignment reminders', description: 'Daily sweep: emails instructors ahead of their upcoming assignments.' },
+  { key: 'understaffing_alert', label: 'Understaffing alerts', description: 'Daily sweep: emails coordinators + command about unfilled slots inside the alert window.' },
+  { key: 'digest', label: 'Weekly digest', description: 'Monday summary of staffing health for coordinators and command.' },
+  { key: 'message', label: 'Bulk messages', description: 'Manual broadcasts sent from the Staffing Board.' },
+] as const;
+
+export type EmailAutomationKey = (typeof EMAIL_AUTOMATIONS)[number]['key'];
+
 // ── Org settings (settings/global singleton) ───────────────────────────────
 export interface GlobalSettings {
   orgName: string;
@@ -87,6 +104,10 @@ export interface GlobalSettings {
   understaffingAlertDays: number;         // alert window for unfilled required slots
   escalationRecipients: string[];         // uids or emails for command alerts
   weeklyDigestEnabled: boolean;
+  /** Master kill-switch for ALL outbound email (in-app notifications still fire). */
+  emailMasterEnabled: boolean;
+  /** Per-automation email toggles; missing key = enabled. */
+  emailAutomations: Partial<Record<EmailAutomationKey, boolean>>;
 }
 
 // ── Curriculum ─────────────────────────────────────────────────────────────
@@ -99,14 +120,13 @@ export const DISCIPLINE_LABELS: Record<Discipline, string> = {
   all: 'All Disciplines',
 };
 
-export type SlotRole = 'lead' | 'assistant' | 'role_player' | 'safety_officer' | 'evaluator';
+export type SlotRole = 'lead' | 'assistant' | 'role_player' | 'safety_officer';
 
 export const SLOT_ROLE_LABELS: Record<SlotRole, string> = {
   lead: 'Lead Instructor',
   assistant: 'Assistant Instructor',
   role_player: 'Role Player',
   safety_officer: 'Safety Officer',
-  evaluator: 'Evaluator',
 };
 
 export interface DefaultRoleSlot {
@@ -130,7 +150,9 @@ export interface CourseDoc {
 export type AcademyStatus = 'draft' | 'published' | 'in_progress' | 'completed' | 'archived';
 
 export interface AcademyDoc {
-  name: string;            // e.g. "BLE Class 2026-01"
+  /** Short class designation used as the calendar prefix, e.g. "LE 131", "CO 67". */
+  shortName: string;
+  name: string;            // e.g. "LE 131 (May Start)"
   discipline: Exclude<Discipline, 'all'>;
   fdleProgram: string;     // e.g. "FDLE Basic Recruit Training Program — Law Enforcement"
   startDate: Timestamp;

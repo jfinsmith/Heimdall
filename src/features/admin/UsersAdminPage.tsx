@@ -5,7 +5,7 @@
  */
 import React, { useState } from 'react';
 import { httpsCallable } from 'firebase/functions';
-import { doc, serverTimestamp, updateDoc, orderBy, Timestamp } from 'firebase/firestore';
+import { doc, serverTimestamp, updateDoc, orderBy } from 'firebase/firestore';
 import { db, functions } from '../../lib/firebase';
 import { useCollection, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
@@ -22,24 +22,37 @@ export function UsersAdminPage() {
   const { data: users } = useCollection<UserDoc>('users', [orderBy('displayName')]);
   const [qualUser, setQualUser] = useState<WithId<UserDoc> | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const pending = users.filter((u) => u.status === 'pending');
   const active = users.filter((u) => u.status !== 'pending');
 
   async function approve(u: WithId<UserDoc>) {
     setBusy(u.id);
-    await updateDoc(doc(db, 'users', u.id), { status: 'active', updatedAt: serverTimestamp() });
-    // Ensure the custom claim exists even at default role.
-    await setUserRole({ uid: u.id, role: u.role });
-    await logAudit(firebaseUser!.uid, 'user.approve', 'user', u.id, `Approved ${u.displayName}`);
-    setBusy(null);
+    setError(null);
+    try {
+      await updateDoc(doc(db, 'users', u.id), { status: 'active', updatedAt: serverTimestamp() });
+      // Ensure the custom claim exists even at default role.
+      await setUserRole({ uid: u.id, role: u.role });
+      await logAudit(firebaseUser!.uid, 'user.approve', 'user', u.id, `Approved ${u.displayName}`);
+    } catch (err) {
+      setError(`Approving ${u.displayName} failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function changeRole(u: WithId<UserDoc>, role: Role) {
     setBusy(u.id);
-    await setUserRole({ uid: u.id, role }); // callable updates doc + claim atomically
-    await logAudit(firebaseUser!.uid, 'user.set_role', 'user', u.id, `Set ${u.displayName} to ${role}`);
-    setBusy(null);
+    setError(null);
+    try {
+      await setUserRole({ uid: u.id, role }); // callable updates doc + claim atomically
+      await logAudit(firebaseUser!.uid, 'user.set_role', 'user', u.id, `Set ${u.displayName} to ${role}`);
+    } catch (err) {
+      setError(`Changing ${u.displayName}'s role failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function deactivate(u: WithId<UserDoc>) {
@@ -50,7 +63,8 @@ export function UsersAdminPage() {
 
   return (
     <div>
-      <PageHeader kicker="Admin" title="Users & Roles" />
+      <PageHeader back kicker="Admin" title="Users & Roles" />
+      {error && <div className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
 
       {pending.length > 0 && (
         <section className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4">
@@ -160,14 +174,6 @@ function QualificationsModal({ user, onClose }: { user: WithId<UserDoc>; onClose
     );
   }
 
-  async function setExpiry(key: string, dateStr: string) {
-    const next = quals.map((q) =>
-      q.key === key ? { ...q, expires: dateStr ? Timestamp.fromDate(new Date(`${dateStr}T23:59:59`)) : null } : q
-    );
-    setQuals(next);
-    await updateDoc(doc(db, 'users', user.id), { qualifications: next, updatedAt: serverTimestamp() });
-  }
-
   return (
     <Modal open onClose={onClose} title={`Qualifications — ${user.displayName}`}>
       {quals.length === 0 ? (
@@ -176,17 +182,13 @@ function QualificationsModal({ user, onClose }: { user: WithId<UserDoc>; onClose
         <ul className="space-y-2">
           {quals.map((q) => (
             <li key={q.key} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-watch-100 px-3 py-2 text-sm">
-              <span className="text-watch-800">{q.label}</span>
+              <span className="text-watch-800">
+                {q.label}
+                <span className="ml-2 text-xs text-slate-500">
+                  {q.attendedOn ? `attended ${q.attendedOn.toDate().toLocaleDateString()}` : 'no course date given'}
+                </span>
+              </span>
               <span className="flex items-center gap-2">
-                <label className="flex items-center gap-1 text-xs text-slate-500">
-                  Expires
-                  <input
-                    type="date"
-                    className="rounded border border-watch-200 px-1.5 py-0.5 text-xs"
-                    defaultValue={q.expires ? q.expires.toDate().toISOString().slice(0, 10) : ''}
-                    onChange={(e) => setExpiry(q.key, e.target.value)}
-                  />
-                </label>
                 {q.verified ? (
                   <Button variant="ghost" onClick={() => setVerified(q.key, false)}>
                     Unverify

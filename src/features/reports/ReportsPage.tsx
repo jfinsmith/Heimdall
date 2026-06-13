@@ -80,7 +80,7 @@ export function ReportsPage() {
 
   return (
     <div className="max-w-3xl">
-      <PageHeader kicker="Reports" title="Reports & Export" />
+      <PageHeader back kicker="Reports" title="Reports & Export" />
 
       <Field label="Academy (blank = all)" className="mb-6 max-w-sm">
         <Select value={academyId} onChange={(e) => setAcademyId(e.target.value)}>

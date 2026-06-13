@@ -18,6 +18,7 @@ import { BrowseOpenSessionsPage } from '../features/instructor/BrowseOpenSession
 import { MySchedulePage } from '../features/instructor/MySchedulePage';
 import { ProfilePage } from '../features/instructor/ProfilePage';
 import { UsersAdminPage } from '../features/admin/UsersAdminPage';
+import { PermissionsPage } from '../features/admin/PermissionsPage';
 import { SettingsAdminPage } from '../features/admin/SettingsAdminPage';
 import { GjallarhornSettingsPage } from '../features/admin/GjallarhornSettingsPage';
 import { AuditLogPage } from '../features/admin/AuditLogPage';
@@ -52,6 +53,7 @@ export function AppRouter() {
 
             <Route element={<RequireAdmin />}>
               <Route path="/admin/users" element={<UsersAdminPage />} />
+              <Route path="/admin/permissions" element={<PermissionsPage />} />
               <Route path="/admin/settings" element={<SettingsAdminPage />} />
               <Route path="/admin/gjallarhorn" element={<GjallarhornSettingsPage />} />
               <Route path="/admin/audit" element={<AuditLogPage />} />

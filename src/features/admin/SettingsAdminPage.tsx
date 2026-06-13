@@ -50,7 +50,13 @@ export function SettingsAdminPage() {
 
   return (
     <div className="max-w-xl">
-      <PageHeader kicker="Admin" title="Org Settings & Branding" />
+      <PageHeader back kicker="Admin" title="Org Settings & Branding" />
+      <p className="mb-4 max-w-xl text-sm text-slate-500">
+        These control how HEIMDALL identifies your agency outside the app itself: the organization name
+        appears in email footers and printed schedule headers, the colors re-tint the interface accent,
+        and the allowed domains restrict who can self-register. If the defaults look right, there is
+        nothing you need to do here.
+      </p>
       <form onSubmit={save} className="space-y-4 rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
         <Field label="Organization name">
           <Input value={orgName} onChange={(e) => setOrgName(e.target.value)} required />

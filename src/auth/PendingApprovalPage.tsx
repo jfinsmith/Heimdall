@@ -11,7 +11,7 @@ export function PendingApprovalPage() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-watch-950 px-4 text-center">
-      <WordmarkStacked size={64} className="text-watch-50 [&>svg]:text-bifrost-400" />
+      <WordmarkStacked size={130} />
       <div className="max-w-md rounded-xl bg-white p-6 shadow-2xl">
         <h1 className="mb-2 text-lg font-semibold text-watch-900">Account pending approval</h1>
         <p className="text-sm text-slate-600">

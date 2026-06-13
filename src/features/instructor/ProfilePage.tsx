@@ -5,7 +5,7 @@
  * actually unlocks restricted slots).
  */
 import React, { useState } from 'react';
-import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { doc, serverTimestamp, Timestamp, updateDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../auth/AuthContext';
 import type { Qualification, QualificationKey } from '../../types';
@@ -37,15 +37,27 @@ export function ProfilePage() {
     setTimeout(() => setSaved(false), 2500);
   }
 
-  async function toggleQualification(key: QualificationKey) {
-    const existing = profile!.qualifications.find((q) => q.key === key);
-    let next: Qualification[];
-    if (existing) {
-      // Removing a verified qualification is allowed — re-verification needed to get it back.
-      next = profile!.qualifications.filter((q) => q.key !== key);
-    } else {
-      next = [...profile!.qualifications, { key, label: QUALIFICATION_LABELS[key], verified: false }];
-    }
+  // Per-row date inputs for new claims (date the certifying course was attended).
+  const [claimDates, setClaimDates] = useState<Record<string, string>>({});
+
+  async function claimQualification(key: QualificationKey) {
+    const dateStr = claimDates[key];
+    if (!dateStr) return;
+    const next: Qualification[] = [
+      ...profile!.qualifications,
+      {
+        key,
+        label: QUALIFICATION_LABELS[key],
+        verified: false,
+        attendedOn: Timestamp.fromDate(new Date(`${dateStr}T12:00:00`)),
+      },
+    ];
+    await updateDoc(doc(db, 'users', firebaseUser!.uid), { qualifications: next, updatedAt: serverTimestamp() });
+  }
+
+  async function removeQualification(key: QualificationKey) {
+    // Removing a verified qualification is allowed — re-verification needed to get it back.
+    const next = profile!.qualifications.filter((q) => q.key !== key);
     await updateDoc(doc(db, 'users', firebaseUser!.uid), { qualifications: next, updatedAt: serverTimestamp() });
   }
 
@@ -101,29 +113,54 @@ export function ProfilePage() {
       <section className="mt-6 rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
         <h2 className="mb-1 text-sm font-semibold uppercase tracking-wider text-watch-600">Qualifications</h2>
         <p className="mb-3 text-sm text-slate-500">
-          Claim a qualification here; a coordinator must verify it before it unlocks restricted slots.
+          Claim a qualification with the date you attended the certifying course; a coordinator must
+          verify it before it unlocks restricted slots. (Expiration is tracked in the certification portal,
+          not here.)
         </p>
         <ul className="space-y-2">
           {(Object.keys(QUALIFICATION_LABELS) as QualificationKey[]).map((key) => {
             const q = profile.qualifications.find((x) => x.key === key);
             return (
-              <li key={key} className="flex items-center justify-between rounded-md border border-watch-100 px-3 py-2 text-sm">
-                <span className="text-watch-800">{QUALIFICATION_LABELS[key]}</span>
-                <span className="flex items-center gap-2">
-                  {q &&
-                    (q.verified ? (
-                      <Badge tone="green">Verified</Badge>
-                    ) : (
-                      <Badge tone="amber">Pending verification</Badge>
-                    ))}
-                  {q?.expires && (
-                    <Badge tone={q.expires.toMillis() > Date.now() ? 'navy' : 'red'}>
-                      Expires {q.expires.toDate().toLocaleDateString()}
-                    </Badge>
+              <li key={key} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-watch-100 px-3 py-2 text-sm">
+                <span className="text-watch-800">
+                  {QUALIFICATION_LABELS[key]}
+                  {q?.attendedOn && (
+                    <span className="ml-2 text-xs text-slate-500">
+                      attended {q.attendedOn.toDate().toLocaleDateString()}
+                    </span>
                   )}
-                  <Button variant={q ? 'ghost' : 'secondary'} onClick={() => toggleQualification(key)}>
-                    {q ? 'Remove' : 'Claim'}
-                  </Button>
+                </span>
+                <span className="flex items-center gap-2">
+                  {q ? (
+                    <>
+                      {q.verified ? <Badge tone="green">Verified</Badge> : <Badge tone="amber">Pending verification</Badge>}
+                      <Button variant="ghost" onClick={() => removeQualification(key)}>
+                        Remove
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <label className="flex items-center gap-1.5 text-xs text-slate-500">
+                        Course date
+                        <input
+                          type="date"
+                          aria-label={`Date attended ${QUALIFICATION_LABELS[key]} course`}
+                          className="rounded border border-watch-200 px-1.5 py-1 text-xs"
+                          value={claimDates[key] ?? ''}
+                          max={new Date().toISOString().slice(0, 10)}
+                          onChange={(e) => setClaimDates((d) => ({ ...d, [key]: e.target.value }))}
+                        />
+                      </label>
+                      <Button
+                        variant="secondary"
+                        disabled={!claimDates[key]}
+                        title={!claimDates[key] ? 'Enter the date you attended the course first' : undefined}
+                        onClick={() => claimQualification(key)}
+                      >
+                        Claim
+                      </Button>
+                    </>
+                  )}
                 </span>
               </li>
             );

@@ -18,7 +18,8 @@ export interface Qualification {
   label: string;
   verified: boolean;
   verifiedBy?: string;
-  expires?: Timestamp | null;
+  /** Date the certifying course was attended (expiration tracked in a separate portal). */
+  attendedOn?: Timestamp | null;
 }
 
 export interface UserDoc {
@@ -42,6 +43,17 @@ export interface GlobalSettings {
   understaffingAlertDays: number;
   escalationRecipients: string[];
   weeklyDigestEnabled: boolean;
+  /** Master kill-switch for ALL outbound email (in-app notifications still fire). */
+  emailMasterEnabled?: boolean;
+  /** Per-automation email toggles, keyed by NotificationType; missing key = enabled. */
+  emailAutomations?: Record<string, boolean>;
+}
+
+/** Email for a notification type is allowed unless the master switch or its toggle is off. */
+export function emailAllowed(settings: GlobalSettings | null, type: string): boolean {
+  if (!settings) return true;
+  if (settings.emailMasterEnabled === false) return false;
+  return settings.emailAutomations?.[type] !== false;
 }
 
 export interface RoleSlot {

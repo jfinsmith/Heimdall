@@ -8,7 +8,7 @@
  */
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { renderEmail, detailRows, EmailContent } from './templates';
-import type { GlobalSettings, SessionDoc, UserDoc } from '../types';
+import { emailAllowed, GlobalSettings, SessionDoc, UserDoc } from '../types';
 
 const db = () => getFirestore();
 
@@ -21,7 +21,10 @@ export interface NotifyOptions {
   link?: string;
   emailContent?: EmailContent;       // pre-rendered email; default renders from title/body
   attachments?: { filename: string; content: string }[];
-  /** Skip the prefs check (critical command escalations always email). */
+  /**
+   * Skip the RECIPIENT's opt-out (critical escalations always email) — does
+   * NOT bypass the admin email-automation toggles or the master switch.
+   */
   force?: boolean;
 }
 
@@ -56,6 +59,9 @@ export async function notify(opts: NotifyOptions): Promise<void> {
 
   if (!email) return;
   if (!prefsAllowEmail && !opts.force) return;
+  // Admin-level controls: master switch + per-automation toggles
+  // (Admin → Gjallarhorn & Email). In-app notifications above already fired.
+  if (!emailAllowed(settings, opts.type)) return;
 
   const content =
     opts.emailContent ??

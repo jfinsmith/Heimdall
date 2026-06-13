@@ -10,7 +10,6 @@ import { db } from '../lib/firebase';
 import { useAuth } from './AuthContext';
 import { WordmarkHorizontal } from '../brand/Logo';
 import { Button, Field, Input } from '../components/ui';
-import { QUALIFICATION_LABELS, type Qualification, type QualificationKey } from '../types';
 
 export function CompleteProfilePage() {
   const { firebaseUser, profile } = useAuth();
@@ -19,34 +18,18 @@ export function CompleteProfilePage() {
   const [rank, setRank] = useState(profile?.rank ?? '');
   const [agency, setAgency] = useState(profile?.agency ?? '');
   const [phone, setPhone] = useState(profile?.phone ?? '');
-  const [quals, setQuals] = useState<Set<QualificationKey>>(new Set(['general']));
   const [busy, setBusy] = useState(false);
 
   if (!firebaseUser) return null;
 
-  function toggleQual(key: QualificationKey) {
-    setQuals((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }
-
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
-    const qualifications: Qualification[] = [...quals].map((key) => ({
-      key,
-      label: QUALIFICATION_LABELS[key],
-      verified: false, // approval-gated: a supervisor verifies before restricted slots unlock
-    }));
     await updateDoc(doc(db, 'users', firebaseUser!.uid), {
       displayName,
       rank,
       agency,
       phone,
-      qualifications,
       updatedAt: serverTimestamp(),
     });
     navigate('/');
@@ -74,17 +57,10 @@ export function CompleteProfilePage() {
         <Field label="Agency" hint='e.g. "Example County Sheriff’s Office"'>
           <Input value={agency} onChange={(e) => setAgency(e.target.value)} required />
         </Field>
-        <fieldset>
-          <legend className="mb-2 text-sm font-medium text-watch-800">Qualifications to request</legend>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {(Object.keys(QUALIFICATION_LABELS) as QualificationKey[]).map((key) => (
-              <label key={key} className="flex items-center gap-2 rounded-md border border-watch-200 px-3 py-2 text-sm">
-                <input type="checkbox" checked={quals.has(key)} onChange={() => toggleQual(key)} />
-                {QUALIFICATION_LABELS[key]}
-              </label>
-            ))}
-          </div>
-        </fieldset>
+        <p className="rounded-md bg-watch-50 px-3 py-2 text-sm text-slate-600">
+          After saving, claim your instructor qualifications on the <strong>Profile</strong> page — you will
+          need the date you attended each certifying course.
+        </p>
         <Button type="submit" variant="primary" disabled={busy}>
           Save profile
         </Button>

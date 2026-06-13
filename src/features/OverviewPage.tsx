@@ -2,7 +2,7 @@
  * Overview — the watchtower landing page. Role-aware: instructors see their
  * upcoming assignments + open slots; staff also see understaffing counts.
  */
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { orderBy, where, Timestamp, limit } from 'firebase/firestore';
 import { useAuth } from '../auth/AuthContext';
@@ -12,9 +12,11 @@ import { fmtRange } from '../lib/time';
 import type { AssignmentDoc, SessionDoc } from '../types';
 import { unfilledSlots } from '../types';
 import { PageHeader, StatusPill, EmptyState } from '../components/ui';
+import { SessionDetailModal } from './sessions/SessionDetailModal';
 
 export function OverviewPage() {
   const { firebaseUser, profile, role } = useAuth();
+  const [detailId, setDetailId] = useState<string | null>(null);
   const now = Timestamp.now();
 
   const { data: myAssignments } = useCollection<AssignmentDoc>(
@@ -48,7 +50,12 @@ export function OverviewPage() {
               {upcoming.map((a) => (
                 <li key={a.id} className="flex items-center justify-between py-3 text-sm">
                   <div>
-                    <div className="font-medium text-watch-900">{a.courseName}</div>
+                    <button
+                      className="text-left font-medium text-watch-900 hover:underline"
+                      onClick={() => setDetailId(a.sessionId)}
+                    >
+                      {a.courseName}
+                    </button>
                     <div className="text-slate-500">
                       {fmtRange(a.start, a.end)} · {a.room}
                     </div>
@@ -75,7 +82,12 @@ export function OverviewPage() {
                 {understaffed.slice(0, 6).map((s) => (
                   <li key={s.id} className="flex items-center justify-between py-3 text-sm">
                     <div>
-                      <div className="font-medium text-watch-900">{s.title || s.courseName}</div>
+                      <button
+                        className="text-left font-medium text-watch-900 hover:underline"
+                        onClick={() => setDetailId(s.id)}
+                      >
+                        {s.title || s.courseName}
+                      </button>
                       <div className="text-slate-500">
                         {fmtRange(s.start, s.end)} · missing{' '}
                         {unfilledSlots(s)
@@ -109,6 +121,8 @@ export function OverviewPage() {
           </section>
         )}
       </div>
+
+      {detailId && <SessionDetailModal sessionId={detailId} onClose={() => setDetailId(null)} />}
     </div>
   );
 }

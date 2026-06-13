@@ -8,8 +8,12 @@
 const BRAND_NAVY = '#16203a';
 const BRAND_AMBER = '#d99320';
 
-/** Inline-safe horn+clock mark for email headers (renders broadly; clients that strip SVG still get the wordmark text). */
-const HORN_SVG = `<svg width="30" height="30" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="M 56.8 20.6 C 61 22, 63.3 26.5, 62 30.8 C 56.5 44.5, 44.5 54.8, 31 55.6 C 19.5 56.4, 10 50, 6.5 39.5 C 5.6 36, 6.1 32.6, 7.8 29.8 L 10.6 31.8 C 9.9 33.5, 10 35.3, 10.8 37.3 C 13.8 44.6, 21 49.3, 30.5 48.8 C 41 48, 50.2 40.6, 54.2 30.2 C 54.9 28.2, 55 26.3, 54.6 24.6 C 53.8 23.2, 54.6 21.6, 56.8 20.6 Z" fill="${BRAND_AMBER}"/><circle cx="32" cy="22" r="11.5" stroke="${BRAND_AMBER}" stroke-width="2.5" fill="none"/><path d="M 32 22 L 27.4 19.3" stroke="${BRAND_AMBER}" stroke-width="2.3" stroke-linecap="round"/><path d="M 32 22 L 38.4 18.3" stroke="${BRAND_AMBER}" stroke-width="2" stroke-linecap="round"/><circle cx="32" cy="22" r="1.7" fill="${BRAND_AMBER}"/></svg>`;
+/**
+ * Brand mark for email headers — hosted PNG (Gmail and many clients strip
+ * inline SVG; a hosted image renders reliably and degrades to alt text).
+ * TODO(setup): update the host when moving to a custom domain.
+ */
+const MARK_IMG = `<img src="https://jfinsmith.github.io/Heimdall/brand/heimdall-mark.png" width="42" height="30" alt="" style="display:block;border:0;" />`;
 
 export interface EmailContent {
   subject: string;
@@ -51,7 +55,7 @@ export function renderEmail(opts: {
         <!-- HEIMDALL header -->
         <tr><td style="background:${BRAND_NAVY};padding:18px 28px;">
           <table role="presentation" cellpadding="0" cellspacing="0"><tr>
-            <td style="vertical-align:middle;padding-right:10px;">${HORN_SVG}</td>
+            <td style="vertical-align:middle;padding-right:10px;">${MARK_IMG}</td>
             <td style="vertical-align:middle;font-family:Arial,sans-serif;font-size:18px;letter-spacing:4px;font-weight:bold;color:#f4f6fb;">HEIMDALL</td>
           </tr></table>
         </td></tr>

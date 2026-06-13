@@ -26,7 +26,7 @@ import { Modal } from '../../components/Modal';
 
 const DEFAULT_TARGET_HOURS: Record<string, number> = {
   law_enforcement: 770, // FDLE LE BRTP — configurable per academy, not hard-coded
-  corrections: 520,
+  corrections: 420,     // matches the agency's CO program (e.g. CO 67 — 420 hrs)
   cross_over: 318,
 };
 
@@ -76,6 +76,7 @@ export function AcademiesPage() {
               <tr key={a.id} className="hover:bg-watch-50/50">
                 <td className="px-4 py-3 font-medium text-watch-900">
                   <Link to={`/cadre/academies/${a.id}`} className="hover:underline">
+                    {a.shortName ? <span className="mr-2 font-bold text-bifrost-700">{a.shortName}</span> : null}
                     {a.name}
                   </Link>
                 </td>
@@ -118,6 +119,7 @@ export function AcademiesPage() {
 // ── Create ──────────────────────────────────────────────────────────────────
 function CreateAcademyModal({ open, onClose, actorUid }: { open: boolean; onClose: () => void; actorUid: string }) {
   const [name, setName] = useState('');
+  const [shortName, setShortName] = useState('');
   const [discipline, setDiscipline] = useState<'law_enforcement' | 'corrections' | 'cross_over'>('law_enforcement');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -135,6 +137,7 @@ function CreateAcademyModal({ open, onClose, actorUid }: { open: boolean; onClos
     setBusy(true);
     await addDoc(collection(db, 'academies'), {
       name,
+      shortName,
       discipline,
       fdleProgram: `FDLE Basic Recruit Training Program — ${DISCIPLINE_LABELS[discipline]}`,
       startDate: tsFromDate(new Date(`${startDate}T00:00:00`)),
@@ -154,9 +157,14 @@ function CreateAcademyModal({ open, onClose, actorUid }: { open: boolean; onClos
   return (
     <Modal open={open} onClose={onClose} title="New academy (cohort)">
       <form onSubmit={submit} className="space-y-4">
-        <Field label="Name" hint='e.g. "BLE Class 2026-02"'>
-          <Input value={name} onChange={(e) => setName(e.target.value)} required />
-        </Field>
+        <div className="grid grid-cols-[1fr_2fr] gap-4">
+          <Field label="Class designation" hint='Short label, e.g. "LE 131", "CO 67" — leads calendar entries'>
+            <Input value={shortName} onChange={(e) => setShortName(e.target.value)} required placeholder="LE 131" />
+          </Field>
+          <Field label="Name" hint='e.g. "LE 131 (May Start)"'>
+            <Input value={name} onChange={(e) => setName(e.target.value)} required />
+          </Field>
+        </div>
         <div className="grid grid-cols-2 gap-4">
           <Field label="Discipline">
             <Select
