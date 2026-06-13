@@ -44,6 +44,7 @@ export function SessionFormModal({ academy, session, onClose }: Props) {
   const [slots, setSlots] = useState<RoleSlot[]>(session?.roleSlots ?? []);
   const [countsTowardFdle, setCountsTowardFdle] = useState(session?.countsTowardFdle !== false);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const isCustom = courseId === CUSTOM;
   const course = useMemo(() => courses.find((c) => c.id === courseId), [courses, courseId]);
@@ -107,12 +108,34 @@ export function SessionFormModal({ academy, session, onClose }: Props) {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!firebaseUser || (!course && !isCustom)) return;
-    if (isCustom && !customName.trim()) return;
+    setError(null);
+    if (!firebaseUser) return;
+    if (!course && !isCustom) {
+      setError('Select a course (or a custom assignment) first.');
+      return;
+    }
+    if (isCustom && !customName.trim()) {
+      setError('Enter a name for the custom assignment.');
+      return;
+    }
     setBusy(true);
     const start = combineDateTime(date, startTime);
     const end = combineDateTime(date, endTime);
     const courseName = isCustom ? customName.trim() : course!.name;
+
+    // Sanitize slots: Firestore rejects `undefined`, so drop the optional
+    // qualification key when it isn't set (rather than writing undefined).
+    const cleanSlots = slots.map((s) => {
+      const out: Record<string, unknown> = {
+        slotId: s.slotId,
+        role: s.role,
+        count: s.count,
+        filledBy: s.filledBy ?? [],
+      };
+      if (s.requiredQualificationKey) out.requiredQualificationKey = s.requiredQualificationKey;
+      return out;
+    });
+
     const payload = {
       academyId: academy.id,
       courseId: isCustom ? 'custom' : course!.id,
@@ -125,60 +148,65 @@ export function SessionFormModal({ academy, session, onClose }: Props) {
       room,
       hours: hoursBetween(start, end),
       countsTowardFdle,
-      roleSlots: slots,
-      notes,
+      roleSlots: cleanSlots,
+      notes: notes ?? '',
       updatedAt: serverTimestamp(),
     };
 
-    let sessionId = session?.id;
-    if (session) {
-      await updateDoc(doc(db, 'sessions', session.id), payload);
-      await logAudit(firebaseUser.uid, 'session.update', 'session', session.id, `Updated ${courseName} on ${date}`);
-    } else {
-      const ref = await addDoc(collection(db, 'sessions'), {
-        ...payload,
-        // Visible on the calendar once the academy is published, but sign-ups
-        // stay closed until the coordinator opens the course.
-        status: academy.status === 'draft' ? 'draft' : 'scheduled',
-        createdBy: firebaseUser.uid,
-      });
-      sessionId = ref.id;
-      await logAudit(firebaseUser.uid, 'session.create', 'session', ref.id, `Scheduled ${courseName} on ${date}`);
-    }
+    try {
+      let sessionId = session?.id;
+      if (session) {
+        await updateDoc(doc(db, 'sessions', session.id), payload);
+        await logAudit(firebaseUser.uid, 'session.update', 'session', session.id, `Updated ${courseName} on ${date}`);
+      } else {
+        const ref = await addDoc(collection(db, 'sessions'), {
+          ...payload,
+          // Visible on the calendar once the academy is published, but sign-ups
+          // stay closed until the coordinator opens the course.
+          status: academy.status === 'draft' ? 'draft' : 'scheduled',
+          createdBy: firebaseUser.uid,
+        });
+        sessionId = ref.id;
+        await logAudit(firebaseUser.uid, 'session.create', 'session', ref.id, `Scheduled ${courseName} on ${date}`);
+      }
 
-    // Mirror coordinator-slot assignments into signups/assignments so the
-    // coordinator's My Schedule and Gjallarhorn reminders see them.
-    for (const slot of slots) {
-      if (slot.role !== 'coordinator' || !slot.filledBy[0] || !sessionId) continue;
-      const uid = slot.filledBy[0];
-      const u = coordinatorUsers.find((x) => x.id === uid);
-      const now = Timestamp.now();
-      await setDoc(doc(db, 'sessions', sessionId, 'signups', uid), {
-        uid,
-        displayName: u?.displayName ?? 'Coordinator',
-        role: 'coordinator',
-        slotId: slot.slotId,
-        status: 'confirmed',
-        signedUpAt: now,
-      });
-      await setDoc(doc(db, 'assignments', `${sessionId}_${uid}`), {
-        uid,
-        sessionId,
-        academyId: academy.id,
-        role: 'coordinator',
-        courseName,
-        location,
-        room,
-        start: tsFromDate(start),
-        end: tsFromDate(end),
-        status: 'confirmed',
-        reminderSent: false,
-        createdAt: now,
-      });
-    }
+      // Mirror coordinator-slot assignments into signups/assignments so the
+      // coordinator's My Schedule and Gjallarhorn reminders see them.
+      for (const slot of slots) {
+        if (slot.role !== 'coordinator' || !slot.filledBy[0] || !sessionId) continue;
+        const uid = slot.filledBy[0];
+        const u = coordinatorUsers.find((x) => x.id === uid);
+        const now = Timestamp.now();
+        await setDoc(doc(db, 'sessions', sessionId, 'signups', uid), {
+          uid,
+          displayName: u?.displayName ?? 'Coordinator',
+          role: 'coordinator',
+          slotId: slot.slotId,
+          status: 'confirmed',
+          signedUpAt: now,
+        });
+        await setDoc(doc(db, 'assignments', `${sessionId}_${uid}`), {
+          uid,
+          sessionId,
+          academyId: academy.id,
+          role: 'coordinator',
+          courseName,
+          location,
+          room,
+          start: tsFromDate(start),
+          end: tsFromDate(end),
+          status: 'confirmed',
+          reminderSent: false,
+          createdAt: now,
+        });
+      }
 
-    setBusy(false);
-    onClose();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save the session. Please try again.');
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function cancelSession() {
@@ -204,6 +232,7 @@ export function SessionFormModal({ academy, session, onClose }: Props) {
   return (
     <Modal open onClose={onClose} title={session ? 'Edit session' : 'Add session'} wide>
       <form onSubmit={submit} className="space-y-4">
+        {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Course (required — from catalog)">
             <Select value={courseId} onChange={(e) => pickCourse(e.target.value)} required>
