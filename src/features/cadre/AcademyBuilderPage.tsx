@@ -415,7 +415,7 @@ export function AcademyBuilderPage() {
         <FullCalendar
           ref={calRef}
           plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
-          initialView="timeGridWeek"
+          initialView="twoWeek"
           initialDate={academy.startDate.toDate() > new Date() ? academy.startDate.toDate() : new Date()}
           firstDay={1}
           weekends={showWeekends}
