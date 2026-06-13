@@ -116,12 +116,13 @@ export function renderEventContent(arg: EventContentArg): React.ReactNode | unde
         {s.courseName}
       </div>
       {s.notes && <div className="hd-event-notes">{s.notes}</div>}
-      {(s.room || s.lunchMinutes) && (
+      {s.room && <div className="hd-event-room">{s.room}</div>}
+      {/* Lunch line only when there's actually a lunch break. */}
+      {s.lunchMinutes ? (
         <div className="hd-event-room">
-          {s.room}
-          {s.lunchMinutes ? `${s.room ? ' · ' : ''}${s.lunchMinutes}m lunch` : ''}
+          lunch {s.lunchMinutes}m{s.lunchStart ? ` · ${s.lunchStart}` : ''}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
