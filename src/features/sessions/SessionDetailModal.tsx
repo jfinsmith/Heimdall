@@ -3,9 +3,9 @@
  * Sign Up / Withdraw actions for qualifying users.
  */
 import React, { useState } from 'react';
-import { addDoc, collection, deleteDoc, doc, serverTimestamp, updateDoc, where } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, serverTimestamp, Timestamp, updateDoc, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { useCollection, useDoc, type WithId } from '../../lib/firestore';
+import { shortId, useCollection, useDoc, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import { can } from '../../lib/rbac';
 import { fmtRange } from '../../lib/time';
@@ -72,6 +72,50 @@ export function SessionDetailModal({ sessionId, onClose, onEdit }: Props) {
       await withdrawFromSession(firebaseUser.uid, sessionId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Withdrawal failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Copy this session's structure to the next day (fresh, unassigned slots). */
+  async function duplicateToNextDay() {
+    if (!session || !firebaseUser) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const nextStart = new Date(session.start.toMillis() + 864e5);
+      const nextEnd = new Date(session.end.toMillis() + 864e5);
+      await addDoc(collection(db, 'sessions'), {
+        academyId: session.academyId,
+        courseId: session.courseId,
+        courseName: session.courseName,
+        highLiability: session.highLiability,
+        title: session.title ?? '',
+        start: Timestamp.fromDate(nextStart),
+        end: Timestamp.fromDate(nextEnd),
+        location: session.location,
+        room: session.room ?? '',
+        hours: session.hours,
+        lunchMinutes: session.lunchMinutes ?? 0,
+        lunchStart: session.lunchStart ?? '',
+        countsTowardFdle: session.countsTowardFdle !== false,
+        notes: session.notes ?? '',
+        // Same slot structure, but no one carried over — staff it fresh.
+        roleSlots: session.roleSlots.map((sl) => ({
+          slotId: shortId(),
+          role: sl.role,
+          count: sl.count,
+          ...(sl.requiredQualificationKey ? { requiredQualificationKey: sl.requiredQualificationKey } : {}),
+          filledBy: [],
+        })),
+        status: session.status === 'draft' ? 'draft' : 'scheduled',
+        createdBy: firebaseUser.uid,
+        updatedAt: serverTimestamp(),
+      });
+      await logAudit(firebaseUser.uid, 'session.duplicate', 'session', sessionId, `Duplicated ${session.courseName} to ${nextStart.toLocaleDateString()}`);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not duplicate the session.');
     } finally {
       setBusy(false);
     }
@@ -203,6 +247,11 @@ export function SessionDetailModal({ sessionId, onClose, onEdit }: Props) {
               onClick={() => updateDoc(doc(db, 'sessions', sessionId), { status: 'scheduled', updatedAt: serverTimestamp() })}
             >
               Close sign-ups
+            </Button>
+          )}
+          {session.status !== 'cancelled' && session.status !== 'completed' && (
+            <Button disabled={busy} onClick={duplicateToNextDay} title="Copy this session's structure to the next day">
+              Duplicate to next day
             </Button>
           )}
           {onEdit && <Button onClick={() => onEdit(session as WithId<SessionDoc>)}>Edit session</Button>}
