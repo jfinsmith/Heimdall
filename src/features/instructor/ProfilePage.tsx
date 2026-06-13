@@ -4,9 +4,10 @@
  * approval-gated (a coordinator verifies via Admin → Users, which is what
  * actually unlocks restricted slots).
  */
+// (ChangePasswordCard is defined at the bottom of this file.)
 import React, { useState } from 'react';
 import { doc, serverTimestamp, Timestamp, updateDoc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { db, auth } from '../../lib/firebase';
 import { useAuth } from '../../auth/AuthContext';
 import type { Qualification, QualificationKey } from '../../types';
 import { QUALIFICATION_LABELS } from '../../types';
@@ -114,6 +115,8 @@ export function ProfilePage() {
         </div>
       </form>
 
+      <ChangePasswordCard />
+
       <section className="mt-6 rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
         <h2 className="mb-1 text-sm font-semibold uppercase tracking-wider text-watch-600">Qualifications</h2>
         <p className="mb-3 text-sm text-slate-500">
@@ -172,5 +175,80 @@ export function ProfilePage() {
         </ul>
       </section>
     </div>
+  );
+}
+
+/**
+ * Self-service password change. Only shown for email/password accounts —
+ * Google-sign-in users have no password to change here.
+ */
+function ChangePasswordCard() {
+  const { changePassword } = useAuth();
+  const hasPassword = auth.currentUser?.providerData.some((p) => p.providerId === 'password') ?? false;
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  if (!hasPassword) {
+    return (
+      <section className="mt-6 rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
+        <h2 className="mb-1 text-sm font-semibold uppercase tracking-wider text-watch-600">Password</h2>
+        <p className="text-sm text-slate-500">You sign in with Google — manage your password in your Google account.</p>
+      </section>
+    );
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (next.length < 6) return setError('New password must be at least 6 characters.');
+    if (next !== confirm) return setError('The new passwords do not match.');
+    setBusy(true);
+    try {
+      await changePassword(current, next);
+      setDone(true);
+      setCurrent('');
+      setNext('');
+      setConfirm('');
+      setTimeout(() => setDone(false), 3000);
+    } catch (err) {
+      const code = (err as { code?: string })?.code ?? '';
+      setError(
+        code === 'auth/wrong-password' || code === 'auth/invalid-credential'
+          ? 'Your current password is incorrect.'
+          : err instanceof Error
+            ? err.message
+            : 'Could not change the password.'
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="mt-6 rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
+      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-watch-600">Change password</h2>
+      {error && <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
+      <form onSubmit={submit} className="grid max-w-md gap-4">
+        <Field label="Current password">
+          <Input type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} required />
+        </Field>
+        <Field label="New password" hint="At least 6 characters.">
+          <Input type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} required />
+        </Field>
+        <Field label="Confirm new password">
+          <Input type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
+        </Field>
+        <div className="flex items-center gap-3">
+          <Button type="submit" variant="primary" disabled={busy}>
+            {busy ? 'Saving…' : 'Update password'}
+          </Button>
+          {done && <span className="text-sm text-green-700">Password updated.</span>}
+        </div>
+      </form>
+    </section>
   );
 }

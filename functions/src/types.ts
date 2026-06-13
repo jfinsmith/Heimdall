@@ -25,12 +25,17 @@ export interface Qualification {
 export interface UserDoc {
   email: string;
   displayName: string;
+  rank?: string;
+  agency?: string;
+  phone?: string;
   role: Role;
   status: UserStatus;
   qualifications: Qualification[];
   /** Staff-maintained authoritative verified keys (see web app types). */
   verifiedQualKeys: string[];
   notificationPrefs: { email: boolean; reminderLeadHours: number; digest: boolean };
+  /** Forces a password change on first sign-in (admin-created accounts). */
+  mustChangePassword?: boolean;
 }
 
 export interface GlobalSettings {

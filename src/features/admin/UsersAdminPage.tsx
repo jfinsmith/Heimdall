@@ -11,11 +11,15 @@ import { useCollection, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import { ROLE_LABELS } from '../../lib/rbac';
 import type { Role, UserDoc } from '../../types';
-import { Badge, Button, PageHeader, Select } from '../../components/ui';
+import { Badge, Button, Field, Input, PageHeader, Select } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import { logAudit } from '../sessions/audit';
 
 const setUserRole = httpsCallable<{ uid: string; role: Role }, { ok: boolean }>(functions, 'setUserRole');
+const createUserAccount = httpsCallable<
+  { email: string; displayName: string; role: Role; rank?: string; agency?: string; phone?: string; password?: string },
+  { ok: boolean; uid: string }
+>(functions, 'createUserAccount');
 
 export function UsersAdminPage() {
   const { firebaseUser } = useAuth();
@@ -33,6 +37,7 @@ export function UsersAdminPage() {
   // Instructors at top, most-permissive roles at the bottom.
   const GROUP_ORDER: Role[] = ['instructor', 'coordinator', 'sergeant', 'lieutenant', 'director'];
   const [qualUser, setQualUser] = useState<WithId<UserDoc> | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -76,6 +81,11 @@ export function UsersAdminPage() {
   return (
     <div>
       <PageHeader back kicker="Admin" title="Users & Roles" />
+      <div className="-mt-2 mb-4 flex justify-end">
+        <Button variant="primary" onClick={() => setAddOpen(true)}>
+          + Add user
+        </Button>
+      </div>
       {error && <div className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
 
       {pending.length > 0 && (
@@ -175,7 +185,123 @@ export function UsersAdminPage() {
       </div>
 
       {qualUser && <QualificationsModal user={qualUser} onClose={() => setQualUser(null)} />}
+      {addOpen && <AddUserModal onClose={() => setAddOpen(false)} />}
     </div>
+  );
+}
+
+/**
+ * Create a new account (admin only). Runs the createUserAccount callable, which
+ * makes the Firebase Auth user + profile server-side, so the admin stays signed
+ * in. New users get a temporary password and are forced to change it on first
+ * sign-in. On success we surface the credentials so the admin can hand them off.
+ */
+function AddUserModal({ onClose }: { onClose: () => void }) {
+  const [displayName, setDisplayName] = useState('');
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState<Role>('instructor');
+  const [rank, setRank] = useState('');
+  const [agency, setAgency] = useState('');
+  const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('123456');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [created, setCreated] = useState<{ email: string; password: string; displayName: string } | null>(null);
+
+  function reset() {
+    setDisplayName('');
+    setEmail('');
+    setRole('instructor');
+    setRank('');
+    setAgency('');
+    setPhone('');
+    setPassword('123456');
+    setError(null);
+    setCreated(null);
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setBusy(true);
+    try {
+      await createUserAccount({ email, displayName, role, rank, agency, phone, password });
+      setCreated({ email: email.trim().toLowerCase(), password: password.trim() || '123456', displayName: displayName.trim() });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create the account.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Add user">
+      {created ? (
+        <div className="space-y-4 text-sm">
+          <div className="rounded-md bg-green-50 px-3 py-2 text-green-800">
+            <strong>{created.displayName}</strong> was created. Share these sign-in details:
+          </div>
+          <dl className="rounded-md border border-watch-100 bg-watch-50 px-3 py-2">
+            <div className="flex justify-between py-0.5">
+              <dt className="text-slate-500">Email</dt>
+              <dd className="font-medium text-watch-900">{created.email}</dd>
+            </div>
+            <div className="flex justify-between py-0.5">
+              <dt className="text-slate-500">Temporary password</dt>
+              <dd className="font-mono font-medium text-watch-900">{created.password}</dd>
+            </div>
+          </dl>
+          <p className="text-xs text-slate-500">
+            They’ll be prompted to set their own password the first time they sign in.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={reset}>Add another</Button>
+            <Button variant="primary" onClick={onClose}>Done</Button>
+          </div>
+        </div>
+      ) : (
+        <form onSubmit={submit} className="space-y-4">
+          {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
+          <Field label="Full name">
+            <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
+          </Field>
+          <Field label="Email">
+            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          </Field>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Role">
+              <Select value={role} onChange={(e) => setRole(e.target.value as Role)}>
+                {(Object.keys(ROLE_LABELS) as Role[]).map((r) => (
+                  <option key={r} value={r}>
+                    {ROLE_LABELS[r]}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Rank" hint='e.g. "Deputy"'>
+              <Input value={rank} onChange={(e) => setRank(e.target.value)} />
+            </Field>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Agency">
+              <Input value={agency} onChange={(e) => setAgency(e.target.value)} />
+            </Field>
+            <Field label="Phone">
+              <Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            </Field>
+          </div>
+          <Field label="Temporary password" hint="At least 6 characters — they’ll change it on first sign-in.">
+            <Input value={password} onChange={(e) => setPassword(e.target.value)} required />
+          </Field>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+            <Button type="submit" variant="primary" disabled={busy}>
+              {busy ? 'Creating…' : 'Create user'}
+            </Button>
+          </div>
+        </form>
+      )}
+    </Modal>
   );
 }
 

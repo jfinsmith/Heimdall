@@ -9,6 +9,7 @@ import { RequireAdmin, RequireAuth, RequireStaff } from '../auth/guards';
 import { SignInPage } from '../auth/SignInPage';
 import { PendingApprovalPage } from '../auth/PendingApprovalPage';
 import { CompleteProfilePage } from '../auth/CompleteProfilePage';
+import { ChangePasswordPage } from '../auth/ChangePasswordPage';
 import { OverviewPage } from '../features/OverviewPage';
 import { CalendarPage } from '../features/cadre/CalendarPage';
 import { AcademiesPage } from '../features/cadre/AcademiesPage';
@@ -35,6 +36,7 @@ export function AppRouter() {
         <Route path="/pending" element={<PendingApprovalPage />} />
 
         <Route element={<RequireAuth />}>
+          <Route path="/change-password" element={<ChangePasswordPage />} />
           <Route path="/welcome" element={<CompleteProfilePage />} />
           {/* Print view renders outside the shell for a clean sheet */}
           <Route path="/reports/print/:academyId" element={<PrintableSchedulePage />} />

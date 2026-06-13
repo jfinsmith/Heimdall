@@ -73,6 +73,12 @@ export interface UserDoc {
   notificationPrefs: NotificationPrefs;
   /** Random token for the personal ICS calendar-feed URL (user-generated). */
   icsToken?: string;
+  /**
+   * Set true when an admin creates the account with a temporary password.
+   * The app forces a password change on first sign-in and clears this flag
+   * once the user picks their own password.
+   */
+  mustChangePassword?: boolean;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

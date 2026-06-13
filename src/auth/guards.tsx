@@ -17,6 +17,10 @@ export function RequireAuth() {
   if (!firebaseUser) return <Navigate to="/signin" state={{ from: location }} replace />;
   if (profile && profile.status === 'pending') return <Navigate to="/pending" replace />;
   if (profile && profile.status === 'inactive') return <Navigate to="/signin" replace />;
+  // Force a password change for admin-created accounts on first sign-in.
+  if (profile && profile.mustChangePassword && location.pathname !== '/change-password') {
+    return <Navigate to="/change-password" replace />;
+  }
   // Force first-time profile completion (no rank/agency yet)
   if (profile && !profile.rank && location.pathname !== '/welcome') {
     return <Navigate to="/welcome" replace />;

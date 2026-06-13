@@ -13,6 +13,9 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
+  reauthenticateWithCredential,
+  updatePassword,
+  EmailAuthProvider,
   signOut as fbSignOut,
   User as FirebaseUser,
 } from 'firebase/auth';
@@ -30,6 +33,9 @@ interface AuthState {
   signInWithEmail: (email: string, password: string) => Promise<void>;
   registerWithEmail: (email: string, password: string, displayName: string) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
+  /** Reauthenticate with the current password, then set a new one. Clears any
+   * forced-change flag. Throws Firebase auth errors (wrong-password, weak, etc.). */
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -109,6 +115,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await ensureUserDoc(cred.user, displayName);
     },
     resetPassword: (email) => sendPasswordResetEmail(auth, email),
+    changePassword: async (currentPassword, newPassword) => {
+      const user = auth.currentUser;
+      if (!user || !user.email) throw new Error('You must be signed in to change your password.');
+      // Reauthenticate first — updatePassword requires a recent login.
+      const cred = EmailAuthProvider.credential(user.email, currentPassword);
+      await reauthenticateWithCredential(user, cred);
+      await updatePassword(user, newPassword);
+      // Clear the forced-change flag (merge: no-op for users who never had it).
+      await setDoc(
+        doc(db, 'users', user.uid),
+        { mustChangePassword: false, updatedAt: serverTimestamp() },
+        { merge: true }
+      );
+    },
     signOut: () => fbSignOut(auth),
   };
 
