@@ -47,7 +47,8 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
   const [startTime, setStartTime] = useState(session ? toTimeInputValue(session.start.toDate()) : '07:00');
   const [endTime, setEndTime] = useState(session ? toTimeInputValue(session.end.toDate()) : '18:00');
   const [lunchMinutes, setLunchMinutes] = useState<number>(session?.lunchMinutes ?? 0);
-  const [lunchStart, setLunchStart] = useState<string>(session?.lunchStart ?? '12:00');
+  // Default to noon — use || so a saved empty string (lunch was 0) still defaults to 12:00.
+  const [lunchStart, setLunchStart] = useState<string>(session?.lunchStart || '12:00');
   const [room, setRoom] = useState(session?.room ?? academy.defaultRoom ?? '');
   const [location, setLocation] = useState(session?.location ?? academy.location);
   const [notes, setNotes] = useState(session?.notes ?? '');
