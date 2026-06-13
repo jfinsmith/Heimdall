@@ -86,10 +86,11 @@ export function renderEventContent(arg: EventContentArg): React.ReactNode | unde
     );
   }
 
-  // In time-grid views, draw the lunch break as a white band at the right
-  // vertical position within the block.
+  // In time-grid views (incl. the custom 2-week view, whose type is "twoWeek"),
+  // draw the lunch break as a white band at the right vertical position.
+  const isTimeGrid = arg.view.type.startsWith('timeGrid') || arg.view.type === 'twoWeek';
   let lunchBand: React.ReactNode = null;
-  if (s.lunchMinutes && s.lunchStart && arg.view.type.startsWith('timeGrid')) {
+  if (s.lunchMinutes && s.lunchStart && isTimeGrid) {
     const start = arg.event.start!;
     const startMin = start.getHours() * 60 + start.getMinutes();
     const endMin = startMin + durationMin;
