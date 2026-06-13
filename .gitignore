@@ -28,3 +28,6 @@ ui-debug.log
 # Brand source artwork (optimized copies live in public/brand/)
 /heimdall_logo.png
 /heimdall_full_logo.png
+
+# Agency working schedules (raw extracted data — keep out of the public repo)
+/seed/*-schedule.json
