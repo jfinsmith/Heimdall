@@ -117,6 +117,7 @@ export function MySchedulePage() {
             events={events}
             eventClick={(arg) => setDetailId(arg.event.id)}
             height="auto"
+            slotEventOverlap={false}
             nowIndicator
           />
         </div>

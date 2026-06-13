@@ -123,13 +123,16 @@ export const DISCIPLINE_LABELS: Record<Discipline, string> = {
   all: 'All Disciplines',
 };
 
-export type SlotRole = 'lead' | 'assistant' | 'role_player' | 'safety_officer';
+export type SlotRole = 'lead' | 'assistant' | 'role_player' | 'safety_officer' | 'coordinator';
 
 export const SLOT_ROLE_LABELS: Record<SlotRole, string> = {
   lead: 'Lead Instructor',
   assistant: 'Assistant Instructor',
   role_player: 'Role Player',
   safety_officer: 'Safety Officer',
+  // Coordinator slots are pre-assigned in the builder (no open registration) —
+  // the academy's coordinator simply owns that block.
+  coordinator: 'Coordinator (assigned)',
 };
 
 export interface DefaultRoleSlot {
@@ -220,6 +223,13 @@ export interface SessionDoc {
   location: string;
   room: string;
   hours: number;
+  /**
+   * False for agency-specific blocks (PSO assignments, resiliency days,
+   * formation, drill, study halls…) that exist for member minimum-hour
+   * requirements and must NOT count toward the FDLE program hours.
+   * Missing/undefined = true (counts).
+   */
+  countsTowardFdle?: boolean;
   status: SessionStatus;
   roleSlots: RoleSlot[];
   notes?: string;

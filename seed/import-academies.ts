@@ -156,6 +156,14 @@ const CATALOG_MATCHERS: [RegExp, string][] = [
 
 const HIGH_LIABILITY = /firearm|shotgun|defensive tactics|vehicle op|first aid|stun gun|dfsg|taser|range/i;
 
+/**
+ * Agency-only blocks (member minimum-hours work, not FDLE curriculum).
+ * Everything else counts toward the program hours — including tests and the
+ * FDLE subjects that aren't in the reusable course catalog.
+ */
+const AGENCY_BLOCK =
+  /formation|drill|study|pso |pso$|\*\*\*|resilien|orientation|log[- ]?in|vision (board|brd)|equipment issued|hr benefits|shootout|graduation|ceremony|uniform|barber|locker/i;
+
 interface Row {
   date: string;
   start: string;
@@ -252,6 +260,7 @@ async function importAcademy(
       location: LOCATION,
       room: r.room || '',
       hours: r.hours ?? Math.round(((end.getTime() - start.getTime()) / 36e5) * 4) / 4,
+      countsTowardFdle: !AGENCY_BLOCK.test(r.subject),
       // Visible on the calendar; sign-ups stay closed until coordinators open
       // each course. Past sessions import as completed.
       status: past ? 'completed' : 'scheduled',

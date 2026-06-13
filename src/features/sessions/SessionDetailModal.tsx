@@ -110,10 +110,13 @@ export function SessionDetailModal({ sessionId, onClose, onEdit }: Props) {
                     </Badge>
                   )}
                 </div>
-                {firebaseUser && session.status === 'scheduled' && !can.buildSchedules(role) && (
+                {slot.role === 'coordinator' && (
+                  <span className="text-xs text-slate-400">Assigned by coordinator</span>
+                )}
+                {slot.role !== 'coordinator' && firebaseUser && session.status === 'scheduled' && !can.buildSchedules(role) && (
                   <span className="text-xs text-slate-400">Sign-up not open yet</span>
                 )}
-                {firebaseUser && (session.status === 'open' || session.status === 'fully_staffed') && (
+                {slot.role !== 'coordinator' && firebaseUser && (session.status === 'open' || session.status === 'fully_staffed') && (
                   mineHere ? (
                     <Button variant="danger" disabled={busy} onClick={doWithdraw}>
                       Withdraw

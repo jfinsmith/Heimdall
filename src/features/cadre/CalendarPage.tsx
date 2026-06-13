@@ -152,12 +152,14 @@ export function CalendarPage() {
             if (arg.event.extendedProps.session) setDetailId(arg.event.id);
           }}
           height="auto"
+          slotEventOverlap={false}
           nowIndicator
         />
         <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-500">
+          <Legend color={STATUS_COLORS.scheduled} label="Scheduled (sign-up not open)" />
+          <Legend color={STATUS_COLORS.open} label="Open / understaffed" />
           <Legend color={STATUS_COLORS.staffed} label="Fully staffed" />
-          <Legend color={STATUS_COLORS.open} label="Understaffed / open" />
-          <Legend color={STATUS_COLORS.critical} label="Cancelled / critical" />
+          <Legend color={STATUS_COLORS.critical} label="Cancelled" />
           <Legend color={STATUS_COLORS.draft} label="Draft" />
           <span className="inline-flex items-center gap-1.5">
             <span className="inline-block h-3 w-3 rounded-sm" style={{ backgroundColor: '#b91c1c', opacity: 0.3 }} />

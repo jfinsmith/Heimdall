@@ -18,7 +18,7 @@ import { Badge, Button, EmptyState, Field, HighLiabilityBadge, PageHeader, Selec
 import { Modal } from '../../components/Modal';
 import { SessionDetailModal } from '../sessions/SessionDetailModal';
 
-type Column = 'draft' | 'open' | 'understaffed' | 'fully_staffed';
+type Column = 'draft' | 'scheduled' | 'understaffed' | 'fully_staffed';
 
 export function StaffingBoardPage() {
   const settings = useGlobalSettings();
@@ -39,27 +39,24 @@ export function StaffingBoardPage() {
   );
 
   const columns = useMemo(() => {
-    const cols: Record<Column, WithId<SessionDoc>[]> = { draft: [], open: [], understaffed: [], fully_staffed: [] };
+    const cols: Record<Column, WithId<SessionDoc>[]> = { draft: [], scheduled: [], understaffed: [], fully_staffed: [] };
     for (const s of sessions) {
       if (s.status === 'cancelled' || s.status === 'completed') continue;
       if (s.status === 'draft') cols.draft.push(s);
+      // 'scheduled' = on the calendar but sign-ups not opened yet — staffing
+      // math doesn't apply until a coordinator opens the course.
+      else if (s.status === 'scheduled') cols.scheduled.push(s);
       else if (unfilledSlots(s).length === 0) cols.fully_staffed.push(s);
-      else {
-        // Understaffed = inside the alert window OR missing a lead/safety slot
-        const days = (s.start.toMillis() - Date.now()) / 864e5;
-        const missingCritical = unfilledSlots(s).some((sl) => sl.role === 'lead' || sl.role === 'safety_officer');
-        if (days <= alertDays || (s.highLiability && missingCritical)) cols.understaffed.push(s);
-        else cols.open.push(s);
-      }
+      else cols.understaffed.push(s);
     }
     return cols;
-  }, [sessions, alertDays]);
+  }, [sessions]);
 
-  /** Needs attention: within N days and missing lead or high-liability safety slots. */
+  /** Needs attention: OPEN sessions within N days missing lead or high-liability safety slots. */
   const needsAttention = useMemo(
     () =>
       sessions.filter((s) => {
-        if (s.status === 'cancelled' || s.status === 'completed' || s.status === 'draft') return false;
+        if (s.status !== 'open' && s.status !== 'fully_staffed') return false;
         const days = (s.start.toMillis() - Date.now()) / 864e5;
         if (days > alertDays) return false;
         return unfilledSlots(s).some(
@@ -100,7 +97,7 @@ export function StaffingBoardPage() {
 
   const colMeta: Record<Column, { title: string; tone: string }> = {
     draft: { title: 'Draft', tone: 'border-t-status-draft' },
-    open: { title: 'Open', tone: 'border-t-status-open' },
+    scheduled: { title: 'Scheduled — sign-up closed', tone: 'border-t-watch-600' },
     understaffed: { title: 'Understaffed', tone: 'border-t-status-critical' },
     fully_staffed: { title: 'Fully staffed', tone: 'border-t-status-staffed' },
   };
@@ -165,7 +162,7 @@ export function StaffingBoardPage() {
                       {s.title || s.courseName}
                     </div>
                     <div className="text-xs text-slate-500">{fmtRange(s.start, s.end)}</div>
-                    {col !== 'fully_staffed' && col !== 'draft' && (
+                    {col === 'understaffed' && (
                       <div className="mt-1 text-xs text-amber-700">
                         {unfilledSlots(s)
                           .map((sl) => `${sl.count - sl.filledBy.length}× ${sl.role.replace('_', ' ')}`)

@@ -47,7 +47,10 @@ export function AcademyBuilderPage() {
   const [detailSession, setDetailSession] = useState<WithId<SessionDoc> | null>(null);
 
   const liveSessions = useMemo(() => sessions.filter((s) => s.status !== 'cancelled'), [sessions]);
-  const scheduledHours = useMemo(() => liveSessions.reduce((sum, s) => sum + (s.hours || 0), 0), [liveSessions]);
+  /** Only FDLE-countable sessions feed the program-hours tally — agency-only
+   *  blocks (PSO assignments, resiliency days, formation…) are excluded. */
+  const fdleSessions = useMemo(() => liveSessions.filter((s) => s.countsTowardFdle !== false), [liveSessions]);
+  const scheduledHours = useMemo(() => fdleSessions.reduce((sum, s) => sum + (s.hours || 0), 0), [fdleSessions]);
 
   const events = useMemo(
     () => [...sessions.map((s) => sessionToEvent(s, { editable: true })), ...holidayBackgroundEvents()],
@@ -60,7 +63,7 @@ export function AcademyBuilderPage() {
     const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
     return curriculum.courses.map((c) => {
       const cn = norm(c.name);
-      const scheduled = liveSessions
+      const scheduled = fdleSessions
         .filter((s) => {
           const sn = norm(s.title || s.courseName);
           return sn.includes(cn) || cn.includes(sn);
@@ -68,7 +71,7 @@ export function AcademyBuilderPage() {
         .reduce((sum, s) => sum + (s.hours || 0), 0);
       return { ...c, scheduled, delta: scheduled - c.minHours };
     });
-  }, [curriculum, liveSessions]);
+  }, [curriculum, fdleSessions]);
 
   /** Sessions landing on school holidays (the post-clone trap). */
   const holidayConflicts = useMemo(() => {
@@ -219,7 +222,7 @@ export function AcademyBuilderPage() {
       {/* Hours tally vs target */}
       <div className="mb-4 flex flex-wrap items-center gap-4 rounded-lg border border-watch-100 bg-white px-5 py-4 shadow-sm">
         <div>
-          <div className="text-xs uppercase tracking-wider text-watch-500">Scheduled hours</div>
+          <div className="text-xs uppercase tracking-wider text-watch-500">FDLE hours scheduled</div>
           <div className="text-2xl font-bold text-watch-900">
             {scheduledHours}
             <span className="text-base font-normal text-slate-400"> / {academy.targetTotalHours}</span>
@@ -354,6 +357,7 @@ export function AcademyBuilderPage() {
           height="auto"
           slotMinTime="05:00:00"
           slotMaxTime="22:00:00"
+          slotEventOverlap={false}
           nowIndicator
         />
         <p className="mt-2 text-xs text-slate-400">
