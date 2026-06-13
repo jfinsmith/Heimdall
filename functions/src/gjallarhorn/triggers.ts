@@ -23,7 +23,7 @@ import {
   sessionDetails,
   sessionIcs,
 } from './notify';
-import { renderEmail } from './templates';
+import { renderEmail, escapeHtml } from './templates';
 import type { AssignmentDoc, SessionDoc, SignupDoc, UserDoc } from '../types';
 
 const db = () => getFirestore();
@@ -32,6 +32,62 @@ const LEAD_ESCALATION_DAYS = 7; // lead withdrawal inside this window escalates 
 async function getSession(sessionId: string): Promise<SessionDoc | null> {
   const snap = await db().doc(`sessions/${sessionId}`).get();
   return snap.exists ? (snap.data() as SessionDoc) : null;
+}
+
+/**
+ * Promote the oldest waitlisted candidate into a freed slot. Runs on the Admin
+ * SDK, which bypasses the client rules that (deliberately) forbid a user from
+ * writing another user's signup/assignment — so promotion works no matter who
+ * withdrew. Re-validates session status, slot capacity, and the candidate
+ * inside the transaction. Returns true if someone was promoted; setting their
+ * signup to 'confirmed' re-fires onSignupWritten, which emails them.
+ */
+async function promoteFromWaitlist(sessionId: string, slotId: string): Promise<boolean> {
+  return db().runTransaction(async (tx) => {
+    const sessionRef = db().doc(`sessions/${sessionId}`);
+    const sessionSnap = await tx.get(sessionRef);
+    if (!sessionSnap.exists) return false;
+    const session = sessionSnap.data() as SessionDoc;
+    if (session.status !== 'open' && session.status !== 'fully_staffed') return false; // closed session
+    const slot = session.roleSlots.find((s) => s.slotId === slotId);
+    if (!slot || slot.filledBy.length >= slot.count) return false; // no room
+
+    // Oldest waitlisted sign-up for this slot (Admin transactions may query).
+    const waitlistSnap = await tx.get(
+      db().collection(`sessions/${sessionId}/signups`).where('status', '==', 'waitlist').orderBy('signedUpAt')
+    );
+    const candidate = waitlistSnap.docs
+      .map((d) => d.data() as SignupDoc)
+      .find((w) => w.slotId === slotId && !slot.filledBy.includes(w.uid));
+    if (!candidate) return false;
+
+    const newSlots = session.roleSlots.map((s) =>
+      s.slotId === slotId ? { ...s, filledBy: [...s.filledBy, candidate.uid] } : s
+    );
+    const full = newSlots.every((s) => s.filledBy.length >= s.count);
+
+    tx.update(db().doc(`sessions/${sessionId}/signups/${candidate.uid}`), { status: 'confirmed' });
+    tx.set(db().doc(`assignments/${sessionId}_${candidate.uid}`), {
+      uid: candidate.uid,
+      sessionId,
+      academyId: session.academyId,
+      role: candidate.role,
+      courseName: session.courseName,
+      location: session.location,
+      room: session.room,
+      start: session.start,
+      end: session.end,
+      status: 'confirmed',
+      reminderSent: false,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    tx.update(sessionRef, {
+      roleSlots: newSlots,
+      status: full ? 'fully_staffed' : 'open',
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    return true;
+  });
 }
 
 // ── Sign-up lifecycle ───────────────────────────────────────────────────────
@@ -59,7 +115,7 @@ export const onSignupWritten = onDocumentWritten('sessions/{sessionId}/signups/{
       emailContent: renderEmail({
         subject: `[HEIMDALL] Confirmed — ${session.title || session.courseName}`,
         heading: 'Assignment confirmed',
-        bodyHtml: `<p>${after.displayName}, you are confirmed as <strong>${after.role.replace('_', ' ')}</strong>.</p>${details.html}`,
+        bodyHtml: `<p>${escapeHtml(after.displayName)}, you are confirmed as <strong>${escapeHtml(after.role.replace('_', ' '))}</strong>.</p>${details.html}`,
         bodyText: `${after.displayName}, you are confirmed as ${after.role.replace('_', ' ')}.\n\n${details.text}`,
         orgName: settings?.orgName,
       }),
@@ -68,27 +124,33 @@ export const onSignupWritten = onDocumentWritten('sessions/{sessionId}/signups/{
   }
 
   if (becameWithdrawn) {
-    // 2) Withdrawal / slot re-opened → coordinators
-    await notifyCoordinators(session.academyId, {
-      type: 'slot_reopened',
-      title: `Slot re-opened: ${session.title || session.courseName}`,
-      body: `${after.displayName} withdrew from the ${after.role.replace('_', ' ')} slot on ${session.start
-        .toDate()
-        .toLocaleDateString('en-US', { timeZone: 'America/New_York' })}.`,
-      link: `/cadre/staffing`,
-    });
-
-    // 3) Lead withdrawal close to the session date → escalate up the chain
-    const daysOut = (session.start.toMillis() - Date.now()) / 864e5;
-    if (after.role === 'lead' && daysOut <= LEAD_ESCALATION_DAYS && daysOut > 0) {
-      await escalateToCommand({
-        type: 'lead_withdrawal_escalation',
-        title: `ESCALATION — lead withdrew ${Math.ceil(daysOut)} days out`,
-        body: `${after.displayName} withdrew as LEAD for "${session.title || session.courseName}" on ${session.start
+    // Auto-promote the next waitlisted candidate for the vacated slot (Admin
+    // SDK — the client can't, by design). If the slot gets re-filled it isn't
+    // really "re-opened", so skip the coordinator alert and lead escalation.
+    const promoted = await promoteFromWaitlist(sessionId, after.slotId);
+    if (!promoted) {
+      // 2) Withdrawal / slot re-opened → coordinators
+      await notifyCoordinators(session.academyId, {
+        type: 'slot_reopened',
+        title: `Slot re-opened: ${session.title || session.courseName}`,
+        body: `${after.displayName} withdrew from the ${after.role.replace('_', ' ')} slot on ${session.start
           .toDate()
-          .toLocaleString('en-US', { timeZone: 'America/New_York' })}. The session has no confirmed replacement.`,
+          .toLocaleDateString('en-US', { timeZone: 'America/New_York' })}.`,
         link: `/cadre/staffing`,
       });
+
+      // 3) Lead withdrawal close to the session date → escalate up the chain
+      const daysOut = (session.start.toMillis() - Date.now()) / 864e5;
+      if (after.role === 'lead' && daysOut <= LEAD_ESCALATION_DAYS && daysOut > 0) {
+        await escalateToCommand({
+          type: 'lead_withdrawal_escalation',
+          title: `ESCALATION — lead withdrew ${Math.ceil(daysOut)} days out`,
+          body: `${after.displayName} withdrew as LEAD for "${session.title || session.courseName}" on ${session.start
+            .toDate()
+            .toLocaleString('en-US', { timeZone: 'America/New_York' })}. Verify the lead slot is still covered.`,
+          link: `/cadre/staffing`,
+        });
+      }
     }
   }
 });
@@ -138,7 +200,16 @@ export const onSessionUpdated = onDocumentUpdated('sessions/{sessionId}', async 
         .set(
           cancelled
             ? { status: 'withdrawn' }
-            : { start: after.start, end: after.end, room: after.room, location: after.location, reminderSent: false },
+            : {
+                start: after.start,
+                end: after.end,
+                room: after.room,
+                location: after.location,
+                courseName: after.courseName,
+                // Only re-arm the reminder when the TIME moved — a room-only
+                // edit shouldn't re-send reminders that already went out.
+                ...(timeChanged ? { reminderSent: false } : {}),
+              },
           { merge: true }
         );
       await notify({
@@ -153,7 +224,7 @@ export const onSessionUpdated = onDocumentUpdated('sessions/{sessionId}', async 
         emailContent: renderEmail({
           subject: `[HEIMDALL] ${cancelled ? 'CANCELLED' : 'Schedule change'} — ${after.title || after.courseName}`,
           heading: cancelled ? 'Session cancelled' : `Session ${what}`,
-          bodyHtml: `<p>${su.displayName}, your assigned session has been <strong>${what}</strong>.</p>${details.html}`,
+          bodyHtml: `<p>${escapeHtml(su.displayName)}, your assigned session has been <strong>${what}</strong>.</p>${details.html}`,
           bodyText: `${su.displayName}, your assigned session has been ${what}.\n\n${details.text}`,
           orgName: settings?.orgName,
         }),

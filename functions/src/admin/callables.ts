@@ -28,6 +28,11 @@ export const setUserRole = onCall<{ uid: string; role: Role }>(async (request) =
   if (!uid || !VALID_ROLES.includes(role)) {
     throw new HttpsError('invalid-argument', 'Provide a uid and a valid role.');
   }
+  // Only a director may grant director — a lieutenant must not mint a peer
+  // above their own authority (mirrors the demotion guard below).
+  if (role === 'director' && callerRole !== 'director') {
+    throw new HttpsError('permission-denied', 'Only a director may grant the director role.');
+  }
   // Guard: nobody demotes the last director by accident — directors can only
   // be changed by another director.
   const targetDoc = await getFirestore().doc(`users/${uid}`).get();
@@ -86,6 +91,9 @@ export const createUserAccount = onCall<{
   if (!email || !email.includes('@')) throw new HttpsError('invalid-argument', 'A valid email is required.');
   if (!displayName) throw new HttpsError('invalid-argument', 'A display name is required.');
   if (!VALID_ROLES.includes(role)) throw new HttpsError('invalid-argument', 'Pick a valid role.');
+  if (role === 'director' && callerRole !== 'director') {
+    throw new HttpsError('permission-denied', 'Only a director may create a director account.');
+  }
   if (password.length < 6) throw new HttpsError('invalid-argument', 'Temporary password must be at least 6 characters.');
 
   let uid: string;

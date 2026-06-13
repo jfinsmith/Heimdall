@@ -48,7 +48,7 @@ export function CurriculumAdminPage() {
       </p>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        {curricula
+        {[...curricula]
           .sort((a, b) => a.label.localeCompare(b.label))
           .map((c) => (
             <section key={c.id} className="rounded-lg border border-watch-100 bg-white p-4 shadow-sm">

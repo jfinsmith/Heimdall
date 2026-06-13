@@ -11,7 +11,8 @@ import { Button, Field, Input } from '../components/ui';
 type Mode = 'signin' | 'register' | 'reset';
 
 export function SignInPage() {
-  const { firebaseUser, signInWithGoogle, signInWithEmail, registerWithEmail, resetPassword } = useAuth();
+  const { firebaseUser, profile, signInWithGoogle, signInWithEmail, registerWithEmail, resetPassword, signOut } =
+    useAuth();
   const location = useLocation() as { state?: { from?: { pathname: string } } };
   const [mode, setMode] = useState<Mode>('signin');
   const [email, setEmail] = useState('');
@@ -21,6 +22,26 @@ export function SignInPage() {
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // A deactivated account stays authenticated; RequireAuth bounces it to
+  // /signin, so show a terminal notice here instead of redirecting back into
+  // the app (which would loop).
+  if (firebaseUser && profile?.status === 'inactive') {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-watch-950 px-4 text-center">
+        <WordmarkStacked size={130} />
+        <div className="max-w-md rounded-xl bg-white p-6 shadow-2xl">
+          <h1 className="mb-2 text-lg font-semibold text-watch-900">Account deactivated</h1>
+          <p className="text-sm text-slate-600">
+            Access for {profile.email} has been turned off. Contact an administrator if you believe this is
+            a mistake.
+          </p>
+          <Button variant="ghost" className="mt-4" onClick={() => signOut()}>
+            Sign out
+          </Button>
+        </div>
+      </div>
+    );
+  }
   if (firebaseUser) {
     return <Navigate to={location.state?.from?.pathname ?? '/'} replace />;
   }
@@ -79,7 +100,9 @@ export function SignInPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  minLength={8}
+                  // Only constrain length when creating an account — sign-in must
+                  // accept any existing password (admin temp passwords are 6 chars).
+                  minLength={mode === 'register' ? 6 : undefined}
                   autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
                 />
               </Field>

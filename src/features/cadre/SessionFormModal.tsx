@@ -417,7 +417,10 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
                         min={Math.max(1, slot.filledBy.length)}
                         value={slot.count}
                         aria-label="Slot count"
-                        onChange={(e) => updateSlot(slot.slotId, { count: Number(e.target.value) })}
+                        // Never below the number already reserved (`min` isn't enforced on typed input).
+                        onChange={(e) =>
+                          updateSlot(slot.slotId, { count: Math.max(slot.filledBy.length, Number(e.target.value) || 0) })
+                        }
                       />
                       <Select
                         value={slot.requiredQualificationKey ?? ''}

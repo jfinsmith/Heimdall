@@ -130,7 +130,11 @@ service cloud.firestore {
               && request.resource.data.uid == uid
               && request.resource.data.status in ['confirmed', 'waitlist']
               && get(/databases/$(database)/documents/users/$(uid)).data.status == 'active');
-        allow update: if isStaff() || isOwner(uid);
+        // Owners may only flip their own signup among valid states (e.g.
+        // withdraw); arbitrary status strings are rejected. Waitlist promotion
+        // of another user is done by the Cloud Function (Admin SDK).
+        allow update: if isStaff()
+          || (isOwner(uid) && request.resource.data.status in ['confirmed', 'waitlist', 'withdrawn']);
         allow delete: if isStaff();
       }
     }

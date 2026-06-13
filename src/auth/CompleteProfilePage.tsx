@@ -19,20 +19,27 @@ export function CompleteProfilePage() {
   const [agency, setAgency] = useState(profile?.agency ?? '');
   const [phone, setPhone] = useState(profile?.phone ?? '');
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   if (!firebaseUser) return null;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    setError(null);
     setBusy(true);
-    await updateDoc(doc(db, 'users', firebaseUser!.uid), {
-      displayName,
-      rank,
-      agency,
-      phone,
-      updatedAt: serverTimestamp(),
-    });
-    navigate('/');
+    try {
+      await updateDoc(doc(db, 'users', firebaseUser!.uid), {
+        displayName,
+        rank,
+        agency,
+        phone,
+        updatedAt: serverTimestamp(),
+      });
+      navigate('/');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save your profile. Try again.');
+      setBusy(false);
+    }
   }
 
   return (
@@ -42,6 +49,7 @@ export function CompleteProfilePage() {
       <p className="mb-6 text-sm text-slate-500">
         Requested qualifications must be verified by a coordinator before you can fill restricted slots.
       </p>
+      {error && <div className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
       <form onSubmit={submit} className="space-y-4">
         <Field label="Full name">
           <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />

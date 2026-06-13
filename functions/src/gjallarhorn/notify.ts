@@ -7,7 +7,7 @@
  * touching any trigger code — that's the extension point promised in §14.
  */
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
-import { renderEmail, detailRows, EmailContent } from './templates';
+import { renderEmail, detailRows, escapeHtml, EmailContent } from './templates';
 import { emailAllowed, GlobalSettings, SessionDoc, UserDoc } from '../types';
 
 const db = () => getFirestore();
@@ -72,7 +72,9 @@ export async function notify(opts: NotifyOptions): Promise<void> {
     renderEmail({
       subject: `[HEIMDALL] ${opts.title}`,
       heading: opts.title,
-      bodyHtml: opts.body.replace(/\n/g, '<br/>'),
+      // Escape before turning newlines into <br/> — bodies carry user-supplied
+      // names / bulk-message text that must not inject HTML into the email.
+      bodyHtml: escapeHtml(opts.body).replace(/\n/g, '<br/>'),
       bodyText: opts.body,
       orgName: settings?.orgName,
     });

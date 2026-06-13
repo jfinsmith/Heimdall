@@ -27,13 +27,17 @@ export function ProfilePage() {
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
+    // Guard against an empty/invalid number input persisting NaN — the reminder
+    // sweep does arithmetic on this value.
+    const safeLead = Number.isFinite(leadHours) ? Math.min(168, Math.max(1, leadHours)) : 48;
     await updateDoc(doc(db, 'users', firebaseUser!.uid), {
       phone,
       rank,
       agency,
-      notificationPrefs: { email: emailOn, reminderLeadHours: leadHours, digest },
+      notificationPrefs: { email: emailOn, reminderLeadHours: safeLead, digest },
       updatedAt: serverTimestamp(),
     });
+    setLeadHours(safeLead);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   }

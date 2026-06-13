@@ -20,7 +20,6 @@ import {
   collection,
   doc,
   getDocs,
-  orderBy,
   query,
   runTransaction,
   Timestamp,
@@ -83,6 +82,11 @@ export async function signUpForSlot(
     const slot = session.roleSlots.find((s) => s.slotId === slotId);
     if (!slot) throw new SignupError('That role slot no longer exists on this session.');
     if (slot.filledBy.includes(uid)) throw new SignupError('You are already signed up for this slot.');
+    // One slot per session — you can't hold two roles in the same time block.
+    // (UI hides the second button, but the quick-signup path doesn't, so gate here.)
+    if (session.roleSlots.some((s) => s.filledBy.includes(uid))) {
+      throw new SignupError('You are already signed up for another slot in this session.');
+    }
 
     // Qualification gate — read the user doc inside the transaction.
     const userSnap = await tx.get(doc(db, 'users', uid));
@@ -161,16 +165,6 @@ export async function signUpForSlot(
 }
 
 export async function withdrawFromSession(uid: string, sessionId: string): Promise<void> {
-  // Find a waitlisted candidate for promotion before the transaction
-  // (transactions can't query). Validated again inside the transaction.
-  const waitlistSnap = await getDocs(
-    query(
-      collection(db, 'sessions', sessionId, 'signups'),
-      where('status', '==', 'waitlist'),
-      orderBy('signedUpAt'),
-    )
-  );
-
   await runTransaction(db, async (tx) => {
     const sessionRef = doc(db, 'sessions', sessionId);
     const sessionSnap = await tx.get(sessionRef);
@@ -183,38 +177,16 @@ export async function withdrawFromSession(uid: string, sessionId: string): Promi
     const signup = signupSnap.data() as SignupDoc;
     const now = Timestamp.now();
 
-    // Remove from the slot.
-    let newSlots = session.roleSlots.map((s) =>
+    // Remove yourself from the slot. Promoting the next waitlisted user is done
+    // server-side by the onSignupWritten Cloud Function — the security rules
+    // (correctly) forbid a client from writing another user's signup, so doing
+    // it here would make any withdrawal-with-waitlist fail outright.
+    const newSlots = session.roleSlots.map((s) =>
       s.slotId === signup.slotId ? { ...s, filledBy: s.filledBy.filter((u) => u !== uid) } : s
     );
 
     tx.update(signupRef, { status: 'withdrawn' });
     tx.update(doc(db, 'assignments', `${sessionId}_${uid}`), { status: 'withdrawn' });
-
-    // Promote the first waitlisted user for the same slot, if any.
-    const candidate = waitlistSnap.docs
-      .map((d) => d.data() as SignupDoc)
-      .find((w) => w.slotId === signup.slotId && w.uid !== uid);
-    if (candidate) {
-      newSlots = newSlots.map((s) =>
-        s.slotId === signup.slotId ? { ...s, filledBy: [...s.filledBy, candidate.uid] } : s
-      );
-      tx.update(doc(db, 'sessions', sessionId, 'signups', candidate.uid), { status: 'confirmed' });
-      tx.set(doc(db, 'assignments', `${sessionId}_${candidate.uid}`), {
-        uid: candidate.uid,
-        sessionId,
-        academyId: session.academyId,
-        role: candidate.role,
-        courseName: session.courseName,
-        location: session.location,
-        room: session.room,
-        start: session.start,
-        end: session.end,
-        status: 'confirmed',
-        reminderSent: false,
-        createdAt: now,
-      } satisfies AssignmentDoc);
-    }
 
     const newStatus = recomputeStatus({ ...session, roleSlots: newSlots });
     tx.update(sessionRef, { roleSlots: newSlots, status: newStatus, updatedAt: now });

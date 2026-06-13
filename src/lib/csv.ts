@@ -2,7 +2,10 @@
 
 export function toCsv(headers: string[], rows: (string | number | boolean | null | undefined)[][]): string {
   const escape = (v: string | number | boolean | null | undefined): string => {
-    const s = v == null ? '' : String(v);
+    let s = v == null ? '' : String(v);
+    // Neutralize spreadsheet formula injection: a field beginning with = + - @
+    // (or a control char) is executed as a formula by Excel/Sheets.
+    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   return [headers, ...rows].map((row) => row.map(escape).join(',')).join('\n');

@@ -130,9 +130,12 @@ export function holidayBackgroundEvents(
 ): EventInput[] {
   const now = new Date().getFullYear();
   const events: EventInput[] = [];
+  const dateKey = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   for (let y = now - 1; y <= now + yearsAhead; y++) {
     for (const h of holidaysForYear(y, disabled)) {
-      const key = h.date.toISOString().slice(0, 10);
+      // Local-date key (toISOString would shift a local-midnight date a day in +UTC zones).
+      const key = dateKey(h.date);
       const isObserved = observed.has(h.key);
       events.push({
         id: `holiday-bg-${key}`,
