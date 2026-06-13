@@ -1,7 +1,8 @@
 /**
- * CADRE — Calendar (all users). Month/week/day/list views with filters:
- * academy, course, discipline, room, staffing status, "slots I'm qualified
- * for". Instructors only see published academies (also enforced by rules).
+ * CADRE — Calendar (all users). Month/week/day/list with filters. Concurrent
+ * cohorts are distinguished by per-academy color; weekends are collapsed by
+ * default (Monday-first, so Sat/Sun sit on the right when shown). Staff get an
+ * inline Edit button from the session detail.
  */
 import React, { useMemo, useState } from 'react';
 import FullCalendar from '@fullcalendar/react';
@@ -12,11 +13,13 @@ import interactionPlugin from '@fullcalendar/interaction';
 import { useCollection, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import { can } from '../../lib/rbac';
-import type { AcademyDoc, SessionDoc } from '../../types';
-import { DISCIPLINE_LABELS, unfilledSlots } from '../../types';
+import type { AcademyDoc, CurriculumDoc, SessionDoc } from '../../types';
+import { unfilledSlots } from '../../types';
+import { academyColorFor } from '../../lib/academyColors';
 import { Field, PageHeader, Select } from '../../components/ui';
 import { SessionDetailModal } from '../sessions/SessionDetailModal';
-import { sessionToEvent, STATUS_COLORS } from './sessionEvents';
+import { SessionFormModal } from './SessionFormModal';
+import { sessionToEvent, renderEventContent } from './sessionEvents';
 import { holidayBackgroundEvents } from '../../lib/holidays';
 
 type StaffingFilter = 'all' | 'open' | 'understaffed' | 'fully_staffed';
@@ -24,8 +27,10 @@ type StaffingFilter = 'all' | 'open' | 'understaffed' | 'fully_staffed';
 export function CalendarPage() {
   const { profile, role } = useAuth();
   const staff = can.viewStaffing(role);
+  const canEdit = can.buildSchedules(role);
 
   const { data: academies } = useCollection<AcademyDoc>('academies');
+  const { data: curricula } = useCollection<CurriculumDoc>('curricula');
   const { data: sessions } = useCollection<SessionDoc>('sessions');
 
   const [academyFilter, setAcademyFilter] = useState('all');
@@ -34,7 +39,9 @@ export function CalendarPage() {
   const [roomFilter, setRoomFilter] = useState('all');
   const [staffingFilter, setStaffingFilter] = useState<StaffingFilter>('all');
   const [qualifiedOnly, setQualifiedOnly] = useState(false);
+  const [showWeekends, setShowWeekends] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [editSession, setEditSession] = useState<WithId<SessionDoc> | null>(null);
 
   const visibleAcademies = useMemo(
     () => (staff ? academies : academies.filter((a) => a.status !== 'draft' && a.status !== 'archived')),
@@ -81,15 +88,29 @@ export function CalendarPage() {
 
   const events = useMemo(
     () => [
-      ...filtered.map((s) =>
-        sessionToEvent(s as WithId<SessionDoc>, {
-          academyPrefix: academyById.get(s.academyId)?.shortName || academyById.get(s.academyId)?.name,
-        })
-      ),
+      ...filtered.map((s) => {
+        const academy = academyById.get(s.academyId);
+        return sessionToEvent(s as WithId<SessionDoc>, {
+          academyPrefix: academy?.shortName || academy?.name,
+          academyColor: academyColorFor(academy),
+        });
+      }),
       ...holidayBackgroundEvents(),
     ],
     [filtered, academyById]
   );
+
+  // Color legend for whichever academies are currently shown.
+  const legendAcademies = useMemo(
+    () => visibleAcademies.filter((a) => academyFilter === 'all' || a.id === academyFilter),
+    [visibleAcademies, academyFilter]
+  );
+
+  function openEdit(s: WithId<SessionDoc>) {
+    setDetailId(null);
+    setEditSession(s);
+  }
+  const editAcademy = editSession ? academyById.get(editSession.academyId) : null;
 
   return (
     <div>
@@ -100,15 +121,15 @@ export function CalendarPage() {
           <Select value={academyFilter} onChange={(e) => setAcademyFilter(e.target.value)}>
             <option value="all">All</option>
             {visibleAcademies.map((a) => (
-              <option key={a.id} value={a.id}>{a.name}</option>
+              <option key={a.id} value={a.id}>{a.shortName || a.name}</option>
             ))}
           </Select>
         </Field>
         <Field label="Discipline">
           <Select value={disciplineFilter} onChange={(e) => setDisciplineFilter(e.target.value)}>
             <option value="all">All</option>
-            {(['law_enforcement', 'corrections', 'cross_over'] as const).map((d) => (
-              <option key={d} value={d}>{DISCIPLINE_LABELS[d]}</option>
+            {curricula.map((c) => (
+              <option key={c.id} value={c.id}>{c.label}</option>
             ))}
           </Select>
         </Field>
@@ -136,40 +157,67 @@ export function CalendarPage() {
             <option value="fully_staffed">Fully staffed</option>
           </Select>
         </Field>
-        <label className="flex items-end gap-2 pb-2 text-sm text-watch-800">
-          <input type="checkbox" checked={qualifiedOnly} onChange={(e) => setQualifiedOnly(e.target.checked)} />
-          Slots I qualify for
-        </label>
+        <div className="flex flex-col justify-end gap-1 pb-1 text-sm text-watch-800">
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={qualifiedOnly} onChange={(e) => setQualifiedOnly(e.target.checked)} />
+            Slots I qualify for
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={showWeekends} onChange={(e) => setShowWeekends(e.target.checked)} />
+            Show weekends
+          </label>
+        </div>
       </div>
 
       <div className="rounded-lg border border-watch-100 bg-white p-4 shadow-sm">
         <FullCalendar
           plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
-          initialView="dayGridMonth"
-          headerToolbar={{ left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek' }}
+          initialView="timeGridWeek"
+          firstDay={1}
+          weekends={showWeekends}
+          headerToolbar={{ left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay,listMonth' }}
           events={events}
+          eventContent={renderEventContent}
+          // Group overlapping events by cohort, then by time, so concurrent
+          // academies cluster instead of interleaving.
+          eventOrder={'academyPrefix,start' as unknown as string}
           eventClick={(arg) => {
             if (arg.event.extendedProps.session) setDetailId(arg.event.id);
           }}
-          height="auto"
+          slotMinTime="05:00:00"
+          slotMaxTime="22:00:00"
           slotEventOverlap={false}
+          expandRows
+          dayMaxEvents={4}
+          height="auto"
+          listDayFormat={{ weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' }}
+          listDaySideFormat={false}
           nowIndicator
         />
-        <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-500">
-          <Legend color={STATUS_COLORS.scheduled} label="Scheduled (sign-up not open)" />
-          <Legend color={STATUS_COLORS.open} label="Open / understaffed" />
-          <Legend color={STATUS_COLORS.staffed} label="Fully staffed" />
-          <Legend color={STATUS_COLORS.critical} label="Cancelled" />
-          <Legend color={STATUS_COLORS.draft} label="Draft" />
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500">
+          {legendAcademies.map((a) => (
+            <Legend key={a.id} color={academyColorFor(a)} label={a.shortName || a.name} />
+          ))}
+          <span className="text-slate-300">|</span>
+          <span>thin border = staffing status</span>
           <span className="inline-flex items-center gap-1.5">
             <span className="inline-block h-3 w-3 rounded-sm" style={{ backgroundColor: '#b91c1c', opacity: 0.3 }} />
-            School holiday — avoid scheduling
+            School holiday
           </span>
           <span>▲ = high-liability</span>
         </div>
       </div>
 
-      {detailId && <SessionDetailModal sessionId={detailId} onClose={() => setDetailId(null)} />}
+      {detailId && (
+        <SessionDetailModal
+          sessionId={detailId}
+          onClose={() => setDetailId(null)}
+          onEdit={canEdit ? openEdit : undefined}
+        />
+      )}
+      {editSession && editAcademy && (
+        <SessionFormModal academy={editAcademy} session={editSession} onClose={() => setEditSession(null)} />
+      )}
     </div>
   );
 }

@@ -167,6 +167,8 @@ export interface AcademyDoc {
   location: string;
   /** Default room prefilled on new sessions (individual days can differ). */
   defaultRoom?: string;
+  /** Calendar color for this cohort (hex from the fixed palette). */
+  color?: string;
   status: AcademyStatus;
   coordinatorIds: string[];
   targetTotalHours: number; // defaults to the curriculum's course-hour sum; editable

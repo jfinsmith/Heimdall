@@ -113,11 +113,14 @@ export function MySchedulePage() {
           <FullCalendar
             plugins={[dayGridPlugin, timeGridPlugin, listPlugin]}
             initialView="dayGridMonth"
-            headerToolbar={{ left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,listWeek' }}
+            firstDay={1}
+            headerToolbar={{ left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,listMonth' }}
             events={events}
             eventClick={(arg) => setDetailId(arg.event.id)}
             height="auto"
             slotEventOverlap={false}
+            listDayFormat={{ weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' }}
+            listDaySideFormat={false}
             nowIndicator
           />
         </div>

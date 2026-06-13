@@ -26,7 +26,8 @@ import { Modal } from '../../components/Modal';
 import { SessionFormModal } from './SessionFormModal';
 import { RecurringGeneratorModal } from './RecurringGeneratorModal';
 import { SessionDetailModal } from '../sessions/SessionDetailModal';
-import { sessionToEvent } from './sessionEvents';
+import { sessionToEvent, renderEventContent } from './sessionEvents';
+import { ACADEMY_COLORS } from '../../lib/academyColors';
 import { logAudit } from '../sessions/audit';
 
 export function AcademyBuilderPage() {
@@ -44,6 +45,7 @@ export function AcademyBuilderPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [recurringOpen, setRecurringOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [showWeekends, setShowWeekends] = useState(false);
   const [detailSession, setDetailSession] = useState<WithId<SessionDoc> | null>(null);
 
   const liveSessions = useMemo(() => sessions.filter((s) => s.status !== 'cancelled'), [sessions]);
@@ -345,8 +347,11 @@ export function AcademyBuilderPage() {
           plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
           initialView="timeGridWeek"
           initialDate={academy.startDate.toDate() > new Date() ? academy.startDate.toDate() : new Date()}
-          headerToolbar={{ left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek' }}
+          firstDay={1}
+          weekends={showWeekends}
+          headerToolbar={{ left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay,listMonth' }}
           events={events}
+          eventContent={renderEventContent}
           editable
           eventDrop={onEventChange}
           eventResize={onEventChange}
@@ -358,11 +363,20 @@ export function AcademyBuilderPage() {
           slotMinTime="05:00:00"
           slotMaxTime="22:00:00"
           slotEventOverlap={false}
+          expandRows
+          listDayFormat={{ weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' }}
+          listDaySideFormat={false}
           nowIndicator
         />
-        <p className="mt-2 text-xs text-slate-400">
-          Drag to move, drag edges to resize — changes save immediately. ▲ marks high-liability sessions.
-        </p>
+        <div className="mt-2 flex items-center justify-between">
+          <p className="text-xs text-slate-400">
+            Drag to move, drag edges to resize — changes save immediately. ▲ marks high-liability sessions.
+          </p>
+          <label className="flex items-center gap-2 text-xs text-watch-700">
+            <input type="checkbox" checked={showWeekends} onChange={(e) => setShowWeekends(e.target.checked)} />
+            Show weekends
+          </label>
+        </div>
       </div>
 
       {formOpen && <SessionFormModal academy={academy} session={formSession} onClose={() => setFormOpen(false)} />}
@@ -383,23 +397,38 @@ export function AcademyBuilderPage() {
   );
 }
 
-/** Edit the academy itself (name, designation, default room, target hours, coordinators). */
+/** Edit the academy itself (designation, name, discipline, color, room, hours, coordinators). */
 function EditAcademyModal({ academy, onClose }: { academy: WithId<AcademyDoc>; onClose: () => void }) {
   const { firebaseUser } = useAuth();
   const { data: coordinators } = useCollection<UserDoc>('users', [where('role', '==', 'coordinator')]);
+  const { data: curricula } = useCollection<CurriculumDoc>('curricula', [where('active', '==', true)]);
   const [name, setName] = useState(academy.name);
   const [shortName, setShortName] = useState(academy.shortName ?? '');
+  const [discipline, setDiscipline] = useState(academy.discipline ?? '');
+  const [color, setColor] = useState(academy.color ?? ACADEMY_COLORS[0].value);
   const [defaultRoom, setDefaultRoom] = useState(academy.defaultRoom ?? '');
   const [targetHours, setTargetHours] = useState(academy.targetTotalHours);
   const [coordinatorIds, setCoordinatorIds] = useState<string[]>(academy.coordinatorIds);
   const [busy, setBusy] = useState(false);
 
+  // If the discipline isn't among the active curricula (e.g. an older value),
+  // still offer it so the field is never blank/unrecoverable.
+  const disciplineOptions = useMemo(() => {
+    const opts = curricula.map((c) => ({ id: c.id, label: c.label }));
+    if (discipline && !opts.some((o) => o.id === discipline)) opts.unshift({ id: discipline, label: discipline });
+    return opts;
+  }, [curricula, discipline]);
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
+    const curriculum = curricula.find((c) => c.id === discipline);
     await updateDoc(doc(db, 'academies', academy.id), {
       name,
       shortName,
+      discipline,
+      color,
+      fdleProgram: curriculum?.fdleProgram ?? academy.fdleProgram,
       defaultRoom,
       targetTotalHours: targetHours,
       coordinatorIds,
@@ -419,6 +448,33 @@ function EditAcademyModal({ academy, onClose }: { academy: WithId<AcademyDoc>; o
           </Field>
           <Field label="Name">
             <Input value={name} onChange={(e) => setName(e.target.value)} required />
+          </Field>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Discipline" hint="Drives curriculum coverage & default hours">
+            <Select
+              value={discipline}
+              onChange={(e) => {
+                setDiscipline(e.target.value);
+                const c = curricula.find((x) => x.id === e.target.value);
+                if (c) setTargetHours(c.totalHours);
+              }}
+            >
+              <option value="">Select…</option>
+              {disciplineOptions.map((o) => (
+                <option key={o.id} value={o.id}>{o.label}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Calendar color">
+            <div className="flex items-center gap-2">
+              <Select value={color} onChange={(e) => setColor(e.target.value)} className="flex-1">
+                {ACADEMY_COLORS.map((c) => (
+                  <option key={c.value} value={c.value}>{c.name}</option>
+                ))}
+              </Select>
+              <span className="h-7 w-7 shrink-0 rounded-md ring-1 ring-watch-200" style={{ backgroundColor: color }} />
+            </div>
           </Field>
         </div>
         <div className="grid grid-cols-2 gap-4">

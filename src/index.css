@@ -42,6 +42,57 @@ body {
   --fc-bg-event-opacity: 0.14;
 }
 
+/*
+ * Back-to-back fix: FullCalendar gives every event a minimum rendered height
+ * (~15px) so short events stay clickable. With the default ~21px slot, a
+ * 15-minute block (e.g. 06:45–07:00 Formation) overflows past 07:00 and
+ * collides with the 07:00 class — which forces them into side-by-side columns.
+ * Taller slot rows make a 15-min block exceed the minimum on its own, so
+ * abutting events stack full-width in one column instead of splitting L/R.
+ */
+.fc .fc-timegrid-slot {
+  height: 2.6em;
+}
+
+/* Compact, tidy event cells (vs one long wrapped blob) */
+.fc-event {
+  cursor: pointer;
+}
+.hd-event {
+  padding: 1px 3px;
+  overflow: hidden;
+  line-height: 1.2;
+}
+.hd-event-time {
+  font-size: 0.68rem;
+  font-weight: 600;
+  opacity: 0.85;
+}
+.hd-event-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.hd-event-acad {
+  display: inline-block;
+  margin-right: 0.25rem;
+  padding: 0 0.25rem;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.22);
+  font-weight: 700;
+}
+.hd-event-room {
+  font-size: 0.66rem;
+  opacity: 0.8;
+}
+/* Month view: keep dots/labels readable */
+.fc-daygrid-event .hd-event-title {
+  -webkit-line-clamp: 1;
+}
+
 /* ── Focus visibility (keyboard accessibility) ──────────────────────────── */
 :focus-visible {
   outline: 2px solid var(--brand-accent);

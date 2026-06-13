@@ -23,6 +23,7 @@ import { fmtDate, tsFromDate, addDays, toDateInputValue } from '../../lib/time';
 import type { AcademyDoc, CurriculumDoc, SessionDoc, UserDoc } from '../../types';
 import { Badge, Button, Field, Input, PageHeader, Select } from '../../components/ui';
 import { Modal } from '../../components/Modal';
+import { ACADEMY_COLORS, nextAcademyColor } from '../../lib/academyColors';
 import { logAudit } from '../sessions/audit';
 
 const DEFAULT_LOCATION = 'PHSC — Dade City, FL';
@@ -155,8 +156,12 @@ function CreateAcademyModal({ open, onClose, actorUid }: { open: boolean; onClos
   // Sergeants and above can edit everything regardless of assignment — the
   // coordinator list here is genuinely just coordinators.
   const { data: coordinatorUsers } = useCollection<UserDoc>('users', [where('role', '==', 'coordinator')]);
+  const { data: existingAcademies } = useCollection<AcademyDoc>('academies');
 
   const curriculum = curricula.find((c) => c.id === discipline);
+  // Default to the next unused palette color so new cohorts auto-differentiate.
+  const [color, setColor] = useState('');
+  const defaultColor = color || nextAcademyColor(existingAcademies.map((a) => a.color ?? '').filter(Boolean));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -165,6 +170,7 @@ function CreateAcademyModal({ open, onClose, actorUid }: { open: boolean; onClos
       name,
       shortName,
       discipline,
+      color: defaultColor,
       fdleProgram: curriculum?.fdleProgram ?? curriculum?.label ?? discipline,
       startDate: tsFromDate(new Date(`${startDate}T00:00:00`)),
       endDate: tsFromDate(new Date(`${endDate}T23:59:59`)),
@@ -231,6 +237,16 @@ function CreateAcademyModal({ open, onClose, actorUid }: { open: boolean; onClos
             <Input value={defaultRoom} onChange={(e) => setDefaultRoom(e.target.value)} placeholder="E-120" />
           </Field>
         </div>
+        <Field label="Calendar color" hint="Distinguishes this cohort on shared calendars">
+          <div className="flex items-center gap-2">
+            <Select value={defaultColor} onChange={(e) => setColor(e.target.value)} className="flex-1">
+              {ACADEMY_COLORS.map((c) => (
+                <option key={c.value} value={c.value}>{c.name}</option>
+              ))}
+            </Select>
+            <span className="h-7 w-7 shrink-0 rounded-md ring-1 ring-watch-200" style={{ backgroundColor: defaultColor }} />
+          </div>
+        </Field>
         <Field label="Coordinators" hint="Sergeants and above can always edit — assign the hands-on coordinators here">
           <Select
             multiple

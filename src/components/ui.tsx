@@ -55,16 +55,16 @@ export function Field({
 export const inputClass =
   'w-full rounded-md border border-watch-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm placeholder:text-slate-400 focus:border-bifrost-400 focus:outline-none focus:ring-1 focus:ring-bifrost-400';
 
-export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={inputClass} {...props} />;
+export function Input({ className = '', ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
+  return <input className={`${inputClass} ${className}`} {...props} />;
 }
 
-export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select className={inputClass} {...props} />;
+export function Select({ className = '', ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return <select className={`${inputClass} ${className}`} {...props} />;
 }
 
-export function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea className={inputClass} rows={3} {...props} />;
+export function TextArea({ className = '', ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return <textarea className={`${inputClass} ${className}`} rows={3} {...props} />;
 }
 
 // ── Badge / StatusPill ─────────────────────────────────────────────────────
