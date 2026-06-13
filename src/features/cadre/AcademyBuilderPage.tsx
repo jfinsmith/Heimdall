@@ -59,18 +59,21 @@ export function AcademyBuilderPage() {
     [sessions]
   );
 
-  /** Per-curriculum-course progress: scheduled hours vs minimum. */
+  /**
+   * Per-curriculum-course progress. Each session is assigned to exactly ONE
+   * course (exact name match, since catalog course names == curriculum names)
+   * so a session never counts toward two rows — e.g. "DUI Traffic Stops" no
+   * longer also inflates "Traffic Stops".
+   */
   const courseProgress = useMemo(() => {
     if (!curriculum) return [];
     const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+    const hoursByCourse = new Map<string, number>();
+    for (const s of fdleSessions) {
+      hoursByCourse.set(norm(s.courseName), (hoursByCourse.get(norm(s.courseName)) ?? 0) + (s.hours || 0));
+    }
     return curriculum.courses.map((c) => {
-      const cn = norm(c.name);
-      const scheduled = fdleSessions
-        .filter((s) => {
-          const sn = norm(s.title || s.courseName);
-          return sn.includes(cn) || cn.includes(sn);
-        })
-        .reduce((sum, s) => sum + (s.hours || 0), 0);
+      const scheduled = hoursByCourse.get(norm(c.name)) ?? 0;
       return { ...c, scheduled, delta: scheduled - c.minHours };
     });
   }, [curriculum, fdleSessions]);
@@ -86,12 +89,20 @@ export function AcademyBuilderPage() {
       .filter((x): x is { session: WithId<SessionDoc>; holiday: string } => !!x.holiday);
   }, [liveSessions]);
 
-  /** Courses grouped for the open-sign-ups control. */
+  /**
+   * Courses grouped for the open-sign-ups control. Only FDLE courses that
+   * actually need instructors signing up appear here — custom/agency blocks
+   * (coordinator-run, only a coordinator slot) are excluded, so this list
+   * mirrors curriculum coverage.
+   */
   const courseGroups = useMemo(() => {
     const map = new Map<string, { scheduled: number; open: number; total: number }>();
     for (const s of liveSessions) {
       if (s.status === 'completed') continue;
-      const key = s.title || s.courseName;
+      // Skip blocks that only have pre-assigned coordinator slots.
+      const needsSignup = s.roleSlots.some((slot) => slot.role !== 'coordinator');
+      if (!needsSignup) continue;
+      const key = s.courseName;
       const g = map.get(key) ?? { scheduled: 0, open: 0, total: 0 };
       g.total++;
       if (s.status === 'scheduled') g.scheduled++;

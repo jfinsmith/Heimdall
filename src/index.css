@@ -41,6 +41,13 @@ body {
 .fc {
   --fc-bg-event-opacity: 0.14;
 }
+/* Holiday label: bold black text on a light-red chip so it's always legible */
+.fc .hd-holiday,
+.fc .hd-holiday .fc-event-title,
+.fc .hd-holiday .fc-list-event-title {
+  color: #000 !important;
+  font-weight: 700 !important;
+}
 
 /*
  * Back-to-back fix: FullCalendar gives every event a minimum rendered height
@@ -84,6 +91,15 @@ body {
   background: rgba(255, 255, 255, 0.22);
   font-weight: 700;
 }
+.hd-event-notes {
+  font-size: 0.66rem;
+  font-style: italic;
+  opacity: 0.92;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 .hd-event-room {
   font-size: 0.66rem;
   opacity: 0.8;
@@ -92,6 +108,30 @@ body {
 .fc-daygrid-event .hd-event-title {
   -webkit-line-clamp: 1;
 }
+.fc-daygrid-event .hd-event-time,
+.fc-daygrid-event .hd-event-notes,
+.fc-daygrid-event .hd-event-room {
+  display: none;
+}
+
+/* Very short events: one tight line, smaller font so the title still shows */
+.hd-event--tiny {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 3px;
+}
+.hd-event-tiny-title {
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Trim FullCalendar's own inner padding on short harnesses */
+.fc-timegrid-event-harness-inset .fc-timegrid-event,
+.fc-timegrid-event { box-shadow: none; }
 
 /* ── Focus visibility (keyboard accessibility) ──────────────────────────── */
 :focus-visible {

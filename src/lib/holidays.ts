@@ -70,10 +70,11 @@ export function holidayBackgroundEvents(yearsAhead = 2): EventInput[] {
         title: h.name,
         start: h.date,
         allDay: true,
-        backgroundColor: '#fee2e2',
-        borderColor: '#fecaca',
-        textColor: '#991b1b',
+        backgroundColor: '#fecaca',
+        borderColor: '#fca5a5',
+        textColor: '#000000',
         editable: false,
+        classNames: ['hd-holiday'],
         extendedProps: { holiday: true },
       });
     }

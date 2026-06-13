@@ -45,7 +45,7 @@ export function sessionToEvent(s: WithId<SessionDoc>, opts: SessionEventOpts = {
   const bg = opts.academyColor ?? status;
   return {
     id: s.id,
-    title: `${s.title || s.courseName}${s.room ? ` · ${s.room}` : ''}`,
+    title: s.courseName,
     start: s.start.toDate(),
     end: s.end.toDate(),
     backgroundColor: bg,
@@ -55,19 +55,38 @@ export function sessionToEvent(s: WithId<SessionDoc>, opts: SessionEventOpts = {
   };
 }
 
-/** Compact, two-line-clamped event content (returns undefined → default for holidays). */
+/**
+ * Event content renderer. Returns undefined for holiday/background events (FC
+ * default). Very short blocks (≤20 min, e.g. Formation) render a single
+ * shrink-to-fit title line so the name is still legible; longer blocks show
+ * time, academy badge, course, notes, and room.
+ */
 export function renderEventContent(arg: EventContentArg): React.ReactNode | undefined {
   const s = arg.event.extendedProps.session as WithId<SessionDoc> | undefined;
-  if (!s) return undefined; // holiday label / background events use default rendering
+  if (!s) return undefined;
   const prefix = arg.event.extendedProps.academyPrefix as string | undefined;
+  const durationMin = (arg.event.end!.getTime() - arg.event.start!.getTime()) / 60000;
+
+  if (durationMin <= 20) {
+    return (
+      <div className="hd-event hd-event--tiny" title={`${s.courseName}${s.notes ? ` — ${s.notes}` : ''}`}>
+        <span className="hd-event-tiny-title">
+          {s.highLiability && '▲ '}
+          {s.courseName}
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className="hd-event">
       {arg.timeText && <div className="hd-event-time">{arg.timeText}</div>}
       <div className="hd-event-title">
         {prefix && <span className="hd-event-acad">{prefix}</span>}
         {s.highLiability && <span aria-label="high liability">▲ </span>}
-        {s.title || s.courseName}
+        {s.courseName}
       </div>
+      {s.notes && <div className="hd-event-notes">{s.notes}</div>}
       {s.room && <div className="hd-event-room">{s.room}</div>}
     </div>
   );

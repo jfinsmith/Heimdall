@@ -35,7 +35,6 @@ export function SessionFormModal({ academy, session, onClose }: Props) {
   const isCustomSession = session ? session.courseId === 'custom' : false;
   const [courseId, setCourseId] = useState(isCustomSession ? CUSTOM : session?.courseId ?? '');
   const [customName, setCustomName] = useState(isCustomSession ? session?.courseName ?? '' : '');
-  const [title, setTitle] = useState(session?.title ?? '');
   const [date, setDate] = useState(session ? toDateInputValue(session.start.toDate()) : '');
   const [startTime, setStartTime] = useState(session ? toTimeInputValue(session.start.toDate()) : '08:00');
   const [endTime, setEndTime] = useState(session ? toTimeInputValue(session.end.toDate()) : '17:00');
@@ -119,7 +118,7 @@ export function SessionFormModal({ academy, session, onClose }: Props) {
       courseId: isCustom ? 'custom' : course!.id,
       courseName,
       highLiability: isCustom ? false : course!.highLiability,
-      title: title || '',
+      title: '',
       start: tsFromDate(start),
       end: tsFromDate(end),
       location,
@@ -206,7 +205,7 @@ export function SessionFormModal({ academy, session, onClose }: Props) {
     <Modal open onClose={onClose} title={session ? 'Edit session' : 'Add session'} wide>
       <form onSubmit={submit} className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Course (from catalog)">
+          <Field label="Course (required — from catalog)">
             <Select value={courseId} onChange={(e) => pickCourse(e.target.value)} required>
               <option value="">Select a course…</option>
               {courses.map((c) => (
@@ -222,8 +221,11 @@ export function SessionFormModal({ academy, session, onClose }: Props) {
               <Input value={customName} onChange={(e) => setCustomName(e.target.value)} required />
             </Field>
           ) : (
-            <Field label="Title override (optional)">
-              <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={course?.name ?? ''} />
+            <Field
+              label="Notes (shown under the title on the calendar)"
+              hint='e.g. "Night driving", "Scenarios", "Test" — distinguishes same-course days'
+            >
+              <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional" />
             </Field>
           )}
         </div>
@@ -332,9 +334,11 @@ export function SessionFormModal({ academy, session, onClose }: Props) {
           </Button>
         </fieldset>
 
-        <Field label="Notes">
-          <TextArea value={notes} onChange={(e) => setNotes(e.target.value)} />
-        </Field>
+        {isCustom && (
+          <Field label="Notes (shown under the title on the calendar)">
+            <TextArea value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </Field>
+        )}
 
         <div className="flex items-center justify-between">
           <div className="flex gap-2">
