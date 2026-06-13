@@ -62,6 +62,14 @@ export function sessionToEvent(s: WithId<SessionDoc>, opts: SessionEventOpts = {
  * time, academy badge, course, notes, and room.
  */
 export function renderEventContent(arg: EventContentArg): React.ReactNode | undefined {
+  // Holidays: render the name explicitly (bold black). FullCalendar v6 renders
+  // an EMPTY event when eventContent returns undefined — it does not fall back
+  // to default — which previously collapsed the label to an invisible line.
+  if (arg.event.extendedProps.holiday) {
+    if (arg.event.display === 'background') return undefined; // the red wash, no text
+    return <div className="hd-holiday-label">{arg.event.title}</div>;
+  }
+
   const s = arg.event.extendedProps.session as WithId<SessionDoc> | undefined;
   if (!s) return undefined;
   const prefix = arg.event.extendedProps.academyPrefix as string | undefined;

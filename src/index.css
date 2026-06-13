@@ -48,6 +48,18 @@ body {
   color: #000 !important;
   font-weight: 700 !important;
 }
+.hd-holiday-label {
+  color: #000;
+  font-weight: 700;
+  font-size: 0.72rem;
+  line-height: 1.25;
+  padding: 1px 4px;
+  white-space: normal;
+}
+/* Don't let the holiday chip collapse — give it room for the name */
+.fc-daygrid-event.hd-holiday {
+  white-space: normal;
+}
 
 /*
  * Back-to-back fix: FullCalendar gives every event a minimum rendered height
