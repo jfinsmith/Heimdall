@@ -63,14 +63,17 @@ export interface PayPeriod {
 
 /**
  * Group sessions into pay periods, summing every session's instructional hours
- * (all non-cancelled sessions — paid time, FDLE or agency alike).
+ * (all non-cancelled sessions — paid time, FDLE or agency alike). `extraBlocks`
+ * adds hours on specific dates that aren't sessions — e.g. PSO-observed-holiday
+ * pay (8.5 hrs) on a paid day off.
  */
-export function groupPayPeriods(sessions: WithId<SessionDoc>[]): PayPeriod[] {
+export function groupPayPeriods(
+  sessions: WithId<SessionDoc>[],
+  extraBlocks: { date: Date; hours: number }[] = []
+): PayPeriod[] {
   const map = new Map<string, PayPeriod>();
-  for (const s of sessions) {
-    if (s.status === 'cancelled') continue;
-    const start = (s.start as Timestamp).toDate();
-    const ppStart = payPeriodStart(start);
+  const ensure = (d: Date) => {
+    const ppStart = payPeriodStart(d);
     const key = `${ppStart.getFullYear()}-${String(ppStart.getMonth() + 1).padStart(2, '0')}-${String(ppStart.getDate()).padStart(2, '0')}`;
     let pp = map.get(key);
     if (!pp) {
@@ -79,13 +82,25 @@ export function groupPayPeriods(sessions: WithId<SessionDoc>[]): PayPeriod[] {
       pp = { key, start: ppStart, end, week1Hours: 0, week2Hours: 0, totalHours: 0, sessionCount: 0 };
       map.set(key, pp);
     }
+    return pp;
+  };
+  const addToWeek = (pp: PayPeriod, d: Date, hrs: number) => {
     const midpoint = new Date(pp.start);
     midpoint.setDate(midpoint.getDate() + 7);
-    const hrs = s.hours || 0;
-    if (start < midpoint) pp.week1Hours += hrs;
+    if (d < midpoint) pp.week1Hours += hrs;
     else pp.week2Hours += hrs;
     pp.totalHours += hrs;
+  };
+
+  for (const s of sessions) {
+    if (s.status === 'cancelled') continue;
+    const start = (s.start as Timestamp).toDate();
+    const pp = ensure(start);
+    addToWeek(pp, start, s.hours || 0);
     pp.sessionCount += 1;
+  }
+  for (const b of extraBlocks) {
+    addToWeek(ensure(b.date), b.date, b.hours);
   }
   return [...map.values()].sort((a, b) => a.start.getTime() - b.start.getTime());
 }

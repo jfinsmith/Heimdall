@@ -19,7 +19,7 @@ import { db } from '../../lib/firebase';
 import { useCollection, useDoc, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import { addDays, hoursBetween, tsFromDate, fmtDate } from '../../lib/time';
-import { holidaysForYear, holidayBackgroundEvents } from '../../lib/holidays';
+import { holidaysForYear, holidayBackgroundEvents, observedHolidayDatesInRange, HOLIDAY_PAY_HOURS } from '../../lib/holidays';
 import type { AcademyDoc, CurriculumDoc, SessionDoc, UserDoc } from '../../types';
 import { Badge, Button, Field, Input, PageHeader, Select } from '../../components/ui';
 import { Modal } from '../../components/Modal';
@@ -45,6 +45,7 @@ export function AcademyBuilderPage() {
 
   const settings = useGlobalSettings();
   const disabledHolidays = useMemo(() => new Set(settings?.disabledHolidays ?? []), [settings]);
+  const observedHolidays = useMemo(() => new Set(settings?.observedHolidays ?? []), [settings]);
   const payTarget = settings?.payPeriodTargetHours ?? DEFAULT_PAY_PERIOD_TARGET;
   const calRef = useRef<FullCalendar>(null);
 
@@ -57,21 +58,31 @@ export function AcademyBuilderPage() {
   const [detailSession, setDetailSession] = useState<WithId<SessionDoc> | null>(null);
 
   const liveSessions = useMemo(() => sessions.filter((s) => s.status !== 'cancelled'), [sessions]);
-  // Pay periods: ALL paid time (FDLE + agency), grouped bi-weekly, vs the 85-hr target.
-  const payPeriods = useMemo(() => groupPayPeriods(liveSessions), [liveSessions]);
+
+  // PSO-observed holidays within the academy add 8.5 hrs of holiday pay each.
+  const holidayPayBlocks = useMemo(() => {
+    if (!academy || observedHolidays.size === 0) return [];
+    return observedHolidayDatesInRange(academy.startDate.toDate(), academy.endDate.toDate(), observedHolidays).map(
+      (date) => ({ date, hours: HOLIDAY_PAY_HOURS })
+    );
+  }, [academy, observedHolidays]);
+
+  // Pay periods: ALL paid time (FDLE + agency + observed-holiday pay), grouped bi-weekly vs the target.
+  const payPeriods = useMemo(() => groupPayPeriods(liveSessions, holidayPayBlocks), [liveSessions, holidayPayBlocks]);
 
   // Live hours readout in the calendar toolbar for whatever range is visible.
   const [viewRange, setViewRange] = useState<{ start: Date; end: Date; type: string } | null>(null);
   const hoursInfo = useMemo(() => {
     if (!viewRange) return null;
-    const total = q(
-      liveSessions
-        .filter((s) => {
-          const t = s.start.toMillis();
-          return t >= viewRange.start.getTime() && t < viewRange.end.getTime();
-        })
-        .reduce((a, s) => a + (s.hours || 0), 0)
-    );
+    const sessionHours = liveSessions
+      .filter((s) => {
+        const t = s.start.toMillis();
+        return t >= viewRange.start.getTime() && t < viewRange.end.getTime();
+      })
+      .reduce((a, s) => a + (s.hours || 0), 0);
+    // Add observed-holiday pay for any observed holidays in the visible range.
+    const holidayHours = observedHolidayDatesInRange(viewRange.start, viewRange.end, observedHolidays).length * HOLIDAY_PAY_HOURS;
+    const total = q(sessionHours + holidayHours);
     if (viewRange.type === 'twoWeek') {
       const onTarget = Math.abs(total - payTarget) < 0.01;
       return { text: `Pay period: ${total} / ${payTarget} hrs`, color: onTarget ? '#15803d' : '#b91c1c', bold: true };
@@ -80,7 +91,7 @@ export function AcademyBuilderPage() {
       return { text: `Week: ${total} hrs`, color: '#16203a', bold: true };
     }
     return { text: `${total} hrs in view`, color: '#64748b', bold: false };
-  }, [viewRange, liveSessions, payTarget]);
+  }, [viewRange, liveSessions, payTarget, observedHolidays]);
 
   // Paint the custom toolbar label imperatively (reliable across FC re-renders).
   React.useEffect(() => {
@@ -123,8 +134,8 @@ export function AcademyBuilderPage() {
   const scheduledHours = useMemo(() => fdleSessions.reduce((sum, s) => sum + (s.hours || 0), 0), [fdleSessions]);
 
   const events = useMemo(
-    () => [...sessions.map((s) => sessionToEvent(s, { editable: true })), ...holidayBackgroundEvents(disabledHolidays)],
-    [sessions, disabledHolidays]
+    () => [...sessions.map((s) => sessionToEvent(s, { editable: true })), ...holidayBackgroundEvents(disabledHolidays, observedHolidays)],
+    [sessions, disabledHolidays, observedHolidays]
   );
 
   /**
@@ -437,7 +448,7 @@ export function AcademyBuilderPage() {
           firstDay={1}
           weekends={showWeekends}
           views={{ twoWeek: { type: 'timeGrid', duration: { weeks: 2 }, buttonText: '2 weeks' } }}
-          customButtons={{ hoursLabel: { text: hoursInfo?.text ?? '', click: () => {} } }}
+          customButtons={{ hoursLabel: { text: ' ', click: () => {} } }}
           datesSet={(arg) => setViewRange({ start: arg.start, end: arg.end, type: arg.view.type })}
           headerToolbar={{ left: 'prev,next today', center: 'hoursLabel title', right: 'dayGridMonth,timeGridWeek,twoWeek,timeGridDay,listMonth' }}
           events={events}
@@ -573,8 +584,9 @@ function PayPeriodPanel({
             </tbody>
           </table>
           <p className="px-3 pt-2 text-xs text-slate-500">
-            Counts all paid time (courses, PT, formation, PSO). Lunch is excluded. Sworn members owe{' '}
-            {target} hours per pay period; short periods are typically topped up with a Friday PSO assignment.
+            Counts all paid time (courses, PT, formation, PSO) plus {HOLIDAY_PAY_HOURS} hrs for each
+            PSO-observed holiday. Lunch is excluded. Sworn members owe {target} hours per pay period; short
+            periods are typically topped up with a Friday PSO assignment.
           </p>
         </div>
       )}

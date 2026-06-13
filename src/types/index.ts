@@ -109,6 +109,8 @@ export interface GlobalSettings {
   weeklyDigestEnabled: boolean;
   /** Holiday keys turned OFF for this org's calendars (e.g. Juneteenth). */
   disabledHolidays?: string[];
+  /** Holiday keys the agency observes as paid (grant holiday-pay hours). */
+  observedHolidays?: string[];
   /** Required hours per bi-weekly pay period before overtime (PSO default 85). */
   payPeriodTargetHours?: number;
   /** Master kill-switch for ALL outbound email (in-app notifications still fire). */

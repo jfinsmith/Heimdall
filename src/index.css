@@ -56,6 +56,10 @@ body {
   padding: 1px 4px;
   white-space: normal;
 }
+.hd-holiday-pay {
+  color: #166534;
+  font-weight: 700;
+}
 /* Don't let the holiday chip collapse — give it room for the name */
 .fc-daygrid-event.hd-holiday {
   white-space: normal;

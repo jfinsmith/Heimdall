@@ -63,17 +63,40 @@ export function holidaysForYear(year: number, disabled: Set<string> = new Set())
   return out;
 }
 
+/** Hours of holiday pay a PSO-observed holiday grants toward the pay period. */
+export const HOLIDAY_PAY_HOURS = 8.5;
+
+/** Observed-holiday dates within [start, end) (inclusive of start day). */
+export function observedHolidayDatesInRange(start: Date, end: Date, observed: Set<string>): Date[] {
+  const out: Date[] = [];
+  if (observed.size === 0) return out;
+  for (let y = start.getFullYear(); y <= end.getFullYear(); y++) {
+    for (const def of HOLIDAY_DEFS) {
+      if (!observed.has(def.key)) continue;
+      for (const date of def.dates(y)) {
+        if (date >= start && date < end) out.push(date);
+      }
+    }
+  }
+  return out;
+}
+
 /**
  * FullCalendar events: a red background wash per holiday day plus a bold-black
  * label chip (FC renders an empty event when eventContent returns undefined,
  * so the label is drawn explicitly in renderEventContent).
  */
-export function holidayBackgroundEvents(disabled: Set<string> = new Set(), yearsAhead = 2): EventInput[] {
+export function holidayBackgroundEvents(
+  disabled: Set<string> = new Set(),
+  observed: Set<string> = new Set(),
+  yearsAhead = 2
+): EventInput[] {
   const now = new Date().getFullYear();
   const events: EventInput[] = [];
   for (let y = now - 1; y <= now + yearsAhead; y++) {
     for (const h of holidaysForYear(y, disabled)) {
       const key = h.date.toISOString().slice(0, 10);
+      const isObserved = observed.has(h.key);
       events.push({
         id: `holiday-bg-${key}`,
         start: h.date,
@@ -87,12 +110,13 @@ export function holidayBackgroundEvents(disabled: Set<string> = new Set(), years
         title: h.name,
         start: h.date,
         allDay: true,
-        backgroundColor: '#fecaca',
-        borderColor: '#fca5a5',
+        // Observed (paid) holidays get a green chip; others stay red.
+        backgroundColor: isObserved ? '#bbf7d0' : '#fecaca',
+        borderColor: isObserved ? '#86efac' : '#fca5a5',
         textColor: '#000000',
         editable: false,
         classNames: ['hd-holiday'],
-        extendedProps: { holiday: true },
+        extendedProps: { holiday: true, observedPay: isObserved ? HOLIDAY_PAY_HOURS : 0 },
       });
     }
   }

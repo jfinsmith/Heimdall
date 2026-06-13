@@ -29,6 +29,7 @@ export function CalendarPage() {
   const { profile, role } = useAuth();
   const settings = useGlobalSettings();
   const disabledHolidays = useMemo(() => new Set(settings?.disabledHolidays ?? []), [settings]);
+  const observedHolidays = useMemo(() => new Set(settings?.observedHolidays ?? []), [settings]);
   const staff = can.viewStaffing(role);
   const canEdit = can.buildSchedules(role);
 
@@ -101,9 +102,9 @@ export function CalendarPage() {
           academyColor: academyColorFor(academy),
         });
       }),
-      ...holidayBackgroundEvents(disabledHolidays),
+      ...holidayBackgroundEvents(disabledHolidays, observedHolidays),
     ],
-    [filtered, academyById, disabledHolidays]
+    [filtered, academyById, disabledHolidays, observedHolidays]
   );
 
   // Color legend for whichever academies are currently shown.

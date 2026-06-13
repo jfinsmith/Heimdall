@@ -67,7 +67,13 @@ export function renderEventContent(arg: EventContentArg): React.ReactNode | unde
   // to default — which previously collapsed the label to an invisible line.
   if (arg.event.extendedProps.holiday) {
     if (arg.event.display === 'background') return undefined; // the red wash, no text
-    return <div className="hd-holiday-label">{arg.event.title}</div>;
+    const pay = arg.event.extendedProps.observedPay as number | undefined;
+    return (
+      <div className="hd-holiday-label">
+        {arg.event.title}
+        {pay ? <span className="hd-holiday-pay"> · +{pay} hr pay</span> : null}
+      </div>
+    );
   }
 
   const s = arg.event.extendedProps.session as WithId<SessionDoc> | undefined;
