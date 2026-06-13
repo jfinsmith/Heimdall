@@ -158,7 +158,12 @@ export function StaffingBoardPage() {
                     className="w-full rounded-md border border-watch-100 px-3 py-2 text-left text-sm hover:border-bifrost-300"
                     onClick={() => setDetailId(s.id)}
                   >
-                    <div className="font-medium text-watch-900">{s.title || s.courseName}</div>
+                    <div className="font-medium text-watch-900">
+                      <span className="mr-1.5 rounded bg-watch-100 px-1 py-0.5 text-[10px] font-bold text-watch-700">
+                        {academies.find((a) => a.id === s.academyId)?.shortName || '—'}
+                      </span>
+                      {s.title || s.courseName}
+                    </div>
                     <div className="text-xs text-slate-500">{fmtRange(s.start, s.end)}</div>
                     {col !== 'fully_staffed' && col !== 'draft' && (
                       <div className="mt-1 text-xs text-amber-700">

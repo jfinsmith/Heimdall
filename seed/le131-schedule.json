@@ -1,0 +1,2630 @@
+[
+ {
+  "date": "2026-05-11",
+  "start": "0745",
+  "end": "0800",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0",
+  "room": ""
+ },
+ {
+  "date": "2026-05-11",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Drill",
+  "block": "0",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-05-11",
+  "start": "1300",
+  "end": "1500",
+  "hours": 2.0,
+  "subject": "CJS Academy Log In Setup, Expectations, Vision Board",
+  "block": "NA",
+  "room": ""
+ },
+ {
+  "date": "2026-05-11",
+  "start": "1500",
+  "end": "1600",
+  "hours": 1.0,
+  "subject": "Physical Fitness Training / Equipment Issued",
+  "block": "1/60",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-05-11",
+  "start": "1600",
+  "end": "1700",
+  "hours": 1.0,
+  "subject": "PSO Sponsored Cadets Orientation",
+  "block": "NA",
+  "room": ""
+ },
+ {
+  "date": "2026-05-12",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-05-12",
+  "start": "0700",
+  "end": "0900",
+  "hours": 2.0,
+  "subject": "Physical Fitness Assessment",
+  "block": "3/60",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-05-12",
+  "start": "0900",
+  "end": "1200",
+  "hours": 3.0,
+  "subject": "Introduction to Law Enforcement",
+  "block": "3/12",
+  "room": "E-120"
+ },
+ {
+  "date": "2026-05-12",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Introduction to Law Enforcement",
+  "block": "8/12",
+  "room": "E-120"
+ },
+ {
+  "date": "2026-05-13",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-05-13",
+  "start": "0700",
+  "end": "1000",
+  "hours": 3.0,
+  "subject": "Physical Fitness Training - Leadership Reaction",
+  "block": "6/60",
+  "room": ""
+ },
+ {
+  "date": "2026-05-13",
+  "start": "1000",
+  "end": "1200",
+  "hours": 2.0,
+  "subject": "Physical Fitness Training (Wellness Section)",
+  "block": "8/60",
+  "room": "E-120"
+ },
+ {
+  "date": "2026-05-13",
+  "start": "1300",
+  "end": "1700",
+  "hours": 4.0,
+  "subject": "Introduction to Law Enforcement",
+  "block": "12/12",
+  "room": "E-120"
+ },
+ {
+  "date": "2026-05-14",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0",
+  "room": ""
+ },
+ {
+  "date": "2026-05-14",
+  "start": "0700",
+  "end": "0800",
+  "hours": 1.0,
+  "subject": "Study",
+  "block": "0",
+  "room": ""
+ },
+ {
+  "date": "2026-05-14",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Physical Fitness Training",
+  "block": "12/60",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-05-14",
+  "start": "1300",
+  "end": "1700",
+  "hours": 4.0,
+  "subject": "Academy Resiliency Training",
+  "block": "",
+  "room": ""
+ },
+ {
+  "date": "2026-05-15",
+  "start": "0800",
+  "end": "1045",
+  "hours": 2.75,
+  "subject": "*** PSO ASSIGNMENT ***",
+  "block": "",
+  "room": ""
+ },
+ {
+  "date": "2026-05-16",
+  "start": "0630",
+  "end": "1130",
+  "hours": 5.0,
+  "subject": "SHOTGUN SHOOTOUT",
+  "block": "",
+  "room": ""
+ },
+ {
+  "date": "2026-05-18",
+  "start": "0700",
+  "end": "0800",
+  "hours": 1.0,
+  "subject": "TEST - Introduction to LE",
+  "block": "12/12",
+  "room": ""
+ },
+ {
+  "date": "2026-05-18",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Defensive Tactics Classroom",
+  "block": "4/80",
+  "room": ""
+ },
+ {
+  "date": "2026-05-18",
+  "start": "1300",
+  "end": "1700",
+  "hours": 4.0,
+  "subject": "Defensive Tactics",
+  "block": "8/80",
+  "room": "B-100 Gym"
+ },
+ {
+  "date": "2026-05-19",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Defensive Tactics",
+  "block": "12/80",
+  "room": "B-100 Gym"
+ },
+ {
+  "date": "2026-05-19",
+  "start": "1300",
+  "end": "1700",
+  "hours": 4.0,
+  "subject": "Defensive Tactics",
+  "block": "16/80",
+  "room": "B-100 Gym"
+ },
+ {
+  "date": "2026-05-20",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Defensive Tactics",
+  "block": "20/80",
+  "room": "B-100 Gym"
+ },
+ {
+  "date": "2026-05-20",
+  "start": "1300",
+  "end": "1700",
+  "hours": 4.0,
+  "subject": "Defensive Tactics",
+  "block": "24/80",
+  "room": "B-100 Gym"
+ },
+ {
+  "date": "2026-05-21",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Defensive Tactics",
+  "block": "28/80",
+  "room": "B-100 Gym"
+ },
+ {
+  "date": "2026-05-21",
+  "start": "1300",
+  "end": "1700",
+  "hours": 4.0,
+  "subject": "Defensive Tactics",
+  "block": "32/80",
+  "room": "B-100 Gym"
+ },
+ {
+  "date": "2026-05-22",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Defensive Tactics",
+  "block": "36/80",
+  "room": "B-100 Gym"
+ },
+ {
+  "date": "2026-05-22",
+  "start": "1300",
+  "end": "1615",
+  "hours": 3.25,
+  "subject": "Defensive Tactics",
+  "block": "40/80",
+  "room": "B-100 Gym"
+ },
+ {
+  "date": "2026-05-26",
+  "start": "0700",
+  "end": "1200",
+  "hours": 5.0,
+  "subject": "Defensive Tactics",
+  "block": "45/80",
+  "room": "B-100 Gym"
+ },
+ {
+  "date": "2026-05-26",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Defensive Tactics",
+  "block": "50/80",
+  "room": "B-100 Gym"
+ },
+ {
+  "date": "2026-05-27",
+  "start": "0700",
+  "end": "1200",
+  "hours": 5.0,
+  "subject": "Defensive Tactics",
+  "block": "55/80",
+  "room": "B-100 Gym"
+ },
+ {
+  "date": "2026-05-27",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Defensive Tactics",
+  "block": "60/80",
+  "room": "B-100 Gym"
+ },
+ {
+  "date": "2026-05-28",
+  "start": "0700",
+  "end": "1200",
+  "hours": 5.0,
+  "subject": "Defensive Tactics",
+  "block": "65/80",
+  "room": "B-100 Gym"
+ },
+ {
+  "date": "2026-05-28",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Defensive Tactics",
+  "block": "70/80",
+  "room": "B-100 Gym"
+ },
+ {
+  "date": "2026-05-29",
+  "start": "0700",
+  "end": "1200",
+  "hours": 5.0,
+  "subject": "Defensive Tactics",
+  "block": "75/80",
+  "room": "B-100 Gym"
+ },
+ {
+  "date": "2026-05-29",
+  "start": "1200",
+  "end": "1700",
+  "hours": 5.0,
+  "subject": "Defensive Tactics OC",
+  "block": "80/80",
+  "room": "B-100 Gym"
+ },
+ {
+  "date": "2026-06-01",
+  "start": "0700",
+  "end": "0800",
+  "hours": 1.0,
+  "subject": "TEST - Defensive Tactics",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-06-01",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Firearms Classroom",
+  "block": "4/80",
+  "room": ""
+ },
+ {
+  "date": "2026-06-01",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Firearms",
+  "block": "9/80",
+  "room": "Range"
+ },
+ {
+  "date": "2026-06-02",
+  "start": "0700",
+  "end": "1200",
+  "hours": 5.0,
+  "subject": "Firearms",
+  "block": "14/80",
+  "room": "Range"
+ },
+ {
+  "date": "2026-06-02",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Firearms",
+  "block": "19/80",
+  "room": "Range"
+ },
+ {
+  "date": "2026-06-03",
+  "start": "0700",
+  "end": "1200",
+  "hours": 5.0,
+  "subject": "Firearms",
+  "block": "24/80",
+  "room": "Range"
+ },
+ {
+  "date": "2026-06-03",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Firearms",
+  "block": "29/80",
+  "room": "Range"
+ },
+ {
+  "date": "2026-06-04",
+  "start": "1100",
+  "end": "1600",
+  "hours": 5.0,
+  "subject": "Firearms - NIGHT FIRE",
+  "block": "34/80",
+  "room": "Range"
+ },
+ {
+  "date": "2026-06-04",
+  "start": "1700",
+  "end": "2200",
+  "hours": 5.0,
+  "subject": "Firearms - NIGHT FIRE",
+  "block": "39/80",
+  "room": "Range"
+ },
+ {
+  "date": "2026-06-08",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-06-08",
+  "start": "0700",
+  "end": "1200",
+  "hours": 5.0,
+  "subject": "Firearms",
+  "block": "44/80",
+  "room": "Range"
+ },
+ {
+  "date": "2026-06-08",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Firearms",
+  "block": "49/80",
+  "room": "Range"
+ },
+ {
+  "date": "2026-06-09",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-06-09",
+  "start": "0700",
+  "end": "1200",
+  "hours": 5.0,
+  "subject": "Firearms",
+  "block": "54/80",
+  "room": "Range"
+ },
+ {
+  "date": "2026-06-09",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Firearms",
+  "block": "59/80",
+  "room": "Range"
+ },
+ {
+  "date": "2026-06-10",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-06-10",
+  "start": "0700",
+  "end": "1200",
+  "hours": 5.0,
+  "subject": "Firearms",
+  "block": "64/80",
+  "room": "Range"
+ },
+ {
+  "date": "2026-06-10",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Firearms",
+  "block": "69/80",
+  "room": "Range"
+ },
+ {
+  "date": "2026-06-11",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-06-11",
+  "start": "0700",
+  "end": "1200",
+  "hours": 5.0,
+  "subject": "Firearms",
+  "block": "74/80",
+  "room": "Range"
+ },
+ {
+  "date": "2026-06-11",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Firearms",
+  "block": "79/80",
+  "room": "Range"
+ },
+ {
+  "date": "2026-06-15",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-06-15",
+  "start": "0700",
+  "end": "0800",
+  "hours": 1.0,
+  "subject": "TEST - Firearms (80)",
+  "block": "80/80",
+  "room": ""
+ },
+ {
+  "date": "2026-06-15",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Vehicle Operations Classroom",
+  "block": "4/48",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-06-15",
+  "start": "1300",
+  "end": "1700",
+  "hours": 4.0,
+  "subject": "Vehicle Operations",
+  "block": "8/48",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-06-16",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-06-16",
+  "start": "0700",
+  "end": "1200",
+  "hours": 5.0,
+  "subject": "Vehicle Operations",
+  "block": "13/48",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-06-16",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Vehicle Operations",
+  "block": "18/48",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-06-17",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-06-17",
+  "start": "0700",
+  "end": "1200",
+  "hours": 5.0,
+  "subject": "Vehicle Operations",
+  "block": "23/48",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-06-17",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Vehicle Operations",
+  "block": "28/48",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-06-18",
+  "start": "1045",
+  "end": "1100",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-06-18",
+  "start": "1100",
+  "end": "1600",
+  "hours": 5.0,
+  "subject": "Vehicle Operations NIGHT",
+  "block": "33/40",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-06-18",
+  "start": "1700",
+  "end": "2200",
+  "hours": 5.0,
+  "subject": "Vehicle Operations NIGHT",
+  "block": "38/48",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-06-19",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Vehicle Operations Remedial Work",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-06-22",
+  "start": "1045",
+  "end": "1100",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-06-22",
+  "start": "1100",
+  "end": "1600",
+  "hours": 5.0,
+  "subject": "Vehicle Operations NIGHT",
+  "block": "43/48",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-06-22",
+  "start": "1700",
+  "end": "2200",
+  "hours": 5.0,
+  "subject": "Vehicle Operations NIGHT",
+  "block": "48/48",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-06-23",
+  "start": "0745",
+  "end": "0800",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-06-23",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Physical Fitness Training",
+  "block": "16/60",
+  "room": ""
+ },
+ {
+  "date": "2026-06-23",
+  "start": "1300",
+  "end": "1700",
+  "hours": 4.0,
+  "subject": "Role Players - Single Officer Response",
+  "block": "",
+  "room": ""
+ },
+ {
+  "date": "2026-06-24",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-06-24",
+  "start": "0700",
+  "end": "0800",
+  "hours": 1.0,
+  "subject": "TEST Vehicle Operations",
+  "block": "0.0",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-06-24",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Dart-Firing Stun Gun",
+  "block": "4/4",
+  "room": "E-120"
+ },
+ {
+  "date": "2026-06-24",
+  "start": "1300",
+  "end": "1600",
+  "hours": 3.0,
+  "subject": "PSO STUDY",
+  "block": "0",
+  "room": ""
+ },
+ {
+  "date": "2026-06-25",
+  "start": "0700",
+  "end": "1545",
+  "hours": 8.75,
+  "subject": "K-9 Rock Day",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-06-29",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-06-29",
+  "start": "0700",
+  "end": "0800",
+  "hours": 1.0,
+  "subject": "TEST - Dart-Firing Stun Gun",
+  "block": "0",
+  "room": ""
+ },
+ {
+  "date": "2026-06-29",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "First Aid",
+  "block": "4/40",
+  "room": "E-120"
+ },
+ {
+  "date": "2026-06-29",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "FIrst Aid",
+  "block": "9/40",
+  "room": "E-120"
+ },
+ {
+  "date": "2026-06-30",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-06-30",
+  "start": "0700",
+  "end": "1200",
+  "hours": 5.0,
+  "subject": "First Aid",
+  "block": "14/40",
+  "room": "E-120"
+ },
+ {
+  "date": "2026-06-30",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "First Aid",
+  "block": "19/40",
+  "room": "E-120"
+ },
+ {
+  "date": "2026-07-01",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-07-01",
+  "start": "0700",
+  "end": "1200",
+  "hours": 5.0,
+  "subject": "First Aid",
+  "block": "24/40",
+  "room": "E-120"
+ },
+ {
+  "date": "2026-07-01",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "First Aid",
+  "block": "29/40",
+  "room": "E-120"
+ },
+ {
+  "date": "2026-07-02",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-07-02",
+  "start": "0700",
+  "end": "1200",
+  "hours": 5.0,
+  "subject": "First Aid",
+  "block": "34/40",
+  "room": "E-120"
+ },
+ {
+  "date": "2026-07-02",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "First Aid",
+  "block": "39/40",
+  "room": "E-120"
+ },
+ {
+  "date": "2026-07-06",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-07-06",
+  "start": "0700",
+  "end": "0800",
+  "hours": 1.0,
+  "subject": "TEST - First Aid",
+  "block": "40/40",
+  "room": "A-230"
+ },
+ {
+  "date": "2026-07-06",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Communication",
+  "block": "4/24",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-07-06",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Communication",
+  "block": "9/24",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-07-07",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-07-07",
+  "start": "0700",
+  "end": "0900",
+  "hours": 2.0,
+  "subject": "Physical Fitness Training",
+  "block": "18/60",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-07-07",
+  "start": "0900",
+  "end": "1200",
+  "hours": 3.0,
+  "subject": "Communication",
+  "block": "12/24",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-07-07",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Communication",
+  "block": "17/24",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-07-08",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-07-08",
+  "start": "0700",
+  "end": "1000",
+  "hours": 3.0,
+  "subject": "Physical Fitness Training",
+  "block": "21/60",
+  "room": "B-100 Gym"
+ },
+ {
+  "date": "2026-07-08",
+  "start": "1000",
+  "end": "1200",
+  "hours": 2.0,
+  "subject": "Communication",
+  "block": "19/24",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-07-08",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Communication",
+  "block": "24/24",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-07-09",
+  "start": "0800",
+  "end": "1700",
+  "hours": 9.0,
+  "subject": "*** PSO ASSIGNMENT ***",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-07-13",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-07-13",
+  "start": "0700",
+  "end": "0800",
+  "hours": 1.0,
+  "subject": "TEST- Communication",
+  "block": "0",
+  "room": ""
+ },
+ {
+  "date": "2026-07-13",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Serving Your Community",
+  "block": "4/34",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-07-13",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Serving Your Community",
+  "block": "9/34",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-07-14",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-07-14",
+  "start": "0700",
+  "end": "0900",
+  "hours": 2.0,
+  "subject": "Physical Fitness Training",
+  "block": "23/60",
+  "room": ""
+ },
+ {
+  "date": "2026-07-14",
+  "start": "0900",
+  "end": "1200",
+  "hours": 3.0,
+  "subject": "Serving Your Community",
+  "block": "12/34",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-07-14",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Serving Your Community",
+  "block": "17/34",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-07-15",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-07-15",
+  "start": "0700",
+  "end": "0800",
+  "hours": 1.0,
+  "subject": "Physical Fitness Training",
+  "block": "24/60",
+  "room": "B-100 Gym"
+ },
+ {
+  "date": "2026-07-15",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Serving Your Community",
+  "block": "21/34",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-07-15",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Serving Your Community",
+  "block": "26/34",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-07-16",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-07-16",
+  "start": "0700",
+  "end": "1000",
+  "hours": 3.0,
+  "subject": "Physical Fitness Training",
+  "block": "27/60",
+  "room": "B-100 Gym"
+ },
+ {
+  "date": "2026-07-16",
+  "start": "1000",
+  "end": "1200",
+  "hours": 2.0,
+  "subject": "Serving Your Community (Gangs & Extremist Groups)",
+  "block": "28/34",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-07-16",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Serving Your Community Scenarios",
+  "block": "33/34",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-07-17",
+  "start": "0800",
+  "end": "1315",
+  "hours": 4.25,
+  "subject": "*** PSO ASSIGNMENT ***",
+  "block": "",
+  "room": ""
+ },
+ {
+  "date": "2026-07-20",
+  "start": "0700",
+  "end": "0800",
+  "hours": 1.0,
+  "subject": "TEST- Serving Your Community",
+  "block": "34/34",
+  "room": "A-230"
+ },
+ {
+  "date": "2026-07-20",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Legal",
+  "block": "4/64",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-07-20",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Legal",
+  "block": "9/64",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-07-21",
+  "start": "0700",
+  "end": "0800",
+  "hours": 1.0,
+  "subject": "Physical Fitness Training",
+  "block": "28/60",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-07-21",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Legal",
+  "block": "13/64",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-07-21",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Legal",
+  "block": "18/64",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-07-22",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Legal",
+  "block": "22/64",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-07-22",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Legal",
+  "block": "27/64",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-07-23",
+  "start": "0700",
+  "end": "0800",
+  "hours": 1.0,
+  "subject": "Physical Fitness Training",
+  "block": "29/60",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-07-23",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Legal",
+  "block": "31/64",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-07-23",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Legal",
+  "block": "36/64",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-07-24",
+  "start": "0700",
+  "end": "0800",
+  "hours": 1.0,
+  "subject": "Physical Fitness Training",
+  "block": "30/60",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-07-24",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Legal",
+  "block": "40/64",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-07-24",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Legal",
+  "block": "45/64",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-07-27",
+  "start": "0700",
+  "end": "0800",
+  "hours": 1.0,
+  "subject": "Physical Fitness Training",
+  "block": "31/60",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-07-27",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Legal",
+  "block": "49/64",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-07-27",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Legal",
+  "block": "54/64",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-07-28",
+  "start": "0700",
+  "end": "0800",
+  "hours": 1.0,
+  "subject": "Physical Fitness Training",
+  "block": "32/60",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-07-28",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Legal",
+  "block": "58/64",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-07-28",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Legal",
+  "block": "63/64",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-07-29",
+  "start": "0700",
+  "end": "0800",
+  "hours": 1.0,
+  "subject": "TEST - Legal",
+  "block": "64/64",
+  "room": "A-230"
+ },
+ {
+  "date": "2026-07-29",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Crimes Involving Property & Society",
+  "block": "4/12",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-07-29",
+  "start": "1200",
+  "end": "1900",
+  "hours": 7.0,
+  "subject": "Crimes Involving Property & Society",
+  "block": "11/12",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-07-30",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Crimes Against Persons",
+  "block": "4/48",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-07-30",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Crimes Against Persons",
+  "block": "9/48",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-08-03",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "",
+  "room": ""
+ },
+ {
+  "date": "2026-08-03",
+  "start": "0700",
+  "end": "0800",
+  "hours": 1.0,
+  "subject": "TEST- Crimes Involving Property & Society",
+  "block": "12/12",
+  "room": ""
+ },
+ {
+  "date": "2026-08-03",
+  "start": "0800",
+  "end": "1000",
+  "hours": 2.0,
+  "subject": "Physical Fitness Training",
+  "block": "34/60",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-08-03",
+  "start": "1000",
+  "end": "1200",
+  "hours": 2.0,
+  "subject": "Crimes Against Persons",
+  "block": "11/48",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-08-03",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Crimes Against Persons",
+  "block": "16/48",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-08-04",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "",
+  "room": ""
+ },
+ {
+  "date": "2026-08-04",
+  "start": "0700",
+  "end": "0900",
+  "hours": 2.0,
+  "subject": "Physical Fitness Training",
+  "block": "36/60",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-08-04",
+  "start": "0900",
+  "end": "1200",
+  "hours": 3.0,
+  "subject": "Crimes Against Persons",
+  "block": "19/48",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-08-04",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Crimes Against Persons",
+  "block": "24/48",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-08-05",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "",
+  "room": ""
+ },
+ {
+  "date": "2026-08-05",
+  "start": "0700",
+  "end": "0900",
+  "hours": 2.0,
+  "subject": "Physical Fitness Training",
+  "block": "38/60",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-08-05",
+  "start": "0900",
+  "end": "1200",
+  "hours": 3.0,
+  "subject": "Crimes Against Persons",
+  "block": "27/48",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-08-05",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Crimes Against Persons",
+  "block": "32/48",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-08-06",
+  "start": "0745",
+  "end": "0800",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "",
+  "room": ""
+ },
+ {
+  "date": "2026-08-06",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Crimes Against Persons Scenarios",
+  "block": "36/48",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-08-06",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Crimes Against Persons Scenarios",
+  "block": "41/48",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-08-07",
+  "start": "0900",
+  "end": "1330",
+  "hours": 3.5,
+  "subject": "*** PSO ASSIGNMENT ***",
+  "block": "",
+  "room": ""
+ },
+ {
+  "date": "2026-08-10",
+  "start": "0745",
+  "end": "0800",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "",
+  "room": ""
+ },
+ {
+  "date": "2026-08-10",
+  "start": "0800",
+  "end": "0900",
+  "hours": 1.0,
+  "subject": "Physical Fitness Training",
+  "block": "39/60",
+  "room": ""
+ },
+ {
+  "date": "2026-08-10",
+  "start": "0900",
+  "end": "1200",
+  "hours": 3.0,
+  "subject": "Crimes Against Persons Scenarios",
+  "block": "44/48",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-08-10",
+  "start": "1300",
+  "end": "1700",
+  "hours": 4.0,
+  "subject": "Crimes Against Persons Scenarios",
+  "block": "48/48",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-08-11",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "",
+  "room": ""
+ },
+ {
+  "date": "2026-08-11",
+  "start": "0700",
+  "end": "0800",
+  "hours": 1.0,
+  "subject": "TEST- Crimes Against Persons",
+  "block": "0",
+  "room": "A-233"
+ },
+ {
+  "date": "2026-08-11",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Crime Scene Follow-Up Investigations",
+  "block": "4/34",
+  "room": "E-120"
+ },
+ {
+  "date": "2026-08-11",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Crime Scene Follow-Up Investigations",
+  "block": "9/34",
+  "room": "E-120"
+ },
+ {
+  "date": "2026-08-12",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-08-12",
+  "start": "0700",
+  "end": "0800",
+  "hours": 1.0,
+  "subject": "Physical Fitness Training",
+  "block": "40/60",
+  "room": ""
+ },
+ {
+  "date": "2026-08-12",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Crime Scene Follow-Up Investigations",
+  "block": "13/34",
+  "room": "E-120"
+ },
+ {
+  "date": "2026-08-12",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Crime Scene Follow-Up Investigations",
+  "block": "18/34",
+  "room": "E-120"
+ },
+ {
+  "date": "2026-08-13",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-08-13",
+  "start": "0700",
+  "end": "0800",
+  "hours": 1.0,
+  "subject": "Physical Fitness Training",
+  "block": "41/60",
+  "room": "B-100 Gym"
+ },
+ {
+  "date": "2026-08-13",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Crime Scene Follow-Up Investigations",
+  "block": "22/34",
+  "room": "E-120"
+ },
+ {
+  "date": "2026-08-13",
+  "start": "1300",
+  "end": "1700",
+  "hours": 4.0,
+  "subject": "Crime Scene Follow-Up Investigations",
+  "block": "26/34",
+  "room": "E-120"
+ },
+ {
+  "date": "2026-08-14",
+  "start": "0900",
+  "end": "1230",
+  "hours": 3.5,
+  "subject": "*** PSO ASSIGNMENT ***",
+  "block": "",
+  "room": ""
+ },
+ {
+  "date": "2026-08-17",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-08-17",
+  "start": "0700",
+  "end": "0800",
+  "hours": 1.0,
+  "subject": "Physical Fitness Training",
+  "block": "42/60",
+  "room": "B-100 Gym"
+ },
+ {
+  "date": "2026-08-17",
+  "start": "0800",
+  "end": "1600",
+  "hours": 8.0,
+  "subject": "Crime Scene Follow-Up Investigations Crime Scene (Working lunch)",
+  "block": "34/34",
+  "room": "E-120"
+ },
+ {
+  "date": "2026-08-18",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-08-18",
+  "start": "0700",
+  "end": "0800",
+  "hours": 1.0,
+  "subject": "TEST- Crime Scene Follow-Up Investigations",
+  "block": "0",
+  "room": "E-117"
+ },
+ {
+  "date": "2026-08-18",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Interviewing and Report Writing",
+  "block": "4/56",
+  "room": "E-117"
+ },
+ {
+  "date": "2026-08-18",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Interviewing and Report Writing",
+  "block": "9/56",
+  "room": "E-117"
+ },
+ {
+  "date": "2026-08-19",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-08-19",
+  "start": "0700",
+  "end": "1200",
+  "hours": 5.0,
+  "subject": "Interviewing and Report Writing",
+  "block": "14/56",
+  "room": "E-117"
+ },
+ {
+  "date": "2026-08-19",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Interviewing and Report Writing",
+  "block": "19/56",
+  "room": "E-117"
+ },
+ {
+  "date": "2026-08-20",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-08-20",
+  "start": "0700",
+  "end": "1200",
+  "hours": 5.0,
+  "subject": "Interviewing and Report Writing",
+  "block": "24/56",
+  "room": "E-117"
+ },
+ {
+  "date": "2026-08-20",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Interviewing and Report Writing",
+  "block": "29/56",
+  "room": "E-117"
+ },
+ {
+  "date": "2026-08-21",
+  "start": "0900",
+  "end": "1400",
+  "hours": 5.0,
+  "subject": "*** PSO ASSIGNMENT ***",
+  "block": "",
+  "room": ""
+ },
+ {
+  "date": "2026-08-24",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-08-24",
+  "start": "0700",
+  "end": "0800",
+  "hours": 1.0,
+  "subject": "Physical Fitness Training",
+  "block": "43/60",
+  "room": "B-100 Gym"
+ },
+ {
+  "date": "2026-08-24",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Interviewing and Report Writing",
+  "block": "33/56",
+  "room": "E-117"
+ },
+ {
+  "date": "2026-08-24",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Interviewing and Report Writing",
+  "block": "38/56",
+  "room": "E-117"
+ },
+ {
+  "date": "2026-08-25",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-08-25",
+  "start": "0700",
+  "end": "0800",
+  "hours": 1.0,
+  "subject": "Physical Fitness Training",
+  "block": "44/60",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-08-25",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Interviewing and Report Writing",
+  "block": "42/56",
+  "room": "E-117"
+ },
+ {
+  "date": "2026-08-25",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Interviewing and Report Writing",
+  "block": "47/56",
+  "room": "E-117"
+ },
+ {
+  "date": "2026-08-26",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-08-26",
+  "start": "0700",
+  "end": "0800",
+  "hours": 1.0,
+  "subject": "Physical Fitness Training",
+  "block": "45/60",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-08-26",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Interviewing and Report Writing",
+  "block": "51/56",
+  "room": "E-117"
+ },
+ {
+  "date": "2026-08-26",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Interviewing and Report Writing",
+  "block": "56/56",
+  "room": "E-117"
+ },
+ {
+  "date": "2026-08-27",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-08-27",
+  "start": "0700",
+  "end": "0800",
+  "hours": 1.0,
+  "subject": "TEST-Interviewing & Report Writing",
+  "block": "0",
+  "room": "E-117"
+ },
+ {
+  "date": "2026-08-27",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "PSO ASSIGNMENT",
+  "block": "",
+  "room": ""
+ },
+ {
+  "date": "2026-08-27",
+  "start": "1300",
+  "end": "1700",
+  "hours": 4.0,
+  "subject": "PSO ASSIGNMENT",
+  "block": "",
+  "room": ""
+ },
+ {
+  "date": "2026-08-31",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Fundamentals of Patrol",
+  "block": "4/40",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-08-31",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Fundamentals of Patrol",
+  "block": "9/40",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-09-01",
+  "start": "0700",
+  "end": "1200",
+  "hours": 5.0,
+  "subject": "Fundamentals of Patrol",
+  "block": "14/40",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-09-01",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Fundamentals of Patrol",
+  "block": "19/40",
+  "room": "PSO Jail"
+ },
+ {
+  "date": "2026-09-02",
+  "start": "0700",
+  "end": "1200",
+  "hours": 5.0,
+  "subject": "Fundamentals of Patrol Building Clearing",
+  "block": "24/40",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-09-02",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Fundamentals of Patrol Scenarios",
+  "block": "29/40",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-09-03",
+  "start": "0700",
+  "end": "1200",
+  "hours": 5.0,
+  "subject": "Fundamentals of Patrol Scenarios",
+  "block": "34/40",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-09-03",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Fundamentals of Patrol Scenarios",
+  "block": "39/40",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-09-08",
+  "start": "0700",
+  "end": "0800",
+  "hours": 1.0,
+  "subject": "TEST - Fundamentals of Patrol",
+  "block": "40/40",
+  "room": "A-230"
+ },
+ {
+  "date": "2026-09-08",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Traffic Incidents",
+  "block": "4/12",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-09-08",
+  "start": "1300",
+  "end": "1700",
+  "hours": 4.0,
+  "subject": "Traffic Incidents",
+  "block": "8/12",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-09-09",
+  "start": "0700",
+  "end": "0800",
+  "hours": 1.0,
+  "subject": "Physical Fitness Training",
+  "block": "46/60",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-09-09",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Traffic Incidents",
+  "block": "12/12",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-09-09",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Traffic Stops Classroom",
+  "block": "5/24",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-09-10",
+  "start": "0700",
+  "end": "0800",
+  "hours": 1.0,
+  "subject": "TEST- Traffic Incidents",
+  "block": "0",
+  "room": "E-117"
+ },
+ {
+  "date": "2026-09-10",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Traffic Stops Scenarios",
+  "block": "9/24",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-09-10",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Traffic Stops Scenarios",
+  "block": "14/24",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-09-11",
+  "start": "0700",
+  "end": "0800",
+  "hours": 1.0,
+  "subject": "Physical Fitness Training",
+  "block": "47/60",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-09-11",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Traffic Stops Scenarios",
+  "block": "18/24",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-09-11",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Traffic Stops Scenarios",
+  "block": "23/24",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-09-14",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-09-14",
+  "start": "0700",
+  "end": "0800",
+  "hours": 1.0,
+  "subject": "TEST - Traffic Stops",
+  "block": "24/24",
+  "room": "A-230"
+ },
+ {
+  "date": "2026-09-14",
+  "start": "0800",
+  "end": "1000",
+  "hours": 2.0,
+  "subject": "Physical Fitness Training",
+  "block": "49/60",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-09-14",
+  "start": "1000",
+  "end": "1200",
+  "hours": 2.0,
+  "subject": "DUI Traffic Stops",
+  "block": "2/24",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-09-14",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "DUI Traffic Stops",
+  "block": "7/24",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-09-15",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-09-15",
+  "start": "0700",
+  "end": "0900",
+  "hours": 2.0,
+  "subject": "Physical Fitness Training",
+  "block": "51/60",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-09-15",
+  "start": "0900",
+  "end": "1200",
+  "hours": 3.0,
+  "subject": "DUI Traffic Stops",
+  "block": "2024-10-24 00:00:00",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-09-15",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "DUI Traffic Stops",
+  "block": "15/24",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-09-16",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-09-16",
+  "start": "0700",
+  "end": "0900",
+  "hours": 2.0,
+  "subject": "Physical Fitness Training",
+  "block": "53/60",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-09-16",
+  "start": "0900",
+  "end": "1200",
+  "hours": 3.0,
+  "subject": "DUI Traffic Stops",
+  "block": "18/24",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-09-16",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "DUI Traffic Stops",
+  "block": "23/24",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-09-17",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-09-17",
+  "start": "0700",
+  "end": "0800",
+  "hours": 1.0,
+  "subject": "TEST - DUI Traffic Stops",
+  "block": "24/24",
+  "room": "E-117"
+ },
+ {
+  "date": "2026-09-17",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Traffic Crash Investigations",
+  "block": "2024-04-30 00:00:00",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-09-17",
+  "start": "1300",
+  "end": "1700",
+  "hours": 4.0,
+  "subject": "Traffic Crash Investigations",
+  "block": "2024-08-30 00:00:00",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-09-21",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-09-21",
+  "start": "0700",
+  "end": "0900",
+  "hours": 2.0,
+  "subject": "Physical Fitness Training",
+  "block": "55/60",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-09-21",
+  "start": "0900",
+  "end": "1200",
+  "hours": 3.0,
+  "subject": "Traffic Crash Investigations",
+  "block": "2024-11-30 00:00:00",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-09-21",
+  "start": "1300",
+  "end": "1700",
+  "hours": 4.0,
+  "subject": "Traffic Crash Investigations",
+  "block": "15/30",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-09-22",
+  "start": "0745",
+  "end": "0800",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-09-22",
+  "start": "0800",
+  "end": "1000",
+  "hours": 2.0,
+  "subject": "Physical Fitness Training",
+  "block": "57/60",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-09-22",
+  "start": "1000",
+  "end": "1200",
+  "hours": 2.0,
+  "subject": "Traffic Crash Investigations",
+  "block": "17/30",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-09-22",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Traffic Crash Investigations",
+  "block": "22/30",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-09-23",
+  "start": "0645",
+  "end": "0800",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-09-23",
+  "start": "0700",
+  "end": "0900",
+  "hours": 2.0,
+  "subject": "Physical Fitness Final Assessment",
+  "block": "58/60",
+  "room": "Driving Pad"
+ },
+ {
+  "date": "2026-09-23",
+  "start": "0900",
+  "end": "1200",
+  "hours": 3.0,
+  "subject": "Traffic Crash Investigations",
+  "block": "25/30",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-09-23",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Traffic Crash Investigations",
+  "block": "30/30",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-09-24",
+  "start": "0745",
+  "end": "0800",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-09-24",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Critical Incidents / RUBBLE PIT",
+  "block": "4/44",
+  "room": "Rubble Pit"
+ },
+ {
+  "date": "2026-09-24",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Critical Incidents / RUBBLE PIT",
+  "block": "9/44",
+  "room": "Rubble Pit"
+ },
+ {
+  "date": "2026-09-25",
+  "start": "0900",
+  "end": "1200",
+  "hours": 3.0,
+  "subject": "*** PSO ASSIGNMENT *** - CONOP 101",
+  "block": "",
+  "room": "CREMPSAR 116"
+ },
+ {
+  "date": "2026-09-25",
+  "start": "1200",
+  "end": "1300",
+  "hours": 1.0,
+  "subject": "Working Lunch - BRING LUNCH",
+  "block": "",
+  "room": ""
+ },
+ {
+  "date": "2026-09-25",
+  "start": "1300",
+  "end": "1600",
+  "hours": 3.0,
+  "subject": "*** PSO ASSIGNMENT *** - CONOP 101",
+  "block": "",
+  "room": "CREMPSAR 116"
+ },
+ {
+  "date": "2026-09-28",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-09-28",
+  "start": "0700",
+  "end": "0800",
+  "hours": 1.0,
+  "subject": "TEST Traffic Crash Investigations",
+  "block": "",
+  "room": "A-230"
+ },
+ {
+  "date": "2026-09-28",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Critical Incidents",
+  "block": "13/44",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-09-28",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Critical Incidents",
+  "block": "18/44",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-09-29",
+  "start": "0745",
+  "end": "0800",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-09-29",
+  "start": "0800",
+  "end": "0900",
+  "hours": 1.0,
+  "subject": "Physical Fitness Training",
+  "block": "60/60",
+  "room": "PAD, SIM"
+ },
+ {
+  "date": "2026-09-29",
+  "start": "0900",
+  "end": "1200",
+  "hours": 3.0,
+  "subject": "Critical Incidents",
+  "block": "21/44",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-09-29",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Critical Incidents",
+  "block": "26/44",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-09-30",
+  "start": "0745",
+  "end": "0800",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-09-30",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Critical Incidents",
+  "block": "30/44",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-09-30",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Critical Incidents",
+  "block": "35/44",
+  "room": "E-210"
+ },
+ {
+  "date": "2026-10-01",
+  "start": "0745",
+  "end": "0800",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-10-01",
+  "start": "0800",
+  "end": "1200",
+  "hours": 4.0,
+  "subject": "Critical Incidents - Active Threat",
+  "block": "39/44",
+  "room": "Auditorium"
+ },
+ {
+  "date": "2026-10-01",
+  "start": "1300",
+  "end": "1700",
+  "hours": 5.0,
+  "subject": "Critical Incidents - Active Threat",
+  "block": "44/44",
+  "room": "Auditorium"
+ },
+ {
+  "date": "2026-10-05",
+  "start": "0645",
+  "end": "0700",
+  "hours": 0.25,
+  "subject": "Formation",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-10-05",
+  "start": "0700",
+  "end": "0800",
+  "hours": 1.0,
+  "subject": "TEST - Critical Incidents",
+  "block": "0.0",
+  "room": "E-117"
+ },
+ {
+  "date": "2026-10-05",
+  "start": "0800",
+  "end": "0900",
+  "hours": 1.0,
+  "subject": "Equipment Return",
+  "block": "0.0",
+  "room": ""
+ },
+ {
+  "date": "2026-10-05",
+  "start": "0900",
+  "end": "1200",
+  "hours": 3.0,
+  "subject": "State Exam Study Session",
+  "block": "0.0",
+  "room": "E-117"
+ },
+ {
+  "date": "2026-10-05",
+  "start": "1300",
+  "end": "1700",
+  "hours": 4.0,
+  "subject": "State Exam Study Session",
+  "block": "",
+  "room": ""
+ },
+ {
+  "date": "2026-10-06",
+  "start": "0700",
+  "end": "1200",
+  "hours": 5.0,
+  "subject": "Study",
+  "block": "",
+  "room": ""
+ },
+ {
+  "date": "2026-10-06",
+  "start": "1300",
+  "end": "1800",
+  "hours": 5.0,
+  "subject": "Study",
+  "block": "",
+  "room": ""
+ }
+]

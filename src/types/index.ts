@@ -71,6 +71,8 @@ export interface UserDoc {
    */
   verifiedQualKeys: QualificationKey[];
   notificationPrefs: NotificationPrefs;
+  /** Random token for the personal ICS calendar-feed URL (user-generated). */
+  icsToken?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -84,6 +86,7 @@ export const EMAIL_AUTOMATIONS = [
   { key: 'lead_withdrawal_escalation', label: 'Lead withdrawal escalation', description: 'Emails command when a lead withdraws inside the escalation window.' },
   { key: 'schedule_change', label: 'Schedule change', description: 'Emails signed-up instructors when a session is moved, re-roomed, or cancelled.' },
   { key: 'qualification_approved', label: 'Qualification verified', description: 'Emails the instructor when a coordinator verifies a qualification.' },
+  { key: 'course_published', label: 'Course opened for sign-up', description: 'Emails eligible instructors when coordinators open a course’s sessions for sign-up.' },
   { key: 'account_approved', label: 'Account approved', description: 'Emails a new user when their account is activated.' },
   { key: 'reminder', label: 'Assignment reminders', description: 'Daily sweep: emails instructors ahead of their upcoming assignments.' },
   { key: 'understaffing_alert', label: 'Understaffing alerts', description: 'Daily sweep: emails coordinators + command about unfilled slots inside the alert window.' },
@@ -153,21 +156,50 @@ export interface AcademyDoc {
   /** Short class designation used as the calendar prefix, e.g. "LE 131", "CO 67". */
   shortName: string;
   name: string;            // e.g. "LE 131 (May Start)"
-  discipline: Exclude<Discipline, 'all'>;
+  /** Key into the `curricula` collection (admin-editable disciplines). */
+  discipline: string;
   fdleProgram: string;     // e.g. "FDLE Basic Recruit Training Program — Law Enforcement"
   startDate: Timestamp;
   endDate: Timestamp;
   location: string;
+  /** Default room prefilled on new sessions (individual days can differ). */
+  defaultRoom?: string;
   status: AcademyStatus;
   coordinatorIds: string[];
-  targetTotalHours: number; // configurable, e.g. LE ≈ 770, Corrections ≈ 520
+  targetTotalHours: number; // defaults to the curriculum's course-hour sum; editable
   createdBy: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
 
+// ── Curricula (admin-editable disciplines + minimum hours) ─────────────────
+export interface CurriculumCourse {
+  name: string;
+  minHours: number;
+}
+
+/** `curricula/{key}` — one per discipline; drives academy creation and the
+ *  per-course hours tally in the builder. Admin-editable. */
+export interface CurriculumDoc {
+  key: string;             // doc id, e.g. 'le_brt'
+  label: string;           // "Law Enforcement (Basic Recruit)"
+  fdleProgram: string;
+  courses: CurriculumCourse[];
+  /** Sum of course minHours — denormalized for the create-academy default. */
+  totalHours: number;
+  active: boolean;
+  estimated?: boolean;     // true when hours came from secondary sources
+}
+
 // ── Sessions & staffing slots ──────────────────────────────────────────────
-export type SessionStatus = 'draft' | 'open' | 'fully_staffed' | 'cancelled' | 'completed';
+/**
+ * Two-stage publishing:
+ *   draft      — only staff can see it (academy unpublished or session WIP)
+ *   scheduled  — visible on calendars once the academy is published, but NOT
+ *                yet open for sign-up ("the course isn't published yet")
+ *   open       — coordinators opened sign-ups for this course/session
+ */
+export type SessionStatus = 'draft' | 'scheduled' | 'open' | 'fully_staffed' | 'cancelled' | 'completed';
 
 export interface RoleSlot {
   slotId: string;
@@ -230,6 +262,7 @@ export type NotificationType =
   | 'lead_withdrawal_escalation'
   | 'schedule_change'
   | 'qualification_approved'
+  | 'course_published'
   | 'account_approved'
   | 'reminder'
   | 'understaffing_alert'

@@ -11,6 +11,7 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  updateDoc,
   where,
   writeBatch,
   doc,
@@ -18,17 +19,13 @@ import {
 import { db } from '../../lib/firebase';
 import { useCollection, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
-import { fmtDate, tsFromDate } from '../../lib/time';
-import type { AcademyDoc, SessionDoc, UserDoc } from '../../types';
-import { DISCIPLINE_LABELS } from '../../types';
+import { fmtDate, tsFromDate, addDays, toDateInputValue } from '../../lib/time';
+import type { AcademyDoc, CurriculumDoc, SessionDoc, UserDoc } from '../../types';
 import { Badge, Button, Field, Input, PageHeader, Select } from '../../components/ui';
 import { Modal } from '../../components/Modal';
+import { logAudit } from '../sessions/audit';
 
-const DEFAULT_TARGET_HOURS: Record<string, number> = {
-  law_enforcement: 770, // FDLE LE BRTP — configurable per academy, not hard-coded
-  corrections: 420,     // matches the agency's CO program (e.g. CO 67 — 420 hrs)
-  cross_over: 318,
-};
+const DEFAULT_LOCATION = 'PHSC — Dade City, FL';
 
 export function AcademiesPage() {
   const { firebaseUser } = useAuth();
@@ -45,7 +42,15 @@ export function AcademiesPage() {
     }
   }, [params, setParams]);
 
-  const { data: academies, loading } = useCollection<AcademyDoc>('academies', [orderBy('startDate', 'desc')]);
+  const { data: allAcademies, loading } = useCollection<AcademyDoc>('academies', [orderBy('startDate', 'desc')]);
+  const [showArchived, setShowArchived] = useState(false);
+  const academies = showArchived ? allAcademies : allAcademies.filter((a) => a.status !== 'archived');
+
+  async function setArchived(a: WithId<AcademyDoc>, archived: boolean) {
+    if (archived && !window.confirm(`Archive "${a.name}"? It disappears from instructor views; you can unarchive any time.`)) return;
+    await updateDoc(doc(db, 'academies', a.id), { status: archived ? 'archived' : 'completed', updatedAt: serverTimestamp() });
+    await logAudit(firebaseUser!.uid, archived ? 'academy.archive' : 'academy.unarchive', 'academy', a.id, a.name);
+  }
 
   return (
     <div>
@@ -53,9 +58,15 @@ export function AcademiesPage() {
         kicker="CADRE — Coordinated Academy Duty & Roster Engine"
         title="Academies"
         actions={
-          <Button variant="primary" onClick={() => setCreateOpen(true)}>
-            New academy
-          </Button>
+          <>
+            <label className="flex items-center gap-1.5 text-sm text-slate-500">
+              <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
+              Show archived
+            </label>
+            <Button variant="primary" onClick={() => setCreateOpen(true)}>
+              New academy
+            </Button>
+          </>
         }
       />
 
@@ -80,7 +91,7 @@ export function AcademiesPage() {
                     {a.name}
                   </Link>
                 </td>
-                <td className="px-4 py-3">{DISCIPLINE_LABELS[a.discipline]}</td>
+                <td className="px-4 py-3">{a.fdleProgram?.replace(/^FDLE\s*/, '') || a.discipline}</td>
                 <td className="px-4 py-3 text-slate-500">
                   {fmtDate(a.startDate)} → {fmtDate(a.endDate)}
                 </td>
@@ -94,6 +105,15 @@ export function AcademiesPage() {
                   <Button variant="ghost" onClick={() => setCloneSource(a)}>
                     Clone
                   </Button>
+                  {a.status === 'archived' ? (
+                    <Button variant="ghost" onClick={() => setArchived(a, false)}>
+                      Unarchive
+                    </Button>
+                  ) : (
+                    <Button variant="ghost" onClick={() => setArchived(a, true)}>
+                      Archive
+                    </Button>
+                  )}
                 </td>
               </tr>
             ))}
@@ -120,17 +140,23 @@ export function AcademiesPage() {
 function CreateAcademyModal({ open, onClose, actorUid }: { open: boolean; onClose: () => void; actorUid: string }) {
   const [name, setName] = useState('');
   const [shortName, setShortName] = useState('');
-  const [discipline, setDiscipline] = useState<'law_enforcement' | 'corrections' | 'cross_over'>('law_enforcement');
+  const [discipline, setDiscipline] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [location, setLocation] = useState('');
-  const [targetHours, setTargetHours] = useState(DEFAULT_TARGET_HOURS.law_enforcement);
+  const [location, setLocation] = useState(DEFAULT_LOCATION);
+  const [defaultRoom, setDefaultRoom] = useState('');
+  const [targetHours, setTargetHours] = useState(0);
   const [coordinators, setCoordinators] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
 
-  const { data: staffUsers } = useCollection<UserDoc>('users', [
-    where('role', 'in', ['coordinator', 'sergeant', 'lieutenant', 'director']),
-  ]);
+  // Disciplines come from the admin-editable curricula collection; the
+  // default target hours are that curriculum's course-hour sum.
+  const { data: curricula } = useCollection<CurriculumDoc>('curricula', [where('active', '==', true)]);
+  // Sergeants and above can edit everything regardless of assignment — the
+  // coordinator list here is genuinely just coordinators.
+  const { data: coordinatorUsers } = useCollection<UserDoc>('users', [where('role', '==', 'coordinator')]);
+
+  const curriculum = curricula.find((c) => c.id === discipline);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -139,17 +165,18 @@ function CreateAcademyModal({ open, onClose, actorUid }: { open: boolean; onClos
       name,
       shortName,
       discipline,
-      fdleProgram: `FDLE Basic Recruit Training Program — ${DISCIPLINE_LABELS[discipline]}`,
+      fdleProgram: curriculum?.fdleProgram ?? curriculum?.label ?? discipline,
       startDate: tsFromDate(new Date(`${startDate}T00:00:00`)),
       endDate: tsFromDate(new Date(`${endDate}T23:59:59`)),
       location,
+      defaultRoom,
       status: 'draft',
       coordinatorIds: coordinators,
       targetTotalHours: targetHours,
       createdBy: actorUid,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
-    } satisfies Omit<AcademyDoc, 'startDate' | 'endDate' | 'createdAt' | 'updatedAt'> & Record<string, unknown>);
+    });
     setBusy(false);
     onClose();
   }
@@ -159,29 +186,33 @@ function CreateAcademyModal({ open, onClose, actorUid }: { open: boolean; onClos
       <form onSubmit={submit} className="space-y-4">
         <div className="grid grid-cols-[1fr_2fr] gap-4">
           <Field label="Class designation" hint='Short label, e.g. "LE 131", "CO 67" — leads calendar entries'>
-            <Input value={shortName} onChange={(e) => setShortName(e.target.value)} required placeholder="LE 131" />
+            <Input value={shortName} onChange={(e) => setShortName(e.target.value)} required placeholder="LE 133" />
           </Field>
-          <Field label="Name" hint='e.g. "LE 131 (May Start)"'>
+          <Field label="Name" hint='e.g. "LE 133 (October Start)"'>
             <Input value={name} onChange={(e) => setName(e.target.value)} required />
           </Field>
         </div>
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Discipline">
+          <Field label="Discipline" hint="Manage the list under Admin → Curriculum & Hours">
             <Select
               value={discipline}
+              required
               onChange={(e) => {
-                const d = e.target.value as typeof discipline;
-                setDiscipline(d);
-                setTargetHours(DEFAULT_TARGET_HOURS[d]);
+                setDiscipline(e.target.value);
+                const c = curricula.find((x) => x.id === e.target.value);
+                if (c) setTargetHours(c.totalHours);
               }}
             >
-              <option value="law_enforcement">Law Enforcement</option>
-              <option value="corrections">Corrections</option>
-              <option value="cross_over">Cross-Over</option>
+              <option value="">Select a discipline…</option>
+              {curricula.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label} ({c.totalHours} hrs)
+                </option>
+              ))}
             </Select>
           </Field>
-          <Field label="Target total hours" hint="FDLE program hours — adjust as needed">
-            <Input type="number" min={1} value={targetHours} onChange={(e) => setTargetHours(Number(e.target.value))} />
+          <Field label="Target total hours" hint="Defaults to the curriculum sum — adjust if needed">
+            <Input type="number" min={1} value={targetHours} onChange={(e) => setTargetHours(Number(e.target.value))} required />
           </Field>
         </div>
         <div className="grid grid-cols-2 gap-4">
@@ -192,19 +223,24 @@ function CreateAcademyModal({ open, onClose, actorUid }: { open: boolean; onClos
             <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} required />
           </Field>
         </div>
-        <Field label="Location" hint='e.g. "State College Public Safety Campus"'>
-          <Input value={location} onChange={(e) => setLocation(e.target.value)} required />
-        </Field>
-        <Field label="Coordinators">
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Location">
+            <Input value={location} onChange={(e) => setLocation(e.target.value)} required />
+          </Field>
+          <Field label="Default room" hint="Prefilled on new sessions; individual days can differ">
+            <Input value={defaultRoom} onChange={(e) => setDefaultRoom(e.target.value)} placeholder="E-120" />
+          </Field>
+        </div>
+        <Field label="Coordinators" hint="Sergeants and above can always edit — assign the hands-on coordinators here">
           <Select
             multiple
             value={coordinators}
             onChange={(e) => setCoordinators([...e.target.selectedOptions].map((o) => o.value))}
             size={4}
           >
-            {staffUsers.map((u) => (
+            {coordinatorUsers.map((u) => (
               <option key={u.id} value={u.id}>
-                {u.displayName} ({u.role})
+                {u.displayName}
               </option>
             ))}
           </Select>
@@ -305,6 +341,22 @@ function CloneAcademyModal({
         <Field label="New start date">
           <Input type="date" value={newStart} onChange={(e) => setNewStart(e.target.value)} required />
         </Field>
+        {/* Quarter/year presets — "January class → January next year" in one click */}
+        <div className="flex flex-wrap gap-2">
+          {[3, 6, 9, 12].map((months) => {
+            const d = new Date(source.startDate.toDate());
+            d.setMonth(d.getMonth() + months);
+            return (
+              <Button key={months} type="button" variant="ghost" onClick={() => setNewStart(toDateInputValue(d))}>
+                +{months === 12 ? '1 year' : `${months} mo`} ({d.toLocaleDateString()})
+              </Button>
+            );
+          })}
+        </div>
+        <p className="text-xs text-slate-500">
+          After cloning, the builder flags any sessions that land on school holidays and offers a
+          one-click "shift to next school day" fix.
+        </p>
         {progress && busy && <p className="text-sm text-bifrost-700">{progress}</p>}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose}>

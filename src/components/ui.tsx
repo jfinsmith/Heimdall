@@ -93,7 +93,8 @@ export function Badge({
 export function StatusPill({ status }: { status: SessionStatus }) {
   const map: Record<SessionStatus, { tone: 'slate' | 'amber' | 'green' | 'red' | 'navy'; label: string }> = {
     draft: { tone: 'slate', label: 'Draft' },
-    open: { tone: 'amber', label: 'Open' },
+    scheduled: { tone: 'navy', label: 'Scheduled — sign-up not open' },
+    open: { tone: 'amber', label: 'Open for sign-up' },
     fully_staffed: { tone: 'green', label: 'Fully staffed' },
     cancelled: { tone: 'red', label: 'Cancelled' },
     completed: { tone: 'navy', label: 'Completed' },

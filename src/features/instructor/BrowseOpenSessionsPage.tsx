@@ -25,6 +25,7 @@ export function BrowseOpenSessionsPage() {
     []
   );
   const { data: academies } = useCollection<AcademyDoc>('academies');
+  const [academyFilter, setAcademyFilter] = useState('all');
   const academyLabel = useMemo(() => {
     const m = new Map<string, string>();
     for (const a of academies) m.set(a.id, a.shortName || a.name);
@@ -40,6 +41,7 @@ export function BrowseOpenSessionsPage() {
   const matches = useMemo(
     () =>
       sessions
+        .filter((s) => academyFilter === 'all' || s.academyId === academyFilter)
         .map((s) => ({
           session: s,
           openSlots: s.roleSlots.filter(
@@ -50,7 +52,7 @@ export function BrowseOpenSessionsPage() {
           ),
         }))
         .filter((m) => m.openSlots.length > 0),
-    [sessions, myQuals, firebaseUser?.uid]
+    [sessions, myQuals, firebaseUser?.uid, academyFilter]
   );
 
   async function quickSignup(sessionId: string, slotId: string) {
@@ -69,7 +71,29 @@ export function BrowseOpenSessionsPage() {
 
   return (
     <div>
-      <PageHeader kicker="Instructor" title="Browse Open Sessions" />
+      <PageHeader
+        kicker="Instructor"
+        title="Browse Open Sessions"
+        actions={
+          <label className="flex items-center gap-2 text-sm text-watch-800">
+            Academy
+            <select
+              className="rounded-md border border-watch-200 bg-white px-2 py-1.5 text-sm"
+              value={academyFilter}
+              onChange={(e) => setAcademyFilter(e.target.value)}
+            >
+              <option value="all">All</option>
+              {academies
+                .filter((a) => a.status === 'published' || a.status === 'in_progress')
+                .map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.shortName || a.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+        }
+      />
       {message && <div className="mb-4 rounded-md bg-watch-100 px-3 py-2 text-sm text-watch-800">{message}</div>}
 
       {matches.length === 0 ? (

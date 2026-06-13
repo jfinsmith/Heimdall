@@ -31,7 +31,8 @@ export function SessionFormModal({ academy, session, onClose }: Props) {
   const [date, setDate] = useState(session ? toDateInputValue(session.start.toDate()) : '');
   const [startTime, setStartTime] = useState(session ? toTimeInputValue(session.start.toDate()) : '08:00');
   const [endTime, setEndTime] = useState(session ? toTimeInputValue(session.end.toDate()) : '17:00');
-  const [room, setRoom] = useState(session?.room ?? '');
+  const [room, setRoom] = useState(session?.room ?? academy.defaultRoom ?? '');
+  const [location, setLocation] = useState(session?.location ?? academy.location);
   const [notes, setNotes] = useState(session?.notes ?? '');
   const [slots, setSlots] = useState<RoleSlot[]>(session?.roleSlots ?? []);
   const [busy, setBusy] = useState(false);
@@ -85,7 +86,7 @@ export function SessionFormModal({ academy, session, onClose }: Props) {
       title: title || '',
       start: tsFromDate(start),
       end: tsFromDate(end),
-      location: academy.location,
+      location,
       room,
       hours: hoursBetween(start, end),
       roleSlots: slots,
@@ -98,7 +99,9 @@ export function SessionFormModal({ academy, session, onClose }: Props) {
     } else {
       const ref = await addDoc(collection(db, 'sessions'), {
         ...payload,
-        status: academy.status === 'draft' ? 'draft' : 'open',
+        // Visible on the calendar once the academy is published, but sign-ups
+        // stay closed until the coordinator opens the course.
+        status: academy.status === 'draft' ? 'draft' : 'scheduled',
         createdBy: firebaseUser.uid,
       });
       await logAudit(firebaseUser.uid, 'session.create', 'session', ref.id, `Scheduled ${course.name} on ${date}`);
@@ -145,7 +148,7 @@ export function SessionFormModal({ academy, session, onClose }: Props) {
             <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={course?.name ?? ''} />
           </Field>
         </div>
-        <div className="grid gap-4 sm:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-3">
           <Field label="Date">
             <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
           </Field>
@@ -155,8 +158,13 @@ export function SessionFormModal({ academy, session, onClose }: Props) {
           <Field label="End">
             <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} required />
           </Field>
-          <Field label="Room">
-            <Input value={room} onChange={(e) => setRoom(e.target.value)} required placeholder="Rm 114 / Range A" />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Room" hint="Prefilled from the academy default">
+            <Input value={room} onChange={(e) => setRoom(e.target.value)} required placeholder="E-120 / Range A" />
+          </Field>
+          <Field label="Location" hint="This day only — e.g. an off-site range">
+            <Input value={location} onChange={(e) => setLocation(e.target.value)} required />
           </Field>
         </div>
 

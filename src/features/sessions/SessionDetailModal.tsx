@@ -3,7 +3,8 @@
  * Sign Up / Withdraw actions for qualifying users.
  */
 import React, { useState } from 'react';
-import { where } from 'firebase/firestore';
+import { addDoc, collection, doc, serverTimestamp, updateDoc, where } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 import { useCollection, useDoc, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import { can } from '../../lib/rbac';
@@ -109,7 +110,10 @@ export function SessionDetailModal({ sessionId, onClose, onEdit }: Props) {
                     </Badge>
                   )}
                 </div>
-                {firebaseUser && session.status !== 'cancelled' && session.status !== 'completed' && (
+                {firebaseUser && session.status === 'scheduled' && !can.buildSchedules(role) && (
+                  <span className="text-xs text-slate-400">Sign-up not open yet</span>
+                )}
+                {firebaseUser && (session.status === 'open' || session.status === 'fully_staffed') && (
                   mineHere ? (
                     <Button variant="danger" disabled={busy} onClick={doWithdraw}>
                       Withdraw
@@ -141,9 +145,34 @@ export function SessionDetailModal({ sessionId, onClose, onEdit }: Props) {
         })}
       </ul>
 
-      {onEdit && can.buildSchedules(role) && (
-        <div className="mt-4 flex justify-end border-t border-watch-50 pt-3">
-          <Button onClick={() => onEdit(session as WithId<SessionDoc>)}>Edit session</Button>
+      {can.buildSchedules(role) && (
+        <div className="mt-4 flex justify-end gap-2 border-t border-watch-50 pt-3">
+          {session.status === 'scheduled' && (
+            <Button
+              variant="primary"
+              onClick={async () => {
+                await updateDoc(doc(db, 'sessions', sessionId), { status: 'open', updatedAt: serverTimestamp() });
+                await addDoc(collection(db, 'coursePublishEvents'), {
+                  academyId: session.academyId,
+                  courseLabel: session.title || session.courseName,
+                  sessionCount: 1,
+                  requestedBy: firebaseUser?.uid ?? '',
+                  createdAt: serverTimestamp(),
+                });
+              }}
+            >
+              Open sign-ups
+            </Button>
+          )}
+          {(session.status === 'open' || session.status === 'fully_staffed') && (
+            <Button
+              variant="ghost"
+              onClick={() => updateDoc(doc(db, 'sessions', sessionId), { status: 'scheduled', updatedAt: serverTimestamp() })}
+            >
+              Close sign-ups
+            </Button>
+          )}
+          {onEdit && <Button onClick={() => onEdit(session as WithId<SessionDoc>)}>Edit session</Button>}
         </div>
       )}
     </Modal>

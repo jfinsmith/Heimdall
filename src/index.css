@@ -37,6 +37,11 @@ body {
   @apply text-lg font-semibold text-watch-900;
 }
 
+/* Holiday wash: subtle background; the readable name comes from the label chip */
+.fc {
+  --fc-bg-event-opacity: 0.14;
+}
+
 /* ── Focus visibility (keyboard accessibility) ──────────────────────────── */
 :focus-visible {
   outline: 2px solid var(--brand-accent);

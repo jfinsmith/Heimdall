@@ -194,6 +194,56 @@ export const onUserUpdated = onDocumentUpdated('users/{uid}', async (event) => {
   }
 });
 
+// ── Course opened for sign-up (aggregated — one email per instructor, not
+//    one per session). The builder writes a single coursePublishEvents doc
+//    when a course's sign-ups open. ──────────────────────────────────────────
+export const onCoursePublished = onDocumentCreated('coursePublishEvents/{id}', async (event) => {
+  const data = event.data?.data();
+  if (!data) return;
+  const { academyId, courseLabel, sessionCount } = data as { academyId: string; courseLabel: string; sessionCount: number };
+
+  // Union of qualification requirements across the course's open, unfilled slots.
+  const sessions = await db().collection('sessions').where('academyId', '==', academyId).get();
+  const slotQuals = new Set<string>();
+  let anyUnrestricted = false;
+  let earliest: FirebaseFirestore.Timestamp | null = null;
+  for (const d of sessions.docs) {
+    const s = d.data() as SessionDoc;
+    if ((s.title || s.courseName) !== courseLabel) continue;
+    if (s.status !== 'open' && s.status !== 'fully_staffed') continue;
+    if (!earliest || s.start.toMillis() < earliest.toMillis()) earliest = s.start;
+    for (const slot of s.roleSlots) {
+      if (slot.filledBy.length >= slot.count) continue;
+      if (slot.requiredQualificationKey) slotQuals.add(slot.requiredQualificationKey);
+      else anyUnrestricted = true;
+    }
+  }
+
+  const academy = await db().doc(`academies/${academyId}`).get();
+  const academyLabel = academy.exists ? (academy.data()!.shortName || academy.data()!.name) : '';
+
+  const users = await db().collection('users').where('status', '==', 'active').get();
+  const eligible = users.docs.filter((d) => {
+    const u = d.data() as UserDoc;
+    return anyUnrestricted || (u.verifiedQualKeys ?? []).some((k) => slotQuals.has(k));
+  });
+
+  const firstDay = earliest
+    ? earliest.toDate().toLocaleDateString('en-US', { timeZone: 'America/New_York', dateStyle: 'medium' })
+    : '';
+  await Promise.all(
+    eligible.map((d) =>
+      notify({
+        uid: d.id,
+        type: 'course_published',
+        title: `Sign-ups open: ${academyLabel} ${courseLabel}`,
+        body: `${courseLabel} (${sessionCount} session${sessionCount === 1 ? '' : 's'}${firstDay ? `, starting ${firstDay}` : ''}) is now open for instructor sign-up in ${academyLabel}.`,
+        link: '/open-sessions',
+      })
+    )
+  );
+});
+
 // ── Bulk message fan-out (from the Staffing Board) ─────────────────────────
 export const onBulkMessageCreated = onDocumentCreated('bulkMessages/{id}', async (event) => {
   const data = event.data?.data();

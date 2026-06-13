@@ -20,6 +20,18 @@ const setUserRole = httpsCallable<{ uid: string; role: Role }, { ok: boolean }>(
 export function UsersAdminPage() {
   const { firebaseUser } = useAuth();
   const { data: users } = useCollection<UserDoc>('users', [orderBy('displayName')]);
+
+  /** "Dep. Sofia Vargas" → "Vargas, Dep. Sofia"; sort key is the last name. */
+  const lastFirst = (name: string) => {
+    const parts = (name ?? '').trim().split(/\s+/);
+    if (parts.length < 2) return name;
+    const last = parts.pop()!;
+    return `${last}, ${parts.join(' ')}`;
+  };
+  const lastNameKey = (name: string) => (name ?? '').trim().split(/\s+/).pop()?.toLowerCase() ?? '';
+
+  // Instructors at top, most-permissive roles at the bottom.
+  const GROUP_ORDER: Role[] = ['instructor', 'coordinator', 'sergeant', 'lieutenant', 'director'];
   const [qualUser, setQualUser] = useState<WithId<UserDoc> | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -100,46 +112,65 @@ export function UsersAdminPage() {
               <th className="px-4 py-3" />
             </tr>
           </thead>
-          <tbody className="divide-y divide-watch-50">
-            {active.map((u) => (
-              <tr key={u.id}>
-                <td className="px-4 py-3">
-                  <div className="font-medium text-watch-900">{u.displayName}</div>
-                  <div className="text-xs text-slate-500">{u.email}</div>
-                </td>
-                <td className="px-4 py-3">
-                  <Select
-                    value={u.role}
-                    disabled={busy === u.id}
-                    onChange={(e) => changeRole(u, e.target.value as Role)}
-                    aria-label={`Role for ${u.displayName}`}
-                  >
-                    {(Object.keys(ROLE_LABELS) as Role[]).map((r) => (
-                      <option key={r} value={r}>
-                        {ROLE_LABELS[r]}
-                      </option>
-                    ))}
-                  </Select>
-                </td>
-                <td className="px-4 py-3">
-                  <Badge tone={u.status === 'active' ? 'green' : 'slate'}>{u.status}</Badge>
-                </td>
-                <td className="px-4 py-3">
-                  <button className="text-bifrost-700 hover:underline" onClick={() => setQualUser(u)}>
-                    {u.qualifications.filter((q) => q.verified).length} verified /{' '}
-                    {u.qualifications.length} claimed
-                  </button>
-                </td>
-                <td className="px-4 py-3 text-right">
-                  {u.status === 'active' && (
-                    <Button variant="ghost" onClick={() => deactivate(u)}>
-                      Deactivate
-                    </Button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
+          {GROUP_ORDER.map((groupRole) => {
+            const group = active
+              .filter((u) => u.role === groupRole)
+              .sort((a, b) => lastNameKey(a.displayName).localeCompare(lastNameKey(b.displayName)));
+            if (group.length === 0) return null;
+            return (
+              <tbody key={groupRole} className="divide-y divide-watch-50">
+                <tr className="bg-watch-100/60">
+                  <td colSpan={5} className="px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-watch-600">
+                    {ROLE_LABELS[groupRole]}s ({group.length})
+                  </td>
+                </tr>
+                {group.map((u) => {
+                  const claimed = u.qualifications.length;
+                  const verified = u.qualifications.filter((q) => q.verified).length;
+                  // Green = everything claimed is verified; orange = pending claims.
+                  const qualTone =
+                    claimed === 0 ? '' : verified === claimed ? 'bg-green-50' : 'bg-amber-50';
+                  return (
+                    <tr key={u.id}>
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-watch-900">{lastFirst(u.displayName)}</div>
+                        <div className="text-xs text-slate-500">{u.email}</div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <Select
+                          value={u.role}
+                          disabled={busy === u.id}
+                          onChange={(e) => changeRole(u, e.target.value as Role)}
+                          aria-label={`Role for ${u.displayName}`}
+                        >
+                          {(Object.keys(ROLE_LABELS) as Role[]).map((r) => (
+                            <option key={r} value={r}>
+                              {ROLE_LABELS[r]}
+                            </option>
+                          ))}
+                        </Select>
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge tone={u.status === 'active' ? 'green' : 'slate'}>{u.status}</Badge>
+                      </td>
+                      <td className={`px-4 py-3 ${qualTone}`}>
+                        <button className="text-bifrost-700 hover:underline" onClick={() => setQualUser(u)}>
+                          {verified} verified / {claimed} claimed
+                        </button>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {u.status === 'active' && (
+                          <Button variant="ghost" onClick={() => deactivate(u)}>
+                            Deactivate
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            );
+          })}
         </table>
       </div>
 

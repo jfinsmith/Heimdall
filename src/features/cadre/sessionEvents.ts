@@ -13,12 +13,14 @@ export const STATUS_COLORS = {
   open: '#b45309',
   critical: '#b91c1c',
   draft: '#64748b',
-  completed: '#374b78',
+  scheduled: '#374b78', // published to the calendar, sign-up not yet open
+  completed: '#16203a',
 } as const;
 
 export function sessionColor(s: SessionDoc): string {
   if (s.status === 'cancelled') return STATUS_COLORS.critical;
   if (s.status === 'draft') return STATUS_COLORS.draft;
+  if (s.status === 'scheduled') return STATUS_COLORS.scheduled;
   if (s.status === 'completed') return STATUS_COLORS.completed;
   return unfilledSlots(s).length === 0 ? STATUS_COLORS.staffed : STATUS_COLORS.open;
 }

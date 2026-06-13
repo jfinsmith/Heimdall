@@ -46,20 +46,34 @@ export function holidaysForYear(year: number): Holiday[] {
   return list;
 }
 
-/** FullCalendar background events covering `yearsAhead` years from now. */
+/**
+ * FullCalendar events covering `yearsAhead` years: a red background wash for
+ * the day PLUS a readable all-day label chip (background-event titles render
+ * too faintly to read on their own).
+ */
 export function holidayBackgroundEvents(yearsAhead = 2): EventInput[] {
   const now = new Date().getFullYear();
   const events: EventInput[] = [];
   for (let y = now - 1; y <= now + yearsAhead; y++) {
     for (const h of holidaysForYear(y)) {
+      const key = h.date.toISOString().slice(0, 10);
       events.push({
-        id: `holiday-${h.date.toISOString().slice(0, 10)}`,
-        title: h.name,
+        id: `holiday-bg-${key}`,
         start: h.date,
         allDay: true,
         display: 'background',
         backgroundColor: '#b91c1c',
-        classNames: ['heimdall-holiday'],
+        extendedProps: { holiday: true },
+      });
+      events.push({
+        id: `holiday-label-${key}`,
+        title: h.name,
+        start: h.date,
+        allDay: true,
+        backgroundColor: '#fee2e2',
+        borderColor: '#fecaca',
+        textColor: '#991b1b',
+        editable: false,
         extendedProps: { holiday: true },
       });
     }

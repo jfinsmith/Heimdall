@@ -44,7 +44,9 @@ function qualifies(user: UserDoc, requiredKey?: string): boolean {
 }
 
 function recomputeStatus(session: SessionDoc): SessionDoc['status'] {
-  if (session.status === 'cancelled' || session.status === 'completed' || session.status === 'draft') {
+  // Only flip between open/fully_staffed — draft/scheduled/cancelled/completed
+  // are lifecycle states owned by coordinators, not by staffing math.
+  if (session.status !== 'open' && session.status !== 'fully_staffed') {
     return session.status;
   }
   const full = session.roleSlots.every((s) => s.filledBy.length >= s.count);
@@ -74,6 +76,9 @@ export async function signUpForSlot(
 
     if (session.status === 'cancelled') throw new SignupError('This session has been cancelled.');
     if (session.status === 'draft') throw new SignupError('This session is not yet published.');
+    if (session.status === 'scheduled') {
+      throw new SignupError('Sign-ups for this course have not been opened by the coordinators yet.');
+    }
 
     const slot = session.roleSlots.find((s) => s.slotId === slotId);
     if (!slot) throw new SignupError('That role slot no longer exists on this session.');

@@ -81,11 +81,15 @@ export function ProfilePage() {
           <Input value={agency} onChange={(e) => setAgency(e.target.value)} />
         </Field>
 
-        <h2 className="pt-2 text-sm font-semibold uppercase tracking-wider text-watch-600">Gjallarhorn preferences</h2>
+        <h2 className="pt-2 text-sm font-semibold uppercase tracking-wider text-watch-600">My email reminders</h2>
+        <p className="text-xs text-slate-500">
+          These control your <strong>personal reminder emails</strong> only. Operational notices
+          (confirmations, schedule changes, cancellations) are managed by the administrators.
+        </p>
         <div className="space-y-2 text-sm">
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={emailOn} onChange={(e) => setEmailOn(e.target.checked)} />
-            Email notifications
+            Email me reminders before my assignments
           </label>
           <label className="flex items-center gap-2">
             Reminder lead time:

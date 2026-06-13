@@ -53,7 +53,11 @@ export async function notify(opts: NotifyOptions): Promise<void> {
     if (userSnap.exists) {
       const user = userSnap.data() as UserDoc;
       email = email ?? user.email;
-      prefsAllowEmail = user.notificationPrefs?.email !== false;
+      // Personal opt-outs apply ONLY to the user's own reminder/digest emails;
+      // operational and command emails are governed by the admin toggles.
+      if (opts.type === 'reminder') prefsAllowEmail = user.notificationPrefs?.email !== false;
+      else if (opts.type === 'digest') prefsAllowEmail = user.notificationPrefs?.digest !== false;
+      else prefsAllowEmail = true;
     }
   }
 

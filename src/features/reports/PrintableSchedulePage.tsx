@@ -53,7 +53,7 @@ export function PrintableSchedulePage() {
         </div>
         <div className="text-right text-sm">
           <div className="text-lg font-bold">{academy.name}</div>
-          <div>{DISCIPLINE_LABELS[academy.discipline]} · {academy.fdleProgram}</div>
+          <div>{academy.fdleProgram}</div>
           <div>
             {academy.startDate.toDate().toLocaleDateString()} – {academy.endDate.toDate().toLocaleDateString()} ·{' '}
             {totalHours} / {academy.targetTotalHours} hrs

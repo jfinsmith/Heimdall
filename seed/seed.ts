@@ -170,9 +170,9 @@ const COURSES: SeedCourse[] = [
     ],
   },
   {
-    id: 'dfst', name: 'Dart-Firing Stun Gun (DFST)', fdleCourseCode: 'CJK_0422',
-    discipline: 'all', defaultHours: 8, highLiability: true,
-    description: 'Electronic control weapon certification block. High-liability.',
+    id: 'dfsg', name: 'Dart-Firing Stun Gun (DFSG)', fdleCourseCode: 'CJK0421',
+    discipline: 'all', defaultHours: 4, highLiability: true,
+    description: 'Conducted electrical weapon certification block. High-liability.',
     leadRequiredQualificationKey: 'dt',
     defaultRoleSlots: [{ role: 'safety_officer', count: 1, requiredQualificationKey: 'dt' }],
   },
@@ -346,7 +346,7 @@ function buildSessions(): SeedSession[] {
     id: 'first-aid-23', courseId: 'first-aid', day: 23, startH: 8, endH: 17, room: 'Rm 118',
     signups: [{ uid: 'inst-kimball', role: 'lead' }],
   });
-  sessions.push({ id: 'dfst-24', courseId: 'dfst', day: 24, startH: 8, endH: 16, room: 'Mat Room', signups: [] });
+  sessions.push({ id: 'dfsg-24', courseId: 'dfsg', day: 24, startH: 8, endH: 16, room: 'Mat Room', signups: [] });
   return sessions;
 }
 

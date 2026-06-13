@@ -77,6 +77,21 @@ service cloud.firestore {
       allow write: if isStaff();
     }
 
+    // ── curricula (admin-editable disciplines + minimum hours) ─────────────
+    match /curricula/{key} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    // ── coursePublishEvents ────────────────────────────────────────────────
+    // Staff queue a "course opened for sign-up" event; Gjallarhorn fans it
+    // out to eligible instructors (one email each).
+    match /coursePublishEvents/{id} {
+      allow read: if isStaff();
+      allow create: if isStaff() && request.resource.data.requestedBy == request.auth.uid;
+      allow update, delete: if false;
+    }
+
     // ── academies ──────────────────────────────────────────────────────────
     // Instructors see published lifecycle states only; staff see everything.
     match /academies/{academyId} {
