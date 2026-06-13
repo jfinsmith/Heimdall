@@ -19,6 +19,7 @@ export function SettingsAdminPage() {
   const [accent, setAccent] = useState('#d99320');
   const [logoUrl, setLogoUrl] = useState('');
   const [domains, setDomains] = useState('');
+  const [payTarget, setPayTarget] = useState(85);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -28,6 +29,7 @@ export function SettingsAdminPage() {
     setAccent(settings.brandAccentColor);
     setLogoUrl(settings.logoUrl ?? '');
     setDomains(settings.allowedEmailDomains.join(', '));
+    setPayTarget(settings.payPeriodTargetHours ?? 85);
   }, [settings]);
 
   async function save(e: React.FormEvent) {
@@ -40,6 +42,7 @@ export function SettingsAdminPage() {
         brandAccentColor: accent,
         logoUrl,
         allowedEmailDomains: domains.split(',').map((d) => d.trim()).filter(Boolean),
+        payPeriodTargetHours: payTarget,
       },
       { merge: true }
     );
@@ -77,6 +80,13 @@ export function SettingsAdminPage() {
           hint="Comma-separated, e.g. sheriff.example.gov, statecollege.edu — blank allows any domain"
         >
           <Input value={domains} onChange={(e) => setDomains(e.target.value)} />
+        </Field>
+        <Field
+          label="Pay-period target hours"
+          hint="Required hours per bi-weekly pay period before overtime (PSO default 85)"
+          className="max-w-[12rem]"
+        >
+          <Input type="number" min={1} value={payTarget} onChange={(e) => setPayTarget(Number(e.target.value))} />
         </Field>
         <div className="flex items-center gap-3">
           <Button type="submit" variant="primary">

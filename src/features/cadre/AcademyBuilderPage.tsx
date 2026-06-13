@@ -5,7 +5,7 @@
  * fixer, two-stage publishing (academy publish → sessions visible; per-course
  * "open sign-ups" → instructors can register), academy editing.
  */
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
@@ -28,6 +28,7 @@ import { RecurringGeneratorModal } from './RecurringGeneratorModal';
 import { SessionDetailModal } from '../sessions/SessionDetailModal';
 import { sessionToEvent, renderEventContent } from './sessionEvents';
 import { ACADEMY_COLORS } from '../../lib/academyColors';
+import { groupPayPeriods, DEFAULT_PAY_PERIOD_TARGET, q } from '../../lib/payPeriods';
 import { useGlobalSettings } from '../../app/providers';
 import { logAudit } from '../sessions/audit';
 
@@ -44,6 +45,8 @@ export function AcademyBuilderPage() {
 
   const settings = useGlobalSettings();
   const disabledHolidays = useMemo(() => new Set(settings?.disabledHolidays ?? []), [settings]);
+  const payTarget = settings?.payPeriodTargetHours ?? DEFAULT_PAY_PERIOD_TARGET;
+  const calRef = useRef<FullCalendar>(null);
 
   const [formSession, setFormSession] = useState<WithId<SessionDoc> | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -54,6 +57,14 @@ export function AcademyBuilderPage() {
   const [detailSession, setDetailSession] = useState<WithId<SessionDoc> | null>(null);
 
   const liveSessions = useMemo(() => sessions.filter((s) => s.status !== 'cancelled'), [sessions]);
+  // Pay periods: ALL paid time (FDLE + agency), grouped bi-weekly, vs the 85-hr target.
+  const payPeriods = useMemo(() => groupPayPeriods(liveSessions), [liveSessions]);
+
+  /** Jump the calendar to a pay period's two weeks in the 2-week time-grid view. */
+  function viewPayPeriod(start: Date) {
+    calRef.current?.getApi().changeView('twoWeek', start);
+    document.getElementById('builder-calendar')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
   /** Only FDLE-countable sessions feed the program-hours tally — agency-only
    *  blocks (PSO assignments, resiliency days, formation…) are excluded. */
   const fdleSessions = useMemo(() => liveSessions.filter((s) => s.countsTowardFdle !== false), [liveSessions]);
@@ -273,6 +284,9 @@ export function AcademyBuilderPage() {
         </div>
       </div>
 
+      {/* Pay periods — bi-weekly 85-hr targets (manage overtime) */}
+      {payPeriods.length > 0 && <PayPeriodPanel payPeriods={payPeriods} target={payTarget} onView={viewPayPeriod} />}
+
       {/* Holiday conflicts — the post-clone trap */}
       {holidayConflicts.length > 0 && (
         <section className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4">
@@ -362,14 +376,16 @@ export function AcademyBuilderPage() {
         </section>
       </div>
 
-      <div className="rounded-lg border border-watch-100 bg-white p-4 shadow-sm">
+      <div id="builder-calendar" className="rounded-lg border border-watch-100 bg-white p-4 shadow-sm">
         <FullCalendar
+          ref={calRef}
           plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
           initialView="timeGridWeek"
           initialDate={academy.startDate.toDate() > new Date() ? academy.startDate.toDate() : new Date()}
           firstDay={1}
           weekends={showWeekends}
-          headerToolbar={{ left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay,listMonth' }}
+          views={{ twoWeek: { type: 'timeGrid', duration: { weeks: 2 }, buttonText: '2 weeks' } }}
+          headerToolbar={{ left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,twoWeek,timeGridDay,listMonth' }}
           events={events}
           eventContent={renderEventContent}
           editable
@@ -422,6 +438,93 @@ export function AcademyBuilderPage() {
         />
       )}
     </div>
+  );
+}
+
+/**
+ * Pay-period panel: bi-weekly time-on-the-clock vs the 85-hr target. Members
+ * must hit the target each pay period; under = short (top up with a PSO
+ * assignment), over = overtime (usually avoided).
+ */
+function PayPeriodPanel({
+  payPeriods,
+  target,
+  onView,
+}: {
+  payPeriods: ReturnType<typeof groupPayPeriods>;
+  target: number;
+  onView: (start: Date) => void;
+}) {
+  const [open, setOpen] = useState(true);
+  const fmtRange = (start: Date, end: Date) => {
+    const last = new Date(end);
+    last.setDate(last.getDate() - 1);
+    const o: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
+    return `${start.toLocaleDateString(undefined, o)} – ${last.toLocaleDateString(undefined, o)}`;
+  };
+
+  return (
+    <section className="mb-4 rounded-lg border border-watch-100 bg-white shadow-sm">
+      <button
+        className="flex w-full items-center justify-between px-5 py-3 text-left"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+      >
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-watch-600">
+          Pay periods — {target}-hr bi-weekly target
+        </h2>
+        <span className="text-xs text-slate-400">{open ? 'Hide' : 'Show'} ▾</span>
+      </button>
+      {open && (
+        <div className="overflow-x-auto px-2 pb-3">
+          <table className="w-full text-left text-sm">
+            <thead className="text-xs uppercase tracking-wider text-watch-500">
+              <tr>
+                <th className="px-3 py-2">Pay period</th>
+                <th className="px-3 py-2 text-right">Wk 1</th>
+                <th className="px-3 py-2 text-right">Wk 2</th>
+                <th className="px-3 py-2 text-right">Total</th>
+                <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-watch-50">
+              {payPeriods.map((pp) => {
+                const total = q(pp.totalHours);
+                const delta = q(total - target);
+                const tone = delta === 0 ? 'green' : delta < 0 ? 'amber' : 'red';
+                const label =
+                  delta === 0
+                    ? 'On target'
+                    : delta < 0
+                      ? `${-delta} hr short — add PSO`
+                      : `${delta} hr overtime`;
+                return (
+                  <tr key={pp.key} className="hover:bg-watch-50/50">
+                    <td className="px-3 py-2 font-medium text-watch-900">{fmtRange(pp.start, pp.end)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{q(pp.week1Hours)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{q(pp.week2Hours)}</td>
+                    <td className="px-3 py-2 text-right font-semibold tabular-nums">{total}</td>
+                    <td className="px-3 py-2">
+                      <Badge tone={tone}>{label}</Badge>
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <Button variant="ghost" onClick={() => onView(pp.start)}>
+                        View 2 wks
+                      </Button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <p className="px-3 pt-2 text-xs text-slate-500">
+            Counts all paid time (courses, PT, formation, PSO). Lunch is excluded. Sworn members owe{' '}
+            {target} hours per pay period; short periods are typically topped up with a Friday PSO assignment.
+          </p>
+        </div>
+      )}
+    </section>
   );
 }
 
