@@ -268,8 +268,8 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
           <Field label="Lunch (min)">
             <Input type="number" min={0} step={15} value={lunchMinutes} onChange={(e) => setLunchMinutes(Number(e.target.value))} />
           </Field>
-          <Field label="Room">
-            <Input value={room} onChange={(e) => setRoom(e.target.value)} required />
+          <Field label="Room (optional)">
+            <Input value={room} onChange={(e) => setRoom(e.target.value)} />
           </Field>
         </div>
         {lunchMinutes > 0 && (

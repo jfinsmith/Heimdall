@@ -311,8 +311,8 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
           {lunchMinutes > 0 && ` (after a ${lunchMinutes}-min lunch)`}
         </p>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Room" hint="Prefilled from the academy default">
-            <Input value={room} onChange={(e) => setRoom(e.target.value)} required placeholder="E-120 / Range A" />
+          <Field label="Room (optional)" hint="Prefilled from the academy default">
+            <Input value={room} onChange={(e) => setRoom(e.target.value)} placeholder="E-120 / Range A" />
           </Field>
           <Field label="Location" hint="This day only — e.g. an off-site range">
             <Input value={location} onChange={(e) => setLocation(e.target.value)} required />
