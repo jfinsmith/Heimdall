@@ -20,7 +20,7 @@ import { useCollection, useDoc, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import { addDays, hoursBetween, tsFromDate, fmtDate } from '../../lib/time';
 import { holidaysForYear, holidayBackgroundEvents, observedHolidayDatesInRange, HOLIDAY_PAY_HOURS } from '../../lib/holidays';
-import type { AcademyDoc, CurriculumDoc, SessionDoc, UserDoc } from '../../types';
+import type { AcademyDoc, CourseDoc, CurriculumDoc, SessionDoc, UserDoc } from '../../types';
 import { Badge, Button, Field, Input, PageHeader, Select } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import { SessionFormModal } from './SessionFormModal';
@@ -37,6 +37,7 @@ export function AcademyBuilderPage() {
   const { firebaseUser } = useAuth();
   const { data: academy } = useDoc<AcademyDoc>(academyId ? `academies/${academyId}` : null);
   const { data: curriculum } = useDoc<CurriculumDoc>(academy ? `curricula/${academy.discipline}` : null);
+  const { data: catalog } = useCollection<CourseDoc>('courseCatalog');
   const { data: sessions } = useCollection<SessionDoc>(
     academyId ? 'sessions' : null,
     [where('academyId', '==', academyId ?? '')],
@@ -152,11 +153,15 @@ export function AcademyBuilderPage() {
     for (const s of fdleSessions) {
       hoursByCourse.set(norm(s.courseName), (hoursByCourse.get(norm(s.courseName)) ?? 0) + (s.hours || 0));
     }
+    // High-liability flag from the catalog (names match the curriculum names).
+    const highLiabilityNames = new Set(
+      catalog.filter((c) => c.highLiability).map((c) => norm(c.name))
+    );
     return curriculum.courses.map((c) => {
       const scheduled = q(hoursByCourse.get(norm(c.name)) ?? 0);
-      return { ...c, scheduled, delta: q(scheduled - c.minHours) };
+      return { ...c, scheduled, delta: q(scheduled - c.minHours), highLiability: highLiabilityNames.has(norm(c.name)) };
     });
-  }, [curriculum, fdleSessions]);
+  }, [curriculum, fdleSessions, catalog]);
 
   /** Sessions landing on school holidays (the post-clone trap). */
   const holidayConflicts = useMemo(() => {
@@ -385,22 +390,15 @@ export function AcademyBuilderPage() {
             </p>
           ) : (
             <ul className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
-              {courseProgress.map((c) => (
-                <li key={c.name} className="flex items-center justify-between gap-2 text-sm">
-                  <span className="truncate text-watch-800">{c.name}</span>
-                  <span className="flex shrink-0 items-center gap-2">
-                    <span className="tabular-nums text-slate-500">
-                      {c.scheduled}/{c.minHours} hrs
-                    </span>
-                    {c.delta < 0 ? (
-                      <Badge tone="amber">{-c.delta} left</Badge>
-                    ) : c.delta > 0 ? (
-                      <Badge tone="navy">+{c.delta} over</Badge>
-                    ) : (
-                      <Badge tone="green">met</Badge>
-                    )}
-                  </span>
-                </li>
+              {/* High-liability courses first, then a bold black divider, then the rest. */}
+              {courseProgress.filter((c) => c.highLiability).map((c) => (
+                <CourseCoverageRow key={c.name} c={c} />
+              ))}
+              {courseProgress.some((c) => c.highLiability) && courseProgress.some((c) => !c.highLiability) && (
+                <li className="my-2 h-[3px] rounded bg-black" aria-hidden />
+              )}
+              {courseProgress.filter((c) => !c.highLiability).map((c) => (
+                <CourseCoverageRow key={c.name} c={c} />
               ))}
             </ul>
           )}
@@ -504,6 +502,34 @@ export function AcademyBuilderPage() {
         />
       )}
     </div>
+  );
+}
+
+/** One row of the curriculum-coverage list. */
+function CourseCoverageRow({
+  c,
+}: {
+  c: { name: string; minHours: number; scheduled: number; delta: number; highLiability?: boolean };
+}) {
+  return (
+    <li className="flex items-center justify-between gap-2 text-sm">
+      <span className="truncate text-watch-800">
+        {c.highLiability && <span className="mr-1 text-status-critical" title="High-liability">▲</span>}
+        {c.name}
+      </span>
+      <span className="flex shrink-0 items-center gap-2">
+        <span className="tabular-nums text-slate-500">
+          {c.scheduled}/{c.minHours} hrs
+        </span>
+        {c.delta < 0 ? (
+          <Badge tone="amber">{-c.delta} left</Badge>
+        ) : c.delta > 0 ? (
+          <Badge tone="navy">+{c.delta} over</Badge>
+        ) : (
+          <Badge tone="green">met</Badge>
+        )}
+      </span>
+    </li>
   );
 }
 
