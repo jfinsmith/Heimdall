@@ -86,8 +86,29 @@ export function renderEventContent(arg: EventContentArg): React.ReactNode | unde
     );
   }
 
+  // In time-grid views, draw the lunch break as a white band at the right
+  // vertical position within the block.
+  let lunchBand: React.ReactNode = null;
+  if (s.lunchMinutes && s.lunchStart && arg.view.type.startsWith('timeGrid')) {
+    const start = arg.event.start!;
+    const startMin = start.getHours() * 60 + start.getMinutes();
+    const endMin = startMin + durationMin;
+    const [lh, lm] = s.lunchStart.split(':').map(Number);
+    const lunchStartMin = lh * 60 + lm;
+    if (lunchStartMin >= startMin && lunchStartMin + s.lunchMinutes <= endMin) {
+      const top = ((lunchStartMin - startMin) / durationMin) * 100;
+      const height = (s.lunchMinutes / durationMin) * 100;
+      lunchBand = (
+        <div className="hd-lunch" style={{ top: `${top}%`, height: `${height}%` }} aria-hidden>
+          <span>lunch</span>
+        </div>
+      );
+    }
+  }
+
   return (
     <div className="hd-event">
+      {lunchBand}
       {arg.timeText && <div className="hd-event-time">{arg.timeText}</div>}
       <div className="hd-event-title">
         {prefix && <span className="hd-event-acad">{prefix}</span>}

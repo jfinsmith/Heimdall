@@ -34,8 +34,10 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
   const [startTime, setStartTime] = useState('07:00');
   const [endTime, setEndTime] = useState('18:00');
   const [lunchMinutes, setLunchMinutes] = useState(60);
+  const [lunchStart, setLunchStart] = useState('12:00');
   const [room, setRoom] = useState(academy.defaultRoom ?? '');
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const isCustom = courseId === CUSTOM;
   const course = courses.find((c) => c.id === courseId);
@@ -93,90 +95,108 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    setError(null);
     if (!firebaseUser || (!course && !isCustom)) return;
-    if (isCustom && !customName.trim()) return;
+    if (isCustom && !customName.trim()) {
+      setError('Enter a name for the custom block.');
+      return;
+    }
+    if (matchingDates.length === 0) {
+      setError('No matching days in the selected range.');
+      return;
+    }
     setBusy(true);
 
     const courseName = isCustom ? customName.trim() : course!.name;
     const defaultCoord = academy.coordinatorIds[0];
 
-    const buildSlots = (): RoleSlot[] => {
-      if (isCustom) {
-        // Custom/agency block: coordinator owns it, no open sign-ups.
-        return [{ slotId: shortId(), role: 'coordinator', count: 1, filledBy: defaultCoord ? [defaultCoord] : [] }];
-      }
-      return [
-        { slotId: shortId(), role: 'lead', count: 1, ...(course!.leadRequiredQualificationKey ? { requiredQualificationKey: course!.leadRequiredQualificationKey } : {}), filledBy: [] },
-        ...course!.defaultRoleSlots.filter((s) => s.role !== 'lead').map((s) => ({ slotId: shortId(), filledBy: [], ...s })),
-      ];
+    // Sanitize slots — Firestore rejects undefined, so only include the
+    // qualification key when set.
+    const buildSlots = (): Record<string, unknown>[] => {
+      const raw: RoleSlot[] = isCustom
+        ? [{ slotId: shortId(), role: 'coordinator', count: 1, filledBy: defaultCoord ? [defaultCoord] : [] }]
+        : [
+            { slotId: shortId(), role: 'lead', count: 1, requiredQualificationKey: course!.leadRequiredQualificationKey ?? undefined, filledBy: [] },
+            ...course!.defaultRoleSlots.filter((s) => s.role !== 'lead').map((s) => ({ slotId: shortId(), filledBy: [], ...s })),
+          ];
+      return raw.map((s) => {
+        const out: Record<string, unknown> = { slotId: s.slotId, role: s.role, count: s.count, filledBy: s.filledBy ?? [] };
+        if (s.requiredQualificationKey) out.requiredQualificationKey = s.requiredQualificationKey;
+        return out;
+      });
     };
 
-    let batch = writeBatch(db);
-    let count = 0;
-    const created: { ref: ReturnType<typeof doc>; start: Date; end: Date }[] = [];
-    for (const date of matchingDates) {
-      const ds = toDateInputValue(date);
-      const start = combineDateTime(ds, startTime);
-      const end = combineDateTime(ds, endTime);
-      const ref = doc(collection(db, 'sessions'));
-      const slots = buildSlots();
-      batch.set(ref, {
-        academyId: academy.id,
-        courseId: isCustom ? 'custom' : course!.id,
-        courseName,
-        highLiability: isCustom ? false : course!.highLiability,
-        title: '',
-        start: tsFromDate(start),
-        end: tsFromDate(end),
-        location: academy.location,
-        room,
-        hours: Math.max(0, hoursBetween(start, end) - lunchMinutes / 60),
-        lunchMinutes,
-        countsTowardFdle: !isCustom,
-        status: academy.status === 'draft' ? 'draft' : 'scheduled',
-        roleSlots: slots,
-        notes: '',
-        createdBy: firebaseUser.uid,
-        updatedAt: serverTimestamp(),
-      });
-      if (isCustom && defaultCoord) created.push({ ref, start, end });
-      if (++count % 300 === 0) {
-        await batch.commit();
-        batch = writeBatch(db);
-      }
-    }
-    await batch.commit();
-
-    // Mirror coordinator assignments for custom blocks so they hit My Schedule.
-    if (isCustom && defaultCoord) {
-      const u = coordinatorUsers.find((x) => x.id === defaultCoord);
-      for (const { ref, start, end } of created) {
-        const now = Timestamp.now();
-        await setDoc(doc(db, 'assignments', `${ref.id}_${defaultCoord}`), {
-          uid: defaultCoord,
-          sessionId: ref.id,
+    try {
+      let batch = writeBatch(db);
+      let count = 0;
+      const created: { ref: ReturnType<typeof doc>; start: Date; end: Date }[] = [];
+      for (const date of matchingDates) {
+        const ds = toDateInputValue(date);
+        const start = combineDateTime(ds, startTime);
+        const end = combineDateTime(ds, endTime);
+        const ref = doc(collection(db, 'sessions'));
+        batch.set(ref, {
           academyId: academy.id,
-          role: 'coordinator',
+          courseId: isCustom ? 'custom' : course!.id,
           courseName,
-          location: academy.location,
-          room,
+          highLiability: isCustom ? false : course!.highLiability,
+          title: '',
           start: tsFromDate(start),
           end: tsFromDate(end),
-          status: 'confirmed',
-          reminderSent: false,
-          createdAt: now,
+          location: academy.location,
+          room,
+          hours: Math.max(0, hoursBetween(start, end) - lunchMinutes / 60),
+          lunchMinutes,
+          lunchStart: lunchMinutes > 0 ? lunchStart : '',
+          countsTowardFdle: !isCustom,
+          status: academy.status === 'draft' ? 'draft' : 'scheduled',
+          roleSlots: buildSlots(),
+          notes: '',
+          createdBy: firebaseUser.uid,
+          updatedAt: serverTimestamp(),
         });
+        if (isCustom && defaultCoord) created.push({ ref, start, end });
+        if (++count % 300 === 0) {
+          await batch.commit();
+          batch = writeBatch(db);
+        }
       }
-    }
+      await batch.commit();
 
-    await logAudit(firebaseUser.uid, 'session.bulk_create', 'academy', academy.id, `Generated ${matchingDates.length} recurring "${courseName}" sessions`);
-    setBusy(false);
-    onClose();
+      // Mirror coordinator assignments for custom blocks so they hit My Schedule.
+      if (isCustom && defaultCoord) {
+        for (const { ref, start, end } of created) {
+          const now = Timestamp.now();
+          await setDoc(doc(db, 'assignments', `${ref.id}_${defaultCoord}`), {
+            uid: defaultCoord,
+            sessionId: ref.id,
+            academyId: academy.id,
+            role: 'coordinator',
+            courseName,
+            location: academy.location,
+            room,
+            start: tsFromDate(start),
+            end: tsFromDate(end),
+            status: 'confirmed',
+            reminderSent: false,
+            createdAt: now,
+          });
+        }
+      }
+
+      await logAudit(firebaseUser.uid, 'session.bulk_create', 'academy', academy.id, `Generated ${matchingDates.length} recurring "${courseName}" sessions`);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not generate the sessions. Please try again.');
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
     <Modal open onClose={onClose} title="Recurring block generator">
       <form onSubmit={submit} className="space-y-4">
+        {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Course">
             <Select value={courseId} onChange={(e) => pickCourse(e.target.value)} required>
@@ -252,6 +272,11 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
             <Input value={room} onChange={(e) => setRoom(e.target.value)} required />
           </Field>
         </div>
+        {lunchMinutes > 0 && (
+          <Field label="Lunch starts at" className="max-w-[10rem]">
+            <Input type="time" value={lunchStart} onChange={(e) => setLunchStart(e.target.value)} />
+          </Field>
+        )}
 
         <p className="text-sm text-slate-500">
           Will create <strong className="text-watch-900">{matchingDates.length}</strong> sessions

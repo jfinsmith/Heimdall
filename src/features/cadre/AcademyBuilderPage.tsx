@@ -101,20 +101,22 @@ export function AcademyBuilderPage() {
    * mirrors curriculum coverage.
    */
   const courseGroups = useMemo(() => {
-    const map = new Map<string, { scheduled: number; open: number; total: number }>();
+    const map = new Map<string, { scheduled: number; open: number; total: number; firstStart: number }>();
     for (const s of liveSessions) {
       if (s.status === 'completed') continue;
       // Skip blocks that only have pre-assigned coordinator slots.
       const needsSignup = s.roleSlots.some((slot) => slot.role !== 'coordinator');
       if (!needsSignup) continue;
       const key = s.courseName;
-      const g = map.get(key) ?? { scheduled: 0, open: 0, total: 0 };
+      const g = map.get(key) ?? { scheduled: 0, open: 0, total: 0, firstStart: Infinity };
       g.total++;
+      g.firstStart = Math.min(g.firstStart, s.start.toMillis());
       if (s.status === 'scheduled') g.scheduled++;
       if (s.status === 'open' || s.status === 'fully_staffed') g.open++;
       map.set(key, g);
     }
-    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    // Order by when each course is first taught, not alphabetically.
+    return [...map.entries()].sort((a, b) => a[1].firstStart - b[1].firstStart);
   }, [liveSessions]);
 
   if (!academy) return null;

@@ -233,6 +233,8 @@ export interface SessionDoc {
   hours: number;
   /** Minutes of lunch carved out of the middle of the block (not instructional). */
   lunchMinutes?: number;
+  /** When the lunch break starts, "HH:MM" 24h (default "12:00"). */
+  lunchStart?: string;
   /**
    * False for agency-specific blocks (PSO assignments, resiliency days,
    * formation, drill, study halls…) that exist for member minimum-hour

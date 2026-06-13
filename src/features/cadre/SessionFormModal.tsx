@@ -42,6 +42,7 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
   const [startTime, setStartTime] = useState(session ? toTimeInputValue(session.start.toDate()) : '07:00');
   const [endTime, setEndTime] = useState(session ? toTimeInputValue(session.end.toDate()) : '18:00');
   const [lunchMinutes, setLunchMinutes] = useState<number>(session?.lunchMinutes ?? 0);
+  const [lunchStart, setLunchStart] = useState<string>(session?.lunchStart ?? '12:00');
   const [room, setRoom] = useState(session?.room ?? academy.defaultRoom ?? '');
   const [location, setLocation] = useState(session?.location ?? academy.location);
   const [notes, setNotes] = useState(session?.notes ?? '');
@@ -153,6 +154,7 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
       // Instructional hours exclude the lunch break.
       hours: Math.max(0, hoursBetween(start, end) - lunchMinutes / 60),
       lunchMinutes,
+      lunchStart: lunchMinutes > 0 ? lunchStart : '',
       countsTowardFdle,
       roleSlots: cleanSlots,
       notes: notes ?? '',
@@ -299,6 +301,11 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
             />
           </Field>
         </div>
+        {lunchMinutes > 0 && (
+          <Field label="Lunch starts at" className="max-w-[10rem]">
+            <Input type="time" value={lunchStart} onChange={(e) => setLunchStart(e.target.value)} />
+          </Field>
+        )}
         <p className="-mt-2 text-xs text-slate-500">
           Instructional hours: <strong>{Math.max(0, hoursBetween(combineDateTime(date || '2000-01-01', startTime), combineDateTime(date || '2000-01-01', endTime)) - lunchMinutes / 60)}</strong>
           {lunchMinutes > 0 && ` (after a ${lunchMinutes}-min lunch)`}
