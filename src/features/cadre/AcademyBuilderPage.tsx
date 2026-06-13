@@ -170,9 +170,12 @@ export function AcademyBuilderPage() {
       for (const h of holidaysForYear(y, disabledHolidays)) holidayDates.set(h.date.toDateString(), h.name);
     }
     return liveSessions
+      // Agency/custom blocks (PSO assignments, etc.) on a holiday are intentional
+      // — only FDLE academy sessions on a closed day are a real conflict.
+      .filter((s) => s.countsTowardFdle !== false)
       .map((s) => ({ session: s, holiday: holidayDates.get(s.start.toDate().toDateString()) }))
       .filter((x): x is { session: WithId<SessionDoc>; holiday: string } => !!x.holiday);
-  }, [liveSessions]);
+  }, [liveSessions, disabledHolidays]);
 
   /**
    * Courses grouped for the open-sign-ups control. Only FDLE courses that
