@@ -188,7 +188,8 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
       hours: Math.max(0, hoursBetween(start, end) - lunchMinutes / 60),
       lunchMinutes,
       lunchStart: lunchMinutes > 0 ? lunchStart : '',
-      countsTowardFdle,
+      // Custom/agency blocks are never FDLE program hours.
+      countsTowardFdle: isCustom ? false : countsTowardFdle,
       roleSlots: cleanSlots,
       notes: notes ?? '',
       updatedAt: serverTimestamp(),
@@ -367,11 +368,17 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
           </Field>
         </div>
 
-        <label className="flex items-center gap-2 text-sm text-watch-800">
-          <input type="checkbox" checked={countsTowardFdle} onChange={(e) => setCountsTowardFdle(e.target.checked)} />
-          Counts toward FDLE program hours
-          <span className="text-xs text-slate-400">(uncheck for agency-only blocks like PSO assignments)</span>
-        </label>
+        {isCustom ? (
+          <p className="text-sm text-slate-500">
+            Custom / agency block — does <strong>not</strong> count toward FDLE program hours.
+          </p>
+        ) : (
+          <label className="flex items-center gap-2 text-sm text-watch-800">
+            <input type="checkbox" checked={countsTowardFdle} onChange={(e) => setCountsTowardFdle(e.target.checked)} />
+            Counts toward FDLE program hours
+            <span className="text-xs text-slate-400">(uncheck for agency-only blocks like PSO assignments)</span>
+          </label>
+        )}
 
         <fieldset className="rounded-md border border-watch-100 p-3">
           <legend className="px-1 text-sm font-medium text-watch-800">Role slots</legend>
