@@ -83,8 +83,18 @@ export function SessionDetailModal({ sessionId, onClose, onEdit }: Props) {
     setBusy(true);
     setError(null);
     try {
-      const nextStart = new Date(session.start.toMillis() + 864e5);
-      const nextEnd = new Date(session.end.toMillis() + 864e5);
+      // Advance to the next day, skipping weekends (a Friday duplicates to
+      // Monday). setDate keeps the wall-clock time correct across DST.
+      let dayDelta = 0;
+      const probe = session.start.toDate();
+      do {
+        probe.setDate(probe.getDate() + 1);
+        dayDelta++;
+      } while (probe.getDay() === 0 || probe.getDay() === 6);
+      const nextStart = session.start.toDate();
+      nextStart.setDate(nextStart.getDate() + dayDelta);
+      const nextEnd = session.end.toDate();
+      nextEnd.setDate(nextEnd.getDate() + dayDelta);
       await addDoc(collection(db, 'sessions'), {
         academyId: session.academyId,
         courseId: session.courseId,
