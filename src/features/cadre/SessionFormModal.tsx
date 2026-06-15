@@ -32,6 +32,10 @@ interface Props {
 export function SessionFormModal({ academy, session, defaultDate, onClose }: Props) {
   const { firebaseUser } = useAuth();
   const { data: courses } = useCollection<CourseDoc>('courseCatalog');
+  // The catalog is shared, but ARGUS (School Guardian) courses only belong on
+  // ARGUS academies — and ARGUS academies don't schedule LE/CO blocks.
+  const isArgus = (academy.discipline ?? '').startsWith('argus');
+  const visibleCourses = courses.filter((c) => (isArgus ? c.discipline === 'argus' : c.discipline !== 'argus'));
   const { data: coordinatorUsers } = useCollection<UserDoc>('users', [where('role', '==', 'coordinator')]);
   // Everyone who could be reserved into a slot in advance (any active user).
   const { data: activeUsers } = useCollection<UserDoc>('users', [where('status', '==', 'active')]);
@@ -309,7 +313,7 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
           <Field label="Course (required — from catalog)">
             <Select value={courseId} onChange={(e) => pickCourse(e.target.value)} required>
               <option value="">Select a course…</option>
-              {courses.map((c) => (
+              {visibleCourses.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name} ({c.defaultHours} hrs{c.highLiability ? ', high-liability' : ''})
                 </option>

@@ -171,7 +171,9 @@ export interface DefaultRoleSlot {
 export interface CourseDoc {
   name: string;
   fdleCourseCode: string;
-  discipline: Discipline;
+  /** Category tag: 'all' (cross-discipline) or a program tag like 'argus' that
+   * scopes the course to that program's academies in the session picker. */
+  discipline: Discipline | string;
   defaultHours: number;
   highLiability: boolean;
   description: string;

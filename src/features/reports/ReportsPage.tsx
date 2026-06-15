@@ -126,8 +126,8 @@ export function ReportsPage() {
               </dd>
             </div>
           </dl>
-          <Link to={`/reports/print/${academy.id}`} className="mt-3 inline-block text-sm text-bifrost-700 hover:underline">
-            Open printable schedule →
+          <Link to={`/reports/print/${academy.id}`} target="_blank" rel="noopener" className="mt-3 inline-block text-sm text-bifrost-700 hover:underline">
+            Open printable schedule ↗
           </Link>
         </section>
       )}

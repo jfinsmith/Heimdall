@@ -379,8 +379,8 @@ export function AcademyBuilderPage() {
         <div className="ml-auto flex items-center gap-2">
           <Badge tone={published ? 'green' : 'slate'}>{academy.status.replace('_', ' ')}</Badge>
           <Button onClick={togglePublish}>{published ? 'Unpublish' : 'Publish to calendar'}</Button>
-          <Link to={`/reports/print/${academy.id}`} className="text-sm text-bifrost-700 hover:underline">
-            Print view
+          <Link to={`/reports/print/${academy.id}`} target="_blank" rel="noopener" className="text-sm text-bifrost-700 hover:underline">
+            Print view ↗
           </Link>
         </div>
       </div>
