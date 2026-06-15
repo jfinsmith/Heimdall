@@ -35,6 +35,7 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
   const [endTime, setEndTime] = useState('18:00');
   const [lunchMinutes, setLunchMinutes] = useState(60);
   const [lunchStart, setLunchStart] = useState('12:00');
+  const [lunchCounts, setLunchCounts] = useState(false);
   const [room, setRoom] = useState(academy.defaultRoom ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,7 +91,7 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
 
   const perBlockHours = Math.max(
     0,
-    hoursBetween(combineDateTime('2000-01-01', startTime), combineDateTime('2000-01-01', endTime)) - lunchMinutes / 60
+    hoursBetween(combineDateTime('2000-01-01', startTime), combineDateTime('2000-01-01', endTime)) - (lunchCounts ? 0 : lunchMinutes / 60)
   );
 
   async function submit(e: React.FormEvent) {
@@ -145,9 +146,10 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
           end: tsFromDate(end),
           location: academy.location,
           room,
-          hours: Math.max(0, hoursBetween(start, end) - lunchMinutes / 60),
+          hours: Math.max(0, hoursBetween(start, end) - (lunchCounts ? 0 : lunchMinutes / 60)),
           lunchMinutes,
           lunchStart: lunchMinutes > 0 ? lunchStart : '',
+          lunchCountsTowardHours: lunchCounts,
           countsTowardFdle: !isCustom,
           status: academy.status === 'draft' ? 'draft' : 'scheduled',
           roleSlots: buildSlots(),
@@ -273,9 +275,15 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
           </Field>
         </div>
         {lunchMinutes > 0 && (
-          <Field label="Lunch starts at" className="max-w-[10rem]">
-            <Input type="time" value={lunchStart} onChange={(e) => setLunchStart(e.target.value)} />
-          </Field>
+          <div className="flex flex-wrap items-end gap-4">
+            <Field label="Lunch starts at" className="max-w-[10rem]">
+              <Input type="time" value={lunchStart} onChange={(e) => setLunchStart(e.target.value)} />
+            </Field>
+            <label className="mb-2 flex items-center gap-2 text-sm text-watch-800">
+              <input type="checkbox" checked={lunchCounts} onChange={(e) => setLunchCounts(e.target.checked)} />
+              Count lunch toward instructional hours
+            </label>
+          </div>
         )}
 
         <p className="text-sm text-slate-500">

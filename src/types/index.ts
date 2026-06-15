@@ -256,12 +256,18 @@ export interface SessionDoc {
   end: Timestamp;
   location: string;
   room: string;
-  /** Instructional hours = wall-clock span minus the lunch break. */
+  /** Instructional hours = wall-clock span minus the lunch break (unless lunch counts — see below). */
   hours: number;
   /** Minutes of lunch carved out of the middle of the block (not instructional). */
   lunchMinutes?: number;
   /** When the lunch break starts, "HH:MM" 24h (default "12:00"). */
   lunchStart?: string;
+  /**
+   * When true, the lunch minutes count toward instructional hours instead of
+   * being carved out (e.g. an ARGUS firearms block 0800–1700 with a 30-min
+   * lunch that still counts as 9 hrs). Default/undefined = lunch is excluded.
+   */
+  lunchCountsTowardHours?: boolean;
   /**
    * False for agency-specific blocks (PSO assignments, resiliency days,
    * formation, drill, study halls…) that exist for member minimum-hour

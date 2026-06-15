@@ -108,6 +108,7 @@ export function SessionDetailModal({ sessionId, onClose, onEdit }: Props) {
         hours: session.hours,
         lunchMinutes: session.lunchMinutes ?? 0,
         lunchStart: session.lunchStart ?? '',
+        lunchCountsTowardHours: session.lunchCountsTowardHours ?? false,
         countsTowardFdle: session.countsTowardFdle !== false,
         notes: session.notes ?? '',
         // Same slot structure, but no one carried over — staff it fresh.

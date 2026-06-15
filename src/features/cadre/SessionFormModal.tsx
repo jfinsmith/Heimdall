@@ -59,6 +59,7 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
   const [lunchMinutes, setLunchMinutes] = useState<number>(session?.lunchMinutes ?? 0);
   // Default to noon — use || so a saved empty string (lunch was 0) still defaults to 12:00.
   const [lunchStart, setLunchStart] = useState<string>(session?.lunchStart || '12:00');
+  const [lunchCounts, setLunchCounts] = useState<boolean>(session?.lunchCountsTowardHours ?? false);
   const [room, setRoom] = useState(session?.room ?? academy.defaultRoom ?? '');
   const [location, setLocation] = useState(session?.location ?? academy.location);
   const [notes, setNotes] = useState(session?.notes ?? '');
@@ -194,10 +195,11 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
       end: tsFromDate(end),
       location,
       room,
-      // Instructional hours exclude the lunch break.
-      hours: Math.max(0, hoursBetween(start, end) - lunchMinutes / 60),
+      // Instructional hours exclude the lunch break — unless lunch is set to count.
+      hours: Math.max(0, hoursBetween(start, end) - (lunchCounts ? 0 : lunchMinutes / 60)),
       lunchMinutes,
       lunchStart: lunchMinutes > 0 ? lunchStart : '',
+      lunchCountsTowardHours: lunchCounts,
       // Custom/agency blocks are never FDLE program hours.
       countsTowardFdle: isCustom ? false : countsTowardFdle,
       roleSlots: cleanSlots,
@@ -350,7 +352,7 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
           <Field label="End">
             <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} required />
           </Field>
-          <Field label="Lunch (min)" hint="Carved out, not counted">
+          <Field label="Lunch (min)" hint="Default: carved out">
             <Input
               type="number"
               min={0}
@@ -361,13 +363,19 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
           </Field>
         </div>
         {lunchMinutes > 0 && (
-          <Field label="Lunch starts at" className="max-w-[10rem]">
-            <Input type="time" value={lunchStart} onChange={(e) => setLunchStart(e.target.value)} />
-          </Field>
+          <div className="flex flex-wrap items-end gap-4">
+            <Field label="Lunch starts at" className="max-w-[10rem]">
+              <Input type="time" value={lunchStart} onChange={(e) => setLunchStart(e.target.value)} />
+            </Field>
+            <label className="mb-2 flex items-center gap-2 text-sm text-watch-800">
+              <input type="checkbox" checked={lunchCounts} onChange={(e) => setLunchCounts(e.target.checked)} />
+              Count lunch toward instructional hours
+            </label>
+          </div>
         )}
         <p className="-mt-2 text-xs text-slate-500">
-          Instructional hours: <strong>{Math.max(0, hoursBetween(combineDateTime(date || '2000-01-01', startTime), combineDateTime(date || '2000-01-01', endTime)) - lunchMinutes / 60)}</strong>
-          {lunchMinutes > 0 && ` (after a ${lunchMinutes}-min lunch)`}
+          Instructional hours: <strong>{Math.max(0, hoursBetween(combineDateTime(date || '2000-01-01', startTime), combineDateTime(date || '2000-01-01', endTime)) - (lunchCounts ? 0 : lunchMinutes / 60))}</strong>
+          {lunchMinutes > 0 && (lunchCounts ? ` (incl. a ${lunchMinutes}-min lunch)` : ` (after a ${lunchMinutes}-min lunch)`)}
         </p>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Room (optional)" hint="Prefilled from the academy default">
