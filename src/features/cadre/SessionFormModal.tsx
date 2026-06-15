@@ -6,13 +6,13 @@
  * picker (defaulting to the academy's #1 coordinator) — no open registration
  * needed for those blocks.
  */
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { addDoc, collection, deleteDoc, doc, serverTimestamp, setDoc, Timestamp, updateDoc, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { shortId, useCollection, useDoc, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import { combineDateTime, hoursBetween, toDateInputValue, toTimeInputValue, tsFromDate } from '../../lib/time';
-import type { AcademyDoc, CourseDoc, CurriculumDoc, QualificationKey, RoleSlot, SessionDoc, SlotRole, UserDoc } from '../../types';
+import type { AcademyDoc, CurriculumDoc, QualificationKey, RoleSlot, SessionDoc, SlotRole, UserDoc } from '../../types';
 import { QUALIFICATION_LABELS, SLOT_ROLE_LABELS } from '../../types';
 import { Button, Field, Input, Select, TextArea } from '../../components/ui';
 import { Modal } from '../../components/Modal';
@@ -31,31 +31,25 @@ interface Props {
 
 export function SessionFormModal({ academy, session, defaultDate, onClose }: Props) {
   const { firebaseUser } = useAuth();
-  const { data: courses } = useCollection<CourseDoc>('courseCatalog');
-  // The course picker is driven by THIS academy's discipline — its curriculum
-  // blocks, enriched by a matching catalog entry (hours / role slots / quals)
-  // where one exists. Disciplines with no catalog entries (e.g. New Member
-  // Training) still list their own blocks; anything off-curriculum goes through
-  // "Custom". This keeps each discipline's picker to its own courses — no
-  // cross-discipline leakage.
+  // The course picker comes entirely from THIS academy's discipline — its
+  // curriculum (Admin → Curriculum & Hours), which carries the hours,
+  // high-liability flag, lead qualification, and default staffing slots. There's
+  // no separate catalog; anything off-curriculum goes through "Custom".
+  // Alphabetical for easy scanning.
   const { data: curriculum } = useDoc<CurriculumDoc>(academy.discipline ? `curricula/${academy.discipline}` : null);
   const courseOptions = useMemo(
     () =>
-      (curriculum?.courses ?? []).map((b) => {
-        // Hours ALWAYS come from THIS discipline's curriculum block. A catalog
-        // course only enriches role slots / qualifications / high-liability when
-        // it's tagged for this same discipline — never a same-named course from
-        // another discipline (that's what made NMT "Legal" show LE's 64 hrs).
-        const cat = courses.find((c) => c.name === b.name && c.discipline === academy.discipline) ?? null;
-        return {
-          value: cat ? cat.id : `block:${b.name}`,
+      (curriculum?.courses ?? [])
+        .map((b) => ({
+          value: `block:${b.name}`,
           name: b.name,
           hours: b.minHours,
-          highLiability: cat?.highLiability ?? false,
-          catalog: cat,
-        };
-      }),
-    [curriculum, courses, academy.discipline]
+          highLiability: !!b.highLiability,
+          leadQualification: b.leadQualification,
+          defaultRoleSlots: b.defaultRoleSlots ?? [],
+        }))
+        .sort((a, c) => a.name.localeCompare(c.name)),
+    [curriculum]
   );
   const { data: coordinatorUsers } = useCollection<UserDoc>('users', [where('role', '==', 'coordinator')]);
   // Everyone who could be reserved into a slot in advance (any active user).
@@ -65,7 +59,7 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
     activeUsers.find((u) => u.id === uid)?.displayName ?? coordinatorUsers.find((u) => u.id === uid)?.displayName ?? uid;
 
   const isCustomSession = session ? session.courseId === 'custom' : false;
-  const [courseId, setCourseId] = useState(isCustomSession ? CUSTOM : session?.courseId ?? '');
+  const [courseId, setCourseId] = useState(isCustomSession ? CUSTOM : '');
   const [customName, setCustomName] = useState(isCustomSession ? session?.courseName ?? '' : '');
   const [date, setDate] = useState(session ? toDateInputValue(session.start.toDate()) : defaultDate ?? '');
   // New sessions default to a 07:00–18:00 academy day.
@@ -85,6 +79,14 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
 
   const isCustom = courseId === CUSTOM;
   const selectedOption = useMemo(() => courseOptions.find((o) => o.value === courseId), [courseOptions, courseId]);
+
+  // On edit, match the saved session to a curriculum option by name (handles
+  // sessions saved before the picker became curriculum-driven).
+  useEffect(() => {
+    if (isCustomSession || courseId || !session) return;
+    const opt = courseOptions.find((o) => o.name === session.courseName);
+    if (opt) setCourseId(opt.value);
+  }, [courseOptions, session, isCustomSession, courseId]);
   const defaultCoordinator = academy.coordinatorIds[0] ?? '';
 
   function coordinatorSlot(): RoleSlot {
@@ -107,10 +109,10 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
       return;
     }
     setCountsTowardFdle(true);
-    const cat = courseOptions.find((o) => o.value === id)?.catalog;
+    const opt = courseOptions.find((o) => o.value === id);
     setSlots([
-      { slotId: shortId(), role: 'lead', count: 1, requiredQualificationKey: cat?.leadRequiredQualificationKey, filledBy: [] },
-      ...(cat?.defaultRoleSlots ?? [])
+      { slotId: shortId(), role: 'lead', count: 1, requiredQualificationKey: opt?.leadQualification, filledBy: [] },
+      ...(opt?.defaultRoleSlots ?? [])
         .filter((s) => s.role !== 'lead')
         .map((s) => ({ slotId: shortId(), filledBy: [], ...s })),
     ]);
@@ -139,12 +141,14 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
   function eligibleFor(slot: RoleSlot) {
     const req = slot.requiredQualificationKey;
     const reservedAnywhere = new Set(slots.flatMap((s) => s.filledBy)); // no double-booking within the session
-    return activeUsers.filter(
-      (u) =>
-        !slot.filledBy.includes(u.id) &&
-        !reservedAnywhere.has(u.id) &&
-        (!req || (u.verifiedQualKeys ?? []).includes(req))
-    );
+    return activeUsers
+      .filter(
+        (u) =>
+          !slot.filledBy.includes(u.id) &&
+          !reservedAnywhere.has(u.id) &&
+          (!req || (u.verifiedQualKeys ?? []).includes(req))
+      )
+      .sort((a, b) => a.displayName.localeCompare(b.displayName));
   }
 
   function changeSlotRole(slot: RoleSlot, role: SlotRole) {
@@ -413,7 +417,7 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
               <div key={slot.slotId} className="rounded-md border border-watch-100 p-2">
                 <div className="grid grid-cols-[1fr_5rem_1fr_2rem] items-center gap-2">
                   <Select value={slot.role} onChange={(e) => changeSlotRole(slot, e.target.value as SlotRole)}>
-                    {(Object.keys(SLOT_ROLE_LABELS) as SlotRole[]).map((r) => (
+                    {(Object.keys(SLOT_ROLE_LABELS) as SlotRole[]).sort((a, b) => SLOT_ROLE_LABELS[a].localeCompare(SLOT_ROLE_LABELS[b])).map((r) => (
                       <option key={r} value={r}>
                         {SLOT_ROLE_LABELS[r]}
                       </option>
@@ -428,7 +432,7 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
                         onChange={(e) => updateSlot(slot.slotId, { filledBy: e.target.value ? [e.target.value] : [] })}
                       >
                         <option value="">Unassigned</option>
-                        {coordinatorUsers.map((u) => (
+                        {[...coordinatorUsers].sort((a, b) => a.displayName.localeCompare(b.displayName)).map((u) => (
                           <option key={u.id} value={u.id}>
                             {u.displayName}
                             {u.id === defaultCoordinator ? ' (academy #1)' : ''}
@@ -458,7 +462,7 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
                         }
                       >
                         <option value="">No qualification required</option>
-                        {(Object.keys(QUALIFICATION_LABELS) as QualificationKey[]).map((k) => (
+                        {(Object.keys(QUALIFICATION_LABELS) as QualificationKey[]).sort((a, b) => QUALIFICATION_LABELS[a].localeCompare(QUALIFICATION_LABELS[b])).map((k) => (
                           <option key={k} value={k}>
                             {QUALIFICATION_LABELS[k]}
                           </option>

@@ -221,7 +221,7 @@ export function GjallarhornSettingsPage() {
         </div>
         <Field label="Escalation recipients" hint="Command staff who receive critical alerts (lead withdrawals, understaffing)">
           <Select multiple size={5} value={recipients} onChange={(e) => setRecipients([...e.target.selectedOptions].map((o) => o.value))}>
-            {commandUsers.map((u) => (
+            {[...commandUsers].sort((a, b) => a.displayName.localeCompare(b.displayName)).map((u) => (
               <option key={u.id} value={u.id}>
                 {u.displayName} ({u.role})
               </option>

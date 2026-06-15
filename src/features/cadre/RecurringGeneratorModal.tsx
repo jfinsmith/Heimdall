@@ -12,7 +12,7 @@ import { db } from '../../lib/firebase';
 import { shortId, useCollection, useDoc, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import { addDays, combineDateTime, hoursBetween, toDateInputValue, tsFromDate } from '../../lib/time';
-import type { AcademyDoc, CourseDoc, CurriculumDoc, RoleSlot, UserDoc } from '../../types';
+import type { AcademyDoc, CurriculumDoc, RoleSlot, UserDoc } from '../../types';
 import { Button, Field, Input, Select } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import { logAudit } from '../sessions/audit';
@@ -22,19 +22,24 @@ const CUSTOM = '__custom__';
 
 export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<AcademyDoc>; onClose: () => void }) {
   const { firebaseUser } = useAuth();
-  const { data: courses } = useCollection<CourseDoc>('courseCatalog');
   const { data: coordinatorUsers } = useCollection<UserDoc>('users', [where('role', '==', 'coordinator')]);
-  // Courses come from THIS academy's discipline (curriculum blocks) — hours from
-  // the curriculum, enrichment only from a catalog course tagged for this
-  // discipline. No cross-discipline leakage.
+  // Courses come entirely from THIS academy's discipline (its curriculum blocks)
+  // — hours, high-liability, lead qualification, and default slots all live on
+  // the block (Admin → Curriculum & Hours). Alphabetical.
   const { data: curriculum } = useDoc<CurriculumDoc>(academy.discipline ? `curricula/${academy.discipline}` : null);
   const courseOptions = useMemo(
     () =>
-      (curriculum?.courses ?? []).map((b) => {
-        const cat = courses.find((c) => c.name === b.name && c.discipline === academy.discipline) ?? null;
-        return { value: cat ? cat.id : `block:${b.name}`, name: b.name, hours: b.minHours, highLiability: cat?.highLiability ?? false, catalog: cat };
-      }),
-    [curriculum, courses, academy.discipline]
+      (curriculum?.courses ?? [])
+        .map((b) => ({
+          value: `block:${b.name}`,
+          name: b.name,
+          hours: b.minHours,
+          highLiability: !!b.highLiability,
+          leadQualification: b.leadQualification,
+          defaultRoleSlots: b.defaultRoleSlots ?? [],
+        }))
+        .sort((a, c) => a.name.localeCompare(c.name)),
+    [curriculum]
   );
 
   const [courseId, setCourseId] = useState('');
@@ -121,7 +126,6 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
     setBusy(true);
 
     const courseName = isCustom ? customName.trim() : selectedOption?.name ?? '';
-    const cat = selectedOption?.catalog ?? null;
     const defaultCoord = academy.coordinatorIds[0];
 
     // Sanitize slots — Firestore rejects undefined, so only include the
@@ -130,8 +134,8 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
       const raw: RoleSlot[] = isCustom
         ? [{ slotId: shortId(), role: 'coordinator', count: 1, filledBy: defaultCoord ? [defaultCoord] : [] }]
         : [
-            { slotId: shortId(), role: 'lead', count: 1, requiredQualificationKey: cat?.leadRequiredQualificationKey ?? undefined, filledBy: [] },
-            ...(cat?.defaultRoleSlots ?? []).filter((s) => s.role !== 'lead').map((s) => ({ slotId: shortId(), filledBy: [], ...s })),
+            { slotId: shortId(), role: 'lead', count: 1, requiredQualificationKey: selectedOption?.leadQualification ?? undefined, filledBy: [] },
+            ...(selectedOption?.defaultRoleSlots ?? []).filter((s) => s.role !== 'lead').map((s) => ({ slotId: shortId(), filledBy: [], ...s })),
           ];
       return raw.map((s) => {
         const out: Record<string, unknown> = { slotId: s.slotId, role: s.role, count: s.count, filledBy: s.filledBy ?? [] };

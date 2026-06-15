@@ -22,7 +22,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { can } from '../../lib/rbac';
 import { addDays, hoursBetween, tsFromDate, fmtDate } from '../../lib/time';
 import { holidaysForYear, holidayBackgroundEvents, observedHolidayDatesInRange, HOLIDAY_PAY_HOURS } from '../../lib/holidays';
-import type { AcademyDoc, CourseDoc, CoursePublishTarget, CurriculumDoc, QualificationKey, SessionDoc, UserDoc } from '../../types';
+import type { AcademyDoc, CoursePublishTarget, CurriculumDoc, QualificationKey, SessionDoc, UserDoc } from '../../types';
 import { QUALIFICATION_LABELS } from '../../types';
 import { Badge, Button, Field, Input, PageHeader, Select } from '../../components/ui';
 import { Modal } from '../../components/Modal';
@@ -45,7 +45,6 @@ export function AcademyBuilderPage() {
   const { firebaseUser } = useAuth();
   const { data: academy } = useDoc<AcademyDoc>(academyId ? `academies/${academyId}` : null);
   const { data: curriculum } = useDoc<CurriculumDoc>(academy ? `curricula/${academy.discipline}` : null);
-  const { data: catalog } = useCollection<CourseDoc>('courseCatalog');
   const { data: sessions } = useCollection<SessionDoc>(
     academyId ? 'sessions' : null,
     [where('academyId', '==', academyId ?? '')],
@@ -166,16 +165,12 @@ export function AcademyBuilderPage() {
     for (const s of fdleSessions) {
       hoursByCourse.set(norm(s.courseName), (hoursByCourse.get(norm(s.courseName)) ?? 0) + (s.hours || 0));
     }
-    // High-liability flag from THIS discipline's catalog courses only (names
-    // match the curriculum names) — don't borrow a flag from another discipline.
-    const highLiabilityNames = new Set(
-      catalog.filter((c) => c.highLiability && c.discipline === academy?.discipline).map((c) => norm(c.name))
-    );
+    // High-liability flag comes from the discipline's own curriculum block.
     return curriculum.courses.map((c) => {
       const scheduled = q(hoursByCourse.get(norm(c.name)) ?? 0);
-      return { ...c, scheduled, delta: q(scheduled - c.minHours), highLiability: highLiabilityNames.has(norm(c.name)) };
+      return { ...c, scheduled, delta: q(scheduled - c.minHours), highLiability: !!c.highLiability };
     });
-  }, [curriculum, fdleSessions, catalog, academy?.discipline]);
+  }, [curriculum, fdleSessions]);
 
   /** Sessions landing on school holidays (the post-clone trap). */
   const holidayConflicts = useMemo(() => {
@@ -657,7 +652,7 @@ function OpenSignupsModal({
           {choice === 'qualification' && (
             <div className="pl-7">
               <Select value={qualKey} onChange={(e) => setQualKey(e.target.value as QualificationKey)}>
-                {(Object.keys(QUALIFICATION_LABELS) as QualificationKey[]).map((k) => (
+                {(Object.keys(QUALIFICATION_LABELS) as QualificationKey[]).sort((a, b) => QUALIFICATION_LABELS[a].localeCompare(QUALIFICATION_LABELS[b])).map((k) => (
                   <option key={k} value={k}>
                     {QUALIFICATION_LABELS[k]}
                   </option>
@@ -830,7 +825,7 @@ function EditAcademyModal({ academy, onClose }: { academy: WithId<AcademyDoc>; o
   // If the discipline isn't among the active curricula (e.g. an older value),
   // still offer it so the field is never blank/unrecoverable.
   const disciplineOptions = useMemo(() => {
-    const opts = curricula.map((c) => ({ id: c.id, label: c.label }));
+    const opts = [...curricula].sort((a, b) => a.label.localeCompare(b.label)).map((c) => ({ id: c.id, label: c.label }));
     if (discipline && !opts.some((o) => o.id === discipline)) opts.unshift({ id: discipline, label: discipline });
     return opts;
   }, [curricula, discipline]);
@@ -906,7 +901,7 @@ function EditAcademyModal({ academy, onClose }: { academy: WithId<AcademyDoc>; o
           <Field label="Primary coordinator" hint="Default owner for assigned blocks">
             <Select value={primary} onChange={(e) => setPrimary(e.target.value)}>
               <option value="">— none —</option>
-              {coordinators.map((u) => (
+              {[...coordinators].sort((a, b) => a.displayName.localeCompare(b.displayName)).map((u) => (
                 <option key={u.id} value={u.id}>{u.displayName}</option>
               ))}
             </Select>
@@ -914,7 +909,7 @@ function EditAcademyModal({ academy, onClose }: { academy: WithId<AcademyDoc>; o
           <Field label="Secondary coordinator">
             <Select value={secondary} onChange={(e) => setSecondary(e.target.value)}>
               <option value="">— none —</option>
-              {coordinators.filter((u) => u.id !== primary).map((u) => (
+              {coordinators.filter((u) => u.id !== primary).sort((a, b) => a.displayName.localeCompare(b.displayName)).map((u) => (
                 <option key={u.id} value={u.id}>{u.displayName}</option>
               ))}
             </Select>
@@ -1099,7 +1094,7 @@ function SubmitForApproval({
       ) : (
         <Field label="Send to sergeant">
           <Select value={sid} onChange={(e) => setSid(e.target.value)}>
-            {sergeants.map((s) => (
+            {[...sergeants].sort((a, b) => a.displayName.localeCompare(b.displayName)).map((s) => (
               <option key={s.id} value={s.id}>
                 {s.displayName}
               </option>

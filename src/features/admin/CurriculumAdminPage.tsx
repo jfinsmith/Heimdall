@@ -9,8 +9,9 @@ import { deleteDoc, doc, setDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useCollection, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
-import type { CurriculumCourse, CurriculumDoc } from '../../types';
-import { Badge, Button, Field, Input, PageHeader } from '../../components/ui';
+import type { CurriculumCourse, CurriculumDoc, QualificationKey } from '../../types';
+import { QUALIFICATION_LABELS } from '../../types';
+import { Badge, Button, Field, Input, PageHeader, Select } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import { logAudit } from '../sessions/audit';
 
@@ -42,9 +43,10 @@ export function CurriculumAdminPage() {
         }
       />
       <p className="mb-4 max-w-2xl text-sm text-slate-500">
-        Each discipline lists its course blocks and FDLE minimum hours. The discipline's default total is
-        the sum of its courses; the schedule builder tracks scheduled hours against these minimums per
-        course. Editing here changes defaults for new academies — existing academies are not modified.
+        Each discipline's full course list lives here — the course name, required hours, whether it's
+        high-liability (▲), and the qualification a lead instructor must hold. This is the single source
+        for the builder's course picker and curriculum coverage (there's no separate course catalog).
+        Editing changes defaults for new academies — existing academies aren't modified.
       </p>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -120,7 +122,13 @@ function CurriculumEditorModal({
     e.preventDefault();
     setBusy(true);
     const id = curriculum?.id ?? key.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_');
-    const cleaned = courses.filter((c) => c.name.trim()).map((c) => ({ name: c.name.trim(), minHours: Number(c.minHours) || 0 }));
+    const cleaned = courses.filter((c) => c.name.trim()).map((c) => ({
+      name: c.name.trim(),
+      minHours: Number(c.minHours) || 0,
+      ...(c.highLiability ? { highLiability: true } : {}),
+      ...(c.leadQualification ? { leadQualification: c.leadQualification } : {}),
+      ...(c.defaultRoleSlots && c.defaultRoleSlots.length ? { defaultRoleSlots: c.defaultRoleSlots } : {}),
+    }));
     await setDoc(doc(db, 'curricula', id), {
       key: id,
       label,
@@ -156,9 +164,16 @@ function CurriculumEditorModal({
           <legend className="px-1 text-sm font-medium text-watch-800">
             Course blocks &amp; minimum hours — total <strong>{total}</strong> hrs
           </legend>
+          <div className="mb-1 grid grid-cols-[1fr_4.5rem_2.5rem_9rem_1.5rem] items-center gap-2 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            <span>Course</span>
+            <span>Hours</span>
+            <span title="High-liability">▲ HL</span>
+            <span>Lead qualification</span>
+            <span />
+          </div>
           <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
             {courses.map((c, i) => (
-              <div key={i} className="grid grid-cols-[1fr_6rem_2rem] items-center gap-2">
+              <div key={i} className="grid grid-cols-[1fr_4.5rem_2.5rem_9rem_1.5rem] items-center gap-2">
                 <Input
                   value={c.name}
                   placeholder="Course name"
@@ -170,9 +185,28 @@ function CurriculumEditorModal({
                   min={0}
                   step={0.5}
                   value={c.minHours}
-                  aria-label={`Course ${i + 1} minimum hours`}
+                  aria-label={`Course ${i + 1} hours`}
                   onChange={(e) => updateCourse(i, { minHours: Number(e.target.value) })}
                 />
+                <input
+                  type="checkbox"
+                  className="justify-self-center"
+                  checked={!!c.highLiability}
+                  aria-label={`Course ${i + 1} high-liability`}
+                  onChange={(e) => updateCourse(i, { highLiability: e.target.checked })}
+                />
+                <Select
+                  value={c.leadQualification ?? ''}
+                  aria-label={`Course ${i + 1} lead qualification`}
+                  onChange={(e) => updateCourse(i, { leadQualification: (e.target.value || undefined) as QualificationKey | undefined })}
+                >
+                  <option value="">No lead qual</option>
+                  {(Object.keys(QUALIFICATION_LABELS) as QualificationKey[]).map((k) => (
+                    <option key={k} value={k}>
+                      {QUALIFICATION_LABELS[k]}
+                    </option>
+                  ))}
+                </Select>
                 <button
                   type="button"
                   aria-label="Remove course"

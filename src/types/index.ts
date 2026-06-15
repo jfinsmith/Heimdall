@@ -251,6 +251,12 @@ export interface AcademyDoc {
 export interface CurriculumCourse {
   name: string;
   minHours: number;
+  /** High-liability course (firearms, DT, scenarios) — flagged ▲ in the builder/printout. */
+  highLiability?: boolean;
+  /** Qualification a lead instructor must hold to teach this course. */
+  leadQualification?: QualificationKey;
+  /** Default staffing slots beyond the lead (e.g. safety officer, role players). */
+  defaultRoleSlots?: DefaultRoleSlot[];
 }
 
 /** `curricula/{key}` — one per discipline; drives academy creation and the

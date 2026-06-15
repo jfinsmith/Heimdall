@@ -291,7 +291,7 @@ function BulkMessageModal({ academies, onClose }: { academies: WithId<AcademyDoc
           <Field label="Audience">
             <Select value={academyId} onChange={(e) => setAcademyId(e.target.value)}>
               <option value="">All instructors with upcoming assignments</option>
-              {academies.map((a) => (
+              {[...academies].sort((a, b) => a.name.localeCompare(b.name)).map((a) => (
                 <option key={a.id} value={a.id}>
                   Signed-up instructors — {a.name}
                 </option>

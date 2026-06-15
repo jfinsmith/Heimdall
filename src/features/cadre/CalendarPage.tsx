@@ -127,7 +127,7 @@ export function CalendarPage() {
         <Field label="Academy">
           <Select value={academyFilter} onChange={(e) => setAcademyFilter(e.target.value)}>
             <option value="all">All</option>
-            {visibleAcademies.map((a) => (
+            {[...visibleAcademies].sort((a, b) => (a.shortName || a.name).localeCompare(b.shortName || b.name)).map((a) => (
               <option key={a.id} value={a.id}>{a.shortName || a.name}</option>
             ))}
           </Select>
@@ -135,7 +135,7 @@ export function CalendarPage() {
         <Field label="Discipline">
           <Select value={disciplineFilter} onChange={(e) => setDisciplineFilter(e.target.value)}>
             <option value="all">All</option>
-            {curricula.map((c) => (
+            {curricula.filter((c) => c.active).sort((a, b) => a.label.localeCompare(b.label)).map((c) => (
               <option key={c.id} value={c.id}>{c.label}</option>
             ))}
           </Select>

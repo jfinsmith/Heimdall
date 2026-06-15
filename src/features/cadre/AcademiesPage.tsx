@@ -133,7 +133,7 @@ export function AcademiesPage() {
             {!loading && academies.length === 0 && (
               <tr>
                 <td colSpan={6} className="px-4 py-10 text-center text-slate-400">
-                  No academies yet. Create the first cohort.
+                  No academies yet. Create the first one.
                 </td>
               </tr>
             )}
@@ -343,7 +343,7 @@ function CreateAcademyModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={isTemplate ? 'New schedule template' : 'New academy (cohort)'}>
+    <Modal open={open} onClose={onClose} title={isTemplate ? 'New schedule template' : 'New academy'}>
       <form onSubmit={submit} className="space-y-4">
         {isTemplate && (
           <p className="rounded-md bg-watch-50 px-3 py-2 text-sm text-slate-600">
@@ -371,7 +371,7 @@ function CreateAcademyModal({
               }}
             >
               <option value="">Select a discipline…</option>
-              {curricula.map((c) => (
+              {[...curricula].sort((a, b) => a.label.localeCompare(b.label)).map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.label} ({c.totalHours} hrs)
                 </option>
@@ -398,7 +398,7 @@ function CreateAcademyModal({
             <Input value={defaultRoom} onChange={(e) => setDefaultRoom(e.target.value)} placeholder="E-120" />
           </Field>
         </div>
-        <Field label="Calendar color" hint="Distinguishes this cohort on shared calendars">
+        <Field label="Calendar color" hint="Distinguishes this academy on shared calendars">
           <div className="flex items-center gap-2">
             <Select value={defaultColor} onChange={(e) => setColor(e.target.value)} className="flex-1">
               {ACADEMY_COLORS.map((c) => (
@@ -412,7 +412,7 @@ function CreateAcademyModal({
           <Field label="Primary coordinator" hint="Default owner for assigned blocks">
             <Select value={primary} onChange={(e) => setPrimary(e.target.value)}>
               <option value="">— none —</option>
-              {coordinatorUsers.map((u) => (
+              {[...coordinatorUsers].sort((a, b) => a.displayName.localeCompare(b.displayName)).map((u) => (
                 <option key={u.id} value={u.id}>{u.displayName}</option>
               ))}
             </Select>
@@ -420,7 +420,7 @@ function CreateAcademyModal({
           <Field label="Secondary coordinator">
             <Select value={secondary} onChange={(e) => setSecondary(e.target.value)}>
               <option value="">— none —</option>
-              {coordinatorUsers.filter((u) => u.id !== primary).map((u) => (
+              {coordinatorUsers.filter((u) => u.id !== primary).sort((a, b) => a.displayName.localeCompare(b.displayName)).map((u) => (
                 <option key={u.id} value={u.id}>{u.displayName}</option>
               ))}
             </Select>

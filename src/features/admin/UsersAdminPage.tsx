@@ -153,7 +153,7 @@ export function UsersAdminPage() {
                           onChange={(e) => changeRole(u, e.target.value as Role)}
                           aria-label={`Role for ${u.displayName}`}
                         >
-                          {(Object.keys(ROLE_LABELS) as Role[]).map((r) => (
+                          {(Object.keys(ROLE_LABELS) as Role[]).sort((a, b) => ROLE_LABELS[a].localeCompare(ROLE_LABELS[b])).map((r) => (
                             <option key={r} value={r}>
                               {ROLE_LABELS[r]}
                             </option>
@@ -271,7 +271,7 @@ function AddUserModal({ onClose }: { onClose: () => void }) {
           <div className="grid grid-cols-2 gap-4">
             <Field label="Role">
               <Select value={role} onChange={(e) => setRole(e.target.value as Role)}>
-                {(Object.keys(ROLE_LABELS) as Role[]).map((r) => (
+                {(Object.keys(ROLE_LABELS) as Role[]).sort((a, b) => ROLE_LABELS[a].localeCompare(ROLE_LABELS[b])).map((r) => (
                   <option key={r} value={r}>
                     {ROLE_LABELS[r]}
                   </option>

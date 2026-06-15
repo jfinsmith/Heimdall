@@ -86,7 +86,7 @@ export function ReportsPage() {
       <Field label="Academy (blank = all)" className="mb-6 max-w-sm">
         <Select value={academyId} onChange={(e) => setAcademyId(e.target.value)}>
           <option value="">All academies</option>
-          {academies.map((a) => (
+          {[...academies].sort((a, b) => a.name.localeCompare(b.name)).map((a) => (
             <option key={a.id} value={a.id}>
               {a.name}
             </option>
