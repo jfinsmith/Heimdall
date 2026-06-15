@@ -387,14 +387,21 @@ export function AcademyBuilderPage() {
           <Badge tone="green">Target met exactly</Badge>
         )}
         <div className="ml-auto flex items-center gap-2">
-          <Badge tone={published ? 'green' : 'slate'}>{academy.status.replace('_', ' ')}</Badge>
-          <Button
-            onClick={togglePublish}
-            disabled={!published && !canPublishNow}
-            title={!published && !canPublishNow ? 'Captain approval is required before publishing' : undefined}
-          >
-            {published ? 'Unpublish' : 'Publish to calendar'}
-          </Button>
+          {academy.isTemplate ? (
+            // Templates never publish to a calendar — they're only used to create academies.
+            <Badge tone="navy">Template</Badge>
+          ) : (
+            <>
+              <Badge tone={published ? 'green' : 'slate'}>{academy.status.replace('_', ' ')}</Badge>
+              <Button
+                onClick={togglePublish}
+                disabled={!published && !canPublishNow}
+                title={!published && !canPublishNow ? 'Captain approval is required before publishing' : undefined}
+              >
+                {published ? 'Unpublish' : 'Publish to calendar'}
+              </Button>
+            </>
+          )}
           <Link to={`/reports/print/${academy.id}`} target="_blank" rel="noopener" className="text-sm text-bifrost-700 hover:underline">
             Print view ↗
           </Link>
@@ -462,7 +469,12 @@ export function AcademyBuilderPage() {
             Publishing the academy puts sessions on the calendar; instructors can only register once you
             open each course here (Gjallarhorn notifies eligible instructors).
           </p>
-          {!published ? (
+          {academy.isTemplate ? (
+            <p className="text-sm text-slate-500">
+              This is a <strong>template</strong> — it never publishes or opens sign-ups. Use it to create an
+              academy (Academies → Use template), then publish and open sign-ups there.
+            </p>
+          ) : !published ? (
             <p className="text-sm text-slate-500">Publish the academy first.</p>
           ) : (
             <ul className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
