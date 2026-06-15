@@ -32,15 +32,27 @@ interface Props {
 export function SessionFormModal({ academy, session, defaultDate, onClose }: Props) {
   const { firebaseUser } = useAuth();
   const { data: courses } = useCollection<CourseDoc>('courseCatalog');
-  // The catalog is shared. ARGUS Initial and Recertification draw from
-  // overlapping ARGUS courses, so a single tag can't separate them — scope the
-  // picker to the course blocks in THIS academy's curriculum. Non-ARGUS keeps
-  // the cross-discipline catalog (minus ARGUS-only courses).
-  const isArgus = (academy.discipline ?? '').startsWith('argus');
-  const { data: curriculum } = useDoc<CurriculumDoc>(isArgus ? `curricula/${academy.discipline}` : null);
-  const curriculumNames = useMemo(() => new Set((curriculum?.courses ?? []).map((b) => b.name)), [curriculum]);
-  const visibleCourses = courses.filter((c) =>
-    isArgus ? c.discipline === 'argus' && curriculumNames.has(c.name) : c.discipline !== 'argus'
+  // The course picker is driven by THIS academy's discipline — its curriculum
+  // blocks, enriched by a matching catalog entry (hours / role slots / quals)
+  // where one exists. Disciplines with no catalog entries (e.g. New Member
+  // Training) still list their own blocks; anything off-curriculum goes through
+  // "Custom". This keeps each discipline's picker to its own courses — no
+  // cross-discipline leakage.
+  const { data: curriculum } = useDoc<CurriculumDoc>(academy.discipline ? `curricula/${academy.discipline}` : null);
+  const catalogByName = useMemo(() => new Map(courses.map((c) => [c.name, c])), [courses]);
+  const courseOptions = useMemo(
+    () =>
+      (curriculum?.courses ?? []).map((b) => {
+        const cat = catalogByName.get(b.name);
+        return {
+          value: cat ? cat.id : `block:${b.name}`,
+          name: b.name,
+          hours: cat?.defaultHours ?? b.minHours,
+          highLiability: cat?.highLiability ?? false,
+          catalog: cat ?? null,
+        };
+      }),
+    [curriculum, catalogByName]
   );
   const { data: coordinatorUsers } = useCollection<UserDoc>('users', [where('role', '==', 'coordinator')]);
   // Everyone who could be reserved into a slot in advance (any active user).
@@ -69,7 +81,7 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
   const [error, setError] = useState<string | null>(null);
 
   const isCustom = courseId === CUSTOM;
-  const course = useMemo(() => courses.find((c) => c.id === courseId), [courses, courseId]);
+  const selectedOption = useMemo(() => courseOptions.find((o) => o.value === courseId), [courseOptions, courseId]);
   const defaultCoordinator = academy.coordinatorIds[0] ?? '';
 
   function coordinatorSlot(): RoleSlot {
@@ -92,21 +104,13 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
       return;
     }
     setCountsTowardFdle(true);
-    const c = courses.find((x) => x.id === id);
-    if (c) {
-      setSlots([
-        {
-          slotId: shortId(),
-          role: 'lead',
-          count: 1,
-          requiredQualificationKey: c.leadRequiredQualificationKey,
-          filledBy: [],
-        },
-        ...c.defaultRoleSlots
-          .filter((s) => s.role !== 'lead')
-          .map((s) => ({ slotId: shortId(), filledBy: [], ...s })),
-      ]);
-    }
+    const cat = courseOptions.find((o) => o.value === id)?.catalog;
+    setSlots([
+      { slotId: shortId(), role: 'lead', count: 1, requiredQualificationKey: cat?.leadRequiredQualificationKey, filledBy: [] },
+      ...(cat?.defaultRoleSlots ?? [])
+        .filter((s) => s.role !== 'lead')
+        .map((s) => ({ slotId: shortId(), filledBy: [], ...s })),
+    ]);
   }
 
   function updateSlot(slotId: string, patch: Partial<RoleSlot>) {
@@ -159,7 +163,8 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
     e.preventDefault();
     setError(null);
     if (!firebaseUser) return;
-    if (!course && !isCustom) {
+    const resolvedName = isCustom ? customName.trim() : selectedOption?.name ?? session?.courseName ?? '';
+    if (!isCustom && !resolvedName) {
       setError('Select a course (or a custom assignment) first.');
       return;
     }
@@ -170,7 +175,7 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
     setBusy(true);
     const start = combineDateTime(date, startTime);
     const end = combineDateTime(date, endTime);
-    const courseName = isCustom ? customName.trim() : course!.name;
+    const courseName = resolvedName;
 
     // Sanitize slots: Firestore rejects `undefined`, so drop the optional
     // qualification key when it isn't set (rather than writing undefined).
@@ -187,9 +192,9 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
 
     const payload = {
       academyId: academy.id,
-      courseId: isCustom ? 'custom' : course!.id,
+      courseId: isCustom ? 'custom' : selectedOption?.value ?? courseId,
       courseName,
-      highLiability: isCustom ? false : course!.highLiability,
+      highLiability: isCustom ? false : selectedOption?.highLiability ?? session?.highLiability ?? false,
       title: '',
       start: tsFromDate(start),
       end: tsFromDate(end),
@@ -318,12 +323,12 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
       <form onSubmit={submit} className="space-y-4">
         {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Course (required — from catalog)">
+          <Field label="Course (required)" hint="From this academy's discipline">
             <Select value={courseId} onChange={(e) => pickCourse(e.target.value)} required>
               <option value="">Select a course…</option>
-              {visibleCourses.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} ({c.defaultHours} hrs{c.highLiability ? ', high-liability' : ''})
+              {courseOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.name} ({o.hours} hrs{o.highLiability ? ', high-liability' : ''})
                 </option>
               ))}
               <option value={CUSTOM}>— Custom / agency assignment —</option>
