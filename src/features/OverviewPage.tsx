@@ -9,7 +9,7 @@ import { useAuth } from '../auth/AuthContext';
 import { useCollection } from '../lib/firestore';
 import { can } from '../lib/rbac';
 import { fmtRange } from '../lib/time';
-import type { AssignmentDoc, SessionDoc } from '../types';
+import type { AcademyDoc, AssignmentDoc, SessionDoc } from '../types';
 import { unfilledSlots } from '../types';
 import { PageHeader, StatusPill, EmptyState } from '../components/ui';
 import { SessionDetailModal } from './sessions/SessionDetailModal';
@@ -37,6 +37,18 @@ export function OverviewPage() {
     (s) => (s.status === 'open' || s.status === 'draft') && unfilledSlots(s).length > 0
   );
 
+  // Classes awaiting THIS user's sign-off in the approval chain.
+  const { data: academies } = useCollection<AcademyDoc>(staff ? 'academies' : null, [], [staff]);
+  const pendingMyApproval = academies.filter((a) => {
+    if (a.isTemplate) return false;
+    const st = a.approval?.state;
+    return (
+      (st === 'pending_sergeant' && a.approval?.sergeantId === firebaseUser?.uid) ||
+      (st === 'pending_lieutenant' && role === 'lieutenant') ||
+      (st === 'pending_captain' && role === 'director')
+    );
+  });
+
   return (
     <div>
       {/* Brand banner — the full engraved lockup on the night-watch panel */}
@@ -45,6 +57,27 @@ export function OverviewPage() {
       </div>
 
       <PageHeader kicker="HEIMDALL" title={`The watch is yours, ${profile?.displayName?.split(' ')[0] ?? ''}`} />
+
+      {pendingMyApproval.length > 0 && (
+        <section className="mb-6 rounded-lg border-2 border-bifrost-200 bg-bifrost-50/40 p-5 shadow-sm">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-bifrost-800">
+            Pending your approval ({pendingMyApproval.length})
+          </h2>
+          <ul className="divide-y divide-watch-100">
+            {pendingMyApproval.map((a) => (
+              <li key={a.id} className="flex items-center justify-between gap-2 py-2.5 text-sm">
+                <span>
+                  {a.shortName ? <span className="mr-2 font-bold text-bifrost-700">{a.shortName}</span> : null}
+                  <span className="font-medium text-watch-900">{a.name}</span>
+                </span>
+                <Link to={`/cadre/academies/${a.id}`} className="shrink-0 text-bifrost-700 hover:underline">
+                  Review &amp; sign off →
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="rounded-lg border border-watch-100 bg-white p-5 shadow-sm">

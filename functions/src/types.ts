@@ -95,10 +95,27 @@ export interface SessionDoc {
   createdBy: string;
 }
 
+export type ApprovalState =
+  | 'not_submitted'
+  | 'pending_sergeant'
+  | 'pending_lieutenant'
+  | 'pending_captain'
+  | 'approved'
+  | 'changes_requested';
+
 export interface AcademyDoc {
   name: string;
+  shortName?: string;
   coordinatorIds: string[];
   status: string;
+  isTemplate?: boolean;
+  approval?: {
+    state: ApprovalState;
+    sergeantId?: string;
+    submittedBy?: string;
+    changesNote?: string;
+    history?: { uid: string; name: string; role: Role; decision: string; note?: string; at: Timestamp }[];
+  };
 }
 
 export interface SignupDoc {

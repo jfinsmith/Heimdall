@@ -15,9 +15,11 @@ import interactionPlugin from '@fullcalendar/interaction';
 import type { EventDropArg } from '@fullcalendar/core';
 import type { EventResizeDoneArg } from '@fullcalendar/interaction';
 import { addDoc, collection, doc, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions } from '../../lib/firebase';
 import { useCollection, useDoc, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
+import { can } from '../../lib/rbac';
 import { addDays, hoursBetween, tsFromDate, fmtDate } from '../../lib/time';
 import { holidaysForYear, holidayBackgroundEvents, observedHolidayDatesInRange, HOLIDAY_PAY_HOURS } from '../../lib/holidays';
 import type { AcademyDoc, CourseDoc, CoursePublishTarget, CurriculumDoc, QualificationKey, SessionDoc, UserDoc } from '../../types';
@@ -32,6 +34,11 @@ import { ACADEMY_COLORS } from '../../lib/academyColors';
 import { groupPayPeriods, DEFAULT_PAY_PERIOD_TARGET, q } from '../../lib/payPeriods';
 import { useGlobalSettings } from '../../app/providers';
 import { logAudit } from '../sessions/audit';
+
+const academyApproval = httpsCallable<
+  { academyId: string; action: 'submit' | 'approve' | 'request_changes'; sergeantId?: string; note?: string },
+  { ok: boolean; state: string }
+>(functions, 'academyApproval');
 
 export function AcademyBuilderPage() {
   const { academyId } = useParams<{ academyId: string }>();
@@ -212,6 +219,9 @@ export function AcademyBuilderPage() {
 
   const hoursGap = q(academy.targetTotalHours - scheduledHours);
   const published = academy.status !== 'draft' && academy.status !== 'archived';
+  // Real classes can only be published after the captain's approval; templates skip it.
+  const approvalState = academy.approval?.state ?? 'not_submitted';
+  const canPublishNow = academy.isTemplate || approvalState === 'approved';
 
   async function onEventChange(arg: EventDropArg | EventResizeDoneArg) {
     const s = arg.event.extendedProps.session as WithId<SessionDoc> | undefined;
@@ -378,12 +388,21 @@ export function AcademyBuilderPage() {
         )}
         <div className="ml-auto flex items-center gap-2">
           <Badge tone={published ? 'green' : 'slate'}>{academy.status.replace('_', ' ')}</Badge>
-          <Button onClick={togglePublish}>{published ? 'Unpublish' : 'Publish to calendar'}</Button>
+          <Button
+            onClick={togglePublish}
+            disabled={!published && !canPublishNow}
+            title={!published && !canPublishNow ? 'Captain approval is required before publishing' : undefined}
+          >
+            {published ? 'Unpublish' : 'Publish to calendar'}
+          </Button>
           <Link to={`/reports/print/${academy.id}`} target="_blank" rel="noopener" className="text-sm text-bifrost-700 hover:underline">
             Print view ↗
           </Link>
         </div>
       </div>
+
+      {/* Chain-of-command approval before publishing (real classes only) */}
+      {!academy.isTemplate && <ApprovalPanel academy={academy} />}
 
       {/* Pay periods — bi-weekly 85-hr targets (manage overtime) */}
       {payPeriods.length > 0 && <PayPeriodPanel payPeriods={payPeriods} target={payTarget} onView={viewPayPeriod} />}
@@ -898,5 +917,191 @@ function EditAcademyModal({ academy, onClose }: { academy: WithId<AcademyDoc>; o
         </div>
       </form>
     </Modal>
+  );
+}
+
+/**
+ * Chain-of-command sign-off before a class can be published:
+ * Coordinator submits → Sergeant → Lieutenant → Captain → approved. Any approver
+ * can send it back with "Request changes." Actions run through the academyApproval
+ * callable, which enforces who can act at each step.
+ */
+const APPROVAL_STEPS: { state: string; label: string }[] = [
+  { state: 'pending_sergeant', label: 'Sergeant' },
+  { state: 'pending_lieutenant', label: 'Lieutenant' },
+  { state: 'pending_captain', label: 'Captain' },
+];
+
+function ApprovalPanel({ academy }: { academy: WithId<AcademyDoc> }) {
+  const { firebaseUser, role } = useAuth();
+  const uid = firebaseUser?.uid;
+  const ap = academy.approval;
+  const state = ap?.state ?? 'not_submitted';
+  const { data: sergeants } = useCollection<UserDoc>('users', [where('role', '==', 'sergeant'), where('status', '==', 'active')]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [submitOpen, setSubmitOpen] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [note, setNote] = useState('');
+
+  const canSubmit = can.buildSchedules(role) && (state === 'not_submitted' || state === 'changes_requested');
+  const isActiveApprover =
+    (state === 'pending_sergeant' && uid === ap?.sergeantId) ||
+    (state === 'pending_lieutenant' && role === 'lieutenant') ||
+    (state === 'pending_captain' && role === 'director');
+
+  const order = APPROVAL_STEPS.map((s) => s.state);
+  const curIdx = state === 'approved' ? order.length : order.indexOf(state);
+  const sergeantName = sergeants.find((s) => s.id === ap?.sergeantId)?.displayName ?? 'sergeant';
+
+  async function run(action: 'submit' | 'approve' | 'request_changes', extra?: { sergeantId?: string; note?: string }) {
+    setBusy(true);
+    setErr(null);
+    try {
+      await academyApproval({ academyId: academy.id, action, ...extra });
+      setNoteOpen(false);
+      setNote('');
+      setSubmitOpen(false);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message.replace(/^FirebaseError: /, '') : 'Action failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="mb-4 rounded-lg border border-watch-100 bg-white p-4 shadow-sm">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-watch-600">Publishing approval</h2>
+        {state === 'approved' && <Badge tone="green">Approved — ready to publish</Badge>}
+        {state === 'not_submitted' && <Badge tone="slate">Not submitted</Badge>}
+        {state === 'changes_requested' && <Badge tone="amber">Changes requested</Badge>}
+        {state.startsWith('pending') && <Badge tone="navy">In review</Badge>}
+      </div>
+
+      {/* Chain progress */}
+      <div className="mb-3 flex items-center gap-1 text-xs">
+        {APPROVAL_STEPS.map((s, i) => {
+          const done = curIdx > i;
+          const active = curIdx === i;
+          return (
+            <React.Fragment key={s.state}>
+              <span
+                className={`rounded-full px-2.5 py-1 font-medium ring-1 ${
+                  done
+                    ? 'bg-green-50 text-green-700 ring-green-200'
+                    : active
+                      ? 'bg-bifrost-50 text-bifrost-700 ring-bifrost-300'
+                      : 'bg-watch-50 text-slate-400 ring-watch-100'
+                }`}
+              >
+                {done ? '✓ ' : ''}
+                {s.label}
+                {s.state === 'pending_sergeant' && ap?.sergeantId ? ` (${sergeantName})` : ''}
+              </span>
+              {i < APPROVAL_STEPS.length - 1 && <span className="text-slate-300">→</span>}
+            </React.Fragment>
+          );
+        })}
+        <span className={`ml-1 rounded-full px-2.5 py-1 font-medium ring-1 ${state === 'approved' ? 'bg-green-50 text-green-700 ring-green-200' : 'bg-watch-50 text-slate-400 ring-watch-100'}`}>
+          {state === 'approved' ? '✓ ' : ''}Publish
+        </span>
+      </div>
+
+      {state === 'changes_requested' && ap?.changesNote && (
+        <p className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <strong>Changes requested:</strong> {ap.changesNote}
+        </p>
+      )}
+      {state === 'not_submitted' && (
+        <p className="mb-3 text-sm text-slate-500">Finish the schedule, then submit it up the chain of command for sign-off before publishing.</p>
+      )}
+
+      {err && <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{err}</div>}
+
+      <div className="flex flex-wrap items-center gap-2">
+        {canSubmit && (
+          <Button variant="primary" disabled={busy} onClick={() => setSubmitOpen(true)}>
+            {state === 'changes_requested' ? 'Resubmit for approval' : 'Submit for approval'}
+          </Button>
+        )}
+        {isActiveApprover && !noteOpen && (
+          <>
+            <Button variant="primary" disabled={busy} onClick={() => run('approve')}>
+              Approve
+            </Button>
+            <Button variant="ghost" disabled={busy} onClick={() => setNoteOpen(true)}>
+              Request changes
+            </Button>
+          </>
+        )}
+        {isActiveApprover && noteOpen && (
+          <div className="flex w-full flex-wrap items-center gap-2">
+            <textarea
+              className="min-w-[16rem] flex-1 rounded-md border border-watch-200 px-2 py-1 text-sm"
+              rows={2}
+              placeholder="What needs to change?"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+            />
+            <Button variant="danger" disabled={busy || !note.trim()} onClick={() => run('request_changes', { note: note.trim() })}>
+              Send back
+            </Button>
+            <Button variant="ghost" disabled={busy} onClick={() => { setNoteOpen(false); setNote(''); }}>
+              Cancel
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {submitOpen && (
+        <Modal open onClose={() => setSubmitOpen(false)} title="Submit for approval">
+          <SubmitForApproval sergeants={sergeants} busy={busy} onSubmit={(sid) => run('submit', { sergeantId: sid })} onCancel={() => setSubmitOpen(false)} />
+        </Modal>
+      )}
+    </section>
+  );
+}
+
+function SubmitForApproval({
+  sergeants,
+  busy,
+  onSubmit,
+  onCancel,
+}: {
+  sergeants: WithId<UserDoc>[];
+  busy: boolean;
+  onSubmit: (sergeantId: string) => void;
+  onCancel: () => void;
+}) {
+  const [sid, setSid] = useState(sergeants[0]?.id ?? '');
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-slate-600">
+        This routes the class up the chain of command — <strong>Sergeant → Lieutenant → Captain</strong>. The lieutenant
+        and captain are set automatically; choose which sergeant to send it to first.
+      </p>
+      {sergeants.length === 0 ? (
+        <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">No active sergeants exist yet — add one before submitting.</p>
+      ) : (
+        <Field label="Send to sergeant">
+          <Select value={sid} onChange={(e) => setSid(e.target.value)}>
+            {sergeants.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.displayName}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      )}
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button variant="primary" disabled={busy || !sid} onClick={() => onSubmit(sid)}>
+          Submit
+        </Button>
+      </div>
+    </div>
   );
 }

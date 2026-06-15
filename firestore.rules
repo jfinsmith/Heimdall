@@ -39,6 +39,12 @@ service cloud.firestore {
     function unchanged(field) {
       return request.resource.data.get(field, null) == resource.data.get(field, null);
     }
+    // A class may be published only after the captain's approval. Templates are
+    // exempt. (Repeated get() on the same path is cached → one read.)
+    function academyOkToPublish(aid) {
+      return get(/databases/$(database)/documents/academies/$(aid)).data.get('isTemplate', false) == true
+          || get(/databases/$(database)/documents/academies/$(aid)).data.get(['approval', 'state'], '') == 'approved';
+    }
 
     // ── users ──────────────────────────────────────────────────────────────
     // Own doc: read + create + limited update. role / status / verifiedQualKeys
@@ -98,7 +104,15 @@ service cloud.firestore {
       allow read: if isStaff()
         || (signedIn() && resource.data.status in ['published', 'in_progress', 'completed']);
       allow create, delete: if isStaff();
-      allow update: if isStaff();
+      // Staff edit freely, EXCEPT moving into a published lifecycle state, which
+      // requires the captain's approval (templates exempt). Approval transitions
+      // themselves are written by the academyApproval callable (Admin SDK).
+      allow update: if isStaff() && (
+        !(request.resource.data.status in ['published', 'in_progress', 'completed'])
+        || resource.data.status in ['published', 'in_progress', 'completed']
+        || request.resource.data.get('isTemplate', false) == true
+        || request.resource.data.get(['approval', 'state'], '') == 'approved'
+      );
     }
 
     // ── sessions ───────────────────────────────────────────────────────────
@@ -106,13 +120,23 @@ service cloud.firestore {
       allow read: if isStaff() || (signedIn() && resource.data.status != 'draft');
       // NOTE: delete must be separate — on a delete there is no
       // request.resource, so a roleSlots check would always deny it.
-      allow create: if isStaff() && request.resource.data.roleSlots is list;
+      // New sessions must be draft unless the parent academy is approved/template
+      // (so a session can't be created already-visible to dodge approval).
+      allow create: if isStaff() && request.resource.data.roleSlots is list
+        && (request.resource.data.status == 'draft' || academyOkToPublish(request.resource.data.academyId));
       allow delete: if isStaff();
-      // Staff edit freely. Non-staff updates exist only for the sign-up
-      // transaction: they may touch ONLY roleSlots / status / updatedAt, and
-      // may not invent new slots (guard for the filledBy invariant — the
-      // count math itself is enforced in the transaction).
-      allow update: if isStaff()
+      // Staff edit freely, EXCEPT flipping a session from draft to a visible
+      // status (publishing), which requires the parent academy's approval. The
+      // status-unchanged short-circuit keeps normal edits off the get(). Non-staff
+      // updates exist only for the sign-up transaction: they may touch ONLY
+      // roleSlots / status / updatedAt, may not invent new slots, and the count
+      // math itself is enforced in the transaction.
+      allow update: if (isStaff() && (
+            request.resource.data.status == resource.data.status
+            || request.resource.data.status == 'draft'
+            || resource.data.status != 'draft'
+            || academyOkToPublish(resource.data.academyId)
+          ))
         || (signedIn()
             && request.resource.data.diff(resource.data).affectedKeys()
                  .hasOnly(['roleSlots', 'status', 'updatedAt'])

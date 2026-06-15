@@ -95,6 +95,8 @@ export const EMAIL_AUTOMATIONS = [
   { key: 'course_published', label: 'Course opened for sign-up', description: 'Emails eligible instructors when coordinators open a course’s sessions for sign-up.' },
   { key: 'account_approved', label: 'Account approved', description: 'Emails a new user when their account is activated.' },
   { key: 'new_account_pending', label: 'New account request', description: 'Emails command when someone self-registers and is waiting for approval.' },
+  { key: 'approval_request', label: 'Schedule approval — your turn', description: 'Emails the next approver (sergeant → lieutenant → captain) when a class is awaiting their sign-off.' },
+  { key: 'approval_update', label: 'Schedule approval — decision', description: 'Emails the coordinator when their class is fully approved or sent back with changes.' },
   { key: 'reminder', label: 'Assignment reminders', description: 'Daily sweep: emails instructors ahead of their upcoming assignments.' },
   { key: 'understaffing_alert', label: 'Understaffing alerts', description: 'Daily sweep: emails coordinators + command about unfilled slots inside the alert window.' },
   { key: 'digest', label: 'Weekly digest', description: 'Monday summary of staffing health for coordinators and command.' },
@@ -184,6 +186,40 @@ export interface CourseDoc {
 // ── Academies (cohorts) ────────────────────────────────────────────────────
 export type AcademyStatus = 'draft' | 'published' | 'in_progress' | 'completed' | 'archived';
 
+/**
+ * Chain-of-command sign-off a class goes through before it can be published.
+ * Coordinator submits → Sergeant → Lieutenant → Captain (director) → approved,
+ * after which the coordinator may publish. An approver can send it back with
+ * "changes requested." Templates are exempt. Missing = 'not_submitted'.
+ */
+export type ApprovalState =
+  | 'not_submitted'
+  | 'pending_sergeant'
+  | 'pending_lieutenant'
+  | 'pending_captain'
+  | 'approved'
+  | 'changes_requested';
+
+export interface ApprovalStep {
+  uid: string;
+  name: string;
+  role: Role;
+  decision: 'submitted' | 'approved' | 'changes_requested';
+  note?: string;
+  at: Timestamp;
+}
+
+export interface AcademyApproval {
+  state: ApprovalState;
+  /** The sergeant the coordinator routed it to (there may be two). */
+  sergeantId?: string;
+  /** Who submitted — the approval returns to them, and they publish. */
+  submittedBy?: string;
+  /** Set when an approver requests changes. */
+  changesNote?: string;
+  history?: ApprovalStep[];
+}
+
 export interface AcademyDoc {
   /** Short class designation used as the calendar prefix, e.g. "LE 131", "CO 67". */
   shortName: string;
@@ -204,6 +240,8 @@ export interface AcademyDoc {
   /** Ordered: [0] = primary coordinator, [1] = secondary. */
   coordinatorIds: string[];
   targetTotalHours: number; // defaults to the curriculum's course-hour sum; editable
+  /** Chain-of-command sign-off before publishing (non-templates). */
+  approval?: AcademyApproval;
   createdBy: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
@@ -320,6 +358,8 @@ export type NotificationType =
   | 'course_published'
   | 'account_approved'
   | 'new_account_pending'
+  | 'approval_request'
+  | 'approval_update'
   | 'reminder'
   | 'understaffing_alert'
   | 'digest'

@@ -7,9 +7,10 @@
  */
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { getAuth } from 'firebase-admin/auth';
-import { getFirestore, FieldValue } from 'firebase-admin/firestore';
-import type { Role } from '../types';
-import { ADMIN_ROLES } from '../types';
+import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
+import { notify } from '../gjallarhorn/notify';
+import type { AcademyDoc, Role } from '../types';
+import { ADMIN_ROLES, STAFF_ROLES } from '../types';
 
 const VALID_ROLES: Role[] = ['director', 'lieutenant', 'sergeant', 'coordinator', 'instructor'];
 
@@ -153,4 +154,125 @@ export const bootstrapFirstDirector = onCall(async (request) => {
     createdAt: FieldValue.serverTimestamp(),
   });
   return { ok: true };
+});
+
+/**
+ * Academy approval chain: coordinator submits → Sergeant → Lieutenant → Captain
+ * (director) → approved, then the coordinator may publish. An approver can send
+ * it back with "changes requested." Each transition is performed here (Admin
+ * SDK) so only the right person at the right step can advance it, and so the
+ * publish gate in firestore.rules cannot be side-stepped. Notifies the next
+ * approver (or, at the end, the submitting coordinator).
+ */
+export const academyApproval = onCall<{
+  academyId: string;
+  action: 'submit' | 'approve' | 'request_changes';
+  sergeantId?: string;
+  note?: string;
+}>(async (request) => {
+  const caller = request.auth;
+  if (!caller) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = getFirestore();
+  const callerSnap = await db.doc(`users/${caller.uid}`).get();
+  const callerRole = callerSnap.exists ? (callerSnap.data()!.role as Role) : null;
+  const callerName = callerSnap.exists ? ((callerSnap.data()!.displayName as string) || 'A member') : 'A member';
+  if (!callerRole) throw new HttpsError('permission-denied', 'No profile found.');
+  const callerUid = caller.uid;
+
+  const { academyId, action, note } = request.data;
+  if (!academyId) throw new HttpsError('invalid-argument', 'Missing academy.');
+  const ref = db.doc(`academies/${academyId}`);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Academy not found.');
+  const academy = snap.data() as AcademyDoc;
+  if (academy.isTemplate) throw new HttpsError('failed-precondition', 'Templates do not go through approval.');
+
+  const cur = academy.approval?.state ?? 'not_submitted';
+  const label = academy.shortName || academy.name;
+  const link = `/cadre/academies/${academyId}`;
+  const prevHistory = academy.approval?.history ?? [];
+  const now = Timestamp.now();
+  const step = (decision: string) => ({ uid: callerUid, name: callerName, role: callerRole, decision, ...(note ? { note } : {}), at: now });
+
+  // The single active user holding a command role (there is exactly one each).
+  async function single(role: Role): Promise<{ uid: string; name: string }> {
+    const q = await db.collection('users').where('role', '==', role).where('status', '==', 'active').get();
+    if (q.empty) throw new HttpsError('failed-precondition', `No active ${role} exists to route to — add one first.`);
+    if (q.size > 1) throw new HttpsError('failed-precondition', `There must be exactly one ${role}; found ${q.size}.`);
+    return { uid: q.docs[0].id, name: (q.docs[0].data().displayName as string) || role };
+  }
+
+  async function commit(approval: AcademyDoc['approval'], notifyFn: () => Promise<void>) {
+    await ref.update({ approval, updatedAt: FieldValue.serverTimestamp() });
+    await notifyFn();
+    await db.collection('auditLog').add({
+      actorUid: callerUid,
+      action: `academy.approval.${action}`,
+      targetType: 'academy',
+      targetId: academyId,
+      summary: `${callerName}: ${action} → ${approval!.state} (${label})`,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    return { ok: true, state: approval!.state };
+  }
+
+  if (action === 'submit') {
+    if (!STAFF_ROLES.includes(callerRole)) throw new HttpsError('permission-denied', 'Only staff may submit a class for approval.');
+    if (cur !== 'not_submitted' && cur !== 'changes_requested') {
+      throw new HttpsError('failed-precondition', `This class is already in approval (${cur}).`);
+    }
+    const sergeantId = request.data.sergeantId;
+    if (!sergeantId) throw new HttpsError('invalid-argument', 'Choose a sergeant to route this to.');
+    const sgt = await db.doc(`users/${sergeantId}`).get();
+    if (!sgt.exists || sgt.data()!.role !== 'sergeant') throw new HttpsError('invalid-argument', 'Pick a valid sergeant.');
+    return commit(
+      { state: 'pending_sergeant', sergeantId, submittedBy: callerUid, history: [...prevHistory, step('submitted')] },
+      () => notify({ uid: sergeantId, type: 'approval_request', title: `Approval needed: ${label}`, body: `${callerName} submitted "${label}" for your sergeant sign-off.`, link })
+    );
+  }
+
+  if (action === 'approve') {
+    if (cur === 'pending_sergeant') {
+      if (callerUid !== academy.approval?.sergeantId) throw new HttpsError('permission-denied', 'Only the assigned sergeant may approve this step.');
+      const lt = await single('lieutenant');
+      return commit(
+        { ...academy.approval!, state: 'pending_lieutenant', history: [...prevHistory, step('approved')] },
+        () => notify({ uid: lt.uid, type: 'approval_request', title: `Approval needed: ${label}`, body: `Sergeant ${callerName} approved "${label}". It now needs your (lieutenant) sign-off.`, link })
+      );
+    }
+    if (cur === 'pending_lieutenant') {
+      if (callerRole !== 'lieutenant') throw new HttpsError('permission-denied', 'Only the lieutenant may approve this step.');
+      const cap = await single('director');
+      return commit(
+        { ...academy.approval!, state: 'pending_captain', history: [...prevHistory, step('approved')] },
+        () => notify({ uid: cap.uid, type: 'approval_request', title: `Approval needed: ${label}`, body: `Lt. ${callerName} approved "${label}". It now needs your (captain) final sign-off.`, link })
+      );
+    }
+    if (cur === 'pending_captain') {
+      if (callerRole !== 'director') throw new HttpsError('permission-denied', 'Only the captain may give final approval.');
+      const approval = { ...academy.approval!, state: 'approved' as const, history: [...prevHistory, step('approved')] };
+      return commit(approval, () =>
+        approval.submittedBy
+          ? notify({ uid: approval.submittedBy, type: 'approval_update', title: `Approved: ${label}`, body: `Capt. ${callerName} gave final approval for "${label}". You can now publish it to the calendar.`, link })
+          : Promise.resolve()
+      );
+    }
+    throw new HttpsError('failed-precondition', `Nothing to approve at this stage (${cur}).`);
+  }
+
+  if (action === 'request_changes') {
+    const isActiveApprover =
+      (cur === 'pending_sergeant' && callerUid === academy.approval?.sergeantId) ||
+      (cur === 'pending_lieutenant' && callerRole === 'lieutenant') ||
+      (cur === 'pending_captain' && callerRole === 'director');
+    if (!isActiveApprover) throw new HttpsError('permission-denied', 'Only the current approver may request changes.');
+    const approval = { ...academy.approval!, state: 'changes_requested' as const, changesNote: note ?? '', history: [...prevHistory, step('changes_requested')] };
+    return commit(approval, () =>
+      approval.submittedBy
+        ? notify({ uid: approval.submittedBy, type: 'approval_update', title: `Changes requested: ${label}`, body: `${callerName} requested changes on "${label}"${note ? `: ${note}` : '.'} Update it and resubmit.`, link })
+        : Promise.resolve()
+    );
+  }
+
+  throw new HttpsError('invalid-argument', 'Unknown action.');
 });
