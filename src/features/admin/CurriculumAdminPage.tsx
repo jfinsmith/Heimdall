@@ -110,6 +110,7 @@ function CurriculumEditorModal({
   const [fdleProgram, setFdleProgram] = useState(curriculum?.fdleProgram ?? '');
   const [key, setKey] = useState(curriculum?.id ?? '');
   const [courses, setCourses] = useState<CurriculumCourse[]>(curriculum?.courses ?? [{ name: '', minHours: 0 }]);
+  const [estimated, setEstimated] = useState(curriculum?.estimated ?? false);
   const [busy, setBusy] = useState(false);
 
   const total = courses.reduce((sum, c) => sum + (Number(c.minHours) || 0), 0);
@@ -137,7 +138,7 @@ function CurriculumEditorModal({
       courses: cleaned,
       totalHours: cleaned.reduce((s, c) => s + c.minHours, 0),
       active: curriculum?.active ?? true,
-      estimated: curriculum?.estimated ?? false,
+      estimated,
     } satisfies CurriculumDoc);
     await logAudit(firebaseUser!.uid, 'curriculum.save', 'curriculum', id, `${label} (${total} hrs)`);
     setBusy(false);
@@ -160,6 +161,22 @@ function CurriculumEditorModal({
             <Input value={key} onChange={(e) => setKey(e.target.value)} required placeholder="le_brt" />
           </Field>
         )}
+
+        <label className="flex items-start gap-2 rounded-md border border-watch-100 bg-watch-50/40 p-3 text-sm">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={estimated}
+            onChange={(e) => setEstimated(e.target.checked)}
+          />
+          <span>
+            <span className="font-medium text-watch-800">Estimated hours</span>
+            <span className="block text-xs text-slate-500">
+              Flags the per-course hours as a best-guess split rather than published FDLE minimums (shows an
+              amber “estimated hours” badge). Use when the program total is set but the per-topic breakdown isn't.
+            </span>
+          </span>
+        </label>
 
         <fieldset className="rounded-md border border-watch-100 p-3">
           <legend className="px-1 text-sm font-medium text-watch-800">
