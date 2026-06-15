@@ -9,10 +9,10 @@
 import React, { useMemo, useState } from 'react';
 import { collection, doc, serverTimestamp, writeBatch, Timestamp, setDoc, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { shortId, useCollection, type WithId } from '../../lib/firestore';
+import { shortId, useCollection, useDoc, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import { addDays, combineDateTime, hoursBetween, toDateInputValue, tsFromDate } from '../../lib/time';
-import type { AcademyDoc, CourseDoc, RoleSlot, UserDoc } from '../../types';
+import type { AcademyDoc, CourseDoc, CurriculumDoc, RoleSlot, UserDoc } from '../../types';
 import { Button, Field, Input, Select } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import { logAudit } from '../sessions/audit';
@@ -24,6 +24,18 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
   const { firebaseUser } = useAuth();
   const { data: courses } = useCollection<CourseDoc>('courseCatalog');
   const { data: coordinatorUsers } = useCollection<UserDoc>('users', [where('role', '==', 'coordinator')]);
+  // Courses come from THIS academy's discipline (curriculum blocks) — hours from
+  // the curriculum, enrichment only from a catalog course tagged for this
+  // discipline. No cross-discipline leakage.
+  const { data: curriculum } = useDoc<CurriculumDoc>(academy.discipline ? `curricula/${academy.discipline}` : null);
+  const courseOptions = useMemo(
+    () =>
+      (curriculum?.courses ?? []).map((b) => {
+        const cat = courses.find((c) => c.name === b.name && c.discipline === academy.discipline) ?? null;
+        return { value: cat ? cat.id : `block:${b.name}`, name: b.name, hours: b.minHours, highLiability: cat?.highLiability ?? false, catalog: cat };
+      }),
+    [curriculum, courses, academy.discipline]
+  );
 
   const [courseId, setCourseId] = useState('');
   const [customName, setCustomName] = useState('');
@@ -41,7 +53,7 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
   const [error, setError] = useState<string | null>(null);
 
   const isCustom = courseId === CUSTOM;
-  const course = courses.find((c) => c.id === courseId);
+  const selectedOption = courseOptions.find((o) => o.value === courseId);
 
   const matchingDates = useMemo(() => {
     const out: Date[] = [];
@@ -59,9 +71,9 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
   function pickCourse(id: string) {
     setCourseId(id);
     if (id === CUSTOM || !id) return;
-    const c = courses.find((x) => x.id === id);
-    if (!c) return;
-    const neededDays = Math.max(1, Math.ceil(c.defaultHours / Math.max(1, perDay)));
+    const opt = courseOptions.find((o) => o.value === id);
+    if (!opt) return;
+    const neededDays = Math.max(1, Math.ceil(opt.hours / Math.max(1, perDay)));
     setUntil(nthMatchingDay(from, days, neededDays));
   }
 
@@ -97,7 +109,7 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!firebaseUser || (!course && !isCustom)) return;
+    if (!firebaseUser || (!selectedOption && !isCustom)) return;
     if (isCustom && !customName.trim()) {
       setError('Enter a name for the custom block.');
       return;
@@ -108,7 +120,8 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
     }
     setBusy(true);
 
-    const courseName = isCustom ? customName.trim() : course!.name;
+    const courseName = isCustom ? customName.trim() : selectedOption?.name ?? '';
+    const cat = selectedOption?.catalog ?? null;
     const defaultCoord = academy.coordinatorIds[0];
 
     // Sanitize slots — Firestore rejects undefined, so only include the
@@ -117,8 +130,8 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
       const raw: RoleSlot[] = isCustom
         ? [{ slotId: shortId(), role: 'coordinator', count: 1, filledBy: defaultCoord ? [defaultCoord] : [] }]
         : [
-            { slotId: shortId(), role: 'lead', count: 1, requiredQualificationKey: course!.leadRequiredQualificationKey ?? undefined, filledBy: [] },
-            ...course!.defaultRoleSlots.filter((s) => s.role !== 'lead').map((s) => ({ slotId: shortId(), filledBy: [], ...s })),
+            { slotId: shortId(), role: 'lead', count: 1, requiredQualificationKey: cat?.leadRequiredQualificationKey ?? undefined, filledBy: [] },
+            ...(cat?.defaultRoleSlots ?? []).filter((s) => s.role !== 'lead').map((s) => ({ slotId: shortId(), filledBy: [], ...s })),
           ];
       return raw.map((s) => {
         const out: Record<string, unknown> = { slotId: s.slotId, role: s.role, count: s.count, filledBy: s.filledBy ?? [] };
@@ -138,9 +151,9 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
         const ref = doc(collection(db, 'sessions'));
         batch.set(ref, {
           academyId: academy.id,
-          courseId: isCustom ? 'custom' : course!.id,
+          courseId: isCustom ? 'custom' : selectedOption?.value ?? courseId,
           courseName,
-          highLiability: isCustom ? false : course!.highLiability,
+          highLiability: isCustom ? false : selectedOption?.highLiability ?? false,
           title: '',
           start: tsFromDate(start),
           end: tsFromDate(end),
@@ -203,9 +216,9 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
           <Field label="Course">
             <Select value={courseId} onChange={(e) => pickCourse(e.target.value)} required>
               <option value="">Select a course…</option>
-              {courses.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} ({c.defaultHours} hrs)
+              {courseOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.name} ({o.hours} hrs)
                 </option>
               ))}
               <option value={CUSTOM}>— Custom / agency block (e.g. Formation) —</option>
@@ -225,7 +238,7 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
                 onChange={(e) => {
                   const v = Number(e.target.value);
                   setPerDay(v);
-                  if (course) setUntil(nthMatchingDay(from, days, Math.max(1, Math.ceil(course.defaultHours / Math.max(1, v)))));
+                  if (selectedOption) setUntil(nthMatchingDay(from, days, Math.max(1, Math.ceil(selectedOption.hours / Math.max(1, v)))));
                 }}
               />
             </Field>
@@ -255,7 +268,7 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
           <Field label="From">
             <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} required />
           </Field>
-          <Field label="Until" hint={course ? 'Auto-sized from hours/day — adjust freely' : undefined}>
+          <Field label="Until" hint={selectedOption ? 'Auto-sized from hours/day — adjust freely' : undefined}>
             <Input type="date" value={until} onChange={(e) => setUntil(e.target.value)} required />
           </Field>
         </div>
@@ -290,7 +303,7 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
           Will create <strong className="text-watch-900">{matchingDates.length}</strong> sessions
           {' '}× <strong className="text-watch-900">{perBlockHours}</strong> hrs ={' '}
           <strong className="text-watch-900">{(matchingDates.length * perBlockHours).toFixed(1)}</strong> total hrs
-          {!isCustom && course ? ` (course needs ${course.defaultHours})` : ''}.
+          {!isCustom && selectedOption ? ` (course needs ${selectedOption.hours})` : ''}.
         </p>
 
         <div className="flex justify-end gap-2">

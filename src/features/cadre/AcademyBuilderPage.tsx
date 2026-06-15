@@ -166,15 +166,16 @@ export function AcademyBuilderPage() {
     for (const s of fdleSessions) {
       hoursByCourse.set(norm(s.courseName), (hoursByCourse.get(norm(s.courseName)) ?? 0) + (s.hours || 0));
     }
-    // High-liability flag from the catalog (names match the curriculum names).
+    // High-liability flag from THIS discipline's catalog courses only (names
+    // match the curriculum names) — don't borrow a flag from another discipline.
     const highLiabilityNames = new Set(
-      catalog.filter((c) => c.highLiability).map((c) => norm(c.name))
+      catalog.filter((c) => c.highLiability && c.discipline === academy?.discipline).map((c) => norm(c.name))
     );
     return curriculum.courses.map((c) => {
       const scheduled = q(hoursByCourse.get(norm(c.name)) ?? 0);
       return { ...c, scheduled, delta: q(scheduled - c.minHours), highLiability: highLiabilityNames.has(norm(c.name)) };
     });
-  }, [curriculum, fdleSessions, catalog]);
+  }, [curriculum, fdleSessions, catalog, academy?.discipline]);
 
   /** Sessions landing on school holidays (the post-clone trap). */
   const holidayConflicts = useMemo(() => {

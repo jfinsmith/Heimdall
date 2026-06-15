@@ -39,20 +39,23 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
   // "Custom". This keeps each discipline's picker to its own courses — no
   // cross-discipline leakage.
   const { data: curriculum } = useDoc<CurriculumDoc>(academy.discipline ? `curricula/${academy.discipline}` : null);
-  const catalogByName = useMemo(() => new Map(courses.map((c) => [c.name, c])), [courses]);
   const courseOptions = useMemo(
     () =>
       (curriculum?.courses ?? []).map((b) => {
-        const cat = catalogByName.get(b.name);
+        // Hours ALWAYS come from THIS discipline's curriculum block. A catalog
+        // course only enriches role slots / qualifications / high-liability when
+        // it's tagged for this same discipline — never a same-named course from
+        // another discipline (that's what made NMT "Legal" show LE's 64 hrs).
+        const cat = courses.find((c) => c.name === b.name && c.discipline === academy.discipline) ?? null;
         return {
           value: cat ? cat.id : `block:${b.name}`,
           name: b.name,
-          hours: cat?.defaultHours ?? b.minHours,
+          hours: b.minHours,
           highLiability: cat?.highLiability ?? false,
-          catalog: cat ?? null,
+          catalog: cat,
         };
       }),
-    [curriculum, catalogByName]
+    [curriculum, courses, academy.discipline]
   );
   const { data: coordinatorUsers } = useCollection<UserDoc>('users', [where('role', '==', 'coordinator')]);
   // Everyone who could be reserved into a slot in advance (any active user).
