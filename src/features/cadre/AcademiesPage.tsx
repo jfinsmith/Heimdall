@@ -379,7 +379,7 @@ function CreateAcademyModal({
             </Select>
           </Field>
           <Field label="Target total hours" hint="Defaults to the curriculum sum — adjust if needed">
-            <Input type="number" min={1} value={targetHours} onChange={(e) => setTargetHours(Number(e.target.value))} required />
+            <Input type="number" min={1} step="any" value={targetHours} onChange={(e) => setTargetHours(Number(e.target.value))} required />
           </Field>
         </div>
         <div className="grid grid-cols-2 gap-4">

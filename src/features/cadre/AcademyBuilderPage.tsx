@@ -898,7 +898,7 @@ function EditAcademyModal({ academy, onClose }: { academy: WithId<AcademyDoc>; o
             <Input value={defaultRoom} onChange={(e) => setDefaultRoom(e.target.value)} />
           </Field>
           <Field label="Target total hours">
-            <Input type="number" min={1} value={targetHours} onChange={(e) => setTargetHours(Number(e.target.value))} />
+            <Input type="number" min={1} step="any" value={targetHours} onChange={(e) => setTargetHours(Number(e.target.value))} />
           </Field>
         </div>
         <div className="grid grid-cols-2 gap-4">
