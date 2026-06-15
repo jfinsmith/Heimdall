@@ -37,6 +37,7 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
           highLiability: !!b.highLiability,
           leadQualification: b.leadQualification,
           defaultRoleSlots: b.defaultRoleSlots ?? [],
+          coordinatorRun: !!b.coordinatorRun,
         }))
         .sort((a, c) => a.name.localeCompare(c.name)),
     [curriculum]
@@ -131,7 +132,7 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
     // Sanitize slots — Firestore rejects undefined, so only include the
     // qualification key when set.
     const buildSlots = (): Record<string, unknown>[] => {
-      const raw: RoleSlot[] = isCustom
+      const raw: RoleSlot[] = isCustom || selectedOption?.coordinatorRun
         ? [{ slotId: shortId(), role: 'coordinator', count: 1, filledBy: defaultCoord ? [defaultCoord] : [] }]
         : [
             { slotId: shortId(), role: 'lead', count: 1, requiredQualificationKey: selectedOption?.leadQualification ?? undefined, filledBy: [] },

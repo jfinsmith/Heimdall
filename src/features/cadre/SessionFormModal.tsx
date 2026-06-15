@@ -47,6 +47,7 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
           highLiability: !!b.highLiability,
           leadQualification: b.leadQualification,
           defaultRoleSlots: b.defaultRoleSlots ?? [],
+          coordinatorRun: !!b.coordinatorRun,
         }))
         .sort((a, c) => a.name.localeCompare(c.name)),
     [curriculum]
@@ -108,8 +109,13 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
       setCountsTowardFdle(false);
       return;
     }
-    setCountsTowardFdle(true);
+    setCountsTowardFdle(true); // a curriculum course always counts toward program hours
     const opt = courseOptions.find((o) => o.value === id);
+    if (opt?.coordinatorRun) {
+      // Coordinator-run block (orientation, equipment issue…): pre-assigned, no open sign-up.
+      setSlots([coordinatorSlot()]);
+      return;
+    }
     setSlots([
       { slotId: shortId(), role: 'lead', count: 1, requiredQualificationKey: opt?.leadQualification, filledBy: [] },
       ...(opt?.defaultRoleSlots ?? [])

@@ -126,7 +126,8 @@ function CurriculumEditorModal({
       name: c.name.trim(),
       minHours: Number(c.minHours) || 0,
       ...(c.highLiability ? { highLiability: true } : {}),
-      ...(c.leadQualification ? { leadQualification: c.leadQualification } : {}),
+      ...(c.coordinatorRun ? { coordinatorRun: true } : {}),
+      ...(c.leadQualification && !c.coordinatorRun ? { leadQualification: c.leadQualification } : {}),
       ...(c.defaultRoleSlots && c.defaultRoleSlots.length ? { defaultRoleSlots: c.defaultRoleSlots } : {}),
     }));
     await setDoc(doc(db, 'curricula', id), {
@@ -168,7 +169,7 @@ function CurriculumEditorModal({
             <span>Course</span>
             <span>Hours</span>
             <span title="High-liability">▲ HL</span>
-            <span>Lead qualification</span>
+            <span>Lead / staffing</span>
             <span />
           </div>
           <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
@@ -196,16 +197,23 @@ function CurriculumEditorModal({
                   onChange={(e) => updateCourse(i, { highLiability: e.target.checked })}
                 />
                 <Select
-                  value={c.leadQualification ?? ''}
-                  aria-label={`Course ${i + 1} lead qualification`}
-                  onChange={(e) => updateCourse(i, { leadQualification: (e.target.value || undefined) as QualificationKey | undefined })}
+                  value={c.coordinatorRun ? '__coord__' : c.leadQualification ?? ''}
+                  aria-label={`Course ${i + 1} lead / staffing`}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v === '__coord__') updateCourse(i, { coordinatorRun: true, leadQualification: undefined });
+                    else updateCourse(i, { coordinatorRun: false, leadQualification: (v || undefined) as QualificationKey | undefined });
+                  }}
                 >
-                  <option value="">No lead qual</option>
-                  {(Object.keys(QUALIFICATION_LABELS) as QualificationKey[]).map((k) => (
-                    <option key={k} value={k}>
-                      {QUALIFICATION_LABELS[k]}
-                    </option>
-                  ))}
+                  <option value="__coord__">Coordinator (assigned)</option>
+                  <option value="">Open — no qualification</option>
+                  {(Object.keys(QUALIFICATION_LABELS) as QualificationKey[])
+                    .sort((a, b) => QUALIFICATION_LABELS[a].localeCompare(QUALIFICATION_LABELS[b]))
+                    .map((k) => (
+                      <option key={k} value={k}>
+                        Open — {QUALIFICATION_LABELS[k]}
+                      </option>
+                    ))}
                 </Select>
                 <button
                   type="button"

@@ -257,6 +257,12 @@ export interface CurriculumCourse {
   leadQualification?: QualificationKey;
   /** Default staffing slots beyond the lead (e.g. safety officer, role players). */
   defaultRoleSlots?: DefaultRoleSlot[];
+  /**
+   * Staffed by a pre-assigned coordinator rather than an open instructor lead
+   * (e.g. orientation, equipment issue, team building). New sessions default to
+   * a coordinator slot owned by the academy's coordinator — no open sign-up.
+   */
+  coordinatorRun?: boolean;
 }
 
 /** `curricula/{key}` — one per discipline; drives academy creation and the
