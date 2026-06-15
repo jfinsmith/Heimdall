@@ -9,10 +9,10 @@
 import React, { useMemo, useState } from 'react';
 import { addDoc, collection, deleteDoc, doc, serverTimestamp, setDoc, Timestamp, updateDoc, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { shortId, useCollection, type WithId } from '../../lib/firestore';
+import { shortId, useCollection, useDoc, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import { combineDateTime, hoursBetween, toDateInputValue, toTimeInputValue, tsFromDate } from '../../lib/time';
-import type { AcademyDoc, CourseDoc, QualificationKey, RoleSlot, SessionDoc, SlotRole, UserDoc } from '../../types';
+import type { AcademyDoc, CourseDoc, CurriculumDoc, QualificationKey, RoleSlot, SessionDoc, SlotRole, UserDoc } from '../../types';
 import { QUALIFICATION_LABELS, SLOT_ROLE_LABELS } from '../../types';
 import { Button, Field, Input, Select, TextArea } from '../../components/ui';
 import { Modal } from '../../components/Modal';
@@ -32,10 +32,16 @@ interface Props {
 export function SessionFormModal({ academy, session, defaultDate, onClose }: Props) {
   const { firebaseUser } = useAuth();
   const { data: courses } = useCollection<CourseDoc>('courseCatalog');
-  // The catalog is shared, but ARGUS (School Guardian) courses only belong on
-  // ARGUS academies — and ARGUS academies don't schedule LE/CO blocks.
+  // The catalog is shared. ARGUS Initial and Recertification draw from
+  // overlapping ARGUS courses, so a single tag can't separate them — scope the
+  // picker to the course blocks in THIS academy's curriculum. Non-ARGUS keeps
+  // the cross-discipline catalog (minus ARGUS-only courses).
   const isArgus = (academy.discipline ?? '').startsWith('argus');
-  const visibleCourses = courses.filter((c) => (isArgus ? c.discipline === 'argus' : c.discipline !== 'argus'));
+  const { data: curriculum } = useDoc<CurriculumDoc>(isArgus ? `curricula/${academy.discipline}` : null);
+  const curriculumNames = useMemo(() => new Set((curriculum?.courses ?? []).map((b) => b.name)), [curriculum]);
+  const visibleCourses = courses.filter((c) =>
+    isArgus ? c.discipline === 'argus' && curriculumNames.has(c.name) : c.discipline !== 'argus'
+  );
   const { data: coordinatorUsers } = useCollection<UserDoc>('users', [where('role', '==', 'coordinator')]);
   // Everyone who could be reserved into a slot in advance (any active user).
   const { data: activeUsers } = useCollection<UserDoc>('users', [where('status', '==', 'active')]);
