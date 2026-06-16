@@ -21,13 +21,13 @@ the **Gjallarhorn** when something is coming:
 
 - **Frontend:** React 18 + TypeScript + Vite, Tailwind CSS, React Router v6 (**HashRouter**), FullCalendar
 - **Backend:** Firebase — Auth, Cloud Firestore, Cloud Functions (Node 20, TS), **Trigger Email from Firestore** extension
-- **Hosting:** GitHub Pages via GitHub Actions
+- **Hosting:** Firebase Hosting via GitHub Actions (migrated off GitHub Pages — see §8)
 - **Data reads:** lightweight `onSnapshot` hooks (`src/lib/firestore.ts`) — no React Query, one consistent idiom
 
-> **Why HashRouter?** GitHub Pages can't rewrite arbitrary paths to `index.html`.
-> HashRouter (`/#/cadre/calendar`) needs no server config, at the cost of a `#` in
-> URLs. If you later host on Firebase Hosting, switch to `BrowserRouter` and add
-> rewrites.
+> **Why HashRouter?** Originally chosen because GitHub Pages can't rewrite arbitrary
+> paths to `index.html`. We've since moved to Firebase Hosting (which has a SPA
+> rewrite in `firebase.json`), so HashRouter is no longer required — it still works,
+> and switching to `BrowserRouter` for clean URLs is an optional follow-up.
 
 ## Repository map
 
@@ -47,7 +47,7 @@ the **Gjallarhorn** when something is coming:
 /functions      Gjallarhorn triggers + scheduled sweeps + admin callables
 /seed           seed.ts — demo data (Admin SDK)
 /scripts        gjallarhorn-cron.ts — Option B free-tier sweep
-/.github/workflows  deploy-pages.yml, reminders-cron.yml (Option B, off by default)
+/.github/workflows  firebase-deploy.yml, reminders-cron.yml (Option B, off by default)
 firestore.rules / firestore.indexes.json / firebase.json
 ```
 
@@ -145,15 +145,22 @@ qualifications).
 npm run dev    # http://localhost:5173
 ```
 
-## 8. GitHub Pages deploy
+## 8. Firebase Hosting deploy
 
-1. Repo **Settings → Pages → Source: GitHub Actions**.
-2. Repo **Settings → Secrets and variables → Actions** → add:
+1. Repo **Settings → Secrets and variables → Actions** → add the build secrets:
    `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`,
    `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`,
    `VITE_FIREBASE_APP_ID`.
-3. Push to `main` — `.github/workflows/deploy-pages.yml` builds and publishes.
-4. Confirm the `*.github.io` domain is in Firebase Auth authorized domains (§2).
+2. Add the deploy secret `FIREBASE_SERVICE_ACCOUNT_HEIMDALL_E1F03` (a Firebase
+   Hosting Admin service-account key) — created automatically by
+   `firebase init hosting:github`.
+3. Push to `main` — `.github/workflows/firebase-deploy.yml` builds with the
+   `VITE_*` secrets and deploys `dist/` to the Hosting live channel.
+4. Confirm the live domain (`heimdall.tgcmd-portal.com` / `*.web.app`) is in
+   Firebase Auth authorized domains (§2).
+5. Firestore **rules + indexes** are NOT deployed by this workflow — run
+   `firebase deploy --only firestore:rules,firestore:indexes` manually after
+   changing them (see §G note in the audit).
 
 ## Option B — free-tier (Spark) reminders, no Cloud Functions
 
@@ -177,12 +184,12 @@ A GitHub Actions cron replaces the scheduled functions:
 
 - [ ] `.env` filled from Firebase web app config
 - [ ] Google + Email/Password providers enabled
-- [ ] `*.github.io` added to authorized domains
+- [ ] Hosting domain (`*.web.app` / custom) added to authorized domains
 - [ ] Blaze upgraded (Option A) **or** Option B cron enabled
 - [ ] Trigger Email extension installed with SMTP URI (Option A)
 - [ ] `firebase deploy --only firestore:rules,firestore:indexes,functions`
 - [ ] `npm run seed` with a service-account key
-- [ ] GitHub Pages source + `VITE_FIREBASE_*` secrets set
+- [ ] `VITE_FIREBASE_*` + `FIREBASE_SERVICE_ACCOUNT_HEIMDALL_E1F03` repo secrets set
 - [ ] Sign in as a demo coordinator and open **CADRE → Staffing Board**
 - [ ] For a fresh (unseeded) org: sign in, then call `bootstrapFirstDirector`
       from the browser console to claim the first director account:
