@@ -10,6 +10,7 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import listPlugin from '@fullcalendar/list';
 import interactionPlugin from '@fullcalendar/interaction';
+import { orderBy, Timestamp, where } from 'firebase/firestore';
 import { useCollection, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import { useGlobalSettings } from '../../app/providers';
@@ -35,7 +36,15 @@ export function CalendarPage() {
 
   const { data: academies } = useCollection<AcademyDoc>('academies');
   const { data: curricula } = useCollection<CurriculumDoc>('curricula');
-  const { data: sessions } = useCollection<SessionDoc>('sessions');
+  // Bound the sessions listener to a rolling 1-year-back window (covers any
+  // in-progress academy + all future) instead of loading the entire growing
+  // collection. Cutoff is computed once so the query identity stays stable.
+  const sessionWindowStart = useMemo(() => Timestamp.fromMillis(Date.now() - 365 * 864e5), []);
+  const { data: sessions } = useCollection<SessionDoc>(
+    'sessions',
+    [where('start', '>=', sessionWindowStart), orderBy('start')],
+    [sessionWindowStart]
+  );
 
   const [academyFilter, setAcademyFilter] = useState('all');
   const [disciplineFilter, setDisciplineFilter] = useState('all');

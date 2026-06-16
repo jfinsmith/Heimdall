@@ -5,7 +5,7 @@
  * members' certs forward four years, or suspend them until conditions are met.
  */
 import React, { useMemo, useState } from 'react';
-import { doc, orderBy, serverTimestamp, updateDoc, writeBatch } from 'firebase/firestore';
+import { doc, limit, orderBy, serverTimestamp, updateDoc, writeBatch } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../../lib/firebase';
 import { useCollection, type WithId } from '../../lib/firestore';
@@ -27,7 +27,7 @@ const shortQual = (key: QualificationKey) => QUALIFICATION_LABELS[key].replace(/
 
 export function RosterPage() {
   const { firebaseUser } = useAuth();
-  const { data: users } = useCollection<UserDoc>('users', [orderBy('displayName')]);
+  const { data: users } = useCollection<UserDoc>('users', [orderBy('displayName'), limit(2000)]);
 
   const [search, setSearch] = useState('');
   const [expFilter, setExpFilter] = useState('');

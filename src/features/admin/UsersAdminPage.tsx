@@ -5,7 +5,7 @@
  */
 import React, { useState } from 'react';
 import { httpsCallable } from 'firebase/functions';
-import { doc, serverTimestamp, updateDoc, orderBy } from 'firebase/firestore';
+import { doc, serverTimestamp, updateDoc, orderBy, limit } from 'firebase/firestore';
 import { db, functions } from '../../lib/firebase';
 import { useCollection, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
@@ -42,7 +42,9 @@ function randomPassword(): string {
 
 export function UsersAdminPage() {
   const { firebaseUser } = useAuth();
-  const { data: users } = useCollection<UserDoc>('users', [orderBy('displayName')]);
+  // Naturally bounded by org headcount; the cap is a defensive ceiling far above
+  // any realistic agency size (add search/pagination only if it's ever exceeded).
+  const { data: users } = useCollection<UserDoc>('users', [orderBy('displayName'), limit(2000)]);
 
   /** "Dep. Sofia Vargas" → "Vargas, Dep. Sofia"; sort key is the last name. */
   const lastFirst = (name: string) => {
