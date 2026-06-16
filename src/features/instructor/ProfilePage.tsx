@@ -135,8 +135,8 @@ export function ProfilePage() {
         <h2 className="mb-1 text-sm font-semibold uppercase tracking-wider text-watch-600">Qualifications</h2>
         <p className="mb-3 text-sm text-slate-500">
           Claim the instructor qualifications you hold; a coordinator verifies them before they unlock
-          restricted slots. <strong>Role Player</strong> needs no verification or date — claim it to be
-          called for role-player help on various topics.
+          restricted slots. <strong>Role Player</strong> needs no date, but a coordinator still verifies
+          it before you’re added to role-player call-outs.
         </p>
 
         {/* Single FDLE instructor-cert expiration (governs all instructor certs) */}
@@ -181,7 +181,7 @@ export function ProfilePage() {
               <li key={key} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-watch-100 px-3 py-2 text-sm">
                 <span className="text-watch-800">
                   {QUALIFICATION_LABELS[key]}
-                  {!instructor && <span className="ml-2 text-xs text-slate-400">(no verification or date needed)</span>}
+                  {!instructor && <span className="ml-2 text-xs text-slate-400">(no date)</span>}
                   {instructor && q?.verified && profile.instructorCertExpires && (
                     <span className="ml-2 text-xs text-slate-500">expires 3/31/{certYearOf(profile.instructorCertExpires)}</span>
                   )}
@@ -189,9 +189,7 @@ export function ProfilePage() {
                 <span className="flex items-center gap-2">
                   {q ? (
                     <>
-                      {!instructor ? (
-                        <Badge tone="green">Claimed</Badge>
-                      ) : q.verified ? (
+                      {q.verified ? (
                         <Badge tone="green">Verified</Badge>
                       ) : (
                         <Badge tone="amber">Pending verification</Badge>

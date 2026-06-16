@@ -8,7 +8,7 @@ import { useCollection } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import { fmtRange } from '../../lib/time';
 import type { AcademyDoc, SessionDoc } from '../../types';
-import { SLOT_ROLE_LABELS, QUALIFICATION_LABELS } from '../../types';
+import { SLOT_ROLE_LABELS, QUALIFICATION_LABELS, activeVerifiedQualKeys } from '../../types';
 import { Badge, Button, EmptyState, HighLiabilityBadge, PageHeader } from '../../components/ui';
 import { SessionDetailModal } from '../sessions/SessionDetailModal';
 import { signUpForSlot, SignupError } from '../sessions/useSignup';
@@ -32,10 +32,9 @@ export function BrowseOpenSessionsPage() {
     return m;
   }, [academies]);
 
-  const myQuals = useMemo(
-    () => new Set((profile?.qualifications ?? []).filter((q) => q.verified).map((q) => q.key)),
-    [profile]
-  );
+  // Verified quals that currently count — expired instructor certs drop out
+  // (Role Player never expires).
+  const myQuals = useMemo(() => new Set(profile ? activeVerifiedQualKeys(profile) : []), [profile]);
 
   /** Sessions with at least one open slot this user can fill. */
   const matches = useMemo(

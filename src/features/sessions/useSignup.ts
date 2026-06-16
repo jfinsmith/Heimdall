@@ -28,6 +28,7 @@ import {
 import { db } from '../../lib/firebase';
 import { overlaps } from '../../lib/time';
 import type { AssignmentDoc, SessionDoc, SignupDoc, UserDoc } from '../../types';
+import { instructorCertActive, isInstructorQual } from '../../types';
 import { logAudit } from './audit';
 
 export class SignupError extends Error {}
@@ -35,11 +36,16 @@ export class SignupError extends Error {}
 function qualifies(user: UserDoc, requiredKey?: string): boolean {
   if (!requiredKey) return true;
   // verifiedQualKeys is the staff-maintained, rule-protected source of truth.
-  // (Expiration is tracked in the agency's certification portal, not here.)
   if (!(user.verifiedQualKeys ?? []).includes(requiredKey as never)) return false;
   const q = user.qualifications.find((x) => x.key === requiredKey);
   if (!q) return false; // claim removed — stale verifiedQualKeys entry doesn't count
   return true;
+}
+
+/** Instructor certs that have lapsed (or aren't on file) can't fill an instructor
+ *  slot. Role Player slots are exempt — Role Player never expires. */
+function certBlocks(user: UserDoc, requiredKey?: string): boolean {
+  return !!requiredKey && isInstructorQual(requiredKey as never) && !instructorCertActive(user);
 }
 
 function recomputeStatus(session: SessionDoc): SessionDoc['status'] {
@@ -97,6 +103,12 @@ export async function signUpForSlot(
       throw new SignupError(
         `This slot requires a verified "${slot.requiredQualificationKey}" qualification. ` +
           'Request it on your profile and have a coordinator verify it.'
+      );
+    }
+    if (certBlocks(user, slot.requiredQualificationKey)) {
+      throw new SignupError(
+        'Your FDLE instructor certification has expired or is not on file. ' +
+          'Contact Academy Leadership to recertify before signing up to instruct.'
       );
     }
 

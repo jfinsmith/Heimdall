@@ -10,7 +10,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { can } from '../../lib/rbac';
 import { fmtRange } from '../../lib/time';
 import type { SessionDoc, SignupDoc } from '../../types';
-import { SLOT_ROLE_LABELS, QUALIFICATION_LABELS } from '../../types';
+import { SLOT_ROLE_LABELS, QUALIFICATION_LABELS, activeVerifiedQualKeys } from '../../types';
 import { Badge, Button, HighLiabilityBadge, StatusPill } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import { signUpForSlot, withdrawFromSession, SignupError } from './useSignup';
@@ -40,8 +40,8 @@ export function SessionDetailModal({ sessionId, onClose, onEdit }: Props) {
 
   function hasQual(requiredKey?: string): boolean {
     if (!requiredKey) return true;
-    const q = profile?.qualifications.find((x) => x.key === requiredKey);
-    return !!q && q.verified;
+    // Verified AND currently valid — an expired instructor cert no longer counts.
+    return profile ? activeVerifiedQualKeys(profile).includes(requiredKey as never) : false;
   }
 
   async function doSignup(slotId: string, allowWaitlist = false) {

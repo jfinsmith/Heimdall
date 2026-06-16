@@ -46,6 +46,29 @@ export const INSTRUCTOR_QUAL_KEYS: QualificationKey[] = (
   Object.keys(QUALIFICATION_LABELS) as QualificationKey[]
 ).filter(isInstructorQual);
 
+/** True while the member's single FDLE instructor cert is on file and unexpired. */
+export function instructorCertActive(
+  user: { instructorCertExpires?: Timestamp },
+  now: Date = new Date()
+): boolean {
+  return !!user.instructorCertExpires && user.instructorCertExpires.toDate() >= now;
+}
+
+/**
+ * Verified qualifications that currently COUNT for sign-ups: a qual must be
+ * verified, and — for instructor certs — the shared FDLE expiration must not
+ * have lapsed. Role Player never expires (but still must be verified).
+ */
+export function activeVerifiedQualKeys(
+  user: { qualifications?: Qualification[]; instructorCertExpires?: Timestamp },
+  now: Date = new Date()
+): QualificationKey[] {
+  const certOk = instructorCertActive(user, now);
+  return (user.qualifications ?? [])
+    .filter((q) => q.verified && (certOk || !isInstructorQual(q.key)))
+    .map((q) => q.key);
+}
+
 export interface Qualification {
   key: QualificationKey;
   label: string;

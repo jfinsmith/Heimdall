@@ -12,7 +12,7 @@ import { useCollection, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import { ROLE_LABELS } from '../../lib/rbac';
 import type { QualificationKey, UserDoc } from '../../types';
-import { QUALIFICATION_LABELS, isInstructorQual } from '../../types';
+import { QUALIFICATION_LABELS } from '../../types';
 import { certYearOf, march31, tsFromDate } from '../../lib/time';
 import { Badge, Button, Field, Input, PageHeader, Select, TextArea } from '../../components/ui';
 import { Modal } from '../../components/Modal';
@@ -203,16 +203,12 @@ export function RosterPage() {
                   <td className="px-3 py-3">
                     <div className="flex flex-wrap gap-1">
                       {u.qualifications.length === 0 && <span className="text-xs text-slate-400">none</span>}
-                      {u.qualifications.map((q) => {
-                        const instructor = isInstructorQual(q.key);
-                        const tone = !instructor ? 'navy' : q.verified ? 'green' : 'amber';
-                        return (
-                          <Badge key={q.key} tone={tone}>
-                            {shortQual(q.key)}
-                            {instructor && !q.verified ? ' ⏳' : ''}
-                          </Badge>
-                        );
-                      })}
+                      {u.qualifications.map((q) => (
+                        <Badge key={q.key} tone={q.verified ? 'green' : 'amber'}>
+                          {shortQual(q.key)}
+                          {q.verified ? '' : ' ⏳'}
+                        </Badge>
+                      ))}
                     </div>
                   </td>
                   <td className="px-3 py-3">

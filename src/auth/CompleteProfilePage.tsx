@@ -88,8 +88,8 @@ export function CompleteProfilePage() {
           <div className="text-sm font-medium text-watch-800">Your qualifications</div>
           <p className="mt-0.5 mb-2 text-xs text-slate-500">
             Check the instructor qualifications you hold — a coordinator will verify them before they unlock
-            restricted slots. <strong>Role Player</strong> needs no verification; check it to be called for
-            role-player help. You can change these any time on your Profile.
+            restricted slots. <strong>Role Player</strong> needs no date, but is also verified before you’re
+            added to role-player call-outs. You can change these any time on your Profile.
           </p>
           <div className="grid gap-1.5 sm:grid-cols-2">
             {(Object.keys(QUALIFICATION_LABELS) as QualificationKey[]).map((key) => (
