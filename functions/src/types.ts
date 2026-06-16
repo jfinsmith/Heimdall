@@ -5,7 +5,7 @@
 import type { Timestamp } from 'firebase-admin/firestore';
 
 export type Role = 'director' | 'lieutenant' | 'sergeant' | 'coordinator' | 'instructor';
-export type UserStatus = 'pending' | 'active' | 'inactive';
+export type UserStatus = 'pending' | 'active' | 'inactive' | 'suspended';
 export type SlotRole = 'lead' | 'assistant' | 'role_player' | 'safety_officer' | 'coordinator';
 export type SessionStatus = 'draft' | 'open' | 'fully_staffed' | 'cancelled' | 'completed';
 export type SignupStatus = 'confirmed' | 'waitlist' | 'withdrawn';

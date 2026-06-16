@@ -234,6 +234,88 @@ export const sendActivationEmail = onCall<{ uid: string; password: string }>(asy
 });
 
 /**
+ * Suspend (or reinstate) a member. Suspended users can still sign in but see a
+ * site-wide banner telling them to contact Academy Leadership; the reason is
+ * stored on the profile and shown to them and to admins. Emails + in-app
+ * notifies the member either way. Admin-only.
+ */
+export const setUserSuspension = onCall<{ uid: string; suspended: boolean; reason?: string }>(async (request) => {
+  const caller = request.auth;
+  if (!caller) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = getFirestore();
+  const callerDoc = await db.doc(`users/${caller.uid}`).get();
+  const callerRole = callerDoc.exists ? (callerDoc.data()!.role as Role) : null;
+  if (!callerRole || !ADMIN_ROLES.includes(callerRole)) {
+    throw new HttpsError('permission-denied', 'Only directors and lieutenants may suspend members.');
+  }
+
+  const uid = (request.data.uid ?? '').trim();
+  const suspended = !!request.data.suspended;
+  const reason = (request.data.reason ?? '').trim();
+  if (!uid) throw new HttpsError('invalid-argument', 'Missing user.');
+  if (uid === caller.uid) throw new HttpsError('failed-precondition', 'You cannot suspend your own account.');
+  if (suspended && !reason) throw new HttpsError('invalid-argument', 'A suspension reason is required.');
+
+  const userSnap = await db.doc(`users/${uid}`).get();
+  if (!userSnap.exists) throw new HttpsError('not-found', 'User not found.');
+  const user = userSnap.data() as { email?: string; displayName?: string };
+  const displayName = (user.displayName ?? '').trim() || 'there';
+
+  await db.doc(`users/${uid}`).set(
+    suspended
+      ? {
+          status: 'suspended',
+          suspensionReason: reason,
+          suspendedAt: FieldValue.serverTimestamp(),
+          suspendedBy: caller.uid,
+          updatedAt: FieldValue.serverTimestamp(),
+        }
+      : {
+          status: 'active',
+          suspensionReason: FieldValue.delete(),
+          suspendedAt: FieldValue.delete(),
+          suspendedBy: FieldValue.delete(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+    { merge: true }
+  );
+
+  const settingsSnap = await db.doc('settings/global').get();
+  const orgName = settingsSnap.exists ? ((settingsSnap.data()!.orgName as string) || 'the Training Academy') : 'the Training Academy';
+
+  if (suspended) {
+    await notify({
+      uid,
+      type: 'account_suspended',
+      title: 'Your account has been suspended',
+      body: `Your ${orgName} account has been suspended. Reason: ${reason}\n\nPlease contact Academy Leadership to resolve this.`,
+      link: '/profile',
+      force: true, // suspension notices must reach the member regardless of opt-outs
+    });
+  } else {
+    await notify({
+      uid,
+      type: 'account_reinstated',
+      title: 'Your account has been reinstated',
+      body: `Your ${orgName} account access has been restored. Welcome back, ${displayName}.`,
+      link: '/',
+      force: true,
+    });
+  }
+
+  await db.collection('auditLog').add({
+    actorUid: caller.uid,
+    action: suspended ? 'admin.suspend_user' : 'admin.reinstate_user',
+    targetType: 'user',
+    targetId: uid,
+    summary: suspended ? `Suspended ${displayName}: ${reason}` : `Reinstated ${displayName}`,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+
+  return { ok: true };
+});
+
+/**
  * Academy approval chain: coordinator submits → Sergeant → Lieutenant → Captain
  * (director) → approved, then the coordinator may publish. An approver can send
  * it back with "changes requested." Each transition is performed here (Admin

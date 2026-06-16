@@ -172,6 +172,15 @@ export function AppShell() {
             <UserMenu displayName={profile?.displayName} onSignOut={() => signOut()} />
           </div>
         </header>
+        {profile?.status === 'suspended' && (
+          <div className="no-print border-b border-red-200 bg-red-50 px-4 py-3 md:px-8" role="alert">
+            <p className="text-sm font-semibold text-red-800">Your account is suspended.</p>
+            <p className="text-sm text-red-700">
+              Please contact Academy Leadership to resolve this and restore your access.
+              {profile.suspensionReason ? <span className="block">Reason: {profile.suspensionReason}</span> : null}
+            </p>
+          </div>
+        )}
         <main className="flex-1 px-4 py-6 md:px-8">
           <Outlet />
         </main>

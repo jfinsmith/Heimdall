@@ -11,7 +11,7 @@ import { useCollection, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import { ROLE_LABELS } from '../../lib/rbac';
 import type { Role, UserDoc } from '../../types';
-import { Badge, Button, Field, Input, PageHeader, Select } from '../../components/ui';
+import { Badge, Button, Field, Input, PageHeader, Select, TextArea } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import { logAudit } from '../sessions/audit';
 
@@ -21,6 +21,7 @@ const createUserAccount = httpsCallable<
   { ok: boolean; uid: string }
 >(functions, 'createUserAccount');
 const sendActivationEmail = httpsCallable<{ uid: string; password: string }, { ok: boolean }>(functions, 'sendActivationEmail');
+const setUserSuspension = httpsCallable<{ uid: string; suspended: boolean; reason?: string }, { ok: boolean }>(functions, 'setUserSuspension');
 
 // Memorable temp passwords in the style "Forest-Tango-Beacon-656": three distinct
 // words plus a 3-digit number, dash-separated — easy to read aloud or type.
@@ -53,6 +54,7 @@ export function UsersAdminPage() {
   // Instructors at top, most-permissive roles at the bottom.
   const GROUP_ORDER: Role[] = ['instructor', 'coordinator', 'sergeant', 'lieutenant', 'director'];
   const [qualUser, setQualUser] = useState<WithId<UserDoc> | null>(null);
+  const [suspendTarget, setSuspendTarget] = useState<WithId<UserDoc> | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -92,6 +94,19 @@ export function UsersAdminPage() {
     if (!window.confirm(`Deactivate ${u.displayName}? They will lose access.`)) return;
     await updateDoc(doc(db, 'users', u.id), { status: 'inactive', updatedAt: serverTimestamp() });
     await logAudit(firebaseUser!.uid, 'user.deactivate', 'user', u.id, `Deactivated ${u.displayName}`);
+  }
+
+  async function liftSuspension(u: WithId<UserDoc>) {
+    if (!window.confirm(`Lift the suspension on ${u.displayName}? They regain full access and are emailed.`)) return;
+    setBusy(u.id);
+    setError(null);
+    try {
+      await setUserSuspension({ uid: u.id, suspended: false });
+    } catch (err) {
+      setError(`Lifting ${u.displayName}'s suspension failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBusy(null);
+    }
   }
 
   return (
@@ -161,6 +176,9 @@ export function UsersAdminPage() {
                       <td className="px-4 py-3">
                         <div className="font-medium text-watch-900">{lastFirst(u.displayName)}</div>
                         <div className="text-xs text-slate-500">{u.email}</div>
+                        {u.status === 'suspended' && u.suspensionReason && (
+                          <div className="mt-0.5 text-xs text-red-700">Suspended: {u.suspensionReason}</div>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <Select
@@ -177,7 +195,9 @@ export function UsersAdminPage() {
                         </Select>
                       </td>
                       <td className="px-4 py-3">
-                        <Badge tone={u.status === 'active' ? 'green' : 'slate'}>{u.status}</Badge>
+                        <Badge tone={u.status === 'active' ? 'green' : u.status === 'suspended' ? 'red' : 'slate'}>
+                          {u.status}
+                        </Badge>
                       </td>
                       <td className={`px-4 py-3 ${qualTone}`}>
                         <button className="text-bifrost-700 hover:underline" onClick={() => setQualUser(u)}>
@@ -185,10 +205,21 @@ export function UsersAdminPage() {
                         </button>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        {u.status === 'active' && (
-                          <Button variant="ghost" onClick={() => deactivate(u)}>
-                            Deactivate
+                        {u.status === 'suspended' ? (
+                          <Button variant="ghost" disabled={busy === u.id} onClick={() => liftSuspension(u)}>
+                            Lift suspension
                           </Button>
+                        ) : (
+                          u.status === 'active' && (
+                            <>
+                              <Button variant="ghost" className="text-amber-700" disabled={busy === u.id} onClick={() => setSuspendTarget(u)}>
+                                Suspend
+                              </Button>
+                              <Button variant="ghost" onClick={() => deactivate(u)}>
+                                Deactivate
+                              </Button>
+                            </>
+                          )
                         )}
                       </td>
                     </tr>
@@ -202,7 +233,56 @@ export function UsersAdminPage() {
 
       {qualUser && <QualificationsModal user={qualUser} onClose={() => setQualUser(null)} />}
       {addOpen && <AddUserModal onClose={() => setAddOpen(false)} />}
+      {suspendTarget && <SuspendUserModal user={suspendTarget} onClose={() => setSuspendTarget(null)} />}
     </div>
+  );
+}
+
+/**
+ * Suspend a member with a reason. The member keeps the ability to sign in but
+ * sees a site-wide banner telling them to contact Academy Leadership, and is
+ * emailed the reason. Reinstating (from the table) clears it.
+ */
+function SuspendUserModal({ user, onClose }: { user: WithId<UserDoc>; onClose: () => void }) {
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!reason.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await setUserSuspension({ uid: user.id, suspended: true, reason: reason.trim() });
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not suspend the account.');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open onClose={busy ? () => {} : onClose} title={`Suspend ${user.displayName}`}>
+      <form onSubmit={submit} className="space-y-4 text-sm">
+        <div className="rounded-md bg-amber-50 px-3 py-2 text-amber-800">
+          They’ll still be able to sign in, but every page shows a banner telling them to contact Academy
+          Leadership. They’re emailed the reason below, and can be reinstated any time.
+        </div>
+        {error && <div className="rounded-md bg-red-50 px-3 py-2 text-red-800">{error}</div>}
+        <Field label="Reason for suspension" hint="Shown to the member (on-site and by email) and to leadership.">
+          <TextArea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} autoFocus required />
+        </Field>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="danger" disabled={busy || !reason.trim()}>
+            {busy ? 'Suspending…' : 'Suspend account'}
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 

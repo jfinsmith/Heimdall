@@ -34,6 +34,8 @@ const CATEGORY: Record<NotificationType, { group: string; tone: Tone }> = {
   qualification_approved: { group: 'Account', tone: 'green' },
   account_approved: { group: 'Account', tone: 'green' },
   new_account_pending: { group: 'Account', tone: 'navy' },
+  account_suspended: { group: 'Account', tone: 'red' },
+  account_reinstated: { group: 'Account', tone: 'green' },
   reminder: { group: 'Reminders', tone: 'navy' },
   digest: { group: 'Reminders', tone: 'slate' },
   message: { group: 'Messages', tone: 'navy' },

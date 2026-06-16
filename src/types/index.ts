@@ -14,7 +14,7 @@ export const STAFF_ROLES: Role[] = ['director', 'lieutenant', 'sergeant', 'coord
 /** Roles that can manage users and org settings ("command"). */
 export const ADMIN_ROLES: Role[] = ['director', 'lieutenant'];
 
-export type UserStatus = 'pending' | 'active' | 'inactive';
+export type UserStatus = 'pending' | 'active' | 'inactive' | 'suspended';
 
 export type QualificationKey =
   | 'general'
@@ -79,6 +79,10 @@ export interface UserDoc {
    * once the user picks their own password.
    */
   mustChangePassword?: boolean;
+  /** Set when status==='suspended': the reason shown to the member + leadership. */
+  suspensionReason?: string;
+  suspendedAt?: Timestamp;
+  suspendedBy?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -95,6 +99,8 @@ export const EMAIL_AUTOMATIONS = [
   { key: 'course_published', label: 'Course opened for sign-up', description: 'Emails eligible instructors when coordinators open a course’s sessions for sign-up.' },
   { key: 'account_approved', label: 'Account approved', description: 'Emails a new user when their account is activated.' },
   { key: 'new_account_pending', label: 'New account request', description: 'Emails command when someone self-registers and is waiting for approval.' },
+  { key: 'account_suspended', label: 'Account suspended', description: 'Emails a member when an admin suspends their account, with the reason.' },
+  { key: 'account_reinstated', label: 'Account reinstated', description: 'Emails a member when their suspension is lifted and access is restored.' },
   { key: 'approval_request', label: 'Schedule approval — your turn', description: 'Emails the next approver (sergeant → lieutenant → captain) when a class is awaiting their sign-off.' },
   { key: 'approval_update', label: 'Schedule approval — decision', description: 'Emails the coordinator when their class is fully approved or sent back with changes.' },
   { key: 'reminder', label: 'Assignment reminders', description: 'Daily sweep: emails instructors ahead of their upcoming assignments.' },
@@ -370,6 +376,8 @@ export type NotificationType =
   | 'course_published'
   | 'account_approved'
   | 'new_account_pending'
+  | 'account_suspended'
+  | 'account_reinstated'
   | 'approval_request'
   | 'approval_update'
   | 'reminder'
