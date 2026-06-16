@@ -238,15 +238,24 @@ export function SessionDetailModal({ sessionId, onClose, onEdit }: Props) {
           {session.status === 'scheduled' && session.roleSlots.some((sl) => sl.role !== 'coordinator') && (
             <Button
               variant="primary"
+              disabled={busy}
               onClick={async () => {
-                await updateDoc(doc(db, 'sessions', sessionId), { status: 'open', updatedAt: serverTimestamp() });
-                await addDoc(collection(db, 'coursePublishEvents'), {
-                  academyId: session.academyId,
-                  courseLabel: session.title || session.courseName,
-                  sessionCount: 1,
-                  requestedBy: firebaseUser?.uid ?? '',
-                  createdAt: serverTimestamp(),
-                });
+                setError(null);
+                setBusy(true);
+                try {
+                  await updateDoc(doc(db, 'sessions', sessionId), { status: 'open', updatedAt: serverTimestamp() });
+                  await addDoc(collection(db, 'coursePublishEvents'), {
+                    academyId: session.academyId,
+                    courseLabel: session.title || session.courseName,
+                    sessionCount: 1,
+                    requestedBy: firebaseUser?.uid ?? '',
+                    createdAt: serverTimestamp(),
+                  });
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : 'Could not open sign-ups.');
+                } finally {
+                  setBusy(false);
+                }
               }}
             >
               Open sign-ups
@@ -255,7 +264,18 @@ export function SessionDetailModal({ sessionId, onClose, onEdit }: Props) {
           {(session.status === 'open' || session.status === 'fully_staffed') && (
             <Button
               variant="ghost"
-              onClick={() => updateDoc(doc(db, 'sessions', sessionId), { status: 'scheduled', updatedAt: serverTimestamp() })}
+              disabled={busy}
+              onClick={async () => {
+                setError(null);
+                setBusy(true);
+                try {
+                  await updateDoc(doc(db, 'sessions', sessionId), { status: 'scheduled', updatedAt: serverTimestamp() });
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : 'Could not close sign-ups.');
+                } finally {
+                  setBusy(false);
+                }
+              }}
             >
               Close sign-ups
             </Button>

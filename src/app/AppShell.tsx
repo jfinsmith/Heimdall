@@ -10,6 +10,7 @@ import { can, ROLE_LABELS } from '../lib/rbac';
 import { useClickOutside } from '../lib/useClickOutside';
 import { WordmarkHorizontal } from '../brand/Logo';
 import { NotificationBell } from '../components/NotificationBell';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Button } from '../components/ui';
 
 function NavItem({ to, label, end = false }: { to: string; label: string; end?: boolean }) {
@@ -183,7 +184,9 @@ export function AppShell() {
           </div>
         )}
         <main className="flex-1 px-4 py-6 md:px-8">
-          <Outlet />
+          <ErrorBoundary>
+            <Outlet />
+          </ErrorBoundary>
         </main>
         <footer className="no-print px-8 py-4 text-center text-xs text-watch-300">
           HEIMDALL · CADRE — Coordinated Academy Duty &amp; Roster Engine · Sounded by Gjallarhorn

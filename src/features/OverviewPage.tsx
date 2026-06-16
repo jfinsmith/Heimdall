@@ -11,7 +11,7 @@ import { can } from '../lib/rbac';
 import { fmtRange } from '../lib/time';
 import type { AcademyDoc, AssignmentDoc, SessionDoc } from '../types';
 import { unfilledSlots } from '../types';
-import { PageHeader, StatusPill, EmptyState } from '../components/ui';
+import { PageHeader, StatusPill, EmptyState, Spinner } from '../components/ui';
 import { SessionDetailModal } from './sessions/SessionDetailModal';
 import { WordmarkStacked } from '../brand/Logo';
 
@@ -20,7 +20,7 @@ export function OverviewPage() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const now = Timestamp.now();
 
-  const { data: myAssignments } = useCollection<AssignmentDoc>(
+  const { data: myAssignments, loading: assignmentsLoading } = useCollection<AssignmentDoc>(
     firebaseUser ? 'assignments' : null,
     [where('uid', '==', firebaseUser?.uid ?? ''), where('status', '==', 'confirmed'), orderBy('start'), limit(5)],
     [firebaseUser?.uid]
@@ -82,7 +82,9 @@ export function OverviewPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-watch-600">My next assignments</h2>
-          {upcoming.length === 0 ? (
+          {assignmentsLoading ? (
+            <div className="flex justify-center py-8"><Spinner className="text-bifrost-400" /></div>
+          ) : upcoming.length === 0 ? (
             <EmptyState title="No upcoming assignments" body="Browse open sessions to sign up for a class." />
           ) : (
             <ul className="divide-y divide-watch-50">

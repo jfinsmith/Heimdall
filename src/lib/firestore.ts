@@ -57,7 +57,10 @@ export function useCollection<T = DocumentData>(
           error: null,
         });
       },
-      (error) => setState({ data: [], loading: false, error })
+      (error) => {
+        console.error(`useCollection(${path}) failed:`, error);
+        setState({ data: [], loading: false, error });
+      }
     );
     return unsub;
   }, [q]);
@@ -90,7 +93,10 @@ export function useDoc<T = DocumentData>(path: string | null): DocState<T> {
           error: null,
         });
       },
-      (error) => setState({ data: null, loading: false, error })
+      (error) => {
+        console.error(`useDoc(${path}) failed:`, error);
+        setState({ data: null, loading: false, error });
+      }
     );
     return unsub;
   }, [path]);

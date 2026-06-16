@@ -62,7 +62,7 @@ const fmtWhen = (d: Date) =>
 
 export function NotificationsPage() {
   const { firebaseUser } = useAuth();
-  const { data: notifications, loading } = useCollection<NotificationDoc>(
+  const { data: notifications, loading, error } = useCollection<NotificationDoc>(
     firebaseUser ? 'notifications' : null,
     firebaseUser ? [where('uid', '==', firebaseUser.uid), orderBy('createdAt', 'desc'), limit(300)] : [],
     [firebaseUser?.uid]
@@ -144,7 +144,11 @@ export function NotificationsPage() {
         </span>
       </div>
 
-      {!loading && filtered.length === 0 ? (
+      {error ? (
+        <div className="rounded-md bg-red-50 px-3 py-3 text-sm text-red-800">
+          Couldn’t load your notifications. Check your connection and reload.
+        </div>
+      ) : !loading && filtered.length === 0 ? (
         <EmptyState
           title="The horn is silent"
           body={

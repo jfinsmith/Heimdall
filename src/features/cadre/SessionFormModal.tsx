@@ -374,9 +374,16 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
   async function cancelSession() {
     if (!session || !firebaseUser) return;
     if (!window.confirm('Cancel this session? Signed-up instructors will be notified by Gjallarhorn.')) return;
-    await updateDoc(doc(db, 'sessions', session.id), { status: 'cancelled', updatedAt: serverTimestamp() });
-    await logAudit(firebaseUser.uid, 'session.cancel', 'session', session.id, `Cancelled ${session.courseName}`);
-    onClose();
+    setError(null);
+    setBusy(true);
+    try {
+      await updateDoc(doc(db, 'sessions', session.id), { status: 'cancelled', updatedAt: serverTimestamp() });
+      await logAudit(firebaseUser.uid, 'session.cancel', 'session', session.id, `Cancelled ${session.courseName}`);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not cancel the session.');
+      setBusy(false);
+    }
   }
 
   async function deleteSession() {
