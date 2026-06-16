@@ -23,6 +23,13 @@ export function ProfilePage() {
   const [leadHours, setLeadHours] = useState(profile?.notificationPrefs.reminderLeadHours ?? 48);
   const [digest, setDigest] = useState(profile?.notificationPrefs.digest ?? true);
   const [saved, setSaved] = useState(false);
+  // Optional self-entered FDLE cert expiration year (3/31 of that year). A
+  // coordinator confirms/sets it when verifying — it's not required to claim.
+  // (Declared with the other hooks, before the early return, per rules-of-hooks.)
+  const [certYear, setCertYear] = useState<string>(
+    profile?.instructorCertExpires ? String(certYearOf(profile.instructorCertExpires)) : ''
+  );
+  const [certSaved, setCertSaved] = useState(false);
 
   if (!firebaseUser || !profile) return null;
 
@@ -42,13 +49,6 @@ export function ProfilePage() {
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   }
-
-  // Optional self-entered FDLE cert expiration year (3/31 of that year). A
-  // coordinator confirms/sets it when verifying — it's not required to claim.
-  const [certYear, setCertYear] = useState<string>(
-    profile?.instructorCertExpires ? String(certYearOf(profile.instructorCertExpires)) : ''
-  );
-  const [certSaved, setCertSaved] = useState(false);
 
   async function saveCertYear() {
     const y = parseInt(certYear, 10);
