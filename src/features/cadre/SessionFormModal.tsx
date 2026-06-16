@@ -382,6 +382,7 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not cancel the session.');
+    } finally {
       setBusy(false);
     }
   }
