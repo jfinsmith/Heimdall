@@ -128,6 +128,8 @@ function CurriculumEditorModal({
       minHours: Number(c.minHours) || 0,
       ...(c.highLiability ? { highLiability: true } : {}),
       ...(c.coordinatorRun ? { coordinatorRun: true } : {}),
+      ...(c.tested ? { tested: true } : {}),
+      ...(c.instructorRatio ? { instructorRatio: Number(c.instructorRatio) } : {}),
       ...(c.leadQualification && !c.coordinatorRun ? { leadQualification: c.leadQualification } : {}),
       ...(c.defaultRoleSlots && c.defaultRoleSlots.length ? { defaultRoleSlots: c.defaultRoleSlots } : {}),
     }));
@@ -182,16 +184,18 @@ function CurriculumEditorModal({
           <legend className="px-1 text-sm font-medium text-watch-800">
             Course blocks &amp; minimum hours — total <strong>{total}</strong> hrs
           </legend>
-          <div className="mb-1 grid grid-cols-[1fr_4.5rem_2.5rem_9rem_1.5rem] items-center gap-2 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+          <div className="mb-1 grid grid-cols-[1fr_4rem_2rem_2.5rem_3.5rem_8.5rem_1.5rem] items-center gap-2 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
             <span>Course</span>
             <span>Hours</span>
             <span title="High-liability">▲ HL</span>
+            <span title="Has an end-of-course exam">Test</span>
+            <span title="Students per instructor (FDLE ratio)">Ratio</span>
             <span>Lead / staffing</span>
             <span />
           </div>
           <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
             {courses.map((c, i) => (
-              <div key={i} className="grid grid-cols-[1fr_4.5rem_2.5rem_9rem_1.5rem] items-center gap-2">
+              <div key={i} className="grid grid-cols-[1fr_4rem_2rem_2.5rem_3.5rem_8.5rem_1.5rem] items-center gap-2">
                 <Input
                   value={c.name}
                   placeholder="Course name"
@@ -212,6 +216,21 @@ function CurriculumEditorModal({
                   checked={!!c.highLiability}
                   aria-label={`Course ${i + 1} high-liability`}
                   onChange={(e) => updateCourse(i, { highLiability: e.target.checked })}
+                />
+                <input
+                  type="checkbox"
+                  className="justify-self-center"
+                  checked={!!c.tested}
+                  aria-label={`Course ${i + 1} has end-of-course exam`}
+                  onChange={(e) => updateCourse(i, { tested: e.target.checked })}
+                />
+                <Input
+                  type="number"
+                  min={0}
+                  placeholder="—"
+                  value={c.instructorRatio ?? ''}
+                  aria-label={`Course ${i + 1} instructor ratio (students per instructor)`}
+                  onChange={(e) => updateCourse(i, { instructorRatio: e.target.value ? Number(e.target.value) : undefined })}
                 />
                 <Select
                   value={c.coordinatorRun ? '__coord__' : c.leadQualification ?? ''}

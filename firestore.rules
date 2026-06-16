@@ -113,6 +113,23 @@ service cloud.firestore {
         || request.resource.data.get('isTemplate', false) == true
         || request.resource.data.get(['approval', 'state'], '') == 'approved'
       );
+
+      // ── roster (per-academy cadets) ──────────────────────────────────────
+      // Staff-only — holds PII. The encrypted SSN fields are owned by the roster
+      // callables (Admin SDK); a client update may not alter them.
+      match /roster/{memberId} {
+        allow read: if isStaff();
+        // The encrypted SSN may ONLY originate from the roster callable (Admin
+        // SDK, which bypasses rules) — a direct client create may not set it,
+        // and an update may not change it.
+        allow create: if isStaff()
+          && !('ssnCipher' in request.resource.data)
+          && !('ssnLast4' in request.resource.data);
+        allow delete: if isStaff();
+        allow update: if isStaff()
+          && request.resource.data.get('ssnCipher', '') == resource.data.get('ssnCipher', '')
+          && request.resource.data.get('ssnLast4', '') == resource.data.get('ssnLast4', '');
+      }
     }
 
     // ── sessions ───────────────────────────────────────────────────────────

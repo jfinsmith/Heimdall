@@ -20,3 +20,5 @@ export { calendarFeed } from './gjallarhorn/icsFeed';
 export { gjallarhornDailySweep, gjallarhornWeeklyDigest } from './gjallarhorn/sweeps';
 // Admin callables
 export { setUserRole, bootstrapFirstDirector, createUserAccount, academyApproval, sendActivationEmail, setUserSuspension } from './admin/callables';
+// Academy roster — encrypted-SSN writers + audited reveal
+export { rosterCreateMember, rosterUpdateSsn, rosterRevealSsn } from './admin/roster';

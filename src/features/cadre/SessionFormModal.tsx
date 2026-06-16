@@ -13,7 +13,7 @@ import { shortId, useCollection, useDoc, type WithId } from '../../lib/firestore
 import { useClickOutside } from '../../lib/useClickOutside';
 import { useAuth } from '../../auth/AuthContext';
 import { combineDateTime, hoursBetween, toDateInputValue, toTimeInputValue, tsFromDate } from '../../lib/time';
-import type { AcademyDoc, CurriculumDoc, QualificationKey, RoleSlot, SessionDoc, SlotRole, UserDoc } from '../../types';
+import type { AcademyDoc, CurriculumDoc, QualificationKey, RoleSlot, RosterMemberDoc, SessionDoc, SlotRole, UserDoc } from '../../types';
 import { QUALIFICATION_LABELS, SLOT_ROLE_LABELS } from '../../types';
 import { Button, Field, Input, Select, TextArea } from '../../components/ui';
 import { Modal } from '../../components/Modal';
@@ -106,6 +106,7 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
           leadQualification: b.leadQualification,
           defaultRoleSlots: b.defaultRoleSlots ?? [],
           coordinatorRun: !!b.coordinatorRun,
+          instructorRatio: b.instructorRatio,
         }))
         .sort((a, c) => a.name.localeCompare(c.name)),
     [curriculum]
@@ -113,6 +114,13 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
   const { data: coordinatorUsers } = useCollection<UserDoc>('users', [where('role', '==', 'coordinator')]);
   // Everyone who could be reserved into a slot in advance (any active user).
   const { data: activeUsers } = useCollection<UserDoc>('users', [where('status', '==', 'active')]);
+  // Roster headcount for the FDLE instructor-ratio check (real academies only).
+  const { data: rosterMembers } = useCollection<RosterMemberDoc>(
+    academy.id && !academy.isTemplate ? `academies/${academy.id}/roster` : null,
+    [],
+    [academy.id]
+  );
+  const classSize = rosterMembers.filter((m) => m.status !== 'withdrawn' && !m.blockTaker).length;
 
   const userName = (uid: string) =>
     activeUsers.find((u) => u.id === uid)?.displayName ?? coordinatorUsers.find((u) => u.id === uid)?.displayName ?? uid;
@@ -138,6 +146,15 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
 
   const isCustom = courseId === CUSTOM;
   const selectedOption = useMemo(() => courseOptions.find((o) => o.value === courseId), [courseOptions, courseId]);
+
+  // FDLE instructor ratio (1 instructor per N cadets). Counts true instructor
+  // slots (lead/assistant/safety officer). Not enforced — some days need fewer.
+  const ratio = selectedOption?.instructorRatio;
+  const instructorSlotCount = slots
+    .filter((s) => s.role === 'lead' || s.role === 'assistant' || s.role === 'safety_officer')
+    .reduce((n, s) => n + (s.count || 0), 0);
+  const ratioRequired = ratio && classSize > 0 ? Math.ceil(classSize / ratio) : 0;
+  const ratioMet = ratioRequired === 0 || instructorSlotCount >= ratioRequired;
 
   // On edit, match the saved session to a curriculum option by name (handles
   // sessions saved before the picker became curriculum-driven).
@@ -476,6 +493,13 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
 
         <fieldset className="rounded-md border border-watch-100 p-3">
           <legend className="px-1 text-sm font-medium text-watch-800">Role slots</legend>
+          {ratio && classSize > 0 && (
+            <div className={`mb-2 rounded-md px-2 py-1.5 text-xs ${ratioMet ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-800'}`}>
+              FDLE ratio 1:{ratio} — {classSize} cadets need <strong>{ratioRequired}</strong> instructor{ratioRequired === 1 ? '' : 's'};
+              this session has <strong>{instructorSlotCount}</strong>.{' '}
+              {ratioMet ? '✓ Meets ratio.' : 'Below ratio — only required on full-class days.'}
+            </div>
+          )}
           <div className="space-y-2">
             {slots.map((slot) => (
               <div key={slot.slotId} className="rounded-md border border-watch-100 p-2">

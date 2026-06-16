@@ -22,7 +22,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { can } from '../../lib/rbac';
 import { addDays, hoursBetween, tsFromDate, fmtDate } from '../../lib/time';
 import { holidaysForYear, holidayBackgroundEvents, observedHolidayDatesInRange, HOLIDAY_PAY_HOURS } from '../../lib/holidays';
-import type { AcademyDoc, CoursePublishTarget, CurriculumDoc, QualificationKey, SessionDoc, UserDoc } from '../../types';
+import type { AcademyDoc, CoursePublishTarget, CurriculumDoc, QualificationKey, RosterMemberDoc, SessionDoc, UserDoc } from '../../types';
 import { QUALIFICATION_LABELS } from '../../types';
 import { Badge, Button, Field, Input, PageHeader, Select } from '../../components/ui';
 import { Modal } from '../../components/Modal';
@@ -50,6 +50,13 @@ export function AcademyBuilderPage() {
     [where('academyId', '==', academyId ?? '')],
     [academyId]
   );
+  // Roster headcount (real academies only) — active cadets, withdrawals removed.
+  const { data: rosterMembers } = useCollection<RosterMemberDoc>(
+    academy && !academy.isTemplate ? `academies/${academyId}/roster` : null,
+    [],
+    [academyId, academy?.isTemplate]
+  );
+  const classSize = rosterMembers.filter((m) => m.status !== 'withdrawn' && !m.blockTaker).length;
 
   const settings = useGlobalSettings();
   const disabledHolidays = useMemo(() => new Set(settings?.disabledHolidays ?? []), [settings]);
@@ -343,6 +350,14 @@ export function AcademyBuilderPage() {
         title={academy.shortName ? `${academy.shortName} — ${academy.name}` : academy.name}
         actions={
           <>
+            {!academy.isTemplate && (
+              <Link
+                to={`/cadre/academies/${academy.id}/roster`}
+                className="inline-flex items-center justify-center gap-2 rounded-md bg-green-600 px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-green-500"
+              >
+                Roster{classSize > 0 ? ` (${classSize})` : ''}
+              </Link>
+            )}
             <Button onClick={() => setEditOpen(true)}>Edit academy</Button>
             <Button onClick={() => setRecurringOpen(true)}>Recurring blocks</Button>
             <Button
@@ -368,6 +383,12 @@ export function AcademyBuilderPage() {
             <span className="text-base font-normal text-slate-400"> / {academy.targetTotalHours}</span>
           </div>
         </div>
+        {!academy.isTemplate && (
+          <Link to={`/cadre/academies/${academy.id}/roster`} className="rounded-md px-2 py-1 hover:bg-watch-50" title="View roster">
+            <div className="text-xs uppercase tracking-wider text-watch-500">Class size</div>
+            <div className="text-2xl font-bold text-watch-900">{classSize}</div>
+          </Link>
+        )}
         <div className="h-2 min-w-40 flex-1 overflow-hidden rounded-full bg-watch-100" role="progressbar"
           aria-valuenow={scheduledHours} aria-valuemax={academy.targetTotalHours} aria-label="Scheduled hours progress">
           <div
@@ -695,13 +716,16 @@ function OpenSignupsModal({
 function CourseCoverageRow({
   c,
 }: {
-  c: { name: string; minHours: number; scheduled: number; delta: number; highLiability?: boolean };
+  c: { name: string; minHours: number; scheduled: number; delta: number; highLiability?: boolean; instructorRatio?: number };
 }) {
   return (
     <li className="flex items-center justify-between gap-2 text-sm">
       <span className="truncate text-watch-800">
         {c.highLiability && <span className="mr-1 text-status-critical" title="High-liability">▲</span>}
         {c.name}
+        {c.instructorRatio ? (
+          <span className="ml-1 text-xs text-slate-400" title="FDLE ratio: students per instructor">· 1:{c.instructorRatio}</span>
+        ) : null}
       </span>
       <span className="flex shrink-0 items-center gap-2">
         <span className="tabular-nums text-slate-500">

@@ -295,6 +295,89 @@ export interface AcademyDoc {
   updatedAt: Timestamp;
 }
 
+// ── Academy roster (per-academy: academies/{id}/roster/{memberId}) ─────────
+/** Sponsoring agency for a cadet. "other" carries a free-text agencyOther. */
+export type RosterAgency = 'PSO' | 'ZPD' | 'DCPD' | 'BOCC' | 'Self' | 'Other';
+export const ROSTER_AGENCIES: { key: RosterAgency; label: string }[] = [
+  { key: 'PSO', label: 'PSO' },
+  { key: 'ZPD', label: 'ZPD' },
+  { key: 'DCPD', label: 'DCPD' },
+  { key: 'BOCC', label: 'BOCC' },
+  { key: 'Self', label: 'Self-sponsored' },
+  { key: 'Other', label: 'Other' },
+];
+
+/** A noted disciplinary violation. Warnings count only toward the warning tally;
+ *  demerits A/B/C/D carry 1/2/3/4 points. The level is chosen by staff (it
+ *  typically escalates on repeat offenses of the same type). */
+export type ViolationType = 'Tardy' | 'Uniform' | 'Grooming' | 'Other';
+export type DemeritLevel = 'warning' | 'A' | 'B' | 'C' | 'D';
+export const DEMERIT_POINTS: Record<DemeritLevel, number> = { warning: 0, A: 1, B: 2, C: 3, D: 4 };
+export interface ViolationEntry {
+  id: string;
+  date: Timestamp;
+  type: ViolationType;
+  typeOther?: string;     // when type === 'Other'
+  level: DemeritLevel;
+  notes?: string;
+}
+
+/** One graded cell for one tested course. A primary EOC exam score plus, when
+ *  failed, a single lifeline: a written reexamination, or (HL only) a practical
+ *  remediation — never both for HL. `na` = injured/absent, `co` = carry-over. */
+export interface GradeCell {
+  score?: number | null;        // primary written EOC exam %
+  status?: 'na' | 'co';         // non-numeric outcomes (withdrawn is member-level)
+  reexamScore?: number | null;  // written reexamination %
+  remediation?: 'pass' | 'fail'; // HL practical proficiency remediation result
+  lifeline?: 'reexam' | 'remediation'; // which single lifeline was used (HL)
+}
+
+export interface RosterMemberDoc {
+  /** 1-based roster number, assigned on add. */
+  no: number;
+  fullName: string;
+  agency: RosterAgency;
+  agencyOther?: string;
+  cjis?: string;
+  studentId?: string;
+  /** Last 4 of the SSN, safe to display. The full SSN is encrypted server-side. */
+  ssnLast4?: string;
+  /** AES-256-GCM ciphertext of the full SSN (iv:tag:data, base64). Callable-owned. */
+  ssnCipher?: string;
+  phone?: string;
+  email?: string;
+  emergencyName?: string;
+  emergencyPhone?: string;
+  status: 'active' | 'withdrawn';
+  withdrawnAt?: Timestamp;
+  /** Curriculum course name the cadet was withdrawn after (grades past it show WD). */
+  withdrawnAfterCourse?: string;
+  /** Additional block taker (printed in a separate roster section), not a full cadet. */
+  blockTaker?: boolean;
+  violations?: ViolationEntry[];
+  /** Grades keyed by curriculum course name. */
+  grades?: Record<string, GradeCell>;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+/** Letter-grade bands (from the academy GradeBook). 80% is the pass line. */
+export const GRADE_BANDS: { min: number; letter: string }[] = [
+  { min: 98, letter: 'A+' },
+  { min: 96, letter: 'A' },
+  { min: 93, letter: 'A-' },
+  { min: 90, letter: 'B+' },
+  { min: 87, letter: 'B' },
+  { min: 85, letter: 'B-' },
+  { min: 80, letter: 'C' },
+  { min: 0, letter: 'F' },
+];
+export const PASS_MARK = 80;
+export function letterFor(pct: number): string {
+  return (GRADE_BANDS.find((b) => pct >= b.min) ?? GRADE_BANDS[GRADE_BANDS.length - 1]).letter;
+}
+
 // ── Curricula (admin-editable disciplines + minimum hours) ─────────────────
 export interface CurriculumCourse {
   name: string;
@@ -311,6 +394,15 @@ export interface CurriculumCourse {
    * a coordinator slot owned by the academy's coordinator — no open sign-up.
    */
   coordinatorRun?: boolean;
+  /** Has an end-of-course exam — becomes a graded column in the roster gradebook. */
+  tested?: boolean;
+  /**
+   * FDLE staffing ratio: students per instructor (e.g. 6 = one instructor per
+   * six cadets). The builder warns when a session for this course is below it.
+   */
+  instructorRatio?: number;
+  /** Default FDLE course sequence number (e.g. "65-2026-2010-2") — editable at print. */
+  courseSeqNo?: string;
 }
 
 /** `curricula/{key}` — one per discipline; drives academy creation and the

@@ -15,6 +15,7 @@ import { NotificationsPage } from '../features/NotificationsPage';
 import { CalendarPage } from '../features/cadre/CalendarPage';
 import { AcademiesPage } from '../features/cadre/AcademiesPage';
 import { AcademyBuilderPage } from '../features/cadre/AcademyBuilderPage';
+import { RosterPage as AcademyRosterPage } from '../features/cadre/roster/RosterPage';
 import { StaffingBoardPage } from '../features/cadre/StaffingBoardPage';
 import { BrowseOpenSessionsPage } from '../features/instructor/BrowseOpenSessionsPage';
 import { MySchedulePage } from '../features/instructor/MySchedulePage';
@@ -54,6 +55,7 @@ export function AppRouter() {
             <Route element={<RequireStaff />}>
               <Route path="/cadre/academies" element={<AcademiesPage />} />
               <Route path="/cadre/academies/:academyId" element={<AcademyBuilderPage />} />
+              <Route path="/cadre/academies/:academyId/roster" element={<AcademyRosterPage />} />
               <Route path="/cadre/staffing" element={<StaffingBoardPage />} />
               <Route path="/reports" element={<ReportsPage />} />
             </Route>
