@@ -75,13 +75,8 @@ export const rosterCreateMember = onCall<{ academyId: string; member: MemberInpu
     if (!academy.exists) throw new HttpsError('not-found', 'Academy not found.');
     if (academy.data()!.isTemplate) throw new HttpsError('failed-precondition', 'Templates do not have rosters.');
 
-    // Next roster number = max existing + 1.
-    const existing = await db.collection(`academies/${academyId}/roster`).get();
-    const maxNo = existing.docs.reduce((m, d) => Math.max(m, Number(d.data().no) || 0), 0);
-
     const ssn = digits(request.data.ssn ?? '');
-    const doc: Record<string, unknown> = {
-      no: maxNo + 1,
+    const fields: Record<string, unknown> = {
       fullName: member.fullName.trim(),
       agency: member.agency || 'PSO',
       ...(member.agencyOther ? { agencyOther: member.agencyOther.trim() } : {}),
@@ -96,8 +91,23 @@ export const rosterCreateMember = onCall<{ academyId: string; member: MemberInpu
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     };
-    const ref = await db.collection(`academies/${academyId}/roster`).add(doc);
-    return { ok: true, id: ref.id, no: maxNo + 1 };
+
+    // Roster number from an atomic per-academy counter (no full-collection scan).
+    // Seeds the counter once from existing members for pre-counter rosters.
+    const ref = db.collection(`academies/${academyId}/roster`).doc();
+    const no = await db.runTransaction(async (tx) => {
+      const aref = db.doc(`academies/${academyId}`);
+      const asnap = await tx.get(aref);
+      let next = asnap.data()?.nextRosterNo as number | undefined;
+      if (next === undefined) {
+        const existing = await tx.get(db.collection(`academies/${academyId}/roster`));
+        next = existing.docs.reduce((m, d) => Math.max(m, Number(d.data().no) || 0), 0) + 1;
+      }
+      tx.set(ref, { no: next, ...fields });
+      tx.update(aref, { nextRosterNo: next + 1 });
+      return next;
+    });
+    return { ok: true, id: ref.id, no };
   }
 );
 
