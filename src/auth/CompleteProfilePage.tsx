@@ -9,6 +9,9 @@ import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from './AuthContext';
 import { WordmarkHorizontal } from '../brand/Logo';
+import type { Qualification, QualificationKey } from '../types';
+import { QUALIFICATION_LABELS, isInstructorQual } from '../types';
+import { march31, tsFromDate } from '../lib/time';
 import { Button, Field, Input } from '../components/ui';
 
 export function CompleteProfilePage() {
@@ -18,21 +21,36 @@ export function CompleteProfilePage() {
   const [rank, setRank] = useState(profile?.rank ?? '');
   const [agency, setAgency] = useState(profile?.agency ?? '');
   const [phone, setPhone] = useState(profile?.phone ?? '');
+  const [claimed, setClaimed] = useState<Record<string, boolean>>(
+    () => Object.fromEntries((profile?.qualifications ?? []).map((q) => [q.key, true]))
+  );
+  const [certYear, setCertYear] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (!firebaseUser) return null;
+
+  function toggle(key: QualificationKey) {
+    setClaimed((c) => ({ ...c, [key]: !c[key] }));
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setBusy(true);
     try {
+      const qualifications: Qualification[] = (Object.keys(QUALIFICATION_LABELS) as QualificationKey[])
+        .filter((k) => claimed[k])
+        .map((k) => ({ key: k, label: QUALIFICATION_LABELS[k], verified: false }));
+      const y = parseInt(certYear, 10);
+      const certExpires = y >= 2000 && y <= 2100 ? { instructorCertExpires: tsFromDate(march31(y)) } : {};
       await updateDoc(doc(db, 'users', firebaseUser!.uid), {
         displayName,
         rank,
         agency,
         phone,
+        qualifications,
+        ...certExpires,
         updatedAt: serverTimestamp(),
       });
       navigate('/');
@@ -65,10 +83,37 @@ export function CompleteProfilePage() {
         <Field label="Agency" hint='e.g. "Example County Sheriff’s Office"'>
           <Input value={agency} onChange={(e) => setAgency(e.target.value)} required />
         </Field>
-        <p className="rounded-md bg-watch-50 px-3 py-2 text-sm text-slate-600">
-          After saving, claim your instructor qualifications on the <strong>Profile</strong> page — you will
-          need the date you attended each certifying course.
-        </p>
+
+        <div className="rounded-md border border-watch-100 bg-watch-50 px-3 py-3">
+          <div className="text-sm font-medium text-watch-800">Your qualifications</div>
+          <p className="mt-0.5 mb-2 text-xs text-slate-500">
+            Check the instructor qualifications you hold — a coordinator will verify them before they unlock
+            restricted slots. <strong>Role Player</strong> needs no verification; check it to be called for
+            role-player help. You can change these any time on your Profile.
+          </p>
+          <div className="grid gap-1.5 sm:grid-cols-2">
+            {(Object.keys(QUALIFICATION_LABELS) as QualificationKey[]).map((key) => (
+              <label key={key} className="flex items-center gap-2 text-sm text-watch-800">
+                <input type="checkbox" checked={!!claimed[key]} onChange={() => toggle(key)} />
+                {QUALIFICATION_LABELS[key]}
+                {!isInstructorQual(key) && <span className="text-xs text-slate-400">(no date)</span>}
+              </label>
+            ))}
+          </div>
+          <label className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+            FDLE instructor cert expiration year (3/31 of that year) — optional
+            <Input
+              type="number"
+              min={2000}
+              max={2100}
+              placeholder="2027"
+              value={certYear}
+              onChange={(e) => setCertYear(e.target.value)}
+              style={{ width: '6rem' }}
+            />
+          </label>
+        </div>
+
         <Button type="submit" variant="primary" disabled={busy}>
           Save profile
         </Button>

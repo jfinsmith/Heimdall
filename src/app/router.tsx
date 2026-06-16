@@ -20,6 +20,7 @@ import { BrowseOpenSessionsPage } from '../features/instructor/BrowseOpenSession
 import { MySchedulePage } from '../features/instructor/MySchedulePage';
 import { ProfilePage } from '../features/instructor/ProfilePage';
 import { UsersAdminPage } from '../features/admin/UsersAdminPage';
+import { RosterPage } from '../features/admin/RosterPage';
 import { PermissionsPage } from '../features/admin/PermissionsPage';
 import { CurriculumAdminPage } from '../features/admin/CurriculumAdminPage';
 import { HolidaysAdminPage } from '../features/admin/HolidaysAdminPage';
@@ -59,6 +60,7 @@ export function AppRouter() {
 
             <Route element={<RequireAdmin />}>
               <Route path="/admin/users" element={<UsersAdminPage />} />
+              <Route path="/admin/roster" element={<RosterPage />} />
               <Route path="/admin/permissions" element={<PermissionsPage />} />
               <Route path="/admin/curriculum" element={<CurriculumAdminPage />} />
               <Route path="/admin/holidays" element={<HolidaysAdminPage />} />

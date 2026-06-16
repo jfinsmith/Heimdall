@@ -10,7 +10,9 @@ import { db, functions } from '../../lib/firebase';
 import { useCollection, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import { ROLE_LABELS } from '../../lib/rbac';
-import type { Role, UserDoc } from '../../types';
+import type { Qualification, QualificationKey, Role, UserDoc } from '../../types';
+import { QUALIFICATION_LABELS, isInstructorQual } from '../../types';
+import { certYearOf, march31, tsFromDate } from '../../lib/time';
 import { Badge, Button, Field, Input, PageHeader, Select, TextArea } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import { logAudit } from '../sessions/audit';
@@ -444,61 +446,141 @@ function AddUserModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** Verify / unverify a user's claimed qualifications. */
+/**
+ * Manage a member's qualifications. Admins can verify/add or remove ANY
+ * qualification regardless of whether the member claimed it. All instructor
+ * certs share one FDLE expiration (3/31 of the cert year) — verifying an
+ * instructor cert requires that year to be set. Role Player is dateless and
+ * needs no verification (just present/absent).
+ */
 function QualificationsModal({ user, onClose }: { user: WithId<UserDoc>; onClose: () => void }) {
   const { firebaseUser } = useAuth();
-  const [quals, setQuals] = useState(user.qualifications);
+  const [quals, setQuals] = useState<Qualification[]>(user.qualifications);
+  const [certYear, setCertYear] = useState<string>(
+    user.instructorCertExpires ? String(certYearOf(user.instructorCertExpires)) : ''
+  );
+  const [error, setError] = useState<string | null>(null);
+  const [savedCert, setSavedCert] = useState(false);
 
-  async function setVerified(key: string, verified: boolean) {
-    const next = quals.map((q) =>
-      q.key === key ? { ...q, verified, verifiedBy: verified ? firebaseUser!.uid : '' } : q
-    );
-    setQuals(next);
-    // verifiedQualKeys is the rule-protected source of truth for sign-ups.
+  const yearNum = parseInt(certYear, 10);
+  const certValid = yearNum >= 2000 && yearNum <= 2100;
+
+  async function persist(next: Qualification[], alsoSetCert: boolean) {
     const verifiedQualKeys = next.filter((q) => q.verified).map((q) => q.key);
+    const patch: Record<string, unknown> = { qualifications: next, verifiedQualKeys, updatedAt: serverTimestamp() };
+    if (alsoSetCert && certValid) patch.instructorCertExpires = tsFromDate(march31(yearNum));
+    await updateDoc(doc(db, 'users', user.id), patch);
+    setQuals(next);
+  }
+
+  async function saveCert() {
+    if (!certValid) {
+      setError('Enter a valid 4-digit cert year (expiration is 3/31 of that year).');
+      return;
+    }
+    setError(null);
     await updateDoc(doc(db, 'users', user.id), {
-      qualifications: next,
-      verifiedQualKeys,
+      instructorCertExpires: tsFromDate(march31(yearNum)),
       updatedAt: serverTimestamp(),
     });
+    await logAudit(firebaseUser!.uid, 'qualification.set_expiration', 'user', user.id, `Cert expiration 3/31/${yearNum} for ${user.displayName}`);
+    setSavedCert(true);
+    setTimeout(() => setSavedCert(false), 2000);
+  }
+
+  async function setQual(key: QualificationKey, on: boolean) {
+    const instructor = isInstructorQual(key);
+    if (on && instructor && !certValid) {
+      setError('Set the certification expiration year first — instructor certs need it.');
+      return;
+    }
+    setError(null);
+    const existing = quals.find((q) => q.key === key);
+    const next: Qualification[] = on
+      ? existing
+        ? quals.map((q) => (q.key === key ? { ...q, verified: true, verifiedBy: firebaseUser!.uid } : q))
+        : [...quals, { key, label: QUALIFICATION_LABELS[key], verified: true, verifiedBy: firebaseUser!.uid }]
+      : quals.filter((q) => q.key !== key);
+    await persist(next, on && instructor);
     await logAudit(
       firebaseUser!.uid,
-      verified ? 'qualification.verify' : 'qualification.unverify',
+      on ? 'qualification.verify' : 'qualification.remove',
       'user',
       user.id,
-      `${verified ? 'Verified' : 'Unverified'} ${key} for ${user.displayName}`
+      `${on ? 'Verified' : 'Removed'} ${QUALIFICATION_LABELS[key]} for ${user.displayName}`
     );
   }
 
   return (
     <Modal open onClose={onClose} title={`Qualifications — ${user.displayName}`}>
-      {quals.length === 0 ? (
-        <p className="text-sm text-slate-500">No qualifications claimed.</p>
-      ) : (
+      <div className="space-y-4">
+        {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
+
+        {/* Single FDLE instructor-cert expiration (governs every instructor cert below) */}
+        <div className="rounded-md border border-watch-100 bg-watch-50 px-3 py-3">
+          <div className="text-sm font-medium text-watch-800">FDLE instructor certification expiration</div>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Always 3/31 of the cert year, renewed every four years. Required to verify any instructor cert.
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-slate-600">
+              Current:{' '}
+              <strong className="text-watch-900">
+                {user.instructorCertExpires ? `3/31/${certYearOf(user.instructorCertExpires)}` : 'not set'}
+              </strong>
+            </span>
+            <label className="flex items-center gap-1.5 text-xs text-slate-500">
+              Cert year
+              <Input type="number" min={2000} max={2100} placeholder="2027" value={certYear} onChange={(e) => setCertYear(e.target.value)} style={{ width: '6rem' }} />
+            </label>
+            <Button variant="secondary" disabled={!certYear} onClick={saveCert}>
+              Save
+            </Button>
+            {savedCert && <span className="text-xs text-green-700">Saved.</span>}
+          </div>
+        </div>
+
         <ul className="space-y-2">
-          {quals.map((q) => (
-            <li key={q.key} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-watch-100 px-3 py-2 text-sm">
-              <span className="text-watch-800">
-                {q.label}
-                <span className="ml-2 text-xs text-slate-500">
-                  {q.attendedOn ? `attended ${q.attendedOn.toDate().toLocaleDateString()}` : 'no course date given'}
+          {(Object.keys(QUALIFICATION_LABELS) as QualificationKey[]).map((key) => {
+            const q = quals.find((x) => x.key === key);
+            const instructor = isInstructorQual(key);
+            return (
+              <li key={key} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-watch-100 px-3 py-2 text-sm">
+                <span className="text-watch-800">
+                  {QUALIFICATION_LABELS[key]}
+                  {!instructor && <span className="ml-2 text-xs text-slate-400">(dateless)</span>}
+                  {instructor && q?.verified && user.instructorCertExpires && (
+                    <span className="ml-2 text-xs text-slate-500">expires 3/31/{certYearOf(user.instructorCertExpires)}</span>
+                  )}
                 </span>
-              </span>
-              <span className="flex items-center gap-2">
-                {q.verified ? (
-                  <Button variant="ghost" onClick={() => setVerified(q.key, false)}>
-                    Unverify
-                  </Button>
-                ) : (
-                  <Button variant="primary" onClick={() => setVerified(q.key, true)}>
-                    Verify
-                  </Button>
-                )}
-              </span>
-            </li>
-          ))}
+                <span className="flex items-center gap-2">
+                  {q ? (
+                    instructor && q.verified ? (
+                      <Badge tone="green">Verified</Badge>
+                    ) : instructor ? (
+                      <Badge tone="amber">Claimed — pending</Badge>
+                    ) : (
+                      <Badge tone="green">Active</Badge>
+                    )
+                  ) : (
+                    <Badge tone="slate">Not on file</Badge>
+                  )}
+                  {!(q && (q.verified || !instructor)) && (
+                    <Button variant="primary" onClick={() => setQual(key, true)}>
+                      {instructor ? 'Verify' : 'Add'}
+                    </Button>
+                  )}
+                  {q && (
+                    <Button variant="ghost" onClick={() => setQual(key, false)}>
+                      Remove
+                    </Button>
+                  )}
+                </span>
+              </li>
+            );
+          })}
         </ul>
-      )}
+      </div>
     </Modal>
   );
 }

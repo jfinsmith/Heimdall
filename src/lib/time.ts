@@ -47,3 +47,8 @@ export function toTimeInputValue(d: Date): string {
 }
 
 export const tsFromDate = (d: Date) => Timestamp.fromDate(d);
+
+/** FDLE instructor-cert expiration is always March 31 of the cert year (noon, TZ-safe). */
+export const march31 = (year: number): Date => new Date(year, 2, 31, 12, 0, 0);
+/** The cert year a March-31 expiration falls in. */
+export const certYearOf = (ts: Timestamp): number => ts.toDate().getFullYear();

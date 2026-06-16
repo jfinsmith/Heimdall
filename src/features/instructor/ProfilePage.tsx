@@ -6,11 +6,12 @@
  */
 // (ChangePasswordCard is defined at the bottom of this file.)
 import React, { useState } from 'react';
-import { doc, serverTimestamp, Timestamp, updateDoc } from 'firebase/firestore';
+import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../../lib/firebase';
 import { useAuth } from '../../auth/AuthContext';
 import type { Qualification, QualificationKey } from '../../types';
-import { QUALIFICATION_LABELS } from '../../types';
+import { QUALIFICATION_LABELS, isInstructorQual } from '../../types';
+import { certYearOf, march31, tsFromDate } from '../../lib/time';
 import { Badge, Button, Field, Input, PageHeader } from '../../components/ui';
 
 export function ProfilePage() {
@@ -42,20 +43,29 @@ export function ProfilePage() {
     setTimeout(() => setSaved(false), 2500);
   }
 
-  // Per-row date inputs for new claims (date the certifying course was attended).
-  const [claimDates, setClaimDates] = useState<Record<string, string>>({});
+  // Optional self-entered FDLE cert expiration year (3/31 of that year). A
+  // coordinator confirms/sets it when verifying — it's not required to claim.
+  const [certYear, setCertYear] = useState<string>(
+    profile?.instructorCertExpires ? String(certYearOf(profile.instructorCertExpires)) : ''
+  );
+  const [certSaved, setCertSaved] = useState(false);
+
+  async function saveCertYear() {
+    const y = parseInt(certYear, 10);
+    if (!y || y < 2000 || y > 2100) return;
+    await updateDoc(doc(db, 'users', firebaseUser!.uid), {
+      instructorCertExpires: tsFromDate(march31(y)),
+      updatedAt: serverTimestamp(),
+    });
+    setCertSaved(true);
+    setTimeout(() => setCertSaved(false), 2500);
+  }
 
   async function claimQualification(key: QualificationKey) {
-    const dateStr = claimDates[key];
-    if (!dateStr) return;
+    if (profile!.qualifications.some((q) => q.key === key)) return;
     const next: Qualification[] = [
       ...profile!.qualifications,
-      {
-        key,
-        label: QUALIFICATION_LABELS[key],
-        verified: false,
-        attendedOn: Timestamp.fromDate(new Date(`${dateStr}T12:00:00`)),
-      },
+      { key, label: QUALIFICATION_LABELS[key], verified: false },
     ];
     await updateDoc(doc(db, 'users', firebaseUser!.uid), { qualifications: next, updatedAt: serverTimestamp() });
   }
@@ -124,53 +134,76 @@ export function ProfilePage() {
       <section className="mt-6 rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
         <h2 className="mb-1 text-sm font-semibold uppercase tracking-wider text-watch-600">Qualifications</h2>
         <p className="mb-3 text-sm text-slate-500">
-          Claim a qualification with the date you attended the certifying course; a coordinator must
-          verify it before it unlocks restricted slots. (Expiration is tracked in the certification portal,
-          not here.)
+          Claim the instructor qualifications you hold; a coordinator verifies them before they unlock
+          restricted slots. <strong>Role Player</strong> needs no verification or date — claim it to be
+          called for role-player help on various topics.
         </p>
+
+        {/* Single FDLE instructor-cert expiration (governs all instructor certs) */}
+        <div className="mb-4 rounded-md border border-watch-100 bg-watch-50 px-3 py-3">
+          <div className="text-sm font-medium text-watch-800">FDLE instructor certification expiration</div>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Tied to your General Instructor course and renewed every four years — always 3/31 of the cert
+            year. Optional to enter here; a coordinator confirms it when verifying your certs.
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-slate-600">
+              Current:{' '}
+              <strong className="text-watch-900">
+                {profile.instructorCertExpires ? `3/31/${certYearOf(profile.instructorCertExpires)}` : 'not set'}
+              </strong>
+            </span>
+            <span className="text-slate-400">·</span>
+            <label className="flex items-center gap-1.5 text-xs text-slate-500">
+              Cert year
+              <Input
+                type="number"
+                min={2000}
+                max={2100}
+                placeholder="2027"
+                value={certYear}
+                onChange={(e) => setCertYear(e.target.value)}
+                style={{ width: '6rem' }}
+              />
+            </label>
+            <Button variant="secondary" disabled={!certYear} onClick={saveCertYear}>
+              Save expiration
+            </Button>
+            {certSaved && <span className="text-xs text-green-700">Saved.</span>}
+          </div>
+        </div>
+
         <ul className="space-y-2">
           {(Object.keys(QUALIFICATION_LABELS) as QualificationKey[]).map((key) => {
             const q = profile.qualifications.find((x) => x.key === key);
+            const instructor = isInstructorQual(key);
             return (
               <li key={key} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-watch-100 px-3 py-2 text-sm">
                 <span className="text-watch-800">
                   {QUALIFICATION_LABELS[key]}
-                  {q?.attendedOn && (
-                    <span className="ml-2 text-xs text-slate-500">
-                      attended {q.attendedOn.toDate().toLocaleDateString()}
-                    </span>
+                  {!instructor && <span className="ml-2 text-xs text-slate-400">(no verification or date needed)</span>}
+                  {instructor && q?.verified && profile.instructorCertExpires && (
+                    <span className="ml-2 text-xs text-slate-500">expires 3/31/{certYearOf(profile.instructorCertExpires)}</span>
                   )}
                 </span>
                 <span className="flex items-center gap-2">
                   {q ? (
                     <>
-                      {q.verified ? <Badge tone="green">Verified</Badge> : <Badge tone="amber">Pending verification</Badge>}
+                      {!instructor ? (
+                        <Badge tone="green">Claimed</Badge>
+                      ) : q.verified ? (
+                        <Badge tone="green">Verified</Badge>
+                      ) : (
+                        <Badge tone="amber">Pending verification</Badge>
+                      )}
                       <Button variant="ghost" onClick={() => removeQualification(key)}>
                         Remove
                       </Button>
                     </>
                   ) : (
-                    <>
-                      <label className="flex items-center gap-1.5 text-xs text-slate-500">
-                        Course date
-                        <input
-                          type="date"
-                          aria-label={`Date attended ${QUALIFICATION_LABELS[key]} course`}
-                          className="rounded border border-watch-200 px-1.5 py-1 text-xs"
-                          value={claimDates[key] ?? ''}
-                          max={new Date().toISOString().slice(0, 10)}
-                          onChange={(e) => setClaimDates((d) => ({ ...d, [key]: e.target.value }))}
-                        />
-                      </label>
-                      <Button
-                        variant="secondary"
-                        disabled={!claimDates[key]}
-                        title={!claimDates[key] ? 'Enter the date you attended the course first' : undefined}
-                        onClick={() => claimQualification(key)}
-                      >
-                        Claim
-                      </Button>
-                    </>
+                    <Button variant="secondary" onClick={() => claimQualification(key)}>
+                      Claim
+                    </Button>
                   )}
                 </span>
               </li>

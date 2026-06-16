@@ -35,14 +35,25 @@ export const QUALIFICATION_LABELS: Record<QualificationKey, string> = {
   role_player: 'Role Player',
 };
 
+/**
+ * Role Player is exempt from certification dating — it's a dateless flag anyone
+ * may self-claim to be called out for role-player help. Every OTHER qualification
+ * is an FDLE instructor cert that follows the single General-Instructor
+ * expiration on the user (UserDoc.instructorCertExpires).
+ */
+export const isInstructorQual = (key: QualificationKey): boolean => key !== 'role_player';
+export const INSTRUCTOR_QUAL_KEYS: QualificationKey[] = (
+  Object.keys(QUALIFICATION_LABELS) as QualificationKey[]
+).filter(isInstructorQual);
+
 export interface Qualification {
   key: QualificationKey;
   label: string;
   /** Approval-gated: claimed by the user, verified by a supervisor/coordinator. */
   verified: boolean;
   verifiedBy?: string; // uid
-  /** Date the instructor attended the certifying course (expiration is tracked in a separate portal). */
-  attendedOn: Timestamp | null;
+  /** @deprecated Per-qual dates are replaced by the single UserDoc.instructorCertExpires. */
+  attendedOn?: Timestamp | null;
 }
 
 export interface NotificationPrefs {
@@ -70,6 +81,14 @@ export interface UserDoc {
    * arrays of maps to protect it).
    */
   verifiedQualKeys: QualificationKey[];
+  /**
+   * Single FDLE instructor-cert expiration shared by ALL of this user's
+   * instructor qualifications. Always March 31 of the cert year, renewed on a
+   * 4-year cycle (tied to their General Instructor course). Optional when a user
+   * self-claims; required when an admin verifies an instructor qual. Role Player
+   * is unaffected.
+   */
+  instructorCertExpires?: Timestamp;
   notificationPrefs: NotificationPrefs;
   /** Random token for the personal ICS calendar-feed URL (user-generated). */
   icsToken?: string;

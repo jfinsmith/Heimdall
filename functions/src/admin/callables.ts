@@ -91,15 +91,30 @@ export const createUserAccount = onCall<{
   if (password.length < 6) throw new HttpsError('invalid-argument', 'Temporary password must be at least 6 characters.');
 
   let uid: string;
+  let adopted = false;
   try {
     const created = await getAuth().createUser({ email, password, displayName });
     uid = created.uid;
   } catch (err) {
     const code = (err as { code?: string }).code;
-    if (code === 'auth/email-already-exists') throw new HttpsError('already-exists', `An account already exists for ${email}.`);
-    if (code === 'auth/invalid-email') throw new HttpsError('invalid-argument', `"${email}" is not a valid email address.`);
-    if (code === 'auth/invalid-password') throw new HttpsError('invalid-argument', 'Temporary password must be at least 6 characters.');
-    throw new HttpsError('internal', (err as Error).message || 'Failed to create the account.');
+    if (code === 'auth/email-already-exists') {
+      // The Auth account outlived its Firestore profile — e.g. the profile was
+      // deleted directly in the database (Auth users live in Firebase Auth, not
+      // Firestore). Adopt the orphaned Auth user instead of failing, but ONLY if
+      // there's genuinely no profile for it; a live profile is a real duplicate.
+      const existing = await getAuth().getUserByEmail(email);
+      const profileSnap = await getFirestore().doc(`users/${existing.uid}`).get();
+      if (profileSnap.exists) throw new HttpsError('already-exists', `An account already exists for ${email}.`);
+      await getAuth().updateUser(existing.uid, { password, displayName });
+      uid = existing.uid;
+      adopted = true;
+    } else if (code === 'auth/invalid-email') {
+      throw new HttpsError('invalid-argument', `"${email}" is not a valid email address.`);
+    } else if (code === 'auth/invalid-password') {
+      throw new HttpsError('invalid-argument', 'Temporary password must be at least 6 characters.');
+    } else {
+      throw new HttpsError('internal', (err as Error).message || 'Failed to create the account.');
+    }
   }
 
   await getAuth().setCustomUserClaims(uid, { role });
@@ -125,7 +140,7 @@ export const createUserAccount = onCall<{
     action: 'admin.create_user',
     targetType: 'user',
     targetId: uid,
-    summary: `Created ${displayName} (${role})`,
+    summary: `${adopted ? 'Re-created (adopted orphaned login for)' : 'Created'} ${displayName} (${role})`,
     createdAt: FieldValue.serverTimestamp(),
   });
 
@@ -197,18 +212,19 @@ export const sendActivationEmail = onCall<{ uid: string; password: string }>(asy
     ['Temporary password', password],
   ]);
   const safeName = escapeHtml(displayName);
-  const safeOrg = escapeHtml(orgName);
   const content = renderEmail({
     subject: `[HEIMDALL] Activate your ${orgName} account`,
     heading: 'Activate your account',
     bodyHtml:
       `Hi ${safeName},<br/><br/>` +
-      `An account was created for you at ${safeOrg} because we're migrating our class sign-ups over from SignUpGenius. ` +
+      `An account was created for you through HEIMDALL — a Coordinated Academy, Duty, &amp; Roster Engine (CADRE) ` +
+      `because we're migrating our class sign-ups over from SignUpGenius. ` +
       `To activate your account, sign in with the temporary password below — you'll be prompted to choose your own password the first time you log in.<br/><br/>` +
       creds.html,
     bodyText:
       `Hi ${displayName},\n\n` +
-      `An account was created for you at ${orgName} because we're migrating our class sign-ups over from SignUpGenius. ` +
+      `An account was created for you through HEIMDALL — a Coordinated Academy, Duty, & Roster Engine (CADRE) ` +
+      `because we're migrating our class sign-ups over from SignUpGenius. ` +
       `To activate your account, sign in with the temporary password below — you'll be prompted to choose your own password the first time you log in.\n\n` +
       `${creds.text}\n\nSign in: ${SITE_URL}`,
     ctaLabel: 'Sign in to activate',

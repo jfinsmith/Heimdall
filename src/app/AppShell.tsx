@@ -109,6 +109,7 @@ export function AppShell() {
         <>
           <SectionLabel title="Administration">Admin</SectionLabel>
           <NavItem to="/admin/users" label="Users & Roles" />
+          <NavItem to="/admin/roster" label="Roster & Certifications" />
           <NavItem to="/admin/permissions" label="Roles & Permissions" />
           <NavItem to="/admin/curriculum" label="Curriculum & Hours" />
           <NavItem to="/admin/holidays" label="Holidays" />
