@@ -4,12 +4,12 @@ import react from '@vitejs/plugin-react';
 /**
  * HEIMDALL — Vite config.
  *
- * We deploy to GitHub Pages with HashRouter, so `base: './'` keeps all asset
- * URLs relative and the app works at https://<user>.github.io/<repo>/ without
- * knowing the repo name at build time. (Tradeoff documented in README §Hosting.)
+ * Served from the domain root on Firebase Hosting with BrowserRouter, so assets
+ * must use absolute paths (`base: '/'`). A relative base would resolve assets
+ * against the current deep-link path (e.g. /cadre/academies/x) and 404.
  */
 export default defineConfig({
-  base: './',
+  base: '/',
   plugins: [react()],
   build: {
     outDir: 'dist',

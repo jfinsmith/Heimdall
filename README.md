@@ -19,15 +19,15 @@ the **Gjallarhorn** when something is coming:
 
 ## Stack
 
-- **Frontend:** React 18 + TypeScript + Vite, Tailwind CSS, React Router v6 (**HashRouter**), FullCalendar
+- **Frontend:** React 18 + TypeScript + Vite, Tailwind CSS, React Router v6 (**BrowserRouter**), FullCalendar
 - **Backend:** Firebase — Auth, Cloud Firestore, Cloud Functions (Node 20, TS), **Trigger Email from Firestore** extension
 - **Hosting:** Firebase Hosting via GitHub Actions (migrated off GitHub Pages — see §8)
 - **Data reads:** lightweight `onSnapshot` hooks (`src/lib/firestore.ts`) — no React Query, one consistent idiom
 
-> **Why HashRouter?** Originally chosen because GitHub Pages can't rewrite arbitrary
-> paths to `index.html`. We've since moved to Firebase Hosting (which has a SPA
-> rewrite in `firebase.json`), so HashRouter is no longer required — it still works,
-> and switching to `BrowserRouter` for clean URLs is an optional follow-up.
+> **Routing:** Uses **BrowserRouter** (clean URLs, no `#`). Firebase Hosting
+> rewrites every path to `/index.html` (`firebase.json`), so deep links resolve to
+> the SPA. `vite.config.ts` uses `base: '/'` (absolute asset paths) — required so
+> assets load on deep-link routes.
 
 ## Repository map
 

@@ -1,11 +1,12 @@
 /**
- * HEIMDALL router. HashRouter is used so deep links work on static hosting
- * without server rewrites. Page components are lazy-loaded (code-split) so the
- * initial bundle stays small — instructors don't download staff/admin or the
- * heavy FullCalendar code until they navigate to it.
+ * HEIMDALL router. BrowserRouter (clean URLs) — Firebase Hosting rewrites all
+ * paths to /index.html (see firebase.json), so deep links work without a hash.
+ * Page components are lazy-loaded (code-split) so the initial bundle stays small
+ * — instructors don't download staff/admin or the heavy FullCalendar code until
+ * they navigate to it.
  */
 import React, { Suspense, lazy } from 'react';
-import { HashRouter, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { AppShell } from './AppShell';
 import { RequireAdmin, RequireAuth, RequireStaff } from '../auth/guards';
 import { Spinner } from '../components/ui';
@@ -47,7 +48,7 @@ function RouteFallback() {
 
 export function AppRouter() {
   return (
-    <HashRouter>
+    <BrowserRouter>
       <Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route path="/signin" element={<SignInPage />} />
@@ -89,6 +90,6 @@ export function AppRouter() {
           </Route>
         </Routes>
       </Suspense>
-    </HashRouter>
+    </BrowserRouter>
   );
 }
