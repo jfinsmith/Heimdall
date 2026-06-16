@@ -1,11 +1,13 @@
-# HEIMDALL — build the Vite SPA and deploy to Firebase Hosting (live channel).
+# HEIMDALL CI/CD — gate (typecheck + lint + unit tests), then deploy the Vite SPA
+# to Firebase Hosting AND deploy Firestore rules + indexes (so backend changes no
+# longer rely on a manual `firebase deploy`). A separate job runs the emulator-
+# based rules + signup-concurrency tests.
 #
-# Setup (one-time):
-#   1. Add the VITE_FIREBASE_* repository secrets (already present from the
-#      previous Pages workflow).
-#   2. Add the FIREBASE_SERVICE_ACCOUNT secret — the JSON key of a service
-#      account with the "Firebase Hosting Admin" role on project heimdall-e1f03.
-#   3. Firebase Console → Hosting → add the custom domain heimdall.tgcmd-portal.com.
+# Required repo secrets: VITE_FIREBASE_* (build), FIREBASE_SERVICE_ACCOUNT_HEIMDALL_E1F03
+# (deploy). NOTE: for the "Deploy Firestore rules & indexes" step to succeed, that
+# service account needs the "Firebase Rules Admin" + "Cloud Datastore Index Admin"
+# roles (or "Editor") in GCP IAM — it is created by `firebase init hosting:github`
+# with Hosting-only perms, so grant the extra roles once.
 name: Deploy to Firebase Hosting
 
 on:
@@ -21,7 +23,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  build-and-deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,7 +32,11 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - name: Build
+
+      # ── Gate: nothing deploys unless typecheck, lint, and unit tests pass ──
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck + build
         run: npm run build
         env:
           VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
@@ -39,6 +45,9 @@ jobs:
           VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
           VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+      - name: Unit tests
+        run: npm test
+
       - name: Deploy to Firebase Hosting (live)
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
@@ -46,3 +55,30 @@ jobs:
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_HEIMDALL_E1F03 }}
           channelId: live
           projectId: heimdall-e1f03
+
+      - name: Deploy Firestore rules & indexes
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
+        run: |
+          printf '%s' '${{ secrets.FIREBASE_SERVICE_ACCOUNT_HEIMDALL_E1F03 }}' > "$RUNNER_TEMP/sa.json"
+          npx -y firebase-tools@13 deploy --only firestore:rules,firestore:indexes \
+            --project heimdall-e1f03 --non-interactive
+          rm -f "$RUNNER_TEMP/sa.json"
+
+  # Emulator-backed rules + signup-concurrency tests (need Java). Runs on every
+  # push; make it a required status check in branch protection to gate merges.
+  emulator-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - run: npm ci
+      - name: Firestore rules + signup-concurrency tests (emulator)
+        run: npx -y firebase-tools@13 emulators:exec --only firestore,auth "npm run test:emulator"
