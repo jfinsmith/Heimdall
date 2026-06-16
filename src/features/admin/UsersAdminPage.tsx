@@ -168,8 +168,12 @@ export function UsersAdminPage() {
                   </td>
                 </tr>
                 {group.map((u) => {
-                  const claimed = u.qualifications.length;
-                  const verified = u.qualifications.filter((q) => q.verified).length;
+                  // The ratio tracks instructor-cert verification only — Role Player
+                  // is dateless and needs no verification, so it's shown separately.
+                  const instr = u.qualifications.filter((q) => isInstructorQual(q.key));
+                  const claimed = instr.length;
+                  const verified = instr.filter((q) => q.verified).length;
+                  const hasRolePlayer = u.qualifications.some((q) => q.key === 'role_player');
                   // Green = everything claimed is verified; orange = pending claims.
                   const qualTone =
                     claimed === 0 ? '' : verified === claimed ? 'bg-green-50' : 'bg-amber-50';
@@ -205,6 +209,7 @@ export function UsersAdminPage() {
                         <button className="text-bifrost-700 hover:underline" onClick={() => setQualUser(u)}>
                           {verified} verified / {claimed} claimed
                         </button>
+                        {hasRolePlayer && <span className="ml-2 text-xs text-slate-500">· Role Player</span>}
                       </td>
                       <td className="px-4 py-3 text-right">
                         {u.status === 'suspended' ? (
@@ -465,7 +470,9 @@ function QualificationsModal({ user, onClose }: { user: WithId<UserDoc>; onClose
   const yearNum = parseInt(certYear, 10);
   const certValid = yearNum >= 2000 && yearNum <= 2100;
 
-  async function persist(next: Qualification[], alsoSetCert: boolean) {
+  async function persist(rawNext: Qualification[], alsoSetCert: boolean) {
+    // Drop any orphaned keys from old model versions so they don't linger.
+    const next = rawNext.filter((q) => q.key in QUALIFICATION_LABELS);
     const verifiedQualKeys = next.filter((q) => q.verified).map((q) => q.key);
     const patch: Record<string, unknown> = { qualifications: next, verifiedQualKeys, updatedAt: serverTimestamp() };
     if (alsoSetCert && certValid) patch.instructorCertExpires = tsFromDate(march31(yearNum));
