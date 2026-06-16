@@ -46,11 +46,21 @@ export function AcademiesPage() {
   }, [params, setParams]);
 
   const { data: allAcademies, loading } = useCollection<AcademyDoc>('academies', [orderBy('startDate', 'desc')]);
+  const { data: curricula } = useCollection<CurriculumDoc>('curricula');
   const [showArchived, setShowArchived] = useState(false);
   // Quarterly start templates, shown in calendar order: January, April, July, October.
   const templates = allAcademies
     .filter((a) => a.isTemplate)
     .sort((a, b) => a.startDate.toDate().getMonth() - b.startDate.toDate().getMonth());
+  // Group templates under their discipline so each program's start patterns sit
+  // together; the discipline heading uses the curriculum label when available.
+  const disciplineLabel = (key: string) =>
+    curricula.find((c) => c.id === key)?.label ??
+    templates.find((t) => t.discipline === key)?.fdleProgram?.replace(/^FDLE\s*/, '') ??
+    key;
+  const templateGroups = [...new Set(templates.map((t) => t.discipline))]
+    .map((key) => ({ key, label: disciplineLabel(key), items: templates.filter((t) => t.discipline === key) }))
+    .sort((a, b) => a.label.localeCompare(b.label));
   const academies = allAcademies
     .filter((a) => !a.isTemplate)
     .filter((a) => showArchived || a.status !== 'archived');
@@ -141,45 +151,53 @@ export function AcademiesPage() {
         </table>
       </div>
 
-      {/* Templates — reusable schedule patterns; "Use" clones one into a real academy */}
+      {/* Templates — reusable schedule patterns, grouped by discipline; "Use" clones one into a real academy */}
       {templates.length > 0 && (
         <section className="mt-8">
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-watch-600">Schedule templates</h2>
-          <div className="overflow-x-auto rounded-lg border border-watch-100 bg-white shadow-sm">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-watch-50 text-xs uppercase tracking-wider text-watch-600">
-                <tr>
-                  <th className="px-4 py-3">Template</th>
-                  <th className="px-4 py-3">Discipline</th>
-                  <th className="px-4 py-3">Sessions span</th>
-                  <th className="px-4 py-3" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-watch-50">
-                {templates.map((t) => (
-                  <tr key={t.id} className="hover:bg-watch-50/50">
-                    <td className="px-4 py-3 font-medium text-watch-900">
-                      <Link to={`/cadre/academies/${t.id}`} className="hover:underline">
-                        {t.shortName ? <span className="mr-2 font-bold text-bifrost-700">{t.shortName}</span> : null}
-                        {t.name}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3">{t.fdleProgram?.replace(/^FDLE\s*/, '') || t.discipline}</td>
-                    <td className="px-4 py-3 text-slate-500">
-                      {fmtDate(t.startDate)} → {fmtDate(t.endDate)}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <Button variant="primary" onClick={() => setCloneSource(t)}>
-                        Use template
-                      </Button>
-                      <Button variant="ghost" className="text-red-700" onClick={() => setDeleteSource(t)}>
-                        Delete
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-watch-600">Schedule templates</h2>
+          <div className="space-y-5">
+            {templateGroups.map((group) => (
+              <div key={group.key} className="overflow-hidden rounded-lg border border-watch-100 bg-white shadow-sm">
+                <div className="flex items-center justify-between gap-2 border-b border-watch-100 bg-watch-50 px-4 py-2">
+                  <h3 className="text-sm font-semibold text-watch-800">{group.label}</h3>
+                  <span className="text-xs text-slate-500">
+                    {group.items.length} template{group.items.length === 1 ? '' : 's'}
+                  </span>
+                </div>
+                <table className="w-full text-left text-sm">
+                  <thead className="text-xs uppercase tracking-wider text-watch-500">
+                    <tr>
+                      <th className="px-4 py-2 font-medium">Template</th>
+                      <th className="px-4 py-2 font-medium">Sessions span</th>
+                      <th className="px-4 py-2" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-watch-50">
+                    {group.items.map((t) => (
+                      <tr key={t.id} className="hover:bg-watch-50/50">
+                        <td className="px-4 py-3 font-medium text-watch-900">
+                          <Link to={`/cadre/academies/${t.id}`} className="hover:underline">
+                            {t.shortName ? <span className="mr-2 font-bold text-bifrost-700">{t.shortName}</span> : null}
+                            {t.name}
+                          </Link>
+                        </td>
+                        <td className="px-4 py-3 text-slate-500">
+                          {fmtDate(t.startDate)} → {fmtDate(t.endDate)}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <Button variant="primary" onClick={() => setCloneSource(t)}>
+                            Use template
+                          </Button>
+                          <Button variant="ghost" className="text-red-700" onClick={() => setDeleteSource(t)}>
+                            Delete
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
           </div>
         </section>
       )}

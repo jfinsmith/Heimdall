@@ -11,6 +11,7 @@ import { PendingApprovalPage } from '../auth/PendingApprovalPage';
 import { CompleteProfilePage } from '../auth/CompleteProfilePage';
 import { ChangePasswordPage } from '../auth/ChangePasswordPage';
 import { OverviewPage } from '../features/OverviewPage';
+import { NotificationsPage } from '../features/NotificationsPage';
 import { CalendarPage } from '../features/cadre/CalendarPage';
 import { AcademiesPage } from '../features/cadre/AcademiesPage';
 import { AcademyBuilderPage } from '../features/cadre/AcademyBuilderPage';
@@ -43,6 +44,7 @@ export function AppRouter() {
 
           <Route element={<AppShell />}>
             <Route index element={<OverviewPage />} />
+            <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/cadre/calendar" element={<CalendarPage />} />
             <Route path="/open-sessions" element={<BrowseOpenSessionsPage />} />
             <Route path="/my-schedule" element={<MySchedulePage />} />

@@ -9,8 +9,12 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { notify } from '../gjallarhorn/notify';
+import { renderEmail, detailRows, escapeHtml } from '../gjallarhorn/templates';
 import type { AcademyDoc, Role } from '../types';
 import { ADMIN_ROLES, STAFF_ROLES } from '../types';
+
+/** Production sign-in URL used in account emails. */
+const SITE_URL = 'https://heimdall.tgcmd-portal.com';
 
 const VALID_ROLES: Role[] = ['director', 'lieutenant', 'sergeant', 'coordinator', 'instructor'];
 
@@ -153,6 +157,79 @@ export const bootstrapFirstDirector = onCall(async (request) => {
     summary: 'Bootstrapped first director account',
     createdAt: FieldValue.serverTimestamp(),
   });
+  return { ok: true };
+});
+
+/**
+ * Send (or re-send) a SignUpGenius-migration activation email to a user the
+ * admin just created. Carries the temporary password chosen at creation so the
+ * recruit can sign in and is then forced to set their own. Admin-only; writes a
+ * `mail` doc directly (the Trigger Email extension sends it) — this is an
+ * explicit, on-demand action, so it bypasses the per-automation toggles.
+ */
+export const sendActivationEmail = onCall<{ uid: string; password: string }>(async (request) => {
+  const caller = request.auth;
+  if (!caller) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = getFirestore();
+  const callerDoc = await db.doc(`users/${caller.uid}`).get();
+  const callerRole = callerDoc.exists ? (callerDoc.data()!.role as Role) : null;
+  if (!callerRole || !ADMIN_ROLES.includes(callerRole)) {
+    throw new HttpsError('permission-denied', 'Only directors and lieutenants may send activation emails.');
+  }
+
+  const uid = (request.data.uid ?? '').trim();
+  const password = (request.data.password ?? '').trim();
+  if (!uid) throw new HttpsError('invalid-argument', 'Missing user.');
+  if (!password) throw new HttpsError('invalid-argument', 'Missing temporary password.');
+
+  const userSnap = await db.doc(`users/${uid}`).get();
+  if (!userSnap.exists) throw new HttpsError('not-found', 'User not found.');
+  const user = userSnap.data() as { email?: string; displayName?: string };
+  const email = (user.email ?? '').trim();
+  const displayName = (user.displayName ?? '').trim() || 'there';
+  if (!email) throw new HttpsError('failed-precondition', 'That user has no email on file.');
+
+  const settingsSnap = await db.doc('settings/global').get();
+  const orgName = settingsSnap.exists ? ((settingsSnap.data()!.orgName as string) || 'the Training Academy') : 'the Training Academy';
+
+  const creds = detailRows([
+    ['Sign-in email', email],
+    ['Temporary password', password],
+  ]);
+  const safeName = escapeHtml(displayName);
+  const safeOrg = escapeHtml(orgName);
+  const content = renderEmail({
+    subject: `[HEIMDALL] Activate your ${orgName} account`,
+    heading: 'Activate your account',
+    bodyHtml:
+      `Hi ${safeName},<br/><br/>` +
+      `An account was created for you at ${safeOrg} because we're migrating our class sign-ups over from SignUpGenius. ` +
+      `To activate your account, sign in with the temporary password below — you'll be prompted to choose your own password the first time you log in.<br/><br/>` +
+      creds.html,
+    bodyText:
+      `Hi ${displayName},\n\n` +
+      `An account was created for you at ${orgName} because we're migrating our class sign-ups over from SignUpGenius. ` +
+      `To activate your account, sign in with the temporary password below — you'll be prompted to choose your own password the first time you log in.\n\n` +
+      `${creds.text}\n\nSign in: ${SITE_URL}`,
+    ctaLabel: 'Sign in to activate',
+    ctaUrl: SITE_URL,
+    orgName,
+  });
+
+  await db.collection('mail').add({
+    to: [email],
+    message: { subject: content.subject, html: content.html, text: content.text },
+    createdAt: FieldValue.serverTimestamp(),
+  });
+  await db.collection('auditLog').add({
+    actorUid: caller.uid,
+    action: 'admin.send_activation',
+    targetType: 'user',
+    targetId: uid,
+    summary: `Sent activation email to ${email}`,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+
   return { ok: true };
 });
 

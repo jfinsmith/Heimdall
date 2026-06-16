@@ -6,10 +6,11 @@
  * picker (defaulting to the academy's #1 coordinator) — no open registration
  * needed for those blocks.
  */
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { addDoc, collection, deleteDoc, doc, serverTimestamp, setDoc, Timestamp, updateDoc, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { shortId, useCollection, useDoc, type WithId } from '../../lib/firestore';
+import { useClickOutside } from '../../lib/useClickOutside';
 import { useAuth } from '../../auth/AuthContext';
 import { combineDateTime, hoursBetween, toDateInputValue, toTimeInputValue, tsFromDate } from '../../lib/time';
 import type { AcademyDoc, CurriculumDoc, QualificationKey, RoleSlot, SessionDoc, SlotRole, UserDoc } from '../../types';
@@ -19,6 +20,63 @@ import { Modal } from '../../components/Modal';
 import { logAudit } from '../sessions/audit';
 
 const CUSTOM = '__custom__';
+
+/**
+ * Type-ahead reserve picker — replaces a long instructor dropdown. Typing a name
+ * filters the eligible list down to matches; clicking one reserves them.
+ */
+function ReserveSearch({
+  options,
+  onSelect,
+}: {
+  options: { id: string; displayName: string }[];
+  onSelect: (uid: string) => void;
+}) {
+  const [q, setQ] = useState('');
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useClickOutside(ref, () => setOpen(false), open);
+
+  const needle = q.trim().toLowerCase();
+  const matches = options.filter((o) => o.displayName.toLowerCase().includes(needle)).slice(0, 8);
+
+  return (
+    <div className="relative" ref={ref}>
+      <input
+        className="w-48 rounded border border-watch-200 px-1.5 py-1 text-xs focus:border-bifrost-400 focus:outline-none focus:ring-1 focus:ring-bifrost-400"
+        placeholder="+ Reserve instructor…"
+        value={q}
+        onChange={(e) => {
+          setQ(e.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+      />
+      {open && (
+        <ul className="absolute z-20 mt-1 max-h-48 w-56 overflow-y-auto rounded-md border border-watch-200 bg-white py-1 text-xs shadow-lg">
+          {matches.length === 0 && (
+            <li className="px-2 py-1.5 text-slate-400">{options.length === 0 ? 'No eligible instructors' : 'No matches'}</li>
+          )}
+          {matches.map((o) => (
+            <li key={o.id}>
+              <button
+                type="button"
+                className="block w-full px-2 py-1.5 text-left text-slate-700 hover:bg-bifrost-50"
+                onClick={() => {
+                  onSelect(o.id);
+                  setQ('');
+                  setOpen(false);
+                }}
+              >
+                {o.displayName}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 interface Props {
   academy: WithId<AcademyDoc>;
@@ -512,18 +570,10 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
                       </span>
                     ))}
                     {slot.filledBy.length < slot.count && (
-                      <select
-                        className="rounded border border-watch-200 px-1.5 py-1 text-xs"
-                        value=""
-                        onChange={(e) => reserve(slot.slotId, e.target.value)}
-                      >
-                        <option value="">+ Reserve instructor…</option>
-                        {eligibleFor(slot).map((u) => (
-                          <option key={u.id} value={u.id}>
-                            {u.displayName}
-                          </option>
-                        ))}
-                      </select>
+                      <ReserveSearch
+                        options={eligibleFor(slot)}
+                        onSelect={(uid) => reserve(slot.slotId, uid)}
+                      />
                     )}
                   </div>
                 )}

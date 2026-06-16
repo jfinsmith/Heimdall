@@ -19,4 +19,4 @@ export { calendarFeed } from './gjallarhorn/icsFeed';
 // Gjallarhorn — scheduled sweeps (2 Cloud Scheduler jobs, within the 3 free)
 export { gjallarhornDailySweep, gjallarhornWeeklyDigest } from './gjallarhorn/sweeps';
 // Admin callables
-export { setUserRole, bootstrapFirstDirector, createUserAccount, academyApproval } from './admin/callables';
+export { setUserRole, bootstrapFirstDirector, createUserAccount, academyApproval, sendActivationEmail } from './admin/callables';

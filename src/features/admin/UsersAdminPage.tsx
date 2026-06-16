@@ -20,6 +20,22 @@ const createUserAccount = httpsCallable<
   { email: string; displayName: string; role: Role; rank?: string; agency?: string; phone?: string; password?: string },
   { ok: boolean; uid: string }
 >(functions, 'createUserAccount');
+const sendActivationEmail = httpsCallable<{ uid: string; password: string }, { ok: boolean }>(functions, 'sendActivationEmail');
+
+// Memorable temp passwords in the style "Forest-Tango-Beacon-656": three distinct
+// words plus a 3-digit number, dash-separated — easy to read aloud or type.
+const PASSWORD_WORDS = [
+  'Anchor', 'Bake', 'Beacon', 'Bravo', 'Cedar', 'Cobalt', 'Compass', 'Delta', 'Echo', 'Ember',
+  'Falcon', 'Forest', 'Frost', 'Glacier', 'Granite', 'Harbor', 'Indigo', 'Juniper', 'Kestrel',
+  'Lagoon', 'Lumen', 'Maple', 'Meadow', 'Nimbus', 'Orchid', 'Pioneer', 'Quartz', 'Quill', 'Ranger',
+  'River', 'Sierra', 'Summit', 'Tango', 'Timber', 'Umber', 'Valley', 'Vector', 'Willow', 'Yonder', 'Zephyr',
+];
+function randomPassword(): string {
+  const words = new Set<string>();
+  while (words.size < 3) words.add(PASSWORD_WORDS[Math.floor(Math.random() * PASSWORD_WORDS.length)]);
+  const num = Math.floor(100 + Math.random() * 900);
+  return [...words, num].join('-');
+}
 
 export function UsersAdminPage() {
   const { firebaseUser } = useAuth();
@@ -206,7 +222,10 @@ function AddUserModal({ onClose }: { onClose: () => void }) {
   const [password, setPassword] = useState('123456');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [created, setCreated] = useState<{ email: string; password: string; displayName: string } | null>(null);
+  const [created, setCreated] = useState<{ uid: string; email: string; password: string; displayName: string } | null>(null);
+  const [sending, setSending] = useState(false);
+  const [sentTo, setSentTo] = useState<string | null>(null);
+  const [sendErr, setSendErr] = useState<string | null>(null);
 
   function reset() {
     setDisplayName('');
@@ -218,6 +237,9 @@ function AddUserModal({ onClose }: { onClose: () => void }) {
     setPassword('123456');
     setError(null);
     setCreated(null);
+    setSending(false);
+    setSentTo(null);
+    setSendErr(null);
   }
 
   async function submit(e: React.FormEvent) {
@@ -225,12 +247,26 @@ function AddUserModal({ onClose }: { onClose: () => void }) {
     setError(null);
     setBusy(true);
     try {
-      await createUserAccount({ email, displayName, role, rank, agency, phone, password });
-      setCreated({ email: email.trim().toLowerCase(), password: password.trim() || '123456', displayName: displayName.trim() });
+      const res = await createUserAccount({ email, displayName, role, rank, agency, phone, password });
+      setCreated({ uid: res.data.uid, email: email.trim().toLowerCase(), password: password.trim() || '123456', displayName: displayName.trim() });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not create the account.');
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function sendActivation() {
+    if (!created) return;
+    setSending(true);
+    setSendErr(null);
+    try {
+      await sendActivationEmail({ uid: created.uid, password: created.password });
+      setSentTo(created.email);
+    } catch (err) {
+      setSendErr(err instanceof Error ? err.message : 'Could not send the activation email.');
+    } finally {
+      setSending(false);
     }
   }
 
@@ -254,6 +290,24 @@ function AddUserModal({ onClose }: { onClose: () => void }) {
           <p className="text-xs text-slate-500">
             They’ll be prompted to set their own password the first time they sign in.
           </p>
+
+          {/* Activation email — SignUpGenius migration message + this temp password */}
+          <div className="rounded-md border border-watch-100 bg-watch-50 px-3 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-sm text-watch-800">
+                Email <strong>{created.email}</strong> an activation message with these credentials.
+              </div>
+              <Button variant="primary" onClick={sendActivation} disabled={sending || !!sentTo}>
+                {sentTo ? 'Sent ✓' : sending ? 'Sending…' : 'Send activation email'}
+              </Button>
+            </div>
+            <p className="mt-1.5 text-xs text-slate-500">
+              Explains the SignUpGenius migration and that they must sign in to set a new password.
+            </p>
+            {sentTo && <p className="mt-1 text-xs text-green-700">Activation email sent to {sentTo}.</p>}
+            {sendErr && <p className="mt-1 text-xs text-red-700">{sendErr}</p>}
+          </div>
+
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={reset}>Add another</Button>
             <Button variant="primary" onClick={onClose}>Done</Button>
@@ -290,8 +344,13 @@ function AddUserModal({ onClose }: { onClose: () => void }) {
               <Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
             </Field>
           </div>
-          <Field label="Temporary password" hint="At least 6 characters — they’ll change it on first sign-in.">
-            <Input value={password} onChange={(e) => setPassword(e.target.value)} required />
+          <Field label="Temporary password" hint="At least 6 characters — they’ll change it on first sign-in. Default is 123456; Generate makes a memorable random one.">
+            <div className="flex gap-2">
+              <Input value={password} onChange={(e) => setPassword(e.target.value)} required className="flex-1" />
+              <Button type="button" variant="secondary" onClick={() => setPassword(randomPassword())}>
+                Generate
+              </Button>
+            </div>
           </Field>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>

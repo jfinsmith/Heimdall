@@ -4,7 +4,7 @@
  */
 import React, { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { doc, limit, orderBy, updateDoc, where } from 'firebase/firestore';
+import { doc, limit, orderBy, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useCollection } from '../lib/firestore';
 import { useClickOutside } from '../lib/useClickOutside';
@@ -28,6 +28,12 @@ export function NotificationBell() {
     await updateDoc(doc(db, 'notifications', id), { read: true });
   }
 
+  async function markAllRead() {
+    const batch = writeBatch(db);
+    notifications.filter((n) => !n.read).forEach((n) => batch.update(doc(db, 'notifications', n.id), { read: true }));
+    await batch.commit();
+  }
+
   return (
     <div className="relative" ref={ref}>
       <button
@@ -49,8 +55,13 @@ export function NotificationBell() {
           role="dialog"
           aria-label="Notifications"
         >
-          <div className="border-b border-watch-100 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-watch-500">
-            Gjallarhorn
+          <div className="flex items-center justify-between border-b border-watch-100 px-4 py-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-watch-500">Gjallarhorn</span>
+            {unread > 0 && (
+              <button className="text-xs text-bifrost-700 hover:underline" onClick={markAllRead}>
+                Mark all read
+              </button>
+            )}
           </div>
           <ul className="max-h-96 overflow-y-auto">
             {notifications.length === 0 && (
@@ -75,6 +86,13 @@ export function NotificationBell() {
               </li>
             ))}
           </ul>
+          <Link
+            to="/notifications"
+            onClick={() => setOpen(false)}
+            className="block border-t border-watch-100 px-4 py-2.5 text-center text-sm font-medium text-bifrost-700 hover:bg-watch-50"
+          >
+            View all notifications
+          </Link>
         </div>
       )}
     </div>
