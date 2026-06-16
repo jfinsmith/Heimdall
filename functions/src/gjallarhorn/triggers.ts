@@ -109,6 +109,7 @@ export const onSignupWritten = onDocumentWritten('sessions/{sessionId}/signups/{
     const details = sessionDetails(session);
     await notify({
       uid,
+      dedupeKey: `${event.id}_confirm`,
       type: 'signup_confirmed',
       title: `Confirmed: ${session.title || session.courseName}`,
       body: `You are confirmed as ${after.role.replace('_', ' ')}.`,
@@ -132,6 +133,7 @@ export const onSignupWritten = onDocumentWritten('sessions/{sessionId}/signups/{
     if (!promoted) {
       // 2) Withdrawal / slot re-opened → coordinators
       await notifyCoordinators(session.academyId, {
+        dedupeKey: `${event.id}_reopen`,
         type: 'slot_reopened',
         title: `Slot re-opened: ${session.title || session.courseName}`,
         body: `${after.displayName} withdrew from the ${after.role.replace('_', ' ')} slot on ${session.start
@@ -145,6 +147,7 @@ export const onSignupWritten = onDocumentWritten('sessions/{sessionId}/signups/{
       const escWindow = settings?.escalationWindowDays ?? LEAD_ESCALATION_DAYS;
       if (after.role === 'lead' && daysOut <= escWindow && daysOut > 0) {
         await escalateToCommand({
+          dedupeKey: `${event.id}_leadesc`,
           type: 'lead_withdrawal_escalation',
           title: `ESCALATION — lead withdrew ${Math.ceil(daysOut)} days out`,
           body: `${after.displayName} withdrew as LEAD for "${session.title || session.courseName}" on ${session.start
@@ -167,6 +170,7 @@ export const onSessionUpdated = onDocumentUpdated('sessions/{sessionId}', async 
   // 4) Fully staffed → coordinators
   if (before.status !== 'fully_staffed' && after.status === 'fully_staffed') {
     await notifyCoordinators(after.academyId, {
+      dedupeKey: `${event.id}_staffed`,
       type: 'session_fully_staffed',
       title: `Fully staffed: ${after.title || after.courseName}`,
       body: `All role slots filled for ${after.start
@@ -216,6 +220,7 @@ export const onSessionUpdated = onDocumentUpdated('sessions/{sessionId}', async 
         );
       await notify({
         uid: su.uid,
+        dedupeKey: `${event.id}_sched_${su.uid}`,
         type: 'schedule_change',
         title: `Schedule change: ${after.title || after.courseName} ${what}`,
         body: cancelled
@@ -242,6 +247,7 @@ export const onUserCreated = onDocumentCreated('users/{uid}', async (event) => {
   // only self-registrations land as 'pending' and need command's attention.
   if (!data || data.status !== 'pending') return;
   await notifyAdmins({
+    dedupeKey: `${event.id}_newacct`,
     type: 'new_account_pending',
     title: 'New account request',
     body: `${data.displayName || data.email} requested a HEIMDALL account and is awaiting approval.`,
@@ -260,6 +266,7 @@ export const onUserUpdated = onDocumentUpdated('users/{uid}', async (event) => {
   if (before.status === 'pending' && after.status === 'active') {
     await notify({
       uid,
+      dedupeKey: `${event.id}_approved`,
       type: 'account_approved',
       title: 'Your HEIMDALL account is active',
       body: 'A coordinator approved your account. You can now sign up for sessions you qualify for.',
@@ -273,6 +280,7 @@ export const onUserUpdated = onDocumentUpdated('users/{uid}', async (event) => {
   for (const q of newlyVerified) {
     await notify({
       uid,
+      dedupeKey: `${event.id}_qual_${q.key}`,
       type: 'qualification_approved',
       title: `Qualification verified: ${q.label}`,
       body: 'You can now fill slots that require this qualification.',
@@ -341,6 +349,7 @@ export const onCoursePublished = onDocumentCreated('coursePublishEvents/{id}', a
     recipientIds.map((uid) =>
       notify({
         uid,
+        dedupeKey: `${event.id}_${uid}`,
         type: 'course_published',
         title: `Sign-ups open: ${academyLabel} ${courseLabel}`,
         body: `${courseLabel} (${sessionCount} session${sessionCount === 1 ? '' : 's'}${firstDay ? `, starting ${firstDay}` : ''}) is now open for instructor sign-up in ${academyLabel}.`,
@@ -354,6 +363,16 @@ export const onCoursePublished = onDocumentCreated('coursePublishEvents/{id}', a
 export const onBulkMessageCreated = onDocumentCreated('bulkMessages/{id}', async (event) => {
   const data = event.data?.data();
   if (!data || data.status !== 'pending') return;
+
+  // Claim the message transactionally so an at-least-once retry can't re-fan-out
+  // or duplicate the audit entry (the event snapshot stays 'pending' on retry).
+  const claimed = await db().runTransaction(async (tx) => {
+    const fresh = await tx.get(event.data!.ref);
+    if (!fresh.exists || fresh.data()!.status !== 'pending') return false;
+    tx.update(event.data!.ref, { status: 'sending' });
+    return true;
+  });
+  if (!claimed) return;
 
   // Audience: instructors with upcoming confirmed assignments (optionally per academy).
   let q = db().collection('assignments').where('status', '==', 'confirmed') as FirebaseFirestore.Query;
@@ -372,6 +391,7 @@ export const onBulkMessageCreated = onDocumentCreated('bulkMessages/{id}', async
     uids.map((uid) =>
       notify({
         uid,
+        dedupeKey: `${event.id}_${uid}`,
         type: 'message',
         title: data.subject as string,
         body: data.body as string,

@@ -55,6 +55,9 @@ export const gjallarhornDailySweep = onSchedule(
 
       await notify({
         uid: a.uid,
+        // One reminder per (assignment, start-time) ever — survives retries; a
+        // reschedule changes start and legitimately re-arms a fresh reminder.
+        dedupeKey: `reminder_${doc.id}_${a.start.toMillis()}`,
         type: 'reminder',
         title: `Reminder: ${a.courseName}`,
         body: `You teach ${a.courseName} (${a.role.replace('_', ' ')}) on ${a.start
@@ -97,9 +100,12 @@ export const gjallarhornDailySweep = onSchedule(
       const body = `${understaffed.length} session(s) within ${alertDays} days are missing required staff:\n\n${lines.join('\n')}`;
 
       // Coordinators of each affected academy + the command escalation list.
+      // dayKey makes a retried daily run on the same date idempotent.
+      const dayKey = new Date(now).toISOString().slice(0, 10);
       const academyIds = [...new Set(understaffed.map(({ data }) => data.academyId))];
       for (const academyId of academyIds) {
         await notifyCoordinators(academyId, {
+          dedupeKey: `understaff_${dayKey}_${academyId}`,
           type: 'understaffing_alert',
           title: `Understaffing alert — ${understaffed.length} session(s) inside ${alertDays} days`,
           body,
@@ -107,6 +113,7 @@ export const gjallarhornDailySweep = onSchedule(
         });
       }
       await escalateToCommand({
+        dedupeKey: `understaff_${dayKey}_cmd`,
         type: 'understaffing_alert',
         title: `Understaffing alert — ${understaffed.length} session(s) inside ${alertDays} days`,
         body,
@@ -166,12 +173,15 @@ export const gjallarhornWeeklyDigest = onSchedule(
       .where('status', '==', 'active')
       .get();
 
+    // weekKey makes a double-invoked weekly run idempotent (one digest per week).
+    const weekKey = new Date(now).toISOString().slice(0, 10);
     await Promise.all(
       staff.docs
         .filter((d) => (d.data() as UserDoc).notificationPrefs?.digest !== false)
         .map((d) =>
           notify({
             uid: d.id,
+            dedupeKey: `digest_${weekKey}_${d.id}`,
             type: 'digest',
             title: 'Weekly staffing digest',
             body,

@@ -26,6 +26,26 @@ export interface NotifyOptions {
    * NOT bypass the admin email-automation toggles or the master switch.
    */
   force?: boolean;
+  /**
+   * When set, the in-app notification and the mail doc are written with
+   * deterministic ids derived from this key, so a Cloud Function retry (triggers
+   * are at-least-once) re-uses the same docs instead of double-sending. Callers
+   * derive it from the stable CloudEvent id + recipient.
+   */
+  dedupeKey?: string;
+}
+
+/** Create a doc idempotently — a retry with the same id is a no-op, not a duplicate. */
+async function idempotentCreate(
+  ref: FirebaseFirestore.DocumentReference,
+  data: FirebaseFirestore.DocumentData
+): Promise<void> {
+  try {
+    await ref.create(data);
+  } catch (e) {
+    if ((e as { code?: number }).code === 6) return; // ALREADY_EXISTS — already delivered on a prior attempt
+    throw e;
+  }
 }
 
 export async function getSettings(): Promise<GlobalSettings | null> {
@@ -40,8 +60,8 @@ export async function notify(opts: NotifyOptions): Promise<void> {
   let recipientRole: Role | undefined;
 
   if (opts.uid) {
-    // In-app notification (bell)
-    await db().collection('notifications').add({
+    // In-app notification (bell) — deduped on retry when a dedupeKey is given.
+    const notifData = {
       uid: opts.uid,
       type: opts.type,
       title: opts.title,
@@ -49,7 +69,9 @@ export async function notify(opts: NotifyOptions): Promise<void> {
       link: opts.link ?? '',
       read: false,
       createdAt: FieldValue.serverTimestamp(),
-    });
+    };
+    if (opts.dedupeKey) await idempotentCreate(db().collection('notifications').doc(`n_${opts.dedupeKey}`), notifData);
+    else await db().collection('notifications').add(notifData);
     const userSnap = await db().doc(`users/${opts.uid}`).get();
     if (userSnap.exists) {
       const user = userSnap.data() as UserDoc;
@@ -83,7 +105,7 @@ export async function notify(opts: NotifyOptions): Promise<void> {
     });
 
   // `mail` docs are server-written only; the Trigger Email extension sends them.
-  await db().collection('mail').add({
+  const mailData = {
     to: [email],
     message: {
       subject: content.subject,
@@ -92,7 +114,9 @@ export async function notify(opts: NotifyOptions): Promise<void> {
       ...(opts.attachments ? { attachments: opts.attachments } : {}),
     },
     createdAt: FieldValue.serverTimestamp(),
-  });
+  };
+  if (opts.dedupeKey) await idempotentCreate(db().collection('mail').doc(`m_${opts.dedupeKey}`), mailData);
+  else await db().collection('mail').add(mailData);
 }
 
 /** Notify every coordinator of an academy (plus optional extra uids). */
@@ -104,8 +128,11 @@ export async function notifyCoordinators(
   const academy = await db().doc(`academies/${academyId}`).get();
   const coordinatorIds: string[] = academy.exists ? (academy.data()!.coordinatorIds ?? []) : [];
   const targets = [...new Set([...coordinatorIds, ...extraUids])];
-  await Promise.all(targets.map((uid) => notify({ ...payload, uid })));
+  await Promise.all(targets.map((uid) => notify({ ...payload, uid, dedupeKey: keyFor(payload.dedupeKey, uid) })));
 }
+
+/** Per-recipient dedupe id from a fan-out base key (undefined base = no dedupe). */
+const keyFor = (base: string | undefined, uid: string) => (base ? `${base}_${uid}` : undefined);
 
 /** Notify every command-level admin (active directors + lieutenants). */
 export async function notifyAdmins(payload: Omit<NotifyOptions, 'uid' | 'email'>): Promise<void> {
@@ -114,7 +141,7 @@ export async function notifyAdmins(payload: Omit<NotifyOptions, 'uid' | 'email'>
     .where('role', 'in', ['director', 'lieutenant'])
     .where('status', '==', 'active')
     .get();
-  await Promise.all(admins.docs.map((d) => notify({ ...payload, uid: d.id })));
+  await Promise.all(admins.docs.map((d) => notify({ ...payload, uid: d.id, dedupeKey: keyFor(payload.dedupeKey, d.id) })));
 }
 
 /** Escalate to the configured command recipients (uids or raw emails). */
@@ -123,7 +150,9 @@ export async function escalateToCommand(payload: Omit<NotifyOptions, 'uid' | 'em
   const recipients = settings?.escalationRecipients ?? [];
   await Promise.all(
     recipients.map((r) =>
-      r.includes('@') ? notify({ ...payload, email: r, force: true }) : notify({ ...payload, uid: r, force: true })
+      r.includes('@')
+        ? notify({ ...payload, email: r, force: true, dedupeKey: keyFor(payload.dedupeKey, r) })
+        : notify({ ...payload, uid: r, force: true, dedupeKey: keyFor(payload.dedupeKey, r) })
     )
   );
 }
