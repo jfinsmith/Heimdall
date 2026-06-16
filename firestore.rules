@@ -59,9 +59,12 @@ service cloud.firestore {
         && request.resource.data.displayName is string
         && request.resource.data.qualifications is list;
       allow update: if isAdmin()
-        // Staff (coordinator/sergeant) may approve accounts and verify quals,
-        // but may not change roles (that's the admin callable's job).
-        || (isStaff() && unchanged('role'))
+        // Staff (coordinator/sergeant) may approve accounts and verify quals on
+        // OTHER users, but may not change roles, and may NOT self-grant their own
+        // status / verifiedQualKeys (no self-escalation past the FDLE gate).
+        || (isStaff()
+            && unchanged('role')
+            && (request.auth.uid != uid || (unchanged('status') && unchanged('verifiedQualKeys'))))
         // Self-service: profile fields only.
         || (isOwner(uid)
             && unchanged('role')

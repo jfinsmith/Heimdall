@@ -64,14 +64,18 @@ export function UsersAdminPage() {
   const pending = users.filter((u) => u.status === 'pending');
   const active = users.filter((u) => u.status !== 'pending');
 
-  async function approve(u: WithId<UserDoc>) {
+  // Role chosen for each pending user at approval time (defaults to instructor).
+  const [pendingRoles, setPendingRoles] = useState<Record<string, Role>>({});
+
+  async function approve(u: WithId<UserDoc>, role: Role) {
     setBusy(u.id);
     setError(null);
     try {
+      // Set the role + custom claim first, then flip to active — until then the
+      // user is held on the "pending verification" page and sees nothing else.
+      await setUserRole({ uid: u.id, role });
       await updateDoc(doc(db, 'users', u.id), { status: 'active', updatedAt: serverTimestamp() });
-      // Ensure the custom claim exists even at default role.
-      await setUserRole({ uid: u.id, role: u.role });
-      await logAudit(firebaseUser!.uid, 'user.approve', 'user', u.id, `Approved ${u.displayName}`);
+      await logAudit(firebaseUser!.uid, 'user.approve', 'user', u.id, `Approved ${u.displayName} as ${role}`);
     } catch (err) {
       setError(`Approving ${u.displayName} failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -123,23 +127,41 @@ export function UsersAdminPage() {
 
       {pending.length > 0 && (
         <section className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4">
-          <h2 className="mb-2 text-sm font-bold uppercase tracking-wider text-amber-800">
+          <h2 className="mb-1 text-sm font-bold uppercase tracking-wider text-amber-800">
             Pending approval ({pending.length})
           </h2>
+          <p className="mb-2 text-xs text-amber-700">
+            These users self-registered and currently see only a “waiting for verification” page. Assigning a
+            role activates the account and unlocks the app for them.
+          </p>
           <ul className="space-y-2">
-            {pending.map((u) => (
-              <li key={u.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                <span>
-                  <span className="font-medium text-watch-900">{u.displayName}</span>{' '}
-                  <span className="text-slate-500">
-                    {u.email} · {u.rank || 'no rank'} · {u.agency || 'no agency'}
+            {pending.map((u) => {
+              const chosen = pendingRoles[u.id] ?? 'instructor';
+              return (
+                <li key={u.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                  <span>
+                    <span className="font-medium text-watch-900">{u.displayName}</span>{' '}
+                    <span className="text-slate-500">
+                      {u.email} · {u.rank || 'no rank'} · {u.agency || 'no agency'}
+                    </span>
                   </span>
-                </span>
-                <Button variant="primary" disabled={busy === u.id} onClick={() => approve(u)}>
-                  Approve
-                </Button>
-              </li>
-            ))}
+                  <span className="flex items-center gap-2">
+                    <Select
+                      value={chosen}
+                      aria-label={`Role for ${u.displayName}`}
+                      onChange={(e) => setPendingRoles((p) => ({ ...p, [u.id]: e.target.value as Role }))}
+                    >
+                      {(Object.keys(ROLE_LABELS) as Role[]).sort((a, b) => ROLE_LABELS[a].localeCompare(ROLE_LABELS[b])).map((r) => (
+                        <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                      ))}
+                    </Select>
+                    <Button variant="primary" disabled={busy === u.id} onClick={() => approve(u, chosen)}>
+                      Approve as {ROLE_LABELS[chosen]}
+                    </Button>
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         </section>
       )}
