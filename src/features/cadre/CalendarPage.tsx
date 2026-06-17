@@ -18,7 +18,7 @@ import { can } from '../../lib/rbac';
 import type { AcademyDoc, CurriculumDoc, SessionDoc } from '../../types';
 import { unfilledSlots } from '../../types';
 import { academyColorFor } from '../../lib/academyColors';
-import { Field, PageHeader, Select } from '../../components/ui';
+import { Field, Input, PageHeader, Select } from '../../components/ui';
 import { SessionDetailModal } from '../sessions/SessionDetailModal';
 import { SessionFormModal } from './SessionFormModal';
 import { sessionToEvent, renderEventContent } from './sessionEvents';
@@ -46,6 +46,7 @@ export function CalendarPage() {
     [sessionWindowStart]
   );
 
+  const [search, setSearch] = useState('');
   const [academyFilter, setAcademyFilter] = useState('all');
   const [disciplineFilter, setDisciplineFilter] = useState('all');
   const [courseFilter, setCourseFilter] = useState('all');
@@ -79,6 +80,13 @@ export function CalendarPage() {
       sessions.filter((s) => {
         if (!academyIds.has(s.academyId)) return false;
         if (!staff && s.status === 'draft') return false;
+        const term = search.trim().toLowerCase();
+        if (term) {
+          const acad = academyById.get(s.academyId);
+          const hay = [s.courseName, s.title, s.room, s.notes, acad?.shortName, acad?.name]
+            .filter(Boolean).join(' ').toLowerCase();
+          if (!hay.includes(term)) return false;
+        }
         if (academyFilter !== 'all' && s.academyId !== academyFilter) return false;
         if (courseFilter !== 'all' && s.courseName !== courseFilter) return false;
         if (roomFilter !== 'all' && s.room !== roomFilter) return false;
@@ -99,7 +107,7 @@ export function CalendarPage() {
         }
         return true;
       }),
-    [sessions, academyIds, academyById, staff, academyFilter, courseFilter, roomFilter, disciplineFilter, staffingFilter, qualifiedOnly, myQualKeys]
+    [sessions, academyIds, academyById, staff, search, academyFilter, courseFilter, roomFilter, disciplineFilter, staffingFilter, qualifiedOnly, myQualKeys]
   );
 
   // Shade holidays across however far out classes are actually scheduled
@@ -150,6 +158,21 @@ export function CalendarPage() {
   return (
     <div>
       <PageHeader kicker="CADRE — Coordinated Academy Duty & Roster Engine" title="Calendar" />
+
+      <div className="mb-3">
+        <Input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search sessions — e.g. “defensive tactics”, a room, or notes…"
+          aria-label="Search sessions"
+        />
+        {search.trim() && (
+          <p className="mt-1 text-xs text-slate-500">
+            {filtered.length} matching session{filtered.length === 1 ? '' : 's'} — switch to a List view to see them all.
+          </p>
+        )}
+      </div>
 
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
         <Field label="Academy">

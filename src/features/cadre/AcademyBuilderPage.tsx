@@ -70,6 +70,7 @@ export function AcademyBuilderPage() {
   const [recurringOpen, setRecurringOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [showWeekends, setShowWeekends] = useState(false);
+  const [search, setSearch] = useState('');
   const [detailSession, setDetailSession] = useState<WithId<SessionDoc> | null>(null);
   const [signupModal, setSignupModal] = useState<{
     label: string;
@@ -161,10 +162,27 @@ export function AcademyBuilderPage() {
     return { fromYear: academy.startDate.toDate().getFullYear(), toYear: academy.endDate.toDate().getFullYear() };
   }, [academy]);
 
+  // Free-text search to locate a course (e.g. "defensive tactics") anywhere on
+  // the calendar. Matching sessions stay; the rest drop off until cleared.
+  const matchedSessions = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return sessions;
+    return sessions.filter((s) =>
+      [s.courseName, s.title, s.room, s.notes].filter(Boolean).join(' ').toLowerCase().includes(term)
+    );
+  }, [sessions, search]);
+
   const events = useMemo(
-    () => [...sessions.map((s) => sessionToEvent(s, { editable: true })), ...holidayBackgroundEvents(disabledHolidays, observedHolidays, holidayRange)],
-    [sessions, disabledHolidays, observedHolidays, holidayRange]
+    () => [...matchedSessions.map((s) => sessionToEvent(s, { editable: true })), ...holidayBackgroundEvents(disabledHolidays, observedHolidays, holidayRange)],
+    [matchedSessions, disabledHolidays, observedHolidays, holidayRange]
   );
+
+  // Jump to the earliest match so a hit far out on the calendar is found, not just filtered.
+  React.useEffect(() => {
+    if (!search.trim() || matchedSessions.length === 0) return;
+    const earliest = matchedSessions.reduce((a, b) => (a.start.toMillis() <= b.start.toMillis() ? a : b));
+    calRef.current?.getApi().gotoDate(earliest.start.toDate());
+  }, [search, matchedSessions]);
 
   /**
    * Per-curriculum-course progress. Each session is assigned to exactly ONE
@@ -525,6 +543,21 @@ export function AcademyBuilderPage() {
       </div>
 
       <div id="builder-calendar" className="rounded-lg border border-watch-100 bg-white p-4 shadow-sm">
+        <div className="mb-3 flex items-center gap-2">
+          <Input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search this academy’s sessions — e.g. “defensive tactics”…"
+            aria-label="Search sessions"
+            className="flex-1"
+          />
+          {search.trim() && (
+            <span className="shrink-0 text-xs text-slate-500">
+              {matchedSessions.length} match{matchedSessions.length === 1 ? '' : 'es'}
+            </span>
+          )}
+        </div>
         <FullCalendar
           ref={calRef}
           plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
