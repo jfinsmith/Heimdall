@@ -18,6 +18,7 @@ import { agencyLabel } from './rosterShared';
 import { AttendanceTab } from './AttendanceTab';
 import { DisciplineTab } from './DisciplineTab';
 import { GradesTab } from './GradesTab';
+import { AcademyReports } from '../reports/AcademyReports';
 
 const rosterCreateMember = httpsCallable<
   { academyId: string; member: Record<string, unknown>; ssn?: string },
@@ -25,7 +26,7 @@ const rosterCreateMember = httpsCallable<
 >(functions, 'rosterCreateMember');
 const rosterRevealSsn = httpsCallable<{ academyId: string; memberId: string }, { ssn: string | null }>(functions, 'rosterRevealSsn');
 
-type Tab = 'members' | 'attendance' | 'discipline' | 'grades';
+type Tab = 'members' | 'attendance' | 'discipline' | 'grades' | 'reports';
 
 export function RosterPage() {
   const { academyId = '' } = useParams();
@@ -59,6 +60,7 @@ export function RosterPage() {
     { key: 'attendance', label: 'Attendance' },
     { key: 'discipline', label: 'Discipline' },
     { key: 'grades', label: 'Gradebook' },
+    { key: 'reports', label: 'Reports' },
   ];
 
   return (
@@ -100,6 +102,7 @@ export function RosterPage() {
       {tab === 'attendance' && <AttendanceTab academy={academy} members={members} curriculum={curriculum} />}
       {tab === 'discipline' && <DisciplineTab academyId={academyId} members={members} />}
       {tab === 'grades' && <GradesTab academyId={academyId} members={members} curriculum={curriculum} />}
+      {tab === 'reports' && <AcademyReports academy={academy} />}
     </div>
   );
 }
