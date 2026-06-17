@@ -9,11 +9,12 @@ import { addDoc, collection, deleteDoc, doc, limit, orderBy, serverTimestamp, up
 import { db } from '../../../lib/firebase';
 import { useCollection, useDoc, type WithId } from '../../../lib/firestore';
 import { useAuth } from '../../../auth/AuthContext';
-import type { AcademyDoc, AcademyReportDoc, CurriculumDoc, RosterMemberDoc, UserDoc } from '../../../types';
+import type { AcademyDoc, AcademyReportDoc, CurriculumDoc, ReportConfigDoc, RosterMemberDoc, UserDoc } from '../../../types';
 import { FDLE_LE_COURSES } from '../../../types';
 import { Button, Field, Input, Select } from '../../../components/ui';
 import { Modal } from '../../../components/Modal';
-import { REPORT_TYPES, getReportType, type ReportType } from './reportTypes';
+import { type ReportType } from './reportTypes';
+import { effectiveReportTypes } from './reportConfig';
 
 export const isLawEnforcement = (a?: WithId<AcademyDoc>) =>
   !!a && (a.discipline === 'le_brt' || /law enforcement/i.test(a.fdleProgram || ''));
@@ -31,29 +32,34 @@ export function AcademyReports({ academy }: { academy: WithId<AcademyDoc> }) {
   const { data: directors } = useCollection<UserDoc>('users', [where('role', '==', 'director'), limit(1)]);
   const directorName = directors[0]?.displayName ?? 'Academy Director';
   const { data: curriculum } = useDoc<CurriculumDoc>(academy.discipline ? `curricula/${academy.discipline}` : null);
+  const { data: reportConfig } = useDoc<ReportConfigDoc>('reportConfig/global');
 
   const [formType, setFormType] = useState<ReportType | null>(null);
   const [editing, setEditing] = useState<WithId<AcademyReportDoc> | null>(null);
 
-  // Which report forms this discipline offers: the curriculum's explicit list
-  // when configured (Admin → Curriculum & Hours → Reports available), else the
-  // legacy fallback (all forms for Law Enforcement, none otherwise).
-  const availableTypes = curriculum?.reportTypeIds
-    ? REPORT_TYPES.filter((t) => curriculum.reportTypeIds!.includes(t.id))
-    : isLawEnforcement(academy)
-      ? REPORT_TYPES
-      : [];
+  // Report forms (code registry + admin name/category overrides), then the set
+  // this discipline offers: by the curriculum's chosen categories when set,
+  // else legacy fallbacks (older per-form list, else all LE forms).
+  const effective = effectiveReportTypes(reportConfig);
+  const typeFor = (id: string) => effective.find((t) => t.id === id);
+  const availableTypes = curriculum?.reportCategories
+    ? effective.filter((t) => curriculum.reportCategories!.includes(t.category))
+    : curriculum?.reportTypeIds
+      ? effective.filter((t) => curriculum.reportTypeIds!.includes(t.id))
+      : isLawEnforcement(academy)
+        ? effective.filter((t) => t.category === 'le')
+        : [];
 
   async function remove(r: WithId<AcademyReportDoc>) {
-    if (!window.confirm(`Delete this ${getReportType(r.type)?.name} report for ${r.cadetName}?`)) return;
+    if (!window.confirm(`Delete this ${typeFor(r.type)?.name ?? 'report'} report for ${r.cadetName}?`)) return;
     await deleteDoc(doc(db, 'academies', academyId, 'reports', r.id));
   }
 
   if (availableTypes.length === 0) {
     return (
       <p className="rounded-md bg-watch-50 px-3 py-2 text-sm text-slate-600">
-        No report types are enabled for this discipline. Assign report forms under
-        {' '}<strong>Admin → Curriculum &amp; Hours → Reports available</strong>.
+        No report forms are enabled for this discipline. Pick report categories under
+        {' '}<strong>Admin → Curriculum &amp; Hours</strong> (and manage forms/categories under <strong>Admin → Report Forms</strong>).
       </p>
     );
   }
@@ -88,7 +94,7 @@ export function AcademyReports({ academy }: { academy: WithId<AcademyDoc> }) {
           <tbody className="divide-y divide-watch-50">
             {reports.map((r) => (
               <tr key={r.id} className="hover:bg-watch-50/50">
-                <td className="px-4 py-3 font-medium text-watch-900">{getReportType(r.type)?.name ?? r.type}</td>
+                <td className="px-4 py-3 font-medium text-watch-900">{typeFor(r.type)?.name ?? r.type}</td>
                 <td className="px-4 py-3">{r.cadetName}</td>
                 <td className="px-4 py-3 text-xs text-slate-500">
                   {r.createdAt?.toDate?.().toLocaleDateString()} {r.createdByName ? `· ${r.createdByName}` : ''}
@@ -97,7 +103,7 @@ export function AcademyReports({ academy }: { academy: WithId<AcademyDoc> }) {
                   <Link to={`/cadet-reports/print/${academyId}/${r.id}`} target="_blank" rel="noopener" className="mr-3 text-sm text-bifrost-700 hover:underline">
                     Print ↗
                   </Link>
-                  <Button variant="ghost" onClick={() => { const t = getReportType(r.type); if (t) { setEditing(r); setFormType(t); } }}>Edit</Button>
+                  <Button variant="ghost" onClick={() => { const t = typeFor(r.type); if (t) { setEditing(r); setFormType(t); } }}>Edit</Button>
                   <Button variant="ghost" className="text-red-700" onClick={() => remove(r)}>Delete</Button>
                 </td>
               </tr>

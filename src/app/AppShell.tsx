@@ -101,6 +101,7 @@ export function AppShell() {
       <NavItem to="/open-sessions" label="Browse Open Sessions" />
       <NavItem to="/my-schedule" label="My Schedule" />
       <NavItem to="/profile" label="Profile & Qualifications" />
+      <NavItem to="/feedback" label="Report a Problem" />
       {staff && (
         <>
           <SectionLabel title="Reporting">Reports</SectionLabel>
@@ -114,6 +115,8 @@ export function AppShell() {
           <NavItem to="/admin/roster" label="Roster & Certifications" />
           <NavItem to="/admin/permissions" label="Roles & Permissions" />
           <NavItem to="/admin/curriculum" label="Curriculum & Hours" />
+          <NavItem to="/admin/report-forms" label="Report Forms" />
+          <NavItem to="/admin/feedback" label="Bug & Feature Reports" />
           <NavItem to="/admin/holidays" label="Holidays" />
           <NavItem to="/admin/settings" label="Org Settings" />
           <NavItem to="/admin/gjallarhorn" label="Gjallarhorn & Email" />

@@ -80,6 +80,26 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // ── reportConfig/global (report categories + name overrides) ────────────
+    // Everyone needs it to render report names/categories; only admins edit.
+    match /reportConfig/{docId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    // ── feedbackReports (member-submitted bug / feature reports) ────────────
+    // Any signed-in member files their own; admins read & triage all.
+    match /feedbackReports/{id} {
+      allow read: if isAdmin() || isOwner(resource.data.submittedByUid);
+      allow create: if signedIn()
+        && request.resource.data.submittedByUid == request.auth.uid
+        && request.resource.data.status == 'new'
+        && request.resource.data.kind in ['bug', 'feature']
+        && request.resource.data.title is string
+        && request.resource.data.description is string;
+      allow update, delete: if isAdmin();
+    }
+
     // ── courseCatalog ──────────────────────────────────────────────────────
     match /courseCatalog/{courseId} {
       allow read: if signedIn();

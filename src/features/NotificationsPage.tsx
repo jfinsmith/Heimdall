@@ -39,6 +39,7 @@ const CATEGORY: Record<NotificationType, { group: string; tone: Tone }> = {
   reminder: { group: 'Reminders', tone: 'navy' },
   digest: { group: 'Reminders', tone: 'slate' },
   message: { group: 'Messages', tone: 'navy' },
+  feedback_submitted: { group: 'Messages', tone: 'amber' },
 };
 const CATEGORY_GROUPS = [...new Set(Object.values(CATEGORY).map((c) => c.group))].sort();
 

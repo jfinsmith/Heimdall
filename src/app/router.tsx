@@ -39,6 +39,9 @@ const ReportsPage = lazy(() => import('../features/reports/ReportsPage').then((m
 const PrintableSchedulePage = lazy(() => import('../features/reports/PrintableSchedulePage').then((m) => ({ default: m.PrintableSchedulePage })));
 const CadetReportsPage = lazy(() => import('../features/cadre/reports/CadetReportsPage').then((m) => ({ default: m.CadetReportsPage })));
 const CadetReportPrintPage = lazy(() => import('../features/cadre/reports/CadetReportPrintPage').then((m) => ({ default: m.CadetReportPrintPage })));
+const FeedbackReportPage = lazy(() => import('../features/feedback/FeedbackReportPage').then((m) => ({ default: m.FeedbackReportPage })));
+const FeedbackAdminPage = lazy(() => import('../features/feedback/FeedbackAdminPage').then((m) => ({ default: m.FeedbackAdminPage })));
+const ReportFormsAdminPage = lazy(() => import('../features/admin/ReportFormsAdminPage').then((m) => ({ default: m.ReportFormsAdminPage })));
 
 function RouteFallback() {
   return (
@@ -72,6 +75,7 @@ export function AppRouter() {
               <Route path="/open-sessions" element={<BrowseOpenSessionsPage />} />
               <Route path="/my-schedule" element={<MySchedulePage />} />
               <Route path="/profile" element={<ProfilePage />} />
+              <Route path="/feedback" element={<FeedbackReportPage />} />
 
               <Route element={<RequireStaff />}>
                 <Route path="/cadre/academies" element={<AcademiesPage />} />
@@ -87,6 +91,8 @@ export function AppRouter() {
                 <Route path="/admin/roster" element={<RosterPage />} />
                 <Route path="/admin/permissions" element={<PermissionsPage />} />
                 <Route path="/admin/curriculum" element={<CurriculumAdminPage />} />
+                <Route path="/admin/report-forms" element={<ReportFormsAdminPage />} />
+                <Route path="/admin/feedback" element={<FeedbackAdminPage />} />
                 <Route path="/admin/holidays" element={<HolidaysAdminPage />} />
                 <Route path="/admin/settings" element={<SettingsAdminPage />} />
                 <Route path="/admin/gjallarhorn" element={<GjallarhornSettingsPage />} />

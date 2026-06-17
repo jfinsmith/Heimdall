@@ -149,6 +149,7 @@ export const EMAIL_AUTOMATIONS = [
   { key: 'understaffing_alert', label: 'Understaffing alerts', description: 'Daily sweep: emails coordinators + command about unfilled slots inside the alert window.' },
   { key: 'digest', label: 'Weekly digest', description: 'Monday summary of staffing health for coordinators and command.' },
   { key: 'message', label: 'Bulk messages', description: 'Manual broadcasts sent from the Staffing Board.' },
+  { key: 'feedback_submitted', label: 'Bug / feature report', description: 'Emails command when a member submits a bug report or feature request.' },
 ] as const;
 
 export type EmailAutomationKey = (typeof EMAIL_AUTOMATIONS)[number]['key'];
@@ -400,6 +401,22 @@ export const FDLE_LE_COURSES: { code: string; name: string }[] = [
 
 export type ReportTypeId = 'exam_failure' | 'proficiency_fail' | 'exam_course_fail' | 'academy_dismissal';
 
+/**
+ * Admin-managed report configuration (doc `reportConfig/global`): the custom
+ * category list (LE, CO, NMT, ARGUS…) and per-report-type overrides (display
+ * name + which category it belongs to). The report's fields and letter body
+ * stay in the code registry (reportTypes.tsx) — only name/category are editable.
+ */
+export interface ReportCategory {
+  key: string;
+  label: string;
+}
+export interface ReportConfigDoc {
+  categories: ReportCategory[];
+  /** Per report-type-id: optional display-name override + category assignment. */
+  overrides?: Record<string, { name?: string; categoryKey?: string }>;
+}
+
 /** A filed academic-action report (e.g., exam-failure letter) for one cadet. */
 export interface AcademyReportDoc {
   type: ReportTypeId;
@@ -410,6 +427,41 @@ export interface AcademyReportDoc {
   data: Record<string, string>;
   createdBy: string;
   createdByName?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+// ── Bug / feature reports (member-submitted, admin-triaged) ────────────────
+export type FeedbackKind = 'bug' | 'feature';
+export type FeedbackSeverity = 'low' | 'medium' | 'high' | 'critical';
+export type FeedbackStatus = 'new' | 'in_progress' | 'resolved' | 'wont_fix';
+
+/** A member-submitted bug report or feature request (collection `feedbackReports`). */
+export interface FeedbackReportDoc {
+  kind: FeedbackKind;
+  title: string;
+  description: string;
+  /** Bugs: severity. Features: requested priority. */
+  severity: FeedbackSeverity;
+  area?: string;                 // which part of the app it concerns
+  stepsToReproduce?: string;     // bugs
+  expected?: string;             // bugs: expected behavior
+  actual?: string;               // bugs: actual behavior
+  screenshotUrls?: string[];     // Cloud Storage download URLs
+  // Auto-captured context (no PII beyond the submitter).
+  pageUrl?: string;
+  userAgent?: string;
+  appVersion?: string;
+  // Submitter
+  submittedByUid: string;
+  submittedByName: string;
+  submittedByEmail?: string;
+  submittedByRole?: Role;
+  // Triage (admins)
+  status: FeedbackStatus;
+  adminNotes?: string;
+  resolvedByUid?: string;
+  resolvedAt?: Timestamp;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -469,7 +521,9 @@ export interface CurriculumDoc {
   // ── Per-discipline roster configuration (extensible; see RosterModuleKey) ──
   /** Roster tabs enabled for this discipline (Members always shows). Unset = default set. */
   rosterModules?: RosterModuleKey[];
-  /** Report-type ids available on this discipline's roster Reports tab. Unset = legacy LE default. */
+  /** Report categories (see ReportConfigDoc) whose forms this discipline's Reports tab offers. */
+  reportCategories?: string[];
+  /** @deprecated superseded by reportCategories — kept for back-compat read only. */
   reportTypeIds?: string[];
 }
 
@@ -572,7 +626,8 @@ export type NotificationType =
   | 'reminder'
   | 'understaffing_alert'
   | 'digest'
-  | 'message';
+  | 'message'
+  | 'feedback_submitted';
 
 export interface NotificationDoc {
   uid: string; // recipient

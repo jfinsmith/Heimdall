@@ -359,6 +359,22 @@ export const onCoursePublished = onDocumentCreated('coursePublishEvents/{id}', a
   );
 });
 
+// ── Bug / feature report filed → notify command for triage ────────────────
+export const onFeedbackCreated = onDocumentCreated('feedbackReports/{id}', async (event) => {
+  const data = event.data?.data();
+  if (!data) return;
+  const kind = data.kind === 'feature' ? 'Feature request' : 'Bug report';
+  const who = data.submittedByName || 'A member';
+  const sev = data.severity ? ` · ${data.severity}` : '';
+  await notifyAdmins({
+    dedupeKey: event.id,
+    type: 'feedback_submitted',
+    title: `${kind}: ${data.title ?? ''}`.trim(),
+    body: `${who} submitted a ${kind.toLowerCase()}${sev}${data.area ? ` in ${data.area}` : ''}.\n\n${data.description ?? ''}`,
+    link: '/admin/feedback',
+  });
+});
+
 // ── Bulk message fan-out (from the Staffing Board) ─────────────────────────
 export const onBulkMessageCreated = onDocumentCreated('bulkMessages/{id}', async (event) => {
   const data = event.data?.data();
