@@ -85,6 +85,13 @@ export async function signUpForSlot(
       throw new SignupError('Sign-ups for this course have not been opened by the coordinators yet.');
     }
 
+    // Read-only guests can't sign up (server-truth role check — also closes the
+    // quick-signup path that the UI button gate alone wouldn't cover).
+    const signerSnap = await tx.get(doc(db, 'users', uid));
+    if ((signerSnap.data()?.role as string | undefined) === 'guest') {
+      throw new SignupError('Guests have read-only access and cannot sign up for sessions.');
+    }
+
     const slot = session.roleSlots.find((s) => s.slotId === slotId);
     if (!slot) throw new SignupError('That role slot no longer exists on this session.');
     if (slot.filledBy.includes(uid)) throw new SignupError('You are already signed up for this slot.');

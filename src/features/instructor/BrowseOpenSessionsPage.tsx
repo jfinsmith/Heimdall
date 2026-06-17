@@ -6,6 +6,7 @@ import React, { useMemo, useState } from 'react';
 import { orderBy, Timestamp, where } from 'firebase/firestore';
 import { useCollection } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
+import { can } from '../../lib/rbac';
 import { fmtRange } from '../../lib/time';
 import type { AcademyDoc, SessionDoc } from '../../types';
 import { SLOT_ROLE_LABELS, QUALIFICATION_LABELS, activeVerifiedQualKeys } from '../../types';
@@ -14,7 +15,7 @@ import { SessionDetailModal } from '../sessions/SessionDetailModal';
 import { signUpForSlot, SignupError } from '../sessions/useSignup';
 
 export function BrowseOpenSessionsPage() {
-  const { firebaseUser, profile } = useAuth();
+  const { firebaseUser, profile, role } = useAuth();
   const [detailId, setDetailId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busySlot, setBusySlot] = useState<string | null>(null);
@@ -132,13 +133,15 @@ export function BrowseOpenSessionsPage() {
                     {slot.requiredQualificationKey && (
                       <Badge tone="navy">{QUALIFICATION_LABELS[slot.requiredQualificationKey]}</Badge>
                     )}
-                    <Button
-                      variant="primary"
-                      disabled={busySlot === `${session.id}:${slot.slotId}`}
-                      onClick={() => quickSignup(session.id, slot.slotId)}
-                    >
-                      Sign up
-                    </Button>
+                    {can.signUp(role) && (
+                      <Button
+                        variant="primary"
+                        disabled={busySlot === `${session.id}:${slot.slotId}`}
+                        onClick={() => quickSignup(session.id, slot.slotId)}
+                      >
+                        Sign up
+                      </Button>
+                    )}
                   </span>
                 ))}
               </div>

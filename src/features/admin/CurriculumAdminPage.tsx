@@ -78,7 +78,10 @@ export function CurriculumAdminPage() {
               <ul className="mb-3 max-h-44 space-y-0.5 overflow-y-auto pr-1 text-sm">
                 {c.courses.map((course) => (
                   <li key={course.name} className="flex justify-between gap-2">
-                    <span className="truncate text-slate-600">{course.name}</span>
+                    <span className="truncate text-slate-600">
+                      {course.cjk && <span className="mr-1 font-mono text-xs text-slate-400">{course.cjk}</span>}
+                      {course.name}
+                    </span>
                     <span className="shrink-0 tabular-nums text-slate-400">{course.minHours} hrs</span>
                   </li>
                 ))}
@@ -146,6 +149,7 @@ function CurriculumEditorModal({
     const cleaned = courses.filter((c) => c.name.trim()).map((c) => ({
       name: c.name.trim(),
       minHours: Number(c.minHours) || 0,
+      ...(c.cjk?.trim() ? { cjk: c.cjk.trim() } : {}),
       ...(c.highLiability ? { highLiability: true } : {}),
       ...(c.coordinatorRun ? { coordinatorRun: true } : {}),
       ...(c.tested ? { tested: true } : {}),
@@ -206,7 +210,8 @@ function CurriculumEditorModal({
           <legend className="px-1 text-sm font-medium text-watch-800">
             Course blocks &amp; minimum hours — total <strong>{total}</strong> hrs
           </legend>
-          <div className="mb-1 grid grid-cols-[1fr_4rem_2rem_2.5rem_3.5rem_8.5rem_1.5rem] items-center gap-2 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+          <div className="mb-1 grid grid-cols-[5.5rem_1fr_4rem_2rem_2.5rem_3.5rem_8.5rem_1.5rem] items-center gap-2 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            <span title="FDLE/CJSTC course number">CJK #</span>
             <span>Course</span>
             <span>Hours</span>
             <span title="High-liability">▲ HL</span>
@@ -217,7 +222,13 @@ function CurriculumEditorModal({
           </div>
           <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
             {courses.map((c, i) => (
-              <div key={i} className="grid grid-cols-[1fr_4rem_2rem_2.5rem_3.5rem_8.5rem_1.5rem] items-center gap-2">
+              <div key={i} className="grid grid-cols-[5.5rem_1fr_4rem_2rem_2.5rem_3.5rem_8.5rem_1.5rem] items-center gap-2">
+                <Input
+                  value={c.cjk ?? ''}
+                  placeholder="CJK0040"
+                  aria-label={`Course ${i + 1} CJK number`}
+                  onChange={(e) => updateCourse(i, { cjk: e.target.value })}
+                />
                 <Input
                   value={c.name}
                   placeholder="Course name"

@@ -12,21 +12,19 @@ import { useCollection, useDoc } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import type { EmailAutomationKey, GlobalSettings, Role, UserDoc } from '../../types';
 import { EMAIL_AUTOMATIONS } from '../../types';
+import { RANK_ORDER_ASC } from '../../lib/rbac';
+import { useRoleLabels } from '../../app/providers';
 import { Button, Field, Input, PageHeader, Select, Badge } from '../../components/ui';
 import { GjallarhornGlyph } from '../../brand/Logo';
 import { logAudit } from '../sessions/audit';
 
-const ROLE_ORDER: Role[] = ['instructor', 'coordinator', 'sergeant', 'lieutenant', 'director'];
-const ROLE_SHORT: Record<Role, string> = {
-  instructor: 'Instructor',
-  coordinator: 'Coordinator',
-  sergeant: 'Sergeant',
-  lieutenant: 'Lieutenant',
-  director: 'Director',
-};
+// Email-automation recipients: every rank except read-only guests (who don't
+// receive operational email). Derived from the single RANKS registry.
+const ROLE_ORDER: Role[] = RANK_ORDER_ASC.filter((r) => r !== 'guest');
 
 export function GjallarhornSettingsPage() {
   const { firebaseUser } = useAuth();
+  const roleLabels = useRoleLabels();
   const { data: settings } = useDoc<GlobalSettings>('settings/global');
   const { data: commandUsers } = useCollection<UserDoc>('users', [
     where('role', 'in', ['coordinator', 'sergeant', 'lieutenant', 'director']),
@@ -193,7 +191,7 @@ export function GjallarhornSettingsPage() {
                               : 'bg-white text-slate-300 ring-watch-100 line-through'
                           }`}
                         >
-                          {ROLE_SHORT[r]}
+                          {roleLabels[r].replace(/\s*\(.*\)\s*$/, '')}
                         </button>
                       );
                     })}

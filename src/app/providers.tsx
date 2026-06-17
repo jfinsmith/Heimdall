@@ -7,12 +7,18 @@
 import React, { createContext, useContext, useEffect } from 'react';
 import { AuthProvider } from '../auth/AuthContext';
 import { useDoc } from '../lib/firestore';
-import type { GlobalSettings } from '../types';
+import { rankLabels } from '../lib/rbac';
+import type { GlobalSettings, Role } from '../types';
 
 const SettingsContext = createContext<GlobalSettings | null>(null);
 
 export function useGlobalSettings(): GlobalSettings | null {
   return useContext(SettingsContext);
+}
+
+/** Rank display labels (key → label) with this org's editable overrides applied. */
+export function useRoleLabels(): Record<Role, string> {
+  return rankLabels(useGlobalSettings());
 }
 
 function BrandProvider({ children }: { children: React.ReactNode }) {

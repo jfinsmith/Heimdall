@@ -765,12 +765,13 @@ function OpenSignupsModal({
 function CourseCoverageRow({
   c,
 }: {
-  c: { name: string; minHours: number; scheduled: number; delta: number; highLiability?: boolean; instructorRatio?: number };
+  c: { cjk?: string; name: string; minHours: number; scheduled: number; delta: number; highLiability?: boolean; instructorRatio?: number };
 }) {
   return (
     <li className="flex items-center justify-between gap-2 text-sm">
       <span className="truncate text-watch-800">
         {c.highLiability && <span className="mr-1 text-status-critical" title="High-liability">▲</span>}
+        {c.cjk && <span className="mr-1 font-mono text-xs text-slate-400">{c.cjk}</span>}
         {c.name}
         {c.instructorRatio ? (
           <span className="ml-1 text-xs text-slate-400" title="FDLE ratio: students per instructor">· 1:{c.instructorRatio}</span>

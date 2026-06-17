@@ -6,7 +6,8 @@
 import React, { useRef, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-import { can, ROLE_LABELS } from '../lib/rbac';
+import { can } from '../lib/rbac';
+import { useRoleLabels } from './providers';
 import { useClickOutside } from '../lib/useClickOutside';
 import { WordmarkHorizontal } from '../brand/Logo';
 import { NotificationBell } from '../components/NotificationBell';
@@ -83,6 +84,7 @@ function SectionLabel({ children, title }: { children?: React.ReactNode; title: 
 
 export function AppShell() {
   const { profile, role, signOut } = useAuth();
+  const roleLabels = useRoleLabels();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const staff = can.buildSchedules(role);
@@ -142,7 +144,7 @@ export function AppShell() {
         {nav}
         <div className="border-t border-watch-800 px-4 py-3 text-xs text-watch-400">
           <div className="font-medium text-watch-200">{profile?.displayName}</div>
-          <div>{role ? ROLE_LABELS[role] : ''}</div>
+          <div>{role ? roleLabels[role] : ''}</div>
         </div>
       </aside>
       {sidebarOpen && (

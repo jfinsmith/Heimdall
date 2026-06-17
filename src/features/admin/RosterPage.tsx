@@ -10,7 +10,7 @@ import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../../lib/firebase';
 import { useCollection, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
-import { ROLE_LABELS } from '../../lib/rbac';
+import { useRoleLabels } from '../../app/providers';
 import type { QualificationKey, UserDoc } from '../../types';
 import { QUALIFICATION_LABELS } from '../../types';
 import { certYearOf, march31, tsFromDate } from '../../lib/time';
@@ -27,6 +27,7 @@ const shortQual = (key: QualificationKey) => QUALIFICATION_LABELS[key].replace(/
 
 export function RosterPage() {
   const { firebaseUser } = useAuth();
+  const roleLabels = useRoleLabels();
   const { data: users } = useCollection<UserDoc>('users', [orderBy('displayName'), limit(2000)]);
 
   const [search, setSearch] = useState('');
@@ -195,7 +196,7 @@ export function RosterPage() {
                     {u.rank && <div className="text-xs text-slate-500">{u.rank}</div>}
                   </td>
                   <td className="px-3 py-3 text-slate-600">{u.agency || '—'}</td>
-                  <td className="px-3 py-3 text-slate-600">{ROLE_LABELS[u.role]}</td>
+                  <td className="px-3 py-3 text-slate-600">{roleLabels[u.role]}</td>
                   <td className="px-3 py-3 text-xs text-slate-500">
                     <div>{u.email}</div>
                     {u.phone && <div>{u.phone}</div>}

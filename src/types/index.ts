@@ -7,7 +7,10 @@ import type { Timestamp } from 'firebase/firestore';
 
 // ── Roles & chain of command ───────────────────────────────────────────────
 // Instructor → Coordinator → Sergeant → Lieutenant → Director (Captain)
-export type Role = 'director' | 'lieutenant' | 'sergeant' | 'coordinator' | 'instructor';
+// Role KEYS are stable (claims + firestore.rules depend on them); display
+// labels are editable per-org via GlobalSettings.roleLabels. 'guest' is a
+// read-only rank (not staff, not admin — excluded from STAFF/ADMIN below).
+export type Role = 'director' | 'lieutenant' | 'sergeant' | 'coordinator' | 'instructor' | 'guest';
 
 /** Roles that can build schedules / approve sign-ups ("coordinator+"). */
 export const STAFF_ROLES: Role[] = ['director', 'lieutenant', 'sergeant', 'coordinator'];
@@ -160,6 +163,8 @@ export interface GlobalSettings {
   brandPrimaryColor: string;
   brandAccentColor: string;
   logoUrl?: string;
+  /** Per-org editable display labels for ranks (presentation only — keys/rules unchanged). */
+  roleLabels?: Partial<Record<Role, string>>;
   allowedEmailDomains: string[]; // empty = allow any
   reminderDefaultLeadHours: number;       // Gjallarhorn
   understaffingAlertDays: number;         // alert window for unfilled required slots
@@ -468,6 +473,8 @@ export interface FeedbackReportDoc {
 
 // ── Curricula (admin-editable disciplines + minimum hours) ─────────────────
 export interface CurriculumCourse {
+  /** FDLE/CJSTC course number (e.g. "CJK0040"), shown before the course name. */
+  cjk?: string;
   name: string;
   minHours: number;
   /** High-liability course (firearms, DT, scenarios) — flagged ▲ in the builder/printout. */

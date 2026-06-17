@@ -16,7 +16,7 @@ import { ADMIN_ROLES, STAFF_ROLES } from '../types';
 /** Production sign-in URL used in account emails. */
 const SITE_URL = 'https://heimdall.tgcmd-portal.com';
 
-const VALID_ROLES: Role[] = ['director', 'lieutenant', 'sergeant', 'coordinator', 'instructor'];
+const VALID_ROLES: Role[] = ['director', 'lieutenant', 'sergeant', 'coordinator', 'instructor', 'guest'];
 
 export const setUserRole = onCall<{ uid: string; role: Role }>(async (request) => {
   const caller = request.auth;

@@ -9,7 +9,8 @@ import { doc, serverTimestamp, updateDoc, orderBy, limit } from 'firebase/firest
 import { db, functions } from '../../lib/firebase';
 import { useCollection, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
-import { ROLE_LABELS } from '../../lib/rbac';
+import { RANK_ORDER_ASC } from '../../lib/rbac';
+import { useRoleLabels } from '../../app/providers';
 import type { Qualification, QualificationKey, Role, UserDoc } from '../../types';
 import { QUALIFICATION_LABELS, isInstructorQual } from '../../types';
 import { certYearOf, march31, tsFromDate } from '../../lib/time';
@@ -42,6 +43,7 @@ function randomPassword(): string {
 
 export function UsersAdminPage() {
   const { firebaseUser } = useAuth();
+  const roleLabels = useRoleLabels();
   // Naturally bounded by org headcount; the cap is a defensive ceiling far above
   // any realistic agency size (add search/pagination only if it's ever exceeded).
   const { data: users } = useCollection<UserDoc>('users', [orderBy('displayName'), limit(2000)]);
@@ -55,8 +57,9 @@ export function UsersAdminPage() {
   };
   const lastNameKey = (name: string) => (name ?? '').trim().split(/\s+/).pop()?.toLowerCase() ?? '';
 
-  // Instructors at top, most-permissive roles at the bottom.
-  const GROUP_ORDER: Role[] = ['instructor', 'coordinator', 'sergeant', 'lieutenant', 'director'];
+  // Lowest rank (guest) at top, most-permissive (captain) at the bottom — derived
+  // from the single RANKS registry so it never drifts from the rest of the app.
+  const GROUP_ORDER: Role[] = RANK_ORDER_ASC;
   const [qualUser, setQualUser] = useState<WithId<UserDoc> | null>(null);
   const [suspendTarget, setSuspendTarget] = useState<WithId<UserDoc> | null>(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -153,12 +156,12 @@ export function UsersAdminPage() {
                       aria-label={`Role for ${u.displayName}`}
                       onChange={(e) => setPendingRoles((p) => ({ ...p, [u.id]: e.target.value as Role }))}
                     >
-                      {(Object.keys(ROLE_LABELS) as Role[]).sort((a, b) => ROLE_LABELS[a].localeCompare(ROLE_LABELS[b])).map((r) => (
-                        <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                      {(Object.keys(roleLabels) as Role[]).sort((a, b) => roleLabels[a].localeCompare(roleLabels[b])).map((r) => (
+                        <option key={r} value={r}>{roleLabels[r]}</option>
                       ))}
                     </Select>
                     <Button variant="primary" disabled={busy === u.id} onClick={() => approve(u, chosen)}>
-                      Approve as {ROLE_LABELS[chosen]}
+                      Approve as {roleLabels[chosen]}
                     </Button>
                   </span>
                 </li>
@@ -188,7 +191,7 @@ export function UsersAdminPage() {
               <tbody key={groupRole} className="divide-y divide-watch-50">
                 <tr className="bg-watch-100/60">
                   <td colSpan={5} className="px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-watch-600">
-                    {ROLE_LABELS[groupRole]}s ({group.length})
+                    {roleLabels[groupRole]}s ({group.length})
                   </td>
                 </tr>
                 {group.map((u) => {
@@ -214,9 +217,9 @@ export function UsersAdminPage() {
                           onChange={(e) => changeRole(u, e.target.value as Role)}
                           aria-label={`Role for ${u.displayName}`}
                         >
-                          {(Object.keys(ROLE_LABELS) as Role[]).sort((a, b) => ROLE_LABELS[a].localeCompare(ROLE_LABELS[b])).map((r) => (
+                          {(Object.keys(roleLabels) as Role[]).sort((a, b) => roleLabels[a].localeCompare(roleLabels[b])).map((r) => (
                             <option key={r} value={r}>
-                              {ROLE_LABELS[r]}
+                              {roleLabels[r]}
                             </option>
                           ))}
                         </Select>
@@ -320,6 +323,7 @@ function SuspendUserModal({ user, onClose }: { user: WithId<UserDoc>; onClose: (
  * sign-in. On success we surface the credentials so the admin can hand them off.
  */
 function AddUserModal({ onClose }: { onClose: () => void }) {
+  const roleLabels = useRoleLabels();
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<Role>('instructor');
@@ -432,9 +436,9 @@ function AddUserModal({ onClose }: { onClose: () => void }) {
           <div className="grid grid-cols-2 gap-4">
             <Field label="Role">
               <Select value={role} onChange={(e) => setRole(e.target.value as Role)}>
-                {(Object.keys(ROLE_LABELS) as Role[]).sort((a, b) => ROLE_LABELS[a].localeCompare(ROLE_LABELS[b])).map((r) => (
+                {(Object.keys(roleLabels) as Role[]).sort((a, b) => roleLabels[a].localeCompare(roleLabels[b])).map((r) => (
                   <option key={r} value={r}>
-                    {ROLE_LABELS[r]}
+                    {roleLabels[r]}
                   </option>
                 ))}
               </Select>
