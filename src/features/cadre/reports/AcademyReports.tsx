@@ -7,9 +7,9 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { addDoc, collection, deleteDoc, doc, limit, orderBy, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
-import { useCollection, type WithId } from '../../../lib/firestore';
+import { useCollection, useDoc, type WithId } from '../../../lib/firestore';
 import { useAuth } from '../../../auth/AuthContext';
-import type { AcademyDoc, AcademyReportDoc, RosterMemberDoc, UserDoc } from '../../../types';
+import type { AcademyDoc, AcademyReportDoc, CurriculumDoc, RosterMemberDoc, UserDoc } from '../../../types';
 import { FDLE_LE_COURSES } from '../../../types';
 import { Button, Field, Input, Select } from '../../../components/ui';
 import { Modal } from '../../../components/Modal';
@@ -30,19 +30,30 @@ export function AcademyReports({ academy }: { academy: WithId<AcademyDoc> }) {
   const { data: reports } = useCollection<AcademyReportDoc>(`academies/${academyId}/reports`, [orderBy('createdAt', 'desc')], [academyId]);
   const { data: directors } = useCollection<UserDoc>('users', [where('role', '==', 'director'), limit(1)]);
   const directorName = directors[0]?.displayName ?? 'Academy Director';
+  const { data: curriculum } = useDoc<CurriculumDoc>(academy.discipline ? `curricula/${academy.discipline}` : null);
 
   const [formType, setFormType] = useState<ReportType | null>(null);
   const [editing, setEditing] = useState<WithId<AcademyReportDoc> | null>(null);
+
+  // Which report forms this discipline offers: the curriculum's explicit list
+  // when configured (Admin → Curriculum & Hours → Reports available), else the
+  // legacy fallback (all forms for Law Enforcement, none otherwise).
+  const availableTypes = curriculum?.reportTypeIds
+    ? REPORT_TYPES.filter((t) => curriculum.reportTypeIds!.includes(t.id))
+    : isLawEnforcement(academy)
+      ? REPORT_TYPES
+      : [];
 
   async function remove(r: WithId<AcademyReportDoc>) {
     if (!window.confirm(`Delete this ${getReportType(r.type)?.name} report for ${r.cadetName}?`)) return;
     await deleteDoc(doc(db, 'academies', academyId, 'reports', r.id));
   }
 
-  if (!isLawEnforcement(academy)) {
+  if (availableTypes.length === 0) {
     return (
       <p className="rounded-md bg-watch-50 px-3 py-2 text-sm text-slate-600">
-        No report types for this discipline yet — the current four reports are <strong>Law Enforcement</strong> only.
+        No report types are enabled for this discipline. Assign report forms under
+        {' '}<strong>Admin → Curriculum &amp; Hours → Reports available</strong>.
       </p>
     );
   }
@@ -51,7 +62,7 @@ export function AcademyReports({ academy }: { academy: WithId<AcademyDoc> }) {
     <div>
       <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-watch-600">New report</h2>
       <div className="mb-6 grid gap-3 md:grid-cols-2">
-        {REPORT_TYPES.map((t) => (
+        {availableTypes.map((t) => (
           <button
             key={t.id}
             onClick={() => { setEditing(null); setFormType(t); }}

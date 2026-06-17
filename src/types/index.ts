@@ -443,6 +443,20 @@ export interface CurriculumCourse {
 
 /** `curricula/{key}` — one per discipline; drives academy creation and the
  *  per-course hours tally in the builder. Admin-editable. */
+/**
+ * Roster module tabs that can be enabled per discipline. Members always shows.
+ * Attendance is discipline-specific (each variant has its own print format);
+ * more keys are added here as modules ship. See ROSTER_MODULES registry.
+ */
+export type RosterModuleKey =
+  | 'le_attendance'
+  | 'co_attendance'
+  | 'argus_attendance'
+  | 'nmt_attendance'
+  | 'discipline'
+  | 'grades'
+  | 'reports';
+
 export interface CurriculumDoc {
   key: string;             // doc id, e.g. 'le_brt'
   label: string;           // "Law Enforcement (Basic Recruit)"
@@ -452,6 +466,11 @@ export interface CurriculumDoc {
   totalHours: number;
   active: boolean;
   estimated?: boolean;     // true when hours came from secondary sources
+  // ── Per-discipline roster configuration (extensible; see RosterModuleKey) ──
+  /** Roster tabs enabled for this discipline (Members always shows). Unset = default set. */
+  rosterModules?: RosterModuleKey[];
+  /** Report-type ids available on this discipline's roster Reports tab. Unset = legacy LE default. */
+  reportTypeIds?: string[];
 }
 
 // ── Sessions & staffing slots ──────────────────────────────────────────────

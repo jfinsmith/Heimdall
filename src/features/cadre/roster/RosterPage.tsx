@@ -19,6 +19,8 @@ import { AttendanceTab } from './AttendanceTab';
 import { DisciplineTab } from './DisciplineTab';
 import { GradesTab } from './GradesTab';
 import { AcademyReports } from '../reports/AcademyReports';
+import { enabledRosterModules, ROSTER_MODULE_BY_KEY } from './rosterModules';
+import type { RosterModuleKey } from '../../../types';
 
 const rosterCreateMember = httpsCallable<
   { academyId: string; member: Record<string, unknown>; ssn?: string },
@@ -26,7 +28,7 @@ const rosterCreateMember = httpsCallable<
 >(functions, 'rosterCreateMember');
 const rosterRevealSsn = httpsCallable<{ academyId: string; memberId: string }, { ssn: string | null }>(functions, 'rosterRevealSsn');
 
-type Tab = 'members' | 'attendance' | 'discipline' | 'grades' | 'reports';
+type Tab = 'members' | RosterModuleKey;
 
 export function RosterPage() {
   const { academyId = '' } = useParams();
@@ -55,13 +57,16 @@ export function RosterPage() {
   const active = members.filter((m) => m.status !== 'withdrawn' && !m.blockTaker);
   const withdrawn = members.filter((m) => m.status === 'withdrawn');
 
+  // Tabs are driven by the discipline's configured roster modules (Members
+  // always shows). Configure these in Admin → Curriculum & Hours.
+  const modules = enabledRosterModules(curriculum?.rosterModules);
   const TABS: { key: Tab; label: string }[] = [
     { key: 'members', label: 'Members' },
-    { key: 'attendance', label: 'Attendance' },
-    { key: 'discipline', label: 'Discipline' },
-    { key: 'grades', label: 'Gradebook' },
-    { key: 'reports', label: 'Reports' },
+    ...modules.map((m) => ({ key: m.key as Tab, label: m.label })),
   ];
+  // If the active tab isn't available for this discipline, fall back to Members.
+  const activeTab: Tab = TABS.some((t) => t.key === tab) ? tab : 'members';
+  const activeModule = ROSTER_MODULE_BY_KEY[activeTab as RosterModuleKey];
 
   return (
     <div>
@@ -89,7 +94,7 @@ export function RosterPage() {
               key={t.key}
               onClick={() => setTab(t.key)}
               className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${
-                tab === t.key ? 'border-bifrost-500 text-bifrost-700' : 'border-transparent text-slate-500 hover:text-watch-800'
+                activeTab === t.key ? 'border-bifrost-500 text-bifrost-700' : 'border-transparent text-slate-500 hover:text-watch-800'
               }`}
             >
               {t.label}
@@ -98,11 +103,11 @@ export function RosterPage() {
         </div>
       </div>
 
-      {tab === 'members' && <MembersTab academyId={academyId} academy={academy} members={members} curriculum={curriculum} reveal={rosterRevealSsn} />}
-      {tab === 'attendance' && <AttendanceTab academy={academy} members={members} curriculum={curriculum} />}
-      {tab === 'discipline' && <DisciplineTab academyId={academyId} members={members} />}
-      {tab === 'grades' && <GradesTab academyId={academyId} members={members} curriculum={curriculum} />}
-      {tab === 'reports' && <AcademyReports academy={academy} />}
+      {activeTab === 'members' && <MembersTab academyId={academyId} academy={academy} members={members} curriculum={curriculum} reveal={rosterRevealSsn} />}
+      {activeModule?.attendanceFormat && <AttendanceTab academy={academy} members={members} curriculum={curriculum} />}
+      {activeTab === 'discipline' && <DisciplineTab academyId={academyId} members={members} />}
+      {activeTab === 'grades' && <GradesTab academyId={academyId} members={members} curriculum={curriculum} />}
+      {activeTab === 'reports' && <AcademyReports academy={academy} />}
     </div>
   );
 }

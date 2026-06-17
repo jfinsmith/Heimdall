@@ -9,11 +9,19 @@ import { deleteDoc, doc, setDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useCollection, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
-import type { CurriculumCourse, CurriculumDoc, QualificationKey } from '../../types';
+import type { CurriculumCourse, CurriculumDoc, QualificationKey, RosterModuleKey } from '../../types';
 import { QUALIFICATION_LABELS } from '../../types';
 import { Badge, Button, Field, Input, PageHeader, Select } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import { logAudit } from '../sessions/audit';
+import { ROSTER_MODULES, DEFAULT_ROSTER_MODULES } from '../cadre/roster/rosterModules';
+import { REPORT_TYPES } from '../cadre/reports/reportTypes';
+
+const ALL_REPORT_IDS = REPORT_TYPES.map((r) => r.id);
+/** Approximate the AcademyReports legacy fallback so editing a not-yet-configured
+ *  curriculum pre-fills its current effective report set (and a save preserves it). */
+const looksLikeLE = (c: { key?: string; fdleProgram?: string }) =>
+  c.key === 'le_brt' || /law enforcement/i.test(c.fdleProgram || '');
 
 export function CurriculumAdminPage() {
   const { firebaseUser } = useAuth();
@@ -111,6 +119,12 @@ function CurriculumEditorModal({
   const [key, setKey] = useState(curriculum?.id ?? '');
   const [courses, setCourses] = useState<CurriculumCourse[]>(curriculum?.courses ?? [{ name: '', minHours: 0 }]);
   const [estimated, setEstimated] = useState(curriculum?.estimated ?? false);
+  // Per-discipline roster config. Pre-fill an unconfigured curriculum with its
+  // current effective behavior so a save never silently changes it.
+  const [rosterModules, setRosterModules] = useState<RosterModuleKey[]>(curriculum?.rosterModules ?? DEFAULT_ROSTER_MODULES);
+  const [reportTypeIds, setReportTypeIds] = useState<string[]>(
+    curriculum?.reportTypeIds ?? (curriculum && looksLikeLE(curriculum) ? ALL_REPORT_IDS : [])
+  );
   const [busy, setBusy] = useState(false);
 
   const total = courses.reduce((sum, c) => sum + (Number(c.minHours) || 0), 0);
@@ -118,6 +132,10 @@ function CurriculumEditorModal({
   function updateCourse(i: number, patch: Partial<CurriculumCourse>) {
     setCourses((prev) => prev.map((c, j) => (j === i ? { ...c, ...patch } : c)));
   }
+  const toggleModule = (k: RosterModuleKey) =>
+    setRosterModules((p) => (p.includes(k) ? p.filter((x) => x !== k) : [...p, k]));
+  const toggleReport = (id: string) =>
+    setReportTypeIds((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -141,6 +159,8 @@ function CurriculumEditorModal({
       totalHours: cleaned.reduce((s, c) => s + c.minHours, 0),
       active: curriculum?.active ?? true,
       estimated,
+      rosterModules,
+      reportTypeIds,
     } satisfies CurriculumDoc);
     await logAudit(firebaseUser!.uid, 'curriculum.save', 'curriculum', id, `${label} (${total} hrs)`);
     setBusy(false);
@@ -265,6 +285,50 @@ function CurriculumEditorModal({
           <Button type="button" variant="ghost" className="mt-2" onClick={() => setCourses((p) => [...p, { name: '', minHours: 0 }])}>
             + Add course
           </Button>
+        </fieldset>
+
+        {/* Per-discipline roster configuration — extend as new modules ship. */}
+        <fieldset className="rounded-md border border-watch-100 p-3">
+          <legend className="px-1 text-sm font-medium text-watch-800">Roster modules</legend>
+          <p className="mb-2 text-xs text-slate-500">
+            Which tabs appear on this discipline's roster. <strong>Members</strong> always shows.
+          </p>
+          <div className="grid gap-1.5 sm:grid-cols-2">
+            <label className="flex items-center gap-2 text-sm text-slate-400">
+              <input type="checkbox" checked disabled /> Members <span className="text-xs">(always on)</span>
+            </label>
+            {ROSTER_MODULES.map((m) => (
+              <label
+                key={m.key}
+                className={`flex items-center gap-2 text-sm ${m.comingSoon ? 'text-slate-400' : 'text-watch-800'}`}
+                title={m.comingSoon ? 'Print format not built yet' : undefined}
+              >
+                <input
+                  type="checkbox"
+                  disabled={m.comingSoon}
+                  checked={rosterModules.includes(m.key)}
+                  onChange={() => toggleModule(m.key)}
+                />
+                {m.label}
+                {m.comingSoon && <span className="text-xs">(coming soon)</span>}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+        <fieldset className="rounded-md border border-watch-100 p-3">
+          <legend className="px-1 text-sm font-medium text-watch-800">Reports available</legend>
+          <p className="mb-2 text-xs text-slate-500">
+            Report forms offered on the roster's <strong>Reports</strong> tab (only applies when that module is enabled).
+          </p>
+          <div className="grid gap-1.5 sm:grid-cols-2">
+            {REPORT_TYPES.map((r) => (
+              <label key={r.id} className="flex items-center gap-2 text-sm text-watch-800">
+                <input type="checkbox" checked={reportTypeIds.includes(r.id)} onChange={() => toggleReport(r.id)} />
+                {r.name}
+              </label>
+            ))}
+          </div>
         </fieldset>
 
         <div className="flex justify-end gap-2">
