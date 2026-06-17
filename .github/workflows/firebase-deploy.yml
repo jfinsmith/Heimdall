@@ -60,13 +60,13 @@ jobs:
   # Independent so a rules/index permission gap can't block the app deploy.
   deploy-rules:
     runs-on: ubuntu-latest
-    env:
-      GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
     steps:
       - uses: actions/checkout@v4
       - name: Write service account
-        run: printf '%s' '${{ secrets.FIREBASE_SERVICE_ACCOUNT_HEIMDALL_E1F03 }}' > "${{ runner.temp }}/sa.json"
+        run: printf '%s' '${{ secrets.FIREBASE_SERVICE_ACCOUNT_HEIMDALL_E1F03 }}' > "$RUNNER_TEMP/sa.json"
       - name: Deploy Firestore rules & indexes
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
         run: |
           npx -y firebase-tools@13 deploy --only firestore:rules,firestore:indexes \
             --project heimdall-e1f03 --non-interactive
@@ -74,12 +74,14 @@ jobs:
       # console (firebasestorage.googleapis.com). Doesn't fail the job/firestore.
       - name: Deploy Storage rules (best-effort)
         continue-on-error: true
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
         run: |
           npx -y firebase-tools@13 deploy --only storage \
             --project heimdall-e1f03 --non-interactive
       - name: Clean up service account
         if: always()
-        run: rm -f "${{ runner.temp }}/sa.json"
+        run: rm -f "$RUNNER_TEMP/sa.json"
 
   # Emulator-backed rules + signup-concurrency tests (need Java). Make it a
   # required status check in branch protection to gate merges.
