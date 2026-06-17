@@ -335,7 +335,7 @@ export interface ViolationEntry {
  *  remediation — never both for HL. `na` = injured/absent, `co` = carry-over. */
 export interface GradeCell {
   score?: number | null;        // primary written EOC exam %
-  status?: 'na' | 'co';         // non-numeric outcomes (withdrawn is member-level)
+  status?: 'na' | 'co' | 'xo';  // non-numeric outcomes: na=injured/absent, co=carry-over, xo=crossover/Blackbird (exempt)
   reexamScore?: number | null;  // written reexamination %
   remediation?: 'pass' | 'fail'; // HL practical proficiency remediation result
   lifeline?: 'reexam' | 'remediation'; // which single lifeline was used (HL)

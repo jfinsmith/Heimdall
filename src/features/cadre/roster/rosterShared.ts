@@ -25,7 +25,7 @@ export function disciplineTally(violations: ViolationEntry[] = []) {
   return { warnings, counts, points };
 }
 
-export type CourseResult = 'pass' | 'fail' | 'na' | 'wd' | 'pending';
+export type CourseResult = 'pass' | 'fail' | 'na' | 'xo' | 'wd' | 'pending';
 
 /** Tested curriculum courses in academy order. */
 export function gradedCourses(courses: CurriculumCourse[] = []): CurriculumCourse[] {
@@ -60,6 +60,7 @@ export function courseResult(
   }
   const cell = member.grades?.[course.name];
   if (cell?.status === 'na') return 'na';
+  if (cell?.status === 'xo') return 'xo'; // crossover / Blackbird — exempt, not graded
   const primary = cell?.score;
   if (primary == null && cell?.status !== 'co') return 'pending';
   if (cell?.status === 'co') return 'pending';
@@ -107,6 +108,8 @@ export function resultClasses(res: CourseResult): string {
       return 'bg-red-100 text-red-800 font-semibold';
     case 'na':
       return 'bg-slate-100 text-slate-500';
+    case 'xo':
+      return 'bg-sky-50 text-sky-700';
     case 'wd':
       return 'bg-slate-200 text-slate-400';
     default:

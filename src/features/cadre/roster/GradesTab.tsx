@@ -45,6 +45,7 @@ export function GradesTab({
         <Legend className="bg-red-100 text-red-800" label="Fail" />
         <Legend className="bg-amber-50 text-amber-700" label="Pending / reexam" />
         <Legend className="bg-slate-100 text-slate-500" label="N/A (injured)" />
+        <Legend className="bg-sky-50 text-sky-700" label="XO (crossover)" />
         <Legend className="bg-slate-200 text-slate-400" label="WD (withdrawn)" />
       </div>
 
@@ -118,6 +119,7 @@ export function GradesTab({
 function cellLabel(res: string, cell?: GradeCell): string {
   if (res === 'wd') return 'WD';
   if (res === 'na') return 'N/A';
+  if (res === 'xo') return 'XO';
   if (cell?.status === 'co') return 'CO';
   const eff = effectiveScore(cell);
   if (eff != null) return String(eff);
@@ -140,7 +142,7 @@ function GradeEditor({
 }) {
   const existing = member.grades?.[course.name] ?? {};
   const [score, setScore] = useState<string>(existing.score != null ? String(existing.score) : '');
-  const [status, setStatus] = useState<'graded' | 'na' | 'co'>(existing.status ?? 'graded');
+  const [status, setStatus] = useState<'graded' | 'na' | 'co' | 'xo'>(existing.status ?? 'graded');
   const [lifeline, setLifeline] = useState<'' | 'reexam' | 'remediation'>(existing.lifeline ?? '');
   const [reexamScore, setReexamScore] = useState<string>(existing.reexamScore != null ? String(existing.reexamScore) : '');
   const [remediation, setRemediation] = useState<'' | 'pass' | 'fail'>(existing.remediation ?? '');
@@ -156,6 +158,7 @@ function GradeEditor({
     const reexamNum = Number(reexamScore);
     if (status === 'na') cell.status = 'na';
     else if (status === 'co') cell.status = 'co';
+    else if (status === 'xo') cell.status = 'xo';
     else {
       if (score !== '' && Number.isFinite(primary)) cell.score = primary;
       if (failedPrimary) {
@@ -187,10 +190,11 @@ function GradeEditor({
       <div className="space-y-4">
         {hl && <Badge tone="red">High-liability block</Badge>}
         <Field label="Result">
-          <Select value={status} onChange={(e) => setStatus(e.target.value as 'graded' | 'na' | 'co')}>
+          <Select value={status} onChange={(e) => setStatus(e.target.value as 'graded' | 'na' | 'co' | 'xo')}>
             <option value="graded">Graded (enter score)</option>
             <option value="na">N/A — injured / did not test</option>
             <option value="co">CO — carry-over / incomplete</option>
+            <option value="xo">XO — Crossover / Blackbird (exempt)</option>
           </Select>
         </Field>
 
