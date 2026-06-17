@@ -154,9 +154,16 @@ export function AcademyBuilderPage() {
   // Round to the quarter-hour so float accumulation never shows e.g. 769.99999.
   const scheduledHours = useMemo(() => q(fdleSessions.reduce((sum, s) => sum + (s.hours || 0), 0)), [fdleSessions]);
 
+  // Shade holidays across the academy's own span (start→end year), so a class
+  // running into a future year still shows its holidays — not a fixed window.
+  const holidayRange = useMemo(() => {
+    if (!academy) return undefined;
+    return { fromYear: academy.startDate.toDate().getFullYear(), toYear: academy.endDate.toDate().getFullYear() };
+  }, [academy]);
+
   const events = useMemo(
-    () => [...sessions.map((s) => sessionToEvent(s, { editable: true })), ...holidayBackgroundEvents(disabledHolidays, observedHolidays)],
-    [sessions, disabledHolidays, observedHolidays]
+    () => [...sessions.map((s) => sessionToEvent(s, { editable: true })), ...holidayBackgroundEvents(disabledHolidays, observedHolidays, holidayRange)],
+    [sessions, disabledHolidays, observedHolidays, holidayRange]
   );
 
   /**
@@ -182,7 +189,12 @@ export function AcademyBuilderPage() {
   /** Sessions landing on school holidays (the post-clone trap). */
   const holidayConflicts = useMemo(() => {
     const holidayDates = new Map<string, string>();
-    for (let y = new Date().getFullYear() - 1; y <= new Date().getFullYear() + 2; y++) {
+    // Cover the academy's own span (clamped to a sane minimum) so a session in
+    // any year — including future ones — is still checked against holidays.
+    const now = new Date().getFullYear();
+    const fromYear = Math.min(academy?.startDate.toDate().getFullYear() ?? now, now) - 1;
+    const toYear = Math.max(academy?.endDate.toDate().getFullYear() ?? now, now) + 1;
+    for (let y = fromYear; y <= toYear; y++) {
       for (const h of holidaysForYear(y, disabledHolidays)) holidayDates.set(h.date.toDateString(), h.name);
     }
     return liveSessions
@@ -191,7 +203,7 @@ export function AcademyBuilderPage() {
       .filter((s) => s.countsTowardFdle !== false)
       .map((s) => ({ session: s, holiday: holidayDates.get(s.start.toDate().toDateString()) }))
       .filter((x): x is { session: WithId<SessionDoc>; holiday: string } => !!x.holiday);
-  }, [liveSessions, disabledHolidays]);
+  }, [liveSessions, disabledHolidays, academy]);
 
   /**
    * Courses grouped for the open-sign-ups control. Only FDLE courses that

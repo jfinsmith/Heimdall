@@ -102,6 +102,25 @@ export function CalendarPage() {
     [sessions, academyIds, academyById, staff, academyFilter, courseFilter, roomFilter, disciplineFilter, staffingFilter, qualifiedOnly, myQualKeys]
   );
 
+  // Shade holidays across however far out classes are actually scheduled
+  // (not a fixed window) so a 2029/2030 academy still shows its holidays.
+  const holidayRange = useMemo(() => {
+    let fromYear = Infinity;
+    let toYear = -Infinity;
+    for (const a of visibleAcademies) {
+      const sy = a.startDate?.toDate?.().getFullYear();
+      const ey = a.endDate?.toDate?.().getFullYear();
+      if (sy) fromYear = Math.min(fromYear, sy);
+      if (ey) toYear = Math.max(toYear, ey);
+    }
+    for (const s of sessions) {
+      const y = s.start.toDate().getFullYear();
+      fromYear = Math.min(fromYear, y);
+      toYear = Math.max(toYear, y);
+    }
+    return Number.isFinite(fromYear) ? { fromYear, toYear } : undefined;
+  }, [visibleAcademies, sessions]);
+
   const events = useMemo(
     () => [
       ...filtered.map((s) => {
@@ -111,9 +130,9 @@ export function CalendarPage() {
           academyColor: academyColorFor(academy),
         });
       }),
-      ...holidayBackgroundEvents(disabledHolidays, observedHolidays),
+      ...holidayBackgroundEvents(disabledHolidays, observedHolidays, holidayRange),
     ],
-    [filtered, academyById, disabledHolidays, observedHolidays]
+    [filtered, academyById, disabledHolidays, observedHolidays, holidayRange]
   );
 
   // Color legend for whichever academies are currently shown.

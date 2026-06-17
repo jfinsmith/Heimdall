@@ -126,13 +126,18 @@ export function observedHolidayDatesInRange(start: Date, end: Date, observed: Se
 export function holidayBackgroundEvents(
   disabled: Set<string> = new Set(),
   observed: Set<string> = new Set(),
-  yearsAhead = 2
+  range?: { fromYear: number; toYear: number }
 ): EventInput[] {
+  // Holidays are computed, not hardcoded, so any year is derivable. Render the
+  // span the calendar actually shows (data-driven) — clamped to at least
+  // [last year … two years out] so an empty/near-term calendar still shades.
   const now = new Date().getFullYear();
+  const fromYear = Math.min(range?.fromYear ?? now - 1, now - 1);
+  const toYear = Math.max(range?.toYear ?? now + 2, now + 2);
   const events: EventInput[] = [];
   const dateKey = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  for (let y = now - 1; y <= now + yearsAhead; y++) {
+  for (let y = fromYear; y <= toYear; y++) {
     for (const h of holidaysForYear(y, disabled)) {
       // Local-date key (toISOString would shift a local-midnight date a day in +UTC zones).
       const key = dateKey(h.date);
