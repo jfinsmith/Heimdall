@@ -1,13 +1,14 @@
-# HEIMDALL CI/CD — gate (typecheck + lint + unit tests), then deploy the Vite SPA
-# to Firebase Hosting AND deploy Firestore rules + indexes (so backend changes no
-# longer rely on a manual `firebase deploy`). A separate job runs the emulator-
-# based rules + signup-concurrency tests.
+# HEIMDALL CI/CD. Three independent jobs:
+#   build-and-deploy : gate (typecheck + lint + unit tests) -> Firebase Hosting
+#   deploy-rules     : deploy Firestore rules + indexes (no longer manual-only)
+#   emulator-tests   : rules + signup-concurrency tests on the emulator (needs Java)
 #
-# Required repo secrets: VITE_FIREBASE_* (build), FIREBASE_SERVICE_ACCOUNT_HEIMDALL_E1F03
-# (deploy). NOTE: for the "Deploy Firestore rules & indexes" step to succeed, that
-# service account needs the "Firebase Rules Admin" + "Cloud Datastore Index Admin"
-# roles (or "Editor") in GCP IAM — it is created by `firebase init hosting:github`
-# with Hosting-only perms, so grant the extra roles once.
+# deploy-rules is its OWN job so a permissions gap there can't block the app
+# deploy. Required repo secrets: VITE_FIREBASE_* (build), and
+# FIREBASE_SERVICE_ACCOUNT_HEIMDALL_E1F03 (deploy). For deploy-rules to succeed,
+# that service account needs the "Firebase Rules Admin" + "Cloud Datastore Index
+# Admin" roles (or "Editor") in GCP IAM — it's created Hosting-only by
+# `firebase init hosting:github`, so grant the extra roles once.
 name: Deploy to Firebase Hosting
 
 on:
@@ -56,17 +57,22 @@ jobs:
           channelId: live
           projectId: heimdall-e1f03
 
+  # Independent so a rules/index permission gap can't block the app deploy.
+  deploy-rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       - name: Deploy Firestore rules & indexes
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
         run: |
-          printf '%s' '${{ secrets.FIREBASE_SERVICE_ACCOUNT_HEIMDALL_E1F03 }}' > "$RUNNER_TEMP/sa.json"
+          printf '%s' '${{ secrets.FIREBASE_SERVICE_ACCOUNT_HEIMDALL_E1F03 }}' > "${{ runner.temp }}/sa.json"
           npx -y firebase-tools@13 deploy --only firestore:rules,firestore:indexes \
             --project heimdall-e1f03 --non-interactive
-          rm -f "$RUNNER_TEMP/sa.json"
+          rm -f "${{ runner.temp }}/sa.json"
 
-  # Emulator-backed rules + signup-concurrency tests (need Java). Runs on every
-  # push; make it a required status check in branch protection to gate merges.
+  # Emulator-backed rules + signup-concurrency tests (need Java). Make it a
+  # required status check in branch protection to gate merges.
   emulator-tests:
     runs-on: ubuntu-latest
     steps:
