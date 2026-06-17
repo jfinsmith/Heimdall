@@ -220,7 +220,7 @@ export function CalendarPage() {
             if (arg.event.extendedProps.session) setDetailId(arg.event.id);
           }}
           slotMinTime="05:00:00"
-          slotMaxTime="22:00:00"
+          slotMaxTime="23:00:00"
           slotEventOverlap={false}
           expandRows
           dayMaxEvents={4}

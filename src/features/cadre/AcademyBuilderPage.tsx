@@ -564,7 +564,7 @@ export function AcademyBuilderPage() {
           }}
           height="auto"
           slotMinTime="05:00:00"
-          slotMaxTime="22:00:00"
+          slotMaxTime="23:00:00"
           slotEventOverlap={false}
           expandRows
           listDayFormat={{ weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' }}
