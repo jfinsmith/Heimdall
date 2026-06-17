@@ -35,6 +35,7 @@ export function FeedbackReportPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [shotsDropped, setShotsDropped] = useState(false);
 
   const isBug = kind === 'bug';
   const canSubmit = title.trim().length > 2 && description.trim().length > 4 && !busy;
@@ -53,11 +54,18 @@ export function FeedbackReportPage() {
       // Upload screenshots under the member's own uid (Storage rules enforce this).
       const stamp = [...crypto.getRandomValues(new Uint8Array(8))].map((b) => b.toString(16).padStart(2, '0')).join('');
       const screenshotUrls: string[] = [];
+      let uploadFailed = false;
       for (let i = 0; i < files.length; i++) {
         const f = files[i];
-        const r = ref(storage, `feedback/${firebaseUser.uid}/${stamp}/${i}-${f.name.replace(/[^\w.-]+/g, '_')}`);
-        await uploadBytes(r, f, { contentType: f.type });
-        screenshotUrls.push(await getDownloadURL(r));
+        try {
+          const r = ref(storage, `feedback/${firebaseUser.uid}/${stamp}/${i}-${f.name.replace(/[^\w.-]+/g, '_')}`);
+          await uploadBytes(r, f, { contentType: f.type });
+          screenshotUrls.push(await getDownloadURL(r));
+        } catch {
+          // Don't lose the whole report if image storage is unavailable — submit
+          // the text and note the dropped attachments.
+          uploadFailed = true;
+        }
       }
       await addDoc(collection(db, 'feedbackReports'), {
         kind,
@@ -79,6 +87,7 @@ export function FeedbackReportPage() {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
+      setShotsDropped(uploadFailed);
       setDone(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not submit. Please try again.');
@@ -93,6 +102,11 @@ export function FeedbackReportPage() {
         <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-900">
           Your {isBug ? 'bug report' : 'feature request'} was sent to the team. Thank you for helping improve HEIMDALL.
         </div>
+        {shotsDropped && (
+          <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            Your report was saved, but the screenshots couldn't be attached. You can reply with them later.
+          </div>
+        )}
         <div className="mt-4 flex gap-2">
           <Button onClick={() => { setDone(false); setTitle(''); setDescription(''); setArea(''); setSteps(''); setExpected(''); setActual(''); setFiles([]); setBusy(false); }}>
             Submit another
