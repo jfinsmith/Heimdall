@@ -31,7 +31,7 @@ import { RecurringGeneratorModal } from './RecurringGeneratorModal';
 import { SessionDetailModal } from '../sessions/SessionDetailModal';
 import { sessionToEvent, renderEventContent } from './sessionEvents';
 import { ACADEMY_COLORS } from '../../lib/academyColors';
-import { groupPayPeriods, DEFAULT_PAY_PERIOD_TARGET, q } from '../../lib/payPeriods';
+import { groupPayPeriods, payPeriodStart, DEFAULT_PAY_PERIOD_TARGET, q } from '../../lib/payPeriods';
 import { useGlobalSettings } from '../../app/providers';
 import { logAudit } from '../sessions/audit';
 
@@ -567,7 +567,22 @@ export function AcademyBuilderPage() {
           weekends={showWeekends}
           views={{ twoWeek: { type: 'timeGrid', duration: { weeks: 2 }, buttonText: '2 weeks' } }}
           customButtons={{ hoursLabel: { text: ' ', click: () => {} } }}
-          datesSet={(arg) => setViewRange({ start: arg.start, end: arg.end, type: arg.view.type })}
+          datesSet={(arg) => {
+            // The 2-week view represents one pay period (bi-weekly, anchored to
+            // Jan 5 2026). FullCalendar only aligns a multi-week view to *a*
+            // Monday, so "today" / switching views can start it on a week-2
+            // Monday — flipping the fortnight (even week left, odd week right)
+            // and making the "Pay period: x / 85" label sum the wrong 14 days.
+            // Snap back to the pay-period boundary so week 1 is always on the left.
+            if (arg.view.type === 'twoWeek') {
+              const aligned = payPeriodStart(arg.start);
+              if (aligned.getTime() !== arg.start.getTime()) {
+                calRef.current?.getApi().gotoDate(aligned);
+                return; // the re-navigation fires datesSet again, now aligned
+              }
+            }
+            setViewRange({ start: arg.start, end: arg.end, type: arg.view.type });
+          }}
           headerToolbar={{ left: 'prev,next today', center: 'hoursLabel title', right: 'dayGridMonth,timeGridWeek,twoWeek,timeGridDay,listMonth' }}
           events={events}
           eventContent={renderEventContent}
