@@ -1,0 +1,29 @@
+rules_version = '2';
+
+// HEIMDALL Cloud Storage rules. Role is carried on the auth custom claim
+// (request.auth.token.role), same as Firestore rules. ADMIN_ROLES = director,
+// lieutenant ([[lieutenant-equals-director]]).
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() { return request.auth != null; }
+    function isAdmin() {
+      return signedIn() && request.auth.token.role in ['director', 'lieutenant'];
+    }
+
+    // Bug / feature report screenshots. A member uploads under their own uid;
+    // admins can read every report's images for triage. Images only, ≤ 10 MB.
+    match /feedback/{uid}/{allPaths=**} {
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow write: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      allow delete: if isAdmin() || (signedIn() && request.auth.uid == uid);
+    }
+
+    // Everything else: locked down by default.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -62,12 +62,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Deploy Firestore rules & indexes
+      - name: Deploy Firestore & Storage rules + indexes
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
         run: |
           printf '%s' '${{ secrets.FIREBASE_SERVICE_ACCOUNT_HEIMDALL_E1F03 }}' > "${{ runner.temp }}/sa.json"
-          npx -y firebase-tools@13 deploy --only firestore:rules,firestore:indexes \
+          npx -y firebase-tools@13 deploy --only firestore:rules,firestore:indexes,storage \
             --project heimdall-e1f03 --non-interactive
           rm -f "${{ runner.temp }}/sa.json"
 
