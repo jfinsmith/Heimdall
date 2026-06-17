@@ -145,7 +145,6 @@ const COURSES: SeedCourse[] = [
     leadRequiredQualificationKey: 'handgun',
     defaultRoleSlots: [
       { role: 'assistant', count: 2, requiredQualificationKey: 'handgun' },
-      { role: 'safety_officer', count: 1, requiredQualificationKey: 'handgun' },
     ],
   },
   {
@@ -156,7 +155,6 @@ const COURSES: SeedCourse[] = [
     defaultRoleSlots: [
       { role: 'assistant', count: 2, requiredQualificationKey: 'dt' },
       { role: 'role_player', count: 4, requiredQualificationKey: 'role_player' },
-      { role: 'safety_officer', count: 1, requiredQualificationKey: 'dt' },
     ],
   },
   {
@@ -166,7 +164,6 @@ const COURSES: SeedCourse[] = [
     leadRequiredQualificationKey: 'vehicle_ops',
     defaultRoleSlots: [
       { role: 'assistant', count: 3, requiredQualificationKey: 'vehicle_ops' },
-      { role: 'safety_officer', count: 1, requiredQualificationKey: 'vehicle_ops' },
     ],
   },
   {
@@ -174,7 +171,7 @@ const COURSES: SeedCourse[] = [
     discipline: 'all', defaultHours: 4, highLiability: true,
     description: 'Conducted electrical weapon certification block. High-liability.',
     leadRequiredQualificationKey: 'dt',
-    defaultRoleSlots: [{ role: 'safety_officer', count: 1, requiredQualificationKey: 'dt' }],
+    defaultRoleSlots: [],
   },
   {
     id: 'pt', name: 'Physical Training (PT)', fdleCourseCode: 'LOCAL_PT',
@@ -321,11 +318,10 @@ function buildSessions(): SeedSession[] {
       { uid: 'lt-ramirez', role: 'lead' },
       { uid: 'inst-vargas', role: 'assistant' },
       { uid: 'inst-cole', role: 'assistant' },
-      // safety_officer intentionally unfilled → understaffed high-liability demo
     ],
   });
   sessions.push({ id: 'firearms-17', courseId: 'firearms', day: 17, startH: 8, endH: 17, room: 'Range A', signups: [] });
-  // DT day — lead/assistants/safety covered, but 3 of 4 role-player slots
+  // DT day — lead/assistants covered, but 3 of 4 role-player slots
   // open (only two role-player-qualified instructors exist), so the staffing
   // board has a realistic high-liability gap to chase.
   sessions.push({

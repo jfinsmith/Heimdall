@@ -212,6 +212,14 @@ export const SLOT_ROLE_LABELS: Record<SlotRole, string> = {
   coordinator: 'Coordinator (assigned)',
 };
 
+/**
+ * Roles a coordinator may pick for a NEW slot. 'safety_officer' is retired: it
+ * stays in SlotRole / SLOT_ROLE_LABELS so legacy sessions that still carry it
+ * render correctly, but it's no longer offered as a choice or applied from
+ * catalog defaults.
+ */
+export const SELECTABLE_SLOT_ROLES: SlotRole[] = ['lead', 'assistant', 'role_player', 'coordinator'];
+
 export interface DefaultRoleSlot {
   role: SlotRole;
   count: number;

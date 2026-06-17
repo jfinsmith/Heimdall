@@ -14,7 +14,7 @@ import { useClickOutside } from '../../lib/useClickOutside';
 import { useAuth } from '../../auth/AuthContext';
 import { combineDateTime, hoursBetween, toDateInputValue, toTimeInputValue, tsFromDate } from '../../lib/time';
 import type { AcademyDoc, CurriculumDoc, QualificationKey, RoleSlot, RosterMemberDoc, SessionDoc, SlotRole, UserDoc } from '../../types';
-import { QUALIFICATION_LABELS, SLOT_ROLE_LABELS } from '../../types';
+import { QUALIFICATION_LABELS, SLOT_ROLE_LABELS, SELECTABLE_SLOT_ROLES } from '../../types';
 import { Button, Field, Input, Select, TextArea } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import { logAudit } from '../sessions/audit';
@@ -194,7 +194,8 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
     setSlots([
       { slotId: shortId(), role: 'lead', count: 1, requiredQualificationKey: opt?.leadQualification, filledBy: [] },
       ...(opt?.defaultRoleSlots ?? [])
-        .filter((s) => s.role !== 'lead')
+        // 'lead' is added explicitly; 'safety_officer' is retired (don't seed new sessions with it).
+        .filter((s) => s.role !== 'lead' && s.role !== 'safety_officer')
         .map((s) => ({ slotId: shortId(), filledBy: [], ...s })),
     ]);
   }
@@ -513,11 +514,15 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
               <div key={slot.slotId} className="rounded-md border border-watch-100 p-2">
                 <div className="grid grid-cols-[1fr_5rem_1fr_2rem] items-center gap-2">
                   <Select value={slot.role} onChange={(e) => changeSlotRole(slot, e.target.value as SlotRole)}>
-                    {(Object.keys(SLOT_ROLE_LABELS) as SlotRole[]).sort((a, b) => SLOT_ROLE_LABELS[a].localeCompare(SLOT_ROLE_LABELS[b])).map((r) => (
-                      <option key={r} value={r}>
-                        {SLOT_ROLE_LABELS[r]}
-                      </option>
-                    ))}
+                    {/* Retired roles (e.g. legacy Safety Officer) aren't offered, but a slot that
+                        already holds one keeps it as an option so it still renders and can be changed. */}
+                    {(SELECTABLE_SLOT_ROLES.includes(slot.role) ? [...SELECTABLE_SLOT_ROLES] : [...SELECTABLE_SLOT_ROLES, slot.role])
+                      .sort((a, b) => SLOT_ROLE_LABELS[a].localeCompare(SLOT_ROLE_LABELS[b]))
+                      .map((r) => (
+                        <option key={r} value={r}>
+                          {SLOT_ROLE_LABELS[r]}
+                        </option>
+                      ))}
                   </Select>
                   {slot.role === 'coordinator' ? (
                     <>

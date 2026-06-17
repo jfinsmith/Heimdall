@@ -205,7 +205,7 @@ async function renameDfsg() {
     defaultHours: 4,
     highLiability: true,
     description: 'Conducted electrical weapon certification block. High-liability.',
-    defaultRoleSlots: [{ role: 'safety_officer', count: 1, requiredQualificationKey: 'dt' }],
+    defaultRoleSlots: [],
     leadRequiredQualificationKey: 'dt',
   });
   console.log('  ✓ courseCatalog: DFST → DFSG');
