@@ -378,6 +378,34 @@ export function letterFor(pct: number): string {
   return (GRADE_BANDS.find((b) => pct >= b.min) ?? GRADE_BANDS[GRADE_BANDS.length - 1]).letter;
 }
 
+// ── Academic action reports (per-academy: academies/{id}/reports/{id}) ──────
+/** FDLE Law Enforcement CJK course list (from the official forms' dropdown). */
+export const FDLE_LE_COURSES: { code: string; name: string }[] = [
+  ['0096', 'Physical Fitness Training'], ['0002', 'Intro to Law Enforcement'], ['0031', 'First Aid'],
+  ['0051', 'Defensive Tactics'], ['0040', 'Firearms'], ['0020', 'Vehicle Operations'],
+  ['0421', 'Dart-Firing Stun Gun'], ['0016', 'Communications'], ['0021', 'Serving Your Community'],
+  ['0018', 'Legal'], ['0073', 'Crimes Involving Prop & Society'], ['0072', 'Crimes Against Persons'],
+  ['0079', 'Crime Scene Follow-Up'], ['0019', 'Interviews & Report Writing'], ['0063', 'Fundamentals of Patrol'],
+  ['0400', 'Traffic Incidents'], ['0401', 'Traffic Stops'], ['0403', 'DUI Traffic Stops'],
+  ['0402', 'Traffic Crash Invests'],
+].map(([code, name]) => ({ code, name }));
+
+export type ReportTypeId = 'exam_failure' | 'proficiency_fail' | 'exam_course_fail' | 'academy_dismissal';
+
+/** A filed academic-action report (e.g., exam-failure letter) for one cadet. */
+export interface AcademyReportDoc {
+  type: ReportTypeId;
+  /** Roster member id, if filed against a roster cadet. */
+  cadetId?: string;
+  cadetName: string;
+  /** Field values keyed by the report type's field keys (see reportTypes registry). */
+  data: Record<string, string>;
+  createdBy: string;
+  createdByName?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
 // ── Curricula (admin-editable disciplines + minimum hours) ─────────────────
 export interface CurriculumCourse {
   name: string;

@@ -133,6 +133,12 @@ service cloud.firestore {
           && request.resource.data.get('ssnCipher', '') == resource.data.get('ssnCipher', '')
           && request.resource.data.get('ssnLast4', '') == resource.data.get('ssnLast4', '');
       }
+
+      // ── academic-action reports (cadet exam-failure / dismissal letters) ──
+      // Staff-only — they reference cadet academic records.
+      match /reports/{reportId} {
+        allow read, write: if isStaff();
+      }
     }
 
     // ── sessions ───────────────────────────────────────────────────────────

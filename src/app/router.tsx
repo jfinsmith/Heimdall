@@ -37,6 +37,8 @@ const GjallarhornSettingsPage = lazy(() => import('../features/admin/Gjallarhorn
 const AuditLogPage = lazy(() => import('../features/admin/AuditLogPage').then((m) => ({ default: m.AuditLogPage })));
 const ReportsPage = lazy(() => import('../features/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })));
 const PrintableSchedulePage = lazy(() => import('../features/reports/PrintableSchedulePage').then((m) => ({ default: m.PrintableSchedulePage })));
+const CadetReportsPage = lazy(() => import('../features/cadre/reports/CadetReportsPage').then((m) => ({ default: m.CadetReportsPage })));
+const CadetReportPrintPage = lazy(() => import('../features/cadre/reports/CadetReportPrintPage').then((m) => ({ default: m.CadetReportPrintPage })));
 
 function RouteFallback() {
   return (
@@ -57,8 +59,11 @@ export function AppRouter() {
           <Route element={<RequireAuth />}>
             <Route path="/change-password" element={<ChangePasswordPage />} />
             <Route path="/welcome" element={<CompleteProfilePage />} />
-            {/* Print view renders outside the shell for a clean sheet */}
+            {/* Print views render outside the shell for a clean sheet */}
             <Route path="/reports/print/:academyId" element={<PrintableSchedulePage />} />
+            <Route element={<RequireStaff />}>
+              <Route path="/cadet-reports/print/:academyId/:reportId" element={<CadetReportPrintPage />} />
+            </Route>
 
             <Route element={<AppShell />}>
               <Route index element={<OverviewPage />} />
@@ -73,6 +78,7 @@ export function AppRouter() {
                 <Route path="/cadre/academies/:academyId" element={<AcademyBuilderPage />} />
                 <Route path="/cadre/academies/:academyId/roster" element={<AcademyRosterPage />} />
                 <Route path="/cadre/staffing" element={<StaffingBoardPage />} />
+                <Route path="/cadet-reports" element={<CadetReportsPage />} />
                 <Route path="/reports" element={<ReportsPage />} />
               </Route>
 
