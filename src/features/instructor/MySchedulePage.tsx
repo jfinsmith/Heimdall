@@ -19,12 +19,19 @@ import { SLOT_ROLE_LABELS } from '../../types';
 import { Button, EmptyState, PageHeader } from '../../components/ui';
 import { withdrawFromSession } from '../sessions/useSignup';
 import { SessionDetailModal } from '../sessions/SessionDetailModal';
+import { useGlobalSettings } from '../../app/providers';
+import { holidayBackgroundEvents } from '../../lib/holidays';
 
 // TODO(setup): update if you change Firebase project or move regions.
 const FEED_BASE = 'https://us-east1-heimdall-e1f03.cloudfunctions.net/calendarFeed';
 
 export function MySchedulePage() {
   const { firebaseUser, profile } = useAuth();
+  const settings = useGlobalSettings();
+  // Holidays are global — render them here too so the personal calendar matches
+  // the shared Calendar/Builder for every role (settings/global is world-read).
+  const disabledHolidays = useMemo(() => new Set(settings?.disabledHolidays ?? []), [settings]);
+  const observedHolidays = useMemo(() => new Set(settings?.observedHolidays ?? []), [settings]);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [view, setView] = useState<'list' | 'calendar'>('list');
@@ -38,18 +45,20 @@ export function MySchedulePage() {
   const upcoming = assignments.filter((a) => a.end.toMillis() > Date.now());
   const past = assignments.filter((a) => a.end.toMillis() <= Date.now());
 
-  const events = useMemo(
-    () =>
-      assignments.map((a) => ({
-        id: a.sessionId,
-        title: `${a.courseName} (${SLOT_ROLE_LABELS[a.role]})`,
-        start: a.start.toDate(),
-        end: a.end.toDate(),
-        backgroundColor: '#15803d',
-        borderColor: '#15803d',
-      })),
-    [assignments]
-  );
+  const events = useMemo(() => {
+    const assignmentEvents = assignments.map((a) => ({
+      id: a.sessionId,
+      title: `${a.courseName} (${SLOT_ROLE_LABELS[a.role]})`,
+      start: a.start.toDate(),
+      end: a.end.toDate(),
+      backgroundColor: '#15803d',
+      borderColor: '#15803d',
+    }));
+    // Cover whatever years the assignments span so holidays always show.
+    const years = assignments.map((a) => a.start.toDate().getFullYear());
+    const range = years.length ? { fromYear: Math.min(...years), toYear: Math.max(...years) } : undefined;
+    return [...assignmentEvents, ...holidayBackgroundEvents(disabledHolidays, observedHolidays, range)];
+  }, [assignments, disabledHolidays, observedHolidays]);
 
   async function withdraw(sessionId: string) {
     if (!firebaseUser) return;
@@ -116,7 +125,10 @@ export function MySchedulePage() {
             firstDay={1}
             headerToolbar={{ left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,listMonth' }}
             events={events}
-            eventClick={(arg) => setDetailId(arg.event.id)}
+            eventClick={(arg) => {
+              if (arg.event.extendedProps.holiday) return; // holidays aren't clickable
+              setDetailId(arg.event.id);
+            }}
             height="auto"
             slotEventOverlap={false}
             listDayFormat={{ weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' }}
