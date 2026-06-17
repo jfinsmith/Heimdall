@@ -566,8 +566,8 @@ function CloneAcademyModal({
           })}
         </div>
         <p className="text-xs text-slate-500">
-          After cloning, the builder flags any sessions that land on school holidays and offers a
-          one-click "shift to next school day" fix.
+          After cloning, the builder flags any sessions that land on school holidays, with a "show on
+          calendar" jump so you can move each one where you want it.
         </p>
         {progress && busy && <p className="text-sm text-bifrost-700">{progress}</p>}
         <div className="flex justify-end gap-2">

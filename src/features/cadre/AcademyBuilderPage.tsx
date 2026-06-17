@@ -20,7 +20,7 @@ import { db, functions } from '../../lib/firebase';
 import { useCollection, useDoc, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import { can } from '../../lib/rbac';
-import { addDays, hoursBetween, tsFromDate, fmtDate } from '../../lib/time';
+import { hoursBetween, tsFromDate, fmtDate } from '../../lib/time';
 import { holidaysForYear, holidayBackgroundEvents, observedHolidayDatesInRange, HOLIDAY_PAY_HOURS } from '../../lib/holidays';
 import type { AcademyDoc, CoursePublishTarget, CurriculumDoc, QualificationKey, RosterMemberDoc, SessionDoc, UserDoc } from '../../types';
 import { QUALIFICATION_LABELS } from '../../types';
@@ -333,25 +333,14 @@ export function AcademyBuilderPage() {
     setSignupModal(null);
   }
 
-  /** Move a holiday-conflicted session to the next weekday that is neither a weekend nor a holiday. */
-  async function shiftPastHoliday(s: WithId<SessionDoc>) {
-    if (!firebaseUser) return;
-    const holidaySet = new Set<string>();
-    for (let y = new Date().getFullYear() - 1; y <= new Date().getFullYear() + 2; y++) {
-      for (const h of holidaysForYear(y, disabledHolidays)) holidaySet.add(h.date.toDateString());
-    }
-    let start = s.start.toDate();
-    let end = s.end.toDate();
-    do {
-      start = addDays(start, 1);
-      end = addDays(end, 1);
-    } while (holidaySet.has(start.toDateString()) || start.getDay() === 0 || start.getDay() === 6);
-    await updateDoc(doc(db, 'sessions', s.id), {
-      start: tsFromDate(start),
-      end: tsFromDate(end),
-      updatedAt: serverTimestamp(),
-    });
-    await logAudit(firebaseUser.uid, 'session.shift_holiday', 'session', s.id, `Shifted ${s.courseName} off a holiday to ${start.toLocaleDateString()}`);
+  /** Jump the calendar to where a conflicted session sits so it can be moved in
+   *  place — replaces the old auto "shift to next school day" (which moved
+   *  sessions blindly, often onto an unintended day). */
+  function goToSessionOnCalendar(s: WithId<SessionDoc>) {
+    const api = calRef.current?.getApi();
+    if (!api) return;
+    api.changeView('timeGridWeek', s.start.toDate());
+    document.getElementById('builder-calendar')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   return (
@@ -458,7 +447,7 @@ export function AcademyBuilderPage() {
                   </button>{' '}
                   — {fmtDate(s.start)} is <strong>{holiday}</strong>
                 </span>
-                <Button onClick={() => shiftPastHoliday(s)}>Shift to next school day</Button>
+                <Button onClick={() => goToSessionOnCalendar(s)}>Show on calendar</Button>
               </li>
             ))}
           </ul>
