@@ -25,18 +25,45 @@ function key(): Buffer {
   return k;
 }
 
-/** "iv:tag:ciphertext", all base64. */
-function encryptSsn(plain: string): string {
+/**
+ * "iv:tag:ciphertext", all base64. When an orgId is given it's bound into the
+ * AES-GCM additional-authenticated-data, so the ciphertext is cryptographically
+ * locked to that tenant: a blob encrypted for org A fails to decrypt under org B
+ * (auth-tag mismatch). Single shared key for now; Phase 13 upgrades to Cloud KMS
+ * envelope encryption (per-org data keys) before going public. Omitting orgId
+ * reproduces the legacy (pre-Phase-3d) format — dormant for the single tenant.
+ */
+function encryptSsn(plain: string, orgId?: string): string {
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', key(), iv);
+  if (orgId) cipher.setAAD(Buffer.from(orgId, 'utf8'));
   const enc = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
   return [iv.toString('base64'), cipher.getAuthTag().toString('base64'), enc.toString('base64')].join(':');
 }
-function decryptSsn(blob: string): string {
+function decryptOnce(blob: string, orgId?: string): string {
   const [ivB, tagB, dataB] = blob.split(':');
   const decipher = crypto.createDecipheriv('aes-256-gcm', key(), Buffer.from(ivB, 'base64'));
+  if (orgId) decipher.setAAD(Buffer.from(orgId, 'utf8'));
   decipher.setAuthTag(Buffer.from(tagB, 'base64'));
   return Buffer.concat([decipher.update(Buffer.from(dataB, 'base64')), decipher.final()]).toString('utf8');
+}
+function decryptSsn(blob: string, orgId?: string): string {
+  // New ciphertexts bind the org as AAD; legacy ones (pre-Phase-3d, e.g. existing
+  // PHSC data before the backfill re-encrypts) used none. Try tenant-bound first,
+  // fall back to legacy ONLY when we attempted an AAD. A blob bound to a DIFFERENT
+  // org fails both (auth-tag), so cross-tenant decryption stays impossible.
+  try {
+    return decryptOnce(blob, orgId);
+  } catch (e) {
+    if (orgId) {
+      try {
+        return decryptOnce(blob, undefined);
+      } catch {
+        // fall through to the shared error
+      }
+    }
+    throw new HttpsError('internal', 'Could not decrypt the stored value (key or tenant mismatch).');
+  }
 }
 
 const digits = (s: string) => (s || '').replace(/\D/g, '');
@@ -74,9 +101,13 @@ export const rosterCreateMember = onCall<{ academyId: string; member: MemberInpu
     const academy = await db.doc(`academies/${academyId}`).get();
     if (!academy.exists) throw new HttpsError('not-found', 'Academy not found.');
     if (academy.data()!.isTemplate) throw new HttpsError('failed-precondition', 'Templates do not have rosters.');
+    // The member's tenant = its academy's. Stamped on the member (backfill
+    // consistency) and bound into the SSN ciphertext as AAD (undefined pre-backfill).
+    const orgId = academy.data()!.orgId as string | undefined;
 
     const ssn = digits(request.data.ssn ?? '');
     const fields: Record<string, unknown> = {
+      ...(orgId ? { orgId } : {}),
       fullName: member.fullName.trim(),
       agency: member.agency || 'PSO',
       ...(member.agencyOther ? { agencyOther: member.agencyOther.trim() } : {}),
@@ -87,7 +118,7 @@ export const rosterCreateMember = onCall<{ academyId: string; member: MemberInpu
       ...(member.emergencyName ? { emergencyName: member.emergencyName.trim() } : {}),
       ...(member.emergencyPhone ? { emergencyPhone: member.emergencyPhone.trim() } : {}),
       status: 'active',
-      ...(ssn ? { ssnCipher: encryptSsn(ssn), ssnLast4: ssn.slice(-4) } : {}),
+      ...(ssn ? { ssnCipher: encryptSsn(ssn, orgId), ssnLast4: ssn.slice(-4) } : {}),
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     };
@@ -120,10 +151,12 @@ export const rosterUpdateSsn = onCall<{ academyId: string; memberId: string; ssn
     const ssn = digits(request.data.ssn ?? '');
     if (!academyId || !memberId) throw new HttpsError('invalid-argument', 'Missing member.');
     const ref = getFirestore().doc(`academies/${academyId}/roster/${memberId}`);
-    if (!(await ref.get()).exists) throw new HttpsError('not-found', 'Member not found.');
+    const memberSnap = await ref.get();
+    if (!memberSnap.exists) throw new HttpsError('not-found', 'Member not found.');
+    const orgId = memberSnap.data()!.orgId as string | undefined;
     await ref.update(
       ssn
-        ? { ssnCipher: encryptSsn(ssn), ssnLast4: ssn.slice(-4), updatedAt: FieldValue.serverTimestamp() }
+        ? { ssnCipher: encryptSsn(ssn, orgId), ssnLast4: ssn.slice(-4), updatedAt: FieldValue.serverTimestamp() }
         : { ssnCipher: FieldValue.delete(), ssnLast4: FieldValue.delete(), updatedAt: FieldValue.serverTimestamp() }
     );
     return { ok: true };
@@ -142,6 +175,7 @@ export const rosterRevealSsn = onCall<{ academyId: string; memberId: string }>(
     if (!snap.exists) throw new HttpsError('not-found', 'Member not found.');
     const cipher = snap.data()!.ssnCipher as string | undefined;
     if (!cipher) return { ssn: null };
+    const orgId = snap.data()!.orgId as string | undefined;
 
     await db.collection('auditLog').add({
       actorUid: caller.uid,
@@ -151,6 +185,6 @@ export const rosterRevealSsn = onCall<{ academyId: string; memberId: string }>(
       summary: `${caller.name} revealed SSN for ${snap.data()!.fullName} (${academyId})`,
       createdAt: FieldValue.serverTimestamp(),
     });
-    return { ssn: decryptSsn(cipher) };
+    return { ssn: decryptSsn(cipher, orgId) };
   }
 );
