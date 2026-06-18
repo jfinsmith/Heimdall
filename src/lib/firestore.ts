@@ -26,7 +26,7 @@ export type WithId<T> = T & { id: string };
  * reads for the platform owner, e.g. feedback triage, use dedicated queries, not
  * this hook.)
  */
-const NON_ORG_SCOPED = new Set(['orgs', 'notifications', 'mail']);
+const NON_ORG_SCOPED = new Set(['orgs', 'notifications', 'mail', 'defaultCurricula']);
 
 interface QueryState<T> {
   data: T[];

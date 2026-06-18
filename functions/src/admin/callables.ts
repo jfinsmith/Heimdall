@@ -19,6 +19,36 @@ const SITE_URL = 'https://heimdall.tgcmd-portal.com';
 
 const VALID_ROLES: Role[] = ['director', 'lieutenant', 'sergeant', 'coordinator', 'instructor', 'guest'];
 
+/**
+ * FDLE high-liability courses + recommended instructor-to-student ratio
+ * (FAC 11B-35.0021(8), effective 2025). null = the rule is per-vehicle, not a
+ * student ratio (Vehicle Operations). Includes the legacy First Aid number
+ * CJK0044 (current editions renumber First Aid to CJK0031). Verified against
+ * primary regulatory text via research (2026-06-18).
+ */
+const FDLE_HIGH_LIABILITY: Record<string, number | null> = {
+  CJK0040: 6, // Criminal Justice Firearms — ≤6 students per instructor on the range
+  CJK0051: 8, // Criminal Justice Defensive Tactics — 8:1
+  CJK0020: null, // (LE) Vehicle Operations — ≥1 instructor per vehicle (no student ratio)
+  CJK0031: 10, // First Aid for Criminal Justice Officers — 10:1
+  CJK0044: 10, // First Aid (legacy CJK number) — 10:1
+};
+
+/** Flag FDLE high-liability courses + fill the recommended instructor ratio (by
+ *  CJK), without clobbering any custom ratio the user already set. */
+function applyFdleHighLiability(courses: Record<string, unknown>[]): Record<string, unknown>[] {
+  return (courses ?? []).map((c) => {
+    const cjk = String((c.cjk as string) ?? '').toUpperCase().replace(/\s/g, '');
+    if (!(cjk in FDLE_HIGH_LIABILITY)) return c;
+    const ratio = FDLE_HIGH_LIABILITY[cjk];
+    return {
+      ...c,
+      highLiability: true,
+      ...(ratio != null && c.instructorRatio == null ? { instructorRatio: ratio } : {}),
+    };
+  });
+}
+
 export const setUserRole = onCall<{ uid: string; role: Role }>(async (request) => {
   const caller = request.auth;
   if (!caller) throw new HttpsError('unauthenticated', 'Sign in required.');
@@ -276,6 +306,26 @@ export const createOrg = onCall<{
     },
     { merge: true }
   );
+
+  // Seed the org's curricula from the platform default templates. Doc ids are
+  // org-namespaced ({orgId}__{key}) so tenants never collide on a shared key
+  // like 'le_brt' (a global id would let one org's Admin-SDK seed clobber another's).
+  const defaults = await db.collection('defaultCurricula').get();
+  if (!defaults.empty) {
+    const seed = db.batch();
+    defaults.docs.forEach((d) => {
+      const data = d.data();
+      const baseKey = (data.key as string) || d.id;
+      seed.set(db.doc(`curricula/${orgId}__${baseKey}`), {
+        ...data,
+        orgId,
+        key: baseKey,
+        courses: applyFdleHighLiability((data.courses as Record<string, unknown>[]) ?? []),
+        active: data.active !== false,
+      });
+    });
+    await seed.commit();
+  }
 
   // Optionally seat the first admin, preserving their other claims.
   const firstAdminUid = (request.data.firstAdminUid ?? '').trim();
@@ -1047,6 +1097,46 @@ export const ownerSwitchOrg = onCall<{ orgId: string }>(async (request) => {
     orgId: target, createdAt: FieldValue.serverTimestamp(),
   });
   return { ok: true, orgId: target, role, goingHome };
+});
+
+/**
+ * Platform-owner: copy an organization's curricula into the platform DEFAULT
+ * templates (defaultCurricula) that every NEW org is seeded from — the
+ * "Import from PHSC" action. Strips the source org, normalizes FDLE
+ * high-liability flags + ratios, and keys each default by its base key.
+ */
+export const importDefaultCurricula = onCall<{ sourceOrgId: string }>(async (request) => {
+  const caller = request.auth;
+  if (!caller) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = getFirestore();
+  const callerDoc = await db.doc(`users/${caller.uid}`).get();
+  if (!callerDoc.exists || callerDoc.data()!.platformOwner !== true) {
+    throw new HttpsError('permission-denied', 'Only the platform owner may set default curricula.');
+  }
+  const sourceOrgId = (request.data.sourceOrgId ?? '').trim();
+  if (!sourceOrgId) throw new HttpsError('invalid-argument', 'Choose a source organization.');
+  const snap = await db.collection('curricula').where('orgId', '==', sourceOrgId).get();
+  if (snap.empty) throw new HttpsError('not-found', 'That organization has no curricula to import.');
+
+  const batch = db.batch();
+  let count = 0;
+  snap.docs.forEach((d) => {
+    const data = d.data();
+    const baseKey = (data.key as string) || d.id.split('__').pop() || d.id;
+    const { orgId: _omitOrg, ...rest } = data;
+    batch.set(db.doc(`defaultCurricula/${baseKey}`), {
+      ...rest,
+      key: baseKey,
+      courses: applyFdleHighLiability((data.courses as Record<string, unknown>[]) ?? []),
+    });
+    count++;
+  });
+  await batch.commit();
+  await db.collection('auditLog').add({
+    actorUid: caller.uid, action: 'platform.import_default_curricula', targetType: 'org', targetId: sourceOrgId,
+    summary: `Imported ${count} curricula from ${sourceOrgId} as new-org defaults`, createdAt: FieldValue.serverTimestamp(),
+  });
+  return { ok: true, count };
 });
 
 /** Platform-owner: recent audit entries across ALL organizations (owner oversight). */

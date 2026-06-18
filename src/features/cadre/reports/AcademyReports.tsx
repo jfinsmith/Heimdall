@@ -17,7 +17,9 @@ import { type ReportType } from './reportTypes';
 import { effectiveReportTypes, GENERAL_CATEGORY } from './reportConfig';
 
 export const isLawEnforcement = (a?: WithId<AcademyDoc>) =>
-  !!a && (a.discipline === 'le_brt' || /law enforcement/i.test(a.fdleProgram || ''));
+  // discipline is the curriculum DOC id, which may be org-namespaced ({orgId}__le_brt);
+  // compare on the base key after the namespace prefix.
+  !!a && (a.discipline?.split('__').pop() === 'le_brt' || /law enforcement/i.test(a.fdleProgram || ''));
 
 const today = () => {
   const d = new Date();

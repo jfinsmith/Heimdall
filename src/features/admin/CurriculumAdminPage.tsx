@@ -4,9 +4,10 @@
  * is always the sum of its course hours; academies pick a discipline at
  * creation and the builder tracks per-course coverage against these minimums.
  */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { deleteDoc, doc, setDoc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions } from '../../lib/firebase';
 import { useCollection, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import { useDoc, orgConfigPath } from '../../lib/firestore';
@@ -23,27 +24,37 @@ import { reportCategoriesOf } from '../cadre/reports/reportConfig';
 const looksLikeLE = (c: { key?: string; fdleProgram?: string }) =>
   c.key === 'le_brt' || /law enforcement/i.test(c.fdleProgram || '');
 
-export function CurriculumAdminPage() {
+const ownerListOrgs = httpsCallable<void, { orgs: { orgId: string; legalName: string }[] }>(functions, 'ownerListOrgs');
+const importDefaultCurricula = httpsCallable<{ sourceOrgId: string }, { ok: boolean; count: number }>(functions, 'importDefaultCurricula');
+
+/**
+ * Curriculum & Hours editor. scope='org' edits the active org's curricula;
+ * scope='defaults' (owner only) edits the platform DEFAULT templates that every
+ * new organization is seeded from.
+ */
+export function CurriculumAdminPage({ scope = 'org' }: { scope?: 'org' | 'defaults' }) {
   const { firebaseUser } = useAuth();
-  const { data: curricula } = useCollection<CurriculumDoc>('curricula');
+  const isDefaults = scope === 'defaults';
+  const coll = isDefaults ? 'defaultCurricula' : 'curricula';
+  const { data: curricula } = useCollection<CurriculumDoc>(coll);
   const [editing, setEditing] = useState<WithId<CurriculumDoc> | 'new' | null>(null);
 
   async function toggleActive(c: WithId<CurriculumDoc>) {
-    await setDoc(doc(db, 'curricula', c.id), { active: !c.active }, { merge: true });
+    await setDoc(doc(db, coll, c.id), { active: !c.active }, { merge: true });
   }
 
   async function remove(c: WithId<CurriculumDoc>) {
-    if (!window.confirm(`Delete the "${c.label}" discipline? Existing academies keep their data; new academies can no longer pick it.`)) return;
-    await deleteDoc(doc(db, 'curricula', c.id));
-    await logAudit(firebaseUser!.uid, 'curriculum.delete', 'curriculum', c.id, c.label);
+    if (!window.confirm(`Delete the "${c.label}" discipline?${isDefaults ? '' : ' Existing academies keep their data; new academies can no longer pick it.'}`)) return;
+    await deleteDoc(doc(db, coll, c.id));
+    if (!isDefaults) await logAudit(firebaseUser!.uid, 'curriculum.delete', 'curriculum', c.id, c.label);
   }
 
   return (
     <div>
       <PageHeader
         back
-        kicker="Admin"
-        title="Curriculum & Hours"
+        kicker={isDefaults ? 'Platform Owner' : 'Admin'}
+        title={isDefaults ? 'Default Curricula (new organizations)' : 'Curriculum & Hours'}
         actions={
           <Button variant="primary" onClick={() => setEditing('new')}>
             New discipline
@@ -51,11 +62,11 @@ export function CurriculumAdminPage() {
         }
       />
       <p className="mb-4 max-w-2xl text-sm text-slate-500">
-        Each discipline's full course list lives here — the course name, required hours, whether it's
-        high-liability (▲), and the qualification a lead instructor must hold. This is the single source
-        for the builder's course picker and curriculum coverage (there's no separate course catalog).
-        Editing changes defaults for new academies — existing academies aren't modified.
+        {isDefaults
+          ? 'These templates seed every NEW organization’s curricula automatically (with org-namespaced ids, so tenants never collide). Edit them here, or import a starting set from an existing organization below. FDLE high-liability courses (Firearms, Defensive Tactics, Vehicle Operations, First Aid) get their recommended instructor ratios applied on import.'
+          : "Each discipline's full course list lives here — the course name, required hours, whether it's high-liability (▲), and the qualification a lead instructor must hold. This is the single source for the builder's course picker and curriculum coverage. Editing changes defaults for new academies — existing academies aren't modified."}
       </p>
+      {isDefaults && <ImportDefaults />}
 
       <div className="grid gap-4 lg:grid-cols-2">
         {[...curricula]
@@ -101,6 +112,7 @@ export function CurriculumAdminPage() {
 
       {editing && (
         <CurriculumEditorModal
+          scope={scope}
           curriculum={editing === 'new' ? null : editing}
           onClose={() => setEditing(null)}
         />
@@ -109,22 +121,64 @@ export function CurriculumAdminPage() {
   );
 }
 
+/** Owner-only: seed the platform default curricula from an existing org (e.g. PHSC). */
+function ImportDefaults() {
+  const [orgs, setOrgs] = useState<{ orgId: string; legalName: string }[]>([]);
+  const [src, setSrc] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  useEffect(() => { ownerListOrgs().then((r) => setOrgs(r.data.orgs)).catch(() => setOrgs([])); }, []);
+
+  async function run() {
+    if (!src) return;
+    if (!window.confirm('Replace the default curricula with a copy of the selected organization’s curricula? (Existing organizations are not affected — only the templates new orgs are seeded from.)')) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await importDefaultCurricula({ sourceOrgId: src });
+      setMsg(`Imported ${r.data.count} curricula as new-org defaults.`);
+    } catch (e) {
+      setMsg((e as Error).message || 'Import failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mb-5 flex flex-wrap items-end gap-3 rounded-lg border border-watch-100 bg-white p-3 shadow-sm">
+      <Field label="Import defaults from an organization" className="min-w-[16rem] flex-1">
+        <Select value={src} onChange={(e) => setSrc(e.target.value)}>
+          <option value="">Choose an organization…</option>
+          {orgs.map((o) => <option key={o.orgId} value={o.orgId}>{o.legalName}</option>)}
+        </Select>
+      </Field>
+      <Button variant="secondary" disabled={!src || busy} onClick={run}>{busy ? 'Importing…' : 'Import'}</Button>
+      {msg && <span className="text-sm text-slate-600">{msg}</span>}
+    </div>
+  );
+}
+
 function CurriculumEditorModal({
+  scope,
   curriculum,
   onClose,
 }: {
+  scope: 'org' | 'defaults';
   curriculum: WithId<CurriculumDoc> | null;
   onClose: () => void;
 }) {
   const { firebaseUser, orgId } = useAuth();
+  const isDefaults = scope === 'defaults';
+  const coll = isDefaults ? 'defaultCurricula' : 'curricula';
   const [label, setLabel] = useState(curriculum?.label ?? '');
   const [fdleProgram, setFdleProgram] = useState(curriculum?.fdleProgram ?? '');
-  const [key, setKey] = useState(curriculum?.id ?? '');
+  const [key, setKey] = useState(curriculum?.key ?? curriculum?.id ?? '');
   const [courses, setCourses] = useState<CurriculumCourse[]>(curriculum?.courses ?? [{ name: '', minHours: 0 }]);
   const [estimated, setEstimated] = useState(curriculum?.estimated ?? false);
   // Per-discipline roster config. Pre-fill an unconfigured curriculum with its
-  // current effective behavior so a save never silently changes it.
-  const { data: reportConfig } = useDoc<ReportConfigDoc>(orgConfigPath('reportConfig', orgId));
+  // current effective behavior so a save never silently changes it. Defaults
+  // scope has no org reportConfig — fall back to the built-in categories.
+  const { data: reportConfig } = useDoc<ReportConfigDoc>(isDefaults ? null : orgConfigPath('reportConfig', orgId));
   const categories = reportCategoriesOf(reportConfig);
   const [rosterModules, setRosterModules] = useState<RosterModuleKey[]>(curriculum?.rosterModules ?? DEFAULT_ROSTER_MODULES);
   const [reportCategories, setReportCategories] = useState<string[]>(
@@ -145,7 +199,11 @@ function CurriculumEditorModal({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
-    const id = curriculum?.id ?? key.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_');
+    // Base key (e.g. le_brt) vs. doc id. Org curricula get an org-namespaced doc
+    // id ({orgId}__{key}) so two tenants can both have an 'le_brt' without colliding
+    // on a shared global doc; existing bare-id curricula keep their id when edited.
+    const baseKey = curriculum ? (curriculum.key || curriculum.id) : key.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_');
+    const id = curriculum ? curriculum.id : isDefaults ? baseKey : `${orgId}__${baseKey}`;
     const cleaned = courses.filter((c) => c.name.trim()).map((c) => ({
       name: c.name.trim(),
       minHours: Number(c.minHours) || 0,
@@ -157,9 +215,9 @@ function CurriculumEditorModal({
       ...(c.leadQualification && !c.coordinatorRun ? { leadQualification: c.leadQualification } : {}),
       ...(c.defaultRoleSlots && c.defaultRoleSlots.length ? { defaultRoleSlots: c.defaultRoleSlots } : {}),
     }));
-    await setDoc(doc(db, 'curricula', id), {
-      orgId: orgId!,
-      key: id,
+    await setDoc(doc(db, coll, id), {
+      ...(isDefaults ? {} : { orgId: orgId! }),
+      key: baseKey,
       label,
       fdleProgram,
       courses: cleaned,
@@ -169,7 +227,7 @@ function CurriculumEditorModal({
       rosterModules,
       reportCategories,
     } satisfies CurriculumDoc);
-    await logAudit(firebaseUser!.uid, 'curriculum.save', 'curriculum', id, `${label} (${total} hrs)`);
+    if (!isDefaults) await logAudit(firebaseUser!.uid, 'curriculum.save', 'curriculum', id, `${label} (${total} hrs)`);
     setBusy(false);
     onClose();
   }

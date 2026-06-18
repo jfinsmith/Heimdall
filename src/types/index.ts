@@ -333,7 +333,8 @@ export interface AcademyDoc {
   /** Short class designation used as the calendar prefix, e.g. "LE 131", "CO 67". */
   shortName: string;
   name: string;            // e.g. "LE 131 (May Start)"
-  /** Key into the `curricula` collection (admin-editable disciplines). */
+  /** The curriculum DOC id in the `curricula` collection (may be org-namespaced
+   *  as {orgId}__{key} for non-founding orgs; legacy PHSC curricula are bare keys). */
   discipline: string;
   fdleProgram: string;     // e.g. "FDLE Basic Recruit Training Program — Law Enforcement"
   startDate: Timestamp;
@@ -573,7 +574,7 @@ export type RosterModuleKey =
 export interface CurriculumDoc {
   /** Tenant (orgs/{orgId}); set at provisioning/backfill. */
   orgId?: string;
-  key: string;             // doc id, e.g. 'le_brt'
+  key: string;             // base key, e.g. 'le_brt' (doc id may be org-namespaced: {orgId}__{key})
   label: string;           // "Law Enforcement (Basic Recruit)"
   fdleProgram: string;
   courses: CurriculumCourse[];

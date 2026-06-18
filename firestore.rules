@@ -162,6 +162,12 @@ service cloud.firestore {
       allow delete: if isAdmin() && inOrg(resource.data);
     }
 
+    // ── defaultCurricula (platform-level templates new orgs seed from) ─────
+    // No orgId — these belong to the platform, not a tenant. Owner-only.
+    match /defaultCurricula/{key} {
+      allow read, write: if isPlatformOwner();
+    }
+
     // ── coursePublishEvents ────────────────────────────────────────────────
     match /coursePublishEvents/{id} {
       allow read: if isStaff() && inOrg(resource.data);
