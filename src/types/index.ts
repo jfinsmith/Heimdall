@@ -445,7 +445,12 @@ export const FDLE_LE_COURSES: { code: string; name: string }[] = [
   ['0402', 'Traffic Crash Invests'],
 ].map(([code, name]) => ({ code, name }));
 
-export type ReportTypeId = 'exam_failure' | 'proficiency_fail' | 'exam_course_fail' | 'academy_dismissal';
+export type ReportTypeId =
+  // Academic-action letters (verbatim FL/neutral bodies; see reportTypes.tsx)
+  | 'exam_failure' | 'proficiency_fail' | 'exam_course_fail' | 'academy_dismissal'
+  // Phase 11 general & conduct documents (block-model; DRAFT wording pending legal pass)
+  | 'general_memo' | 'counseling' | 'injury_illness' | 'incident'
+  | 'use_of_force' | 'disciplinary' | 'dismissal_conduct' | 'cadet_acknowledgment';
 
 /**
  * Admin-managed report configuration (doc `reportConfig/global`): the custom

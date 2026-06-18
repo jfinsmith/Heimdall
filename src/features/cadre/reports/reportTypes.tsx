@@ -12,15 +12,49 @@
  */
 import React from 'react';
 import type { ReportTypeId } from '../../../types';
+import { DOCUMENT_TYPES } from './documentTypes';
 
 export interface ReportField {
   key: string;
   label: string;
-  type: 'text' | 'date' | 'number' | 'course';
+  type: 'text' | 'date' | 'number' | 'course' | 'textarea' | 'time' | 'select' | 'cadet';
   required?: boolean;
   /** Default value source from the academy (e.g. shortName for the class). */
   defaultFrom?: 'className';
   hint?: string;
+  /** Choices for type 'select'. */
+  options?: string[];
+  /** Literal default value pre-filled in the form (e.g. a boilerplate statement). */
+  default?: string;
+}
+
+/**
+ * Block-model document spec (Phase 11). A `clause` block is LOCKED liability /
+ * due-process / policy text rendered verbatim; a `paragraph` is ordinary prose.
+ * In `text`, `{fieldKey}` is a fill-in (renders as an underlined blank showing
+ * the filled value) and context tokens {cadetName} {fromName} {directorName}
+ * {memoDate} {reSubject} resolve the same way. Header/signer/distribution
+ * templates resolve the same tokens to PLAIN text.
+ *
+ * NOTE: this is DRAFT wording. Statutory/policy citations are intentionally left
+ * as [bracketed placeholders] for the org's legal pass — never fabricated.
+ */
+export interface DocBlock {
+  kind: 'paragraph' | 'clause';
+  text: string;
+}
+export interface DocumentSpec {
+  /** Drives the form (cadet recipient vs. file/general) and the record label. */
+  appliesTo: 'cadet' | 'file' | 'general';
+  /** To/From/CC/Date/Re rows; values are templates resolved to plain text. */
+  headerFields: { label: string; value: string }[];
+  blocks: DocBlock[];
+  /** Authority signature template. */
+  signerLine: string;
+  /** Recipient acknowledgment sentence (empty = none). */
+  acknowledgment?: string;
+  ackSignerLabel?: string;
+  distribution?: string[];
 }
 
 export interface ReportType {
@@ -29,10 +63,16 @@ export interface ReportType {
   purpose: string;
   reSubject: string; // "Re:" line + distribution footer subject
   fields: ReportField[];
-  /** Florida (FDLE/CJSTC) body — verbatim legal text. */
-  body: (d: Record<string, string>) => React.ReactNode;
+  /** Florida (FDLE/CJSTC) body — verbatim legal text (academic letters only). */
+  body?: (d: Record<string, string>) => React.ReactNode;
   /** Jurisdiction-neutral body (no state-specific citations). */
   bodyNeutral?: (d: Record<string, string>) => React.ReactNode;
+  /**
+   * Block-model document (Phase 11). When present, ReportLetter builds the
+   * MemoDocument from this instead of the jsx body. The four academic letters
+   * use `body`/`bodyNeutral`; the general & conduct documents use `document`.
+   */
+  document?: DocumentSpec;
 }
 
 /** Underlined fill-in blank, mirroring the form's blanks. */
@@ -43,7 +83,8 @@ function U({ children }: { children?: React.ReactNode }) {
 const label = (v?: string) => v || undefined;
 const code = (v?: string) => (v ? v.split(' ')[0] : undefined);
 
-export const REPORT_TYPES: ReportType[] = [
+/** The four verbatim academic-action letters (FL/neutral jsx bodies). */
+const ACADEMIC_REPORT_TYPES: ReportType[] = [
   {
     id: 'exam_failure',
     name: 'End-of-Course Exam Failure (1st)',
@@ -166,5 +207,8 @@ export const REPORT_TYPES: ReportType[] = [
     ),
   },
 ];
+
+/** The full registry: academic-action letters + Phase-11 general & conduct documents. */
+export const REPORT_TYPES: ReportType[] = [...ACADEMIC_REPORT_TYPES, ...DOCUMENT_TYPES];
 
 export const getReportType = (id: ReportTypeId): ReportType | undefined => REPORT_TYPES.find((r) => r.id === id);

@@ -15,15 +15,29 @@ export const DEFAULT_REPORT_CATEGORIES: ReportCategory[] = [
   { key: 'co', label: 'Corrections' },
   { key: 'nmt', label: 'New Member Training' },
   { key: 'argus', label: 'ARGUS' },
+  { key: 'general', label: 'General & Conduct' },
 ];
 
-/** The four built-in forms are Law Enforcement until an admin reassigns them. */
+/** Category 'general' — universal documents offered to EVERY discipline (see
+ *  AcademyReports). The four academic letters are Law Enforcement until an admin
+ *  reassigns them; the Phase-11 documents default to 'general'. */
 const DEFAULT_CATEGORY_FOR: Record<string, string> = {
   exam_failure: 'le',
   proficiency_fail: 'le',
   exam_course_fail: 'le',
   academy_dismissal: 'le',
+  general_memo: 'general',
+  counseling: 'general',
+  injury_illness: 'general',
+  incident: 'general',
+  use_of_force: 'general',
+  disciplinary: 'general',
+  dismissal_conduct: 'general',
+  cadet_acknowledgment: 'general',
 };
+
+/** Category key for the universal documents available to every discipline. */
+export const GENERAL_CATEGORY = 'general';
 
 export type EffectiveReportType = ReportType & { category: string };
 

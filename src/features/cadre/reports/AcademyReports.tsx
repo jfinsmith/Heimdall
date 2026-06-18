@@ -11,10 +11,10 @@ import { useCollection, useDoc, orgConfigPath, type WithId } from '../../../lib/
 import { useAuth } from '../../../auth/AuthContext';
 import type { AcademyDoc, AcademyReportDoc, CurriculumDoc, ReportConfigDoc, RosterMemberDoc, UserDoc } from '../../../types';
 import { FDLE_LE_COURSES } from '../../../types';
-import { Button, Field, Input, Select } from '../../../components/ui';
+import { Button, Field, Input, Select, TextArea } from '../../../components/ui';
 import { Modal } from '../../../components/Modal';
 import { type ReportType } from './reportTypes';
-import { effectiveReportTypes } from './reportConfig';
+import { effectiveReportTypes, GENERAL_CATEGORY } from './reportConfig';
 
 export const isLawEnforcement = (a?: WithId<AcademyDoc>) =>
   !!a && (a.discipline === 'le_brt' || /law enforcement/i.test(a.fdleProgram || ''));
@@ -42,13 +42,19 @@ export function AcademyReports({ academy }: { academy: WithId<AcademyDoc> }) {
   // else legacy fallbacks (older per-form list, else all LE forms).
   const effective = effectiveReportTypes(reportConfig);
   const typeFor = (id: string) => effective.find((t) => t.id === id);
-  const availableTypes = curriculum?.reportCategories
-    ? effective.filter((t) => curriculum.reportCategories!.includes(t.category))
+  // Discipline-specific forms: by the curriculum's chosen categories when set,
+  // else legacy fallbacks (older per-form list, else all LE forms).
+  const disciplineTypes = curriculum?.reportCategories
+    ? effective.filter((t) => t.category !== GENERAL_CATEGORY && curriculum.reportCategories!.includes(t.category))
     : curriculum?.reportTypeIds
       ? effective.filter((t) => curriculum.reportTypeIds!.includes(t.id))
       : isLawEnforcement(academy)
         ? effective.filter((t) => t.category === 'le')
         : [];
+  // General & conduct documents (memo, counseling, injury, incident, use-of-force,
+  // disciplinary, dismissal, acknowledgment) are universal — offered to EVERY class.
+  const generalTypes = effective.filter((t) => t.category === GENERAL_CATEGORY);
+  const availableTypes = [...disciplineTypes, ...generalTypes];
 
   async function remove(r: WithId<AcademyReportDoc>) {
     if (!window.confirm(`Delete this ${typeFor(r.type)?.name ?? 'report'} report for ${r.cadetName}?`)) return;
@@ -66,19 +72,29 @@ export function AcademyReports({ academy }: { academy: WithId<AcademyDoc> }) {
 
   return (
     <div>
-      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-watch-600">New report</h2>
-      <div className="mb-6 grid gap-3 md:grid-cols-2">
-        {availableTypes.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => { setEditing(null); setFormType(t); }}
-            className="rounded-lg border border-watch-100 bg-white p-4 text-left shadow-sm transition-colors hover:border-bifrost-300 hover:bg-bifrost-50/30"
-          >
-            <div className="font-semibold text-watch-900">{t.name}</div>
-            <div className="mt-1 text-xs text-slate-500">{t.purpose}</div>
-          </button>
-        ))}
-      </div>
+      {disciplineTypes.length > 0 && (
+        <>
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-watch-600">New report</h2>
+          <div className="mb-6 grid gap-3 md:grid-cols-2">
+            {disciplineTypes.map((t) => (
+              <ReportTypeCard key={t.id} type={t} onPick={() => { setEditing(null); setFormType(t); }} />
+            ))}
+          </div>
+        </>
+      )}
+      {generalTypes.length > 0 && (
+        <>
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-watch-600">General &amp; conduct documents</h2>
+          <p className="mb-2 -mt-1 text-xs text-slate-500">
+            Available to every class. <span className="font-medium text-amber-700">Draft wording — pending your legal review.</span>
+          </p>
+          <div className="mb-6 grid gap-3 md:grid-cols-2">
+            {generalTypes.map((t) => (
+              <ReportTypeCard key={t.id} type={t} onPick={() => { setEditing(null); setFormType(t); }} />
+            ))}
+          </div>
+        </>
+      )}
 
       <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-watch-600">Filed reports ({reports.length})</h2>
       <div className="overflow-x-auto rounded-lg border border-watch-100 bg-white shadow-sm">
@@ -130,6 +146,18 @@ export function AcademyReports({ academy }: { academy: WithId<AcademyDoc> }) {
   );
 }
 
+function ReportTypeCard({ type, onPick }: { type: ReportType; onPick: () => void }) {
+  return (
+    <button
+      onClick={onPick}
+      className="rounded-lg border border-watch-100 bg-white p-4 text-left shadow-sm transition-colors hover:border-bifrost-300 hover:bg-bifrost-50/30"
+    >
+      <div className="font-semibold text-watch-900">{type.name}</div>
+      <div className="mt-1 text-xs text-slate-500">{type.purpose}</div>
+    </button>
+  );
+}
+
 function ReportFormModal({
   type, academy, roster, editing, fromName, directorName, onClose,
 }: {
@@ -142,24 +170,45 @@ function ReportFormModal({
   onClose: () => void;
 }) {
   const { firebaseUser } = useAuth();
+  // 'cadet' docs address a cadet (To: line); 'file'/'general' docs capture the
+  // subject in their own fields. Academic letters (no document) are cadet-addressed.
+  const appliesTo = type.document?.appliesTo ?? 'cadet';
   const [cadetId, setCadetId] = useState(editing?.cadetId ?? '');
   const [cadetName, setCadetName] = useState(editing?.cadetName ?? '');
   const [memoDate, setMemoDate] = useState(editing?.data._memoDate ?? today());
   const [values, setValues] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = { ...(editing?.data ?? {}) };
-    for (const f of type.fields) if (init[f.key] === undefined) init[f.key] = f.defaultFrom === 'className' ? academy.shortName ?? '' : '';
+    for (const f of type.fields) {
+      if (init[f.key] !== undefined) continue;
+      init[f.key] = f.defaultFrom === 'className' ? academy.shortName ?? '' : f.default ?? '';
+    }
     return init;
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const set = (k: string, v: string) => setValues((p) => ({ ...p, [k]: v }));
-  const missing = !cadetName.trim() || type.fields.some((f) => f.required && !values[f.key]?.trim());
+  const missing =
+    (appliesTo === 'cadet' && !cadetName.trim()) || type.fields.some((f) => f.required && !values[f.key]?.trim());
 
   function pickCadet(id: string) {
     setCadetId(id);
     const m = roster.find((x) => x.id === id);
     if (m) setCadetName(m.fullName);
+  }
+
+  // The label stored on the report (filed-reports "Cadet/Subject" column). For a
+  // cadet-addressed doc that's the cadet; otherwise the best available subject field.
+  function recordLabel(): string {
+    if (appliesTo === 'cadet') return cadetName.trim();
+    const cadetField = type.fields.find((f) => f.type === 'cadet');
+    return (
+      (cadetField && values[cadetField.key]?.trim()) ||
+      values.recipient?.trim() ||
+      values.personsInvolved?.trim() ||
+      values.subject?.trim() ||
+      '—'
+    );
   }
 
   async function save() {
@@ -168,8 +217,8 @@ function ReportFormModal({
     try {
       const payload = {
         type: type.id,
-        ...(cadetId ? { cadetId } : {}),
-        cadetName: cadetName.trim(),
+        ...(appliesTo === 'cadet' && cadetId ? { cadetId } : {}),
+        cadetName: recordLabel(),
         data: { ...values, _memoDate: memoDate },
         updatedAt: serverTimestamp(),
       };
@@ -195,20 +244,29 @@ function ReportFormModal({
     <Modal open onClose={onClose} title={`${editing ? 'Edit' : 'New'} — ${type.name}`} wide>
       <div className="space-y-4">
         {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
+        {type.document && (
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            Draft wording — pending legal review. Bracketed items like “[Academy Cadet Manual §___]” are placeholders to replace during your legal pass.
+          </div>
+        )}
         <div className="rounded-md bg-watch-50 px-3 py-2 text-xs text-slate-500">
-          To: <strong>{cadetName || '—'}</strong> · From: {fromName} · CC: Director {directorName}, Academy Director · Re: {type.reSubject}
+          {appliesTo === 'cadet' && <>To: <strong>{cadetName || '—'}</strong> · </>}From: {fromName || '—'} · CC: Director {directorName}, Academy Director · {type.name}
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Cadet (from roster)">
-            <Select value={cadetId} onChange={(e) => pickCadet(e.target.value)}>
-              <option value="">— select / type name —</option>
-              {roster.map((m) => <option key={m.id} value={m.id}>{m.fullName}</option>)}
-            </Select>
-          </Field>
-          <Field label="Cadet name (To)">
-            <Input value={cadetName} onChange={(e) => { setCadetName(e.target.value); setCadetId(''); }} required />
-          </Field>
+          {appliesTo === 'cadet' && (
+            <>
+              <Field label="Cadet (from roster)">
+                <Select value={cadetId} onChange={(e) => pickCadet(e.target.value)}>
+                  <option value="">— select / type name —</option>
+                  {roster.map((m) => <option key={m.id} value={m.id}>{m.fullName}</option>)}
+                </Select>
+              </Field>
+              <Field label="Cadet name (To)">
+                <Input value={cadetName} onChange={(e) => { setCadetName(e.target.value); setCadetId(''); }} required />
+              </Field>
+            </>
+          )}
           <Field label="Memo date">
             <Input type="date" value={memoDate} onChange={(e) => setMemoDate(e.target.value)} />
           </Field>
@@ -216,7 +274,7 @@ function ReportFormModal({
 
         <div className="grid gap-4 sm:grid-cols-2">
           {type.fields.map((f) => (
-            <Field key={f.key} label={f.label} hint={f.hint}>
+            <Field key={f.key} label={f.label} hint={f.hint} className={f.type === 'textarea' ? 'sm:col-span-2' : ''}>
               {f.type === 'course' ? (
                 <Select value={values[f.key] ?? ''} onChange={(e) => set(f.key, e.target.value)}>
                   <option value="">— select course —</option>
@@ -224,9 +282,21 @@ function ReportFormModal({
                     <option key={c.code} value={`${c.code} ${c.name}`}>{c.code} {c.name}</option>
                   ))}
                 </Select>
+              ) : f.type === 'cadet' ? (
+                <Select value={values[f.key] ?? ''} onChange={(e) => set(f.key, e.target.value)}>
+                  <option value="">— select cadet —</option>
+                  {roster.map((m) => <option key={m.id} value={m.fullName}>{m.fullName}</option>)}
+                </Select>
+              ) : f.type === 'select' ? (
+                <Select value={values[f.key] ?? ''} onChange={(e) => set(f.key, e.target.value)}>
+                  <option value="">— select —</option>
+                  {(f.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
+                </Select>
+              ) : f.type === 'textarea' ? (
+                <TextArea value={values[f.key] ?? ''} onChange={(e) => set(f.key, e.target.value)} rows={4} />
               ) : (
                 <Input
-                  type={f.type === 'date' ? 'date' : f.type === 'number' ? 'number' : 'text'}
+                  type={f.type === 'date' ? 'date' : f.type === 'time' ? 'time' : f.type === 'number' ? 'number' : 'text'}
                   value={values[f.key] ?? ''}
                   onChange={(e) => set(f.key, e.target.value)}
                 />
