@@ -36,6 +36,22 @@ export interface UserDoc {
   notificationPrefs: { email: boolean; reminderLeadHours: number; digest: boolean };
   /** Forces a password change on first sign-in (admin-created accounts). */
   mustChangePassword?: boolean;
+  /** Tenant this user belongs to (orgs/{orgId}). */
+  orgId?: string;
+  /** Product owner — manages orgs/billing; NOT a tenant role. */
+  platformOwner?: boolean;
+}
+
+/** A tenant (college/agency). Doc id == orgId. */
+export interface OrgDoc {
+  orgId: string;
+  shortCode: string;
+  legalName: string;
+  status: 'active' | 'suspended';
+  plan?: string;
+  subscriptionStatus?: 'trialing' | 'active' | 'past_due' | 'canceled';
+  createdAt: Timestamp;
+  createdBy?: string;
 }
 
 export interface GlobalSettings {

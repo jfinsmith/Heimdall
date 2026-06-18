@@ -6,6 +6,7 @@
  * an extra read. Only directors/lieutenants (per the RBAC matrix) may call it.
  */
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { randomBytes } from 'crypto';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { notify } from '../gjallarhorn/notify';
@@ -37,7 +38,14 @@ export const setUserRole = onCall<{ uid: string; role: Role }>(async (request) =
   // ADMIN_ROLES), so either may assign any role — including director. No
   // director-only restriction here, by design.
 
-  await getAuth().setCustomUserClaims(uid, { role });
+  // Preserve the user's tenant + platform claims — setCustomUserClaims REPLACES
+  // all claims, so a role change must not drop orgId / platformOwner.
+  const targetSnap = await getFirestore().doc(`users/${uid}`).get();
+  const tdata = targetSnap.data() ?? {};
+  const claims: Record<string, unknown> = { role };
+  if (tdata.orgId) claims.orgId = tdata.orgId;
+  if (tdata.platformOwner === true) claims.platformOwner = true;
+  await getAuth().setCustomUserClaims(uid, claims);
   await getFirestore().doc(`users/${uid}`).set({ role, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
 
   await getFirestore().collection('auditLog').add({
@@ -80,6 +88,8 @@ export const createUserAccount = onCall<{
   if (!callerRole || !ADMIN_ROLES.includes(callerRole)) {
     throw new HttpsError('permission-denied', 'Only directors and lieutenants may add users.');
   }
+  // New users inherit the creating admin's tenant (undefined pre-backfill — no change then).
+  const callerOrgId = callerDoc.data()?.orgId as string | undefined;
 
   const email = (request.data.email ?? '').trim().toLowerCase();
   const displayName = (request.data.displayName ?? '').trim();
@@ -117,7 +127,7 @@ export const createUserAccount = onCall<{
     }
   }
 
-  await getAuth().setCustomUserClaims(uid, { role });
+  await getAuth().setCustomUserClaims(uid, { role, ...(callerOrgId ? { orgId: callerOrgId } : {}) });
   await getFirestore().doc(`users/${uid}`).set({
     email,
     displayName,
@@ -126,6 +136,7 @@ export const createUserAccount = onCall<{
     rank: (request.data.rank ?? '').trim(),
     agency: (request.data.agency ?? '').trim(),
     role,
+    ...(callerOrgId ? { orgId: callerOrgId } : {}),
     status: 'active',
     qualifications: [],
     verifiedQualKeys: [],
@@ -155,8 +166,14 @@ export const createUserAccount = onCall<{
 export const bootstrapFirstDirector = onCall(async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
   const dbRef = getFirestore();
-  const directors = await dbRef.collection('users').where('role', '==', 'director').limit(1).get();
-  if (!directors.empty) throw new HttpsError('failed-precondition', 'A director already exists.');
+  // Closed once ANY account exists. In a pooled multi-tenant DB a per-org
+  // "no director yet" check would let any signed-in user self-promote to
+  // director of an empty/new org — so gate on global emptiness. New orgs get
+  // their first admin via createOrg (platform-owner provisioned).
+  const anyUser = await dbRef.collection('users').limit(1).get();
+  if (!anyUser.empty) {
+    throw new HttpsError('failed-precondition', 'Bootstrap is closed — an account already exists.');
+  }
 
   const uid = request.auth.uid;
   await getAuth().setCustomUserClaims(uid, { role: 'director' });
@@ -173,6 +190,71 @@ export const bootstrapFirstDirector = onCall(async (request) => {
     createdAt: FieldValue.serverTimestamp(),
   });
   return { ok: true };
+});
+
+/**
+ * Provision a new tenant (org). Platform-owner only — the product owner creates
+ * colleges/agencies. Generates a non-enumerable orgId (shortCode + 6 hex) and,
+ * optionally, seats a first admin (captain/director) into it. Does NOT change
+ * any existing org's data — pooled isolation is enforced by rules (Phase 5).
+ */
+export const createOrg = onCall<{ shortCode: string; legalName: string; firstAdminUid?: string }>(async (request) => {
+  const caller = request.auth;
+  if (!caller) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = getFirestore();
+  const callerDoc = await db.doc(`users/${caller.uid}`).get();
+  if (!callerDoc.exists || callerDoc.data()!.platformOwner !== true) {
+    throw new HttpsError('permission-denied', 'Only the platform owner may create organizations.');
+  }
+
+  const legalName = (request.data.legalName ?? '').trim();
+  const slug = (request.data.shortCode ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 12);
+  if (!slug) throw new HttpsError('invalid-argument', 'shortCode must contain letters or digits.');
+  if (!legalName) throw new HttpsError('invalid-argument', 'legalName is required.');
+
+  // Allocate a unique id; re-check existence inside a transaction (collision-safe).
+  let orgId = '';
+  for (let attempt = 0; attempt < 6 && !orgId; attempt++) {
+    const candidate = `${slug}-${randomBytes(3).toString('hex')}`;
+    const ok = await db.runTransaction(async (tx) => {
+      const ref = db.doc(`orgs/${candidate}`);
+      if ((await tx.get(ref)).exists) return false;
+      tx.set(ref, {
+        orgId: candidate,
+        shortCode: slug,
+        legalName,
+        status: 'active',
+        createdAt: FieldValue.serverTimestamp(),
+        createdBy: caller.uid,
+      });
+      return true;
+    });
+    if (ok) orgId = candidate;
+  }
+  if (!orgId) throw new HttpsError('internal', 'Could not allocate a unique org id; please retry.');
+
+  // Optionally seat the first admin, preserving their other claims.
+  const firstAdminUid = (request.data.firstAdminUid ?? '').trim();
+  if (firstAdminUid) {
+    const adminUser = await getAuth().getUser(firstAdminUid).catch(() => null);
+    if (!adminUser) throw new HttpsError('not-found', 'firstAdminUid does not match an existing account.');
+    const existing = adminUser.customClaims ?? {};
+    await getAuth().setCustomUserClaims(firstAdminUid, { ...existing, role: 'director', orgId });
+    await db.doc(`users/${firstAdminUid}`).set(
+      { role: 'director', orgId, status: 'active', updatedAt: FieldValue.serverTimestamp() },
+      { merge: true }
+    );
+  }
+
+  await db.collection('auditLog').add({
+    actorUid: caller.uid,
+    action: 'platform.create_org',
+    targetType: 'org',
+    targetId: orgId,
+    summary: `Created org ${legalName} (${orgId})`,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+  return { ok: true, orgId };
 });
 
 /**

@@ -10,7 +10,7 @@ import { initializeApp, applicationDefault } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 
-const ROLES = ['director', 'lieutenant', 'sergeant', 'coordinator', 'instructor'];
+const ROLES = ['director', 'lieutenant', 'sergeant', 'coordinator', 'instructor', 'guest'];
 
 const [target, role] = process.argv.slice(2);
 if (!target || !ROLES.includes(role)) {
@@ -24,7 +24,8 @@ async function main() {
   const auth = getAuth();
   const user = target.includes('@') ? await auth.getUserByEmail(target) : await auth.getUser(target);
 
-  await auth.setCustomUserClaims(user.uid, { role });
+  // Preserve other claims (orgId, platformOwner) — claims are replaced wholesale.
+  await auth.setCustomUserClaims(user.uid, { ...(user.customClaims ?? {}), role });
   await getFirestore().doc(`users/${user.uid}`).set(
     { role, status: 'active', updatedAt: FieldValue.serverTimestamp() },
     { merge: true }

@@ -82,6 +82,29 @@ describe('users — staff verification (SEC-1)', () => {
   });
 });
 
+// orgId / platformOwner are server-managed (Admin SDK callables); NO client write
+// may set them — else a self-set platformOwner could be minted into a real claim.
+describe('users — tenant/platform claims are server-only', () => {
+  it('instructor CANNOT self-set platformOwner', async () => {
+    await assertFails(updateDoc(doc(as('alice', 'instructor'), 'users/alice'), { platformOwner: true }));
+  });
+  it('instructor CANNOT self-set orgId', async () => {
+    await assertFails(updateDoc(doc(as('alice', 'instructor'), 'users/alice'), { orgId: 'evil-org' }));
+  });
+  it('even a director CANNOT change a user platformOwner / orgId', async () => {
+    await assertFails(updateDoc(doc(as('dave', 'director'), 'users/bob'), { platformOwner: true }));
+    await assertFails(updateDoc(doc(as('dave', 'director'), 'users/bob'), { orgId: 'evil-org' }));
+  });
+  it('self-registration CANNOT pre-seed platformOwner on create', async () => {
+    await assertFails(
+      setDoc(doc(as('eve', 'instructor'), 'users/eve'), {
+        ...user({ role: 'instructor', status: 'pending' }),
+        platformOwner: true,
+      })
+    );
+  });
+});
+
 describe('users — reads', () => {
   it('instructor can read own doc, not another\'s', async () => {
     await assertSucceeds(getDoc(doc(as('alice', 'instructor'), 'users/alice')));

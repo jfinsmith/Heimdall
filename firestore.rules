@@ -57,8 +57,17 @@ service cloud.firestore {
         && request.resource.data.verifiedQualKeys == []
         && request.resource.data.email is string
         && request.resource.data.displayName is string
-        && request.resource.data.qualifications is list;
-      allow update: if isAdmin()
+        && request.resource.data.qualifications is list
+        // Tenant + platform claims are server-managed (Admin SDK only) — never
+        // self-set, or a self-registrant could pre-seed platformOwner:true and
+        // have it minted into a real claim on their first role assignment.
+        && !('orgId' in request.resource.data)
+        && !('platformOwner' in request.resource.data);
+      // orgId / platformOwner are ONLY written by the Admin SDK (callables +
+      // scripts), which bypass these rules. No client update — not even an admin —
+      // may change them; the role-minting callable trusts the user doc.
+      allow update: if unchanged('orgId') && unchanged('platformOwner') && (
+        isAdmin()
         // Staff (coordinator/sergeant) may approve accounts and verify quals on
         // OTHER users, but may not change roles, and may NOT self-grant their own
         // status / verifiedQualKeys (no self-escalation past the FDLE gate).
@@ -70,7 +79,7 @@ service cloud.firestore {
             && unchanged('role')
             && unchanged('status')
             && unchanged('verifiedQualKeys')
-            && unchanged('email'));
+            && unchanged('email')));
       allow delete: if isAdmin();
     }
 

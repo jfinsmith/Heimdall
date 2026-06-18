@@ -128,6 +128,10 @@ export interface UserDoc {
   suspensionReason?: string;
   suspendedAt?: Timestamp;
   suspendedBy?: string;
+  /** Tenant this user belongs to (orgs/{orgId}). Set when provisioned/backfilled. */
+  orgId?: string;
+  /** Product owner — manages orgs/billing + cross-org feedback; NOT a tenant role. */
+  platformOwner?: boolean;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -158,6 +162,23 @@ export const EMAIL_AUTOMATIONS = [
 export type EmailAutomationKey = (typeof EMAIL_AUTOMATIONS)[number]['key'];
 
 // ── Org settings (settings/global singleton) ───────────────────────────────
+/**
+ * A tenant (college/agency). Doc id == orgId. Isolation is enforced by an orgId
+ * custom-claim match in security rules (added at the Phase-5 cutover); the id is
+ * non-enumerable defense-in-depth, not the security boundary.
+ */
+export interface OrgDoc {
+  orgId: string;          // == doc id, e.g. 'phsc' or 'phsc-7f3a9c'
+  shortCode: string;      // human prefix, e.g. 'phsc'
+  legalName: string;      // e.g. 'Pasco-Hernando State College'
+  status: 'active' | 'suspended';
+  /** Billing (Phase 14) — present once Stripe is wired. */
+  plan?: string;
+  subscriptionStatus?: 'trialing' | 'active' | 'past_due' | 'canceled';
+  createdAt: Timestamp;
+  createdBy?: string;
+}
+
 export interface GlobalSettings {
   orgName: string;
   brandPrimaryColor: string;

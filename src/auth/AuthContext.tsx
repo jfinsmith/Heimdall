@@ -28,6 +28,10 @@ interface AuthState {
   /** Firestore profile (null until loaded / while signed out). */
   profile: (UserDoc & { id: string }) | null;
   role: Role | null;
+  /** Tenant the signed-in user belongs to (null until backfilled/provisioned). */
+  orgId: string | null;
+  /** Product owner — cross-org platform access. */
+  platformOwner: boolean;
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
@@ -85,9 +89,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (snap.exists()) {
         const data = snap.data() as UserDoc;
         setProfile({ id: snap.id, ...data });
-        // If an admin changed our role, refresh the token so custom-claim rules apply.
+        // Refresh the token when any claim that rules depend on (role, orgId,
+        // platformOwner) is stale vs the profile — e.g. right after the org
+        // backfill mints an orgId claim, so the session isn't locked out for up
+        // to an hour waiting for the claim to propagate.
         const token = await firebaseUser.getIdTokenResult();
-        if (token.claims.role !== data.role) {
+        const claimMismatch =
+          token.claims.role !== data.role ||
+          (token.claims.orgId ?? null) !== (data.orgId ?? null) ||
+          !!token.claims.platformOwner !== (data.platformOwner === true);
+        if (claimMismatch) {
           await firebaseUser.getIdToken(true);
         }
       } else {
@@ -102,6 +113,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     firebaseUser,
     profile,
     role: profile?.role ?? null,
+    orgId: profile?.orgId ?? null,
+    platformOwner: profile?.platformOwner === true,
     loading,
     signInWithGoogle: async () => {
       const cred = await signInWithPopup(auth, googleProvider);
