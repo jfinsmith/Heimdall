@@ -1,6 +1,6 @@
 /**
  * Academy Roster — per-academy cadet roster and the systems that hang off it:
- * a tiered intake wizard, the Members list (with audited SSN reveal), the
+ * a tiered intake wizard, the Members list, the
  * printable Attendance Roster, the Discipline tracker, and the Gradebook.
  * Real academies only — templates have no roster.
  */
@@ -23,10 +23,9 @@ import { enabledRosterModules, ROSTER_MODULE_BY_KEY } from './rosterModules';
 import type { RosterModuleKey } from '../../../types';
 
 const rosterCreateMember = httpsCallable<
-  { academyId: string; member: Record<string, unknown>; ssn?: string },
+  { academyId: string; member: Record<string, unknown> },
   { ok: boolean; id: string; no: number }
 >(functions, 'rosterCreateMember');
-const rosterRevealSsn = httpsCallable<{ academyId: string; memberId: string }, { ssn: string | null }>(functions, 'rosterRevealSsn');
 
 type Tab = 'members' | RosterModuleKey;
 
@@ -112,7 +111,7 @@ export function RosterPage() {
         </div>
       </div>
 
-      {activeTab === 'members' && <MembersTab academyId={academyId} academy={academy} members={members} curriculum={curriculum} reveal={rosterRevealSsn} />}
+      {activeTab === 'members' && <MembersTab academyId={academyId} academy={academy} members={members} curriculum={curriculum} />}
       {activeModule?.attendanceFormat && <AttendanceTab academy={academy} members={members} curriculum={curriculum} />}
       {activeTab === 'discipline' && <DisciplineTab academyId={academyId} members={members} />}
       {activeTab === 'grades' && <GradesTab academyId={academyId} members={members} curriculum={curriculum} />}
@@ -127,34 +126,14 @@ function MembersTab({
   academy,
   members,
   curriculum,
-  reveal,
 }: {
   academyId: string;
   academy: WithId<AcademyDoc>;
   members: WithId<RosterMemberDoc>[];
   curriculum: WithId<CurriculumDoc> | null;
-  reveal: typeof rosterRevealSsn;
 }) {
   const [addOpen, setAddOpen] = useState(false);
   const [withdrawTarget, setWithdrawTarget] = useState<WithId<RosterMemberDoc> | null>(null);
-  const [revealed, setRevealed] = useState<Record<string, string>>({});
-  const [revealing, setRevealing] = useState<string | null>(null);
-
-  async function doReveal(id: string) {
-    if (revealed[id]) {
-      setRevealed((r) => { const n = { ...r }; delete n[id]; return n; });
-      return;
-    }
-    setRevealing(id);
-    try {
-      const res = await reveal({ academyId, memberId: id });
-      setRevealed((r) => ({ ...r, [id]: res.data.ssn ?? '—' }));
-    } catch {
-      setRevealed((r) => ({ ...r, [id]: 'error' }));
-    } finally {
-      setRevealing(null);
-    }
-  }
 
   async function remove(m: WithId<RosterMemberDoc>) {
     if (!window.confirm(`Remove ${m.fullName} from the roster entirely? To keep a record, withdraw them instead.`)) return;
@@ -181,26 +160,25 @@ function MembersTab({
               <th className="px-3 py-3">Name</th>
               <th className="px-3 py-3">Agency</th>
               <th className="px-3 py-3">Contact</th>
-              <th className="px-3 py-3">SSN</th>
               <th className="px-3 py-3">Status</th>
               <th className="px-3 py-3" />
             </tr>
           </thead>
           <tbody className="divide-y divide-watch-50">
             {full.map((m) => (
-              <MemberRow key={m.id} m={m} revealed={revealed[m.id]} revealing={revealing === m.id}
-                onReveal={() => doReveal(m.id)} onWithdraw={() => setWithdrawTarget(m)} onReinstate={() => reinstate(m)} onRemove={() => remove(m)} />
+              <MemberRow key={m.id} m={m}
+                onWithdraw={() => setWithdrawTarget(m)} onReinstate={() => reinstate(m)} onRemove={() => remove(m)} />
             ))}
             {full.length === 0 && (
-              <tr><td colSpan={7} className="px-3 py-10 text-center text-slate-400">No members yet — add the first cadet.</td></tr>
+              <tr><td colSpan={6} className="px-3 py-10 text-center text-slate-400">No members yet — add the first cadet.</td></tr>
             )}
           </tbody>
           {blockTakers.length > 0 && (
             <tbody className="divide-y divide-watch-50">
-              <tr className="bg-watch-100/60"><td colSpan={7} className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-watch-600">Additional block takers</td></tr>
+              <tr className="bg-watch-100/60"><td colSpan={6} className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-watch-600">Additional block takers</td></tr>
               {blockTakers.map((m) => (
-                <MemberRow key={m.id} m={m} revealed={revealed[m.id]} revealing={revealing === m.id}
-                  onReveal={() => doReveal(m.id)} onWithdraw={() => setWithdrawTarget(m)} onReinstate={() => reinstate(m)} onRemove={() => remove(m)} />
+                <MemberRow key={m.id} m={m}
+                  onWithdraw={() => setWithdrawTarget(m)} onReinstate={() => reinstate(m)} onRemove={() => remove(m)} />
               ))}
             </tbody>
           )}
@@ -216,10 +194,10 @@ function MembersTab({
 }
 
 function MemberRow({
-  m, revealed, revealing, onReveal, onWithdraw, onReinstate, onRemove,
+  m, onWithdraw, onReinstate, onRemove,
 }: {
-  m: WithId<RosterMemberDoc>; revealed?: string; revealing: boolean;
-  onReveal: () => void; onWithdraw: () => void; onReinstate: () => void; onRemove: () => void;
+  m: WithId<RosterMemberDoc>;
+  onWithdraw: () => void; onReinstate: () => void; onRemove: () => void;
 }) {
   const withdrawn = m.status === 'withdrawn';
   return (
@@ -232,15 +210,6 @@ function MemberRow({
       <td className="px-3 py-3 text-xs text-slate-500">
         {m.email && <div>{m.email}</div>}
         {m.phone && <div>{m.phone}</div>}
-      </td>
-      <td className="px-3 py-3 text-xs">
-        {m.ssnLast4 ? (
-          <button className="text-bifrost-700 hover:underline" onClick={onReveal} disabled={revealing}>
-            {revealing ? '…' : revealed ? revealed : `•••-••-${m.ssnLast4}`}
-          </button>
-        ) : (
-          <span className="text-slate-400">—</span>
-        )}
       </td>
       <td className="px-3 py-3">
         {withdrawn ? <Badge tone="slate">withdrawn</Badge> : <Badge tone="green">active</Badge>}
@@ -304,11 +273,11 @@ function WithdrawModal({
 // ── Tiered intake wizard ─────────────────────────────────────────────────────
 interface Draft {
   fullName: string; agency: RosterAgency; agencyOther: string;
-  cjis: string; studentId: string; ssn: string; phone: string; email: string;
+  cjis: string; studentId: string; phone: string; email: string;
   emergencyName: string; emergencyPhone: string;
 }
 const BLANK: Draft = {
-  fullName: '', agency: 'PSO', agencyOther: '', cjis: '', studentId: '', ssn: '', phone: '', email: '',
+  fullName: '', agency: 'PSO', agencyOther: '', cjis: '', studentId: '', phone: '', email: '',
   emergencyName: '', emergencyPhone: '',
 };
 
@@ -340,10 +309,6 @@ function IntakeWizard({ academyId, onClose }: { academyId: string; onClose: () =
     },
     { label: 'CJIS number', hint: 'Optional', valid: () => true, render: () => <Input autoFocus value={draft.cjis} onChange={(e) => set({ cjis: e.target.value })} /> },
     { label: 'Student ID', hint: 'Optional', valid: () => true, render: () => <Input autoFocus value={draft.studentId} onChange={(e) => set({ studentId: e.target.value })} placeholder="P00000000" /> },
-    {
-      label: 'Social Security Number', hint: 'Stored encrypted — only the last 4 are ever shown.', valid: () => true,
-      render: () => <Input autoFocus value={draft.ssn} onChange={(e) => set({ ssn: e.target.value })} placeholder="000-00-0000" inputMode="numeric" />,
-    },
     { label: 'Phone number', hint: 'Optional', valid: () => true, render: () => <Input autoFocus type="tel" value={draft.phone} onChange={(e) => set({ phone: e.target.value })} /> },
     { label: 'Email address', hint: 'Optional', valid: () => true, render: () => <Input autoFocus type="email" value={draft.email} onChange={(e) => set({ email: e.target.value })} /> },
     { label: 'Emergency contact — name', hint: 'Optional', valid: () => true, render: () => <Input autoFocus value={draft.emergencyName} onChange={(e) => set({ emergencyName: e.target.value })} /> },
@@ -364,7 +329,6 @@ function IntakeWizard({ academyId, onClose }: { academyId: string; onClose: () =
           cjis: draft.cjis, studentId: draft.studentId, phone: draft.phone, email: draft.email,
           emergencyName: draft.emergencyName, emergencyPhone: draft.emergencyPhone,
         },
-        ssn: draft.ssn,
       });
       onClose();
     } catch (err) {

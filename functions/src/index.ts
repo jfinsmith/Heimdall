@@ -20,5 +20,5 @@ export { calendarFeed } from './gjallarhorn/icsFeed';
 export { gjallarhornDailySweep, gjallarhornWeeklyDigest } from './gjallarhorn/sweeps';
 // Admin callables
 export { setUserRole, bootstrapFirstDirector, createUserAccount, createOrg, academyApproval, sendActivationEmail, setUserSuspension, listAllFeedback, joinOrgByCode, assignUserToOrg, denyUser, listOwnerQueue, getOrgDetail, createOrgAdmin, deleteUnassignedAccount, listAllAuditLog, ownerListOrgs, ownerSwitchOrg, importDefaultCurricula } from './admin/callables';
-// Academy roster — encrypted-SSN writers + audited reveal
-export { rosterCreateMember, rosterUpdateSsn, rosterRevealSsn } from './admin/roster';
+// Academy roster — member creation (no SSN stored; college holds SSNs locally)
+export { rosterCreateMember } from './admin/roster';

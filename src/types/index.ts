@@ -407,10 +407,6 @@ export interface RosterMemberDoc {
   agencyOther?: string;
   cjis?: string;
   studentId?: string;
-  /** Last 4 of the SSN, safe to display. The full SSN is encrypted server-side. */
-  ssnLast4?: string;
-  /** AES-256-GCM ciphertext of the full SSN (iv:tag:data, base64). Callable-owned. */
-  ssnCipher?: string;
   phone?: string;
   email?: string;
   emergencyName?: string;

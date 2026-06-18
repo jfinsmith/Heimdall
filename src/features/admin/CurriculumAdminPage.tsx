@@ -18,6 +18,7 @@ import { Modal } from '../../components/Modal';
 import { logAudit } from '../sessions/audit';
 import { ROSTER_MODULES, DEFAULT_ROSTER_MODULES } from '../cadre/roster/rosterModules';
 import { reportCategoriesOf } from '../cadre/reports/reportConfig';
+import { FDLE_DEFAULT_CURRICULA } from './fdleCurricula';
 
 /** Default report category for a not-yet-configured curriculum so a save preserves
  *  its current effective behavior (the four built-in forms are Law Enforcement). */
@@ -120,13 +121,30 @@ export function CurriculumAdminPage({ scope = 'org' }: { scope?: 'org' | 'defaul
   );
 }
 
-/** Owner-only: seed the platform default curricula from an existing org (e.g. PHSC). */
+/** Owner-only: seed the platform default curricula — from the built-in FDLE set
+ *  (CJK + ratios baked in) or by copying an existing org's curricula. */
 function ImportDefaults() {
   const [orgs, setOrgs] = useState<{ orgId: string; legalName: string }[]>([]);
   const [src, setSrc] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   useEffect(() => { ownerListOrgs().then((r) => setOrgs(r.data.orgs)).catch(() => setOrgs([])); }, []);
+
+  async function loadFdle() {
+    if (!window.confirm('Load the built-in FDLE standard curricula? This writes the Law Enforcement program (with CJK numbers + high-liability ratios) and shells for Corrections, EOT, and the two crossovers — overwriting any default of the same key. Per-course HOURS are estimates to verify.')) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      for (const c of FDLE_DEFAULT_CURRICULA) {
+        await setDoc(doc(db, 'defaultCurricula', c.key), c, { merge: false });
+      }
+      setMsg(`Loaded ${FDLE_DEFAULT_CURRICULA.length} FDLE standard curricula. Verify/adjust hours, then they’ll seed every new org.`);
+    } catch (e) {
+      setMsg((e as Error).message || 'Load failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function run() {
     if (!src) return;
@@ -144,15 +162,21 @@ function ImportDefaults() {
   }
 
   return (
-    <div className="mb-5 flex flex-wrap items-end gap-3 rounded-lg border border-watch-100 bg-white p-3 shadow-sm">
-      <Field label="Import defaults from an organization" className="min-w-[16rem] flex-1">
-        <Select value={src} onChange={(e) => setSrc(e.target.value)}>
-          <option value="">Choose an organization…</option>
-          {orgs.map((o) => <option key={o.orgId} value={o.orgId}>{o.legalName}</option>)}
-        </Select>
-      </Field>
-      <Button variant="secondary" disabled={!src || busy} onClick={run}>{busy ? 'Importing…' : 'Import'}</Button>
-      {msg && <span className="text-sm text-slate-600">{msg}</span>}
+    <div className="mb-5 space-y-3 rounded-lg border border-watch-100 bg-white p-3 shadow-sm">
+      <div className="flex flex-wrap items-center gap-3">
+        <Button variant="primary" disabled={busy} onClick={loadFdle}>{busy ? 'Working…' : 'Load FDLE standard curricula'}</Button>
+        <span className="text-xs text-slate-500">Recommended starting point — LE fully populated (CJK + ratios); Corrections/EOT/crossovers as shells to fill.</span>
+      </div>
+      <div className="flex flex-wrap items-end gap-3 border-t border-watch-50 pt-3">
+        <Field label="…or import defaults from an organization" className="min-w-[16rem] flex-1">
+          <Select value={src} onChange={(e) => setSrc(e.target.value)}>
+            <option value="">Choose an organization…</option>
+            {orgs.map((o) => <option key={o.orgId} value={o.orgId}>{o.legalName}</option>)}
+          </Select>
+        </Field>
+        <Button variant="secondary" disabled={!src || busy} onClick={run}>{busy ? 'Importing…' : 'Import'}</Button>
+      </div>
+      {msg && <span className="block text-sm text-slate-600">{msg}</span>}
     </div>
   );
 }
