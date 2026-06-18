@@ -73,6 +73,13 @@ export interface ReportType {
    * use `body`/`bodyNeutral`; the general & conduct documents use `document`.
    */
   document?: DocumentSpec;
+  /**
+   * Availability scope. undefined = GLOBAL (offered to every organization). A
+   * specific orgId = offered ONLY to that org — used for documents custom-built
+   * for one organization (e.g. the four PHSC academic-action letters are
+   * 'phsc'-only). Set on the registry entry; AcademyReports filters on it.
+   */
+  orgScope?: string;
 }
 
 /** Underlined fill-in blank, mirroring the form's blanks. */
@@ -208,7 +215,12 @@ const ACADEMIC_REPORT_TYPES: ReportType[] = [
   },
 ];
 
-/** The full registry: academic-action letters + Phase-11 general & conduct documents. */
-export const REPORT_TYPES: ReportType[] = [...ACADEMIC_REPORT_TYPES, ...DOCUMENT_TYPES];
+/** The full registry: academic-action letters + Phase-11 general & conduct documents.
+ *  The four academic letters are PHSC-specific (built from PHSC's official forms),
+ *  so they're scoped to 'phsc'; the general & conduct documents are global. */
+export const REPORT_TYPES: ReportType[] = [
+  ...ACADEMIC_REPORT_TYPES.map((t) => ({ ...t, orgScope: 'phsc' })),
+  ...DOCUMENT_TYPES,
+];
 
 export const getReportType = (id: ReportTypeId): ReportType | undefined => REPORT_TYPES.find((r) => r.id === id);

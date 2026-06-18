@@ -95,7 +95,6 @@ export function AppRouter() {
                 <Route path="/admin/roster" element={<RosterPage />} />
                 <Route path="/admin/permissions" element={<PermissionsPage />} />
                 <Route path="/admin/curriculum" element={<CurriculumAdminPage />} />
-                <Route path="/admin/report-forms" element={<ReportFormsAdminPage />} />
                 <Route path="/admin/holidays" element={<HolidaysAdminPage />} />
                 <Route path="/admin/settings" element={<SettingsAdminPage />} />
                 <Route path="/admin/gjallarhorn" element={<GjallarhornSettingsPage />} />
@@ -106,6 +105,7 @@ export function AppRouter() {
               <Route element={<RequirePlatformOwner />}>
                 <Route path="/owner" element={<OwnerConsolePage />} />
                 <Route path="/owner/curricula" element={<CurriculumAdminPage scope="defaults" />} />
+                <Route path="/owner/report-forms" element={<ReportFormsAdminPage />} />
                 <Route path="/owner/feedback" element={<FeedbackAdminPage />} />
                 <Route path="/owner/audit" element={<OwnerAuditPage />} />
               </Route>

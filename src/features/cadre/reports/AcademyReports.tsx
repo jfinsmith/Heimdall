@@ -48,7 +48,8 @@ export function AcademyReports({ academy }: { academy: WithId<AcademyDoc> }) {
   // Report forms (code registry + admin name/category overrides), then the set
   // this discipline offers: by the curriculum's chosen categories when set,
   // else legacy fallbacks (older per-form list, else all LE forms).
-  const effective = effectiveReportTypes(reportConfig);
+  // Org-scope: global forms (no orgScope) plus any scoped to THIS org only.
+  const effective = effectiveReportTypes(reportConfig).filter((t) => !t.orgScope || t.orgScope === orgId);
   const typeFor = (id: string) => effective.find((t) => t.id === id);
   // Discipline-specific forms: by the curriculum's chosen categories when set,
   // else legacy fallbacks (older per-form list, else all LE forms).

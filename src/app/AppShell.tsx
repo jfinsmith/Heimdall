@@ -158,7 +158,6 @@ export function AppShell() {
           <NavItem to="/admin/roster" label="Roster & Certifications" />
           <NavItem to="/admin/permissions" label="Roles & Permissions" />
           <NavItem to="/admin/curriculum" label="Curriculum & Hours" />
-          <NavItem to="/admin/report-forms" label="Report Forms" />
           <NavItem to="/admin/holidays" label="Holidays" />
           <NavItem to="/admin/settings" label="Org Settings" />
           <NavItem to="/admin/gjallarhorn" label="Gjallarhorn & Email" />
@@ -170,6 +169,7 @@ export function AppShell() {
           <SectionLabel title="HEIMDALL platform operator">Platform</SectionLabel>
           <NavItem to="/owner" label="Owner Console" end />
           <NavItem to="/owner/curricula" label="Default Curricula" />
+          <NavItem to="/owner/report-forms" label="Report Forms" />
           <NavItem to="/owner/feedback" label="Bug & Feature Reports" />
           <NavItem to="/owner/audit" label="Audit Log (all orgs)" />
         </>

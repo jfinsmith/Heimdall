@@ -1,11 +1,10 @@
 /**
- * Admin — Report Forms: rename the built-in report forms and sort them into
- * custom categories (LE, CO, NMT, ARGUS…). The form fields + verbatim letter
- * body live in code (reportTypes.tsx); only the display name and category are
- * editable here. New forms are added in code, then named/categorized here.
- *
- * Curricula choose report *categories* (Admin → Curriculum & Hours); a class
- * then offers every form in its selected categories.
+ * Platform owner — Report Forms (the document library). Each form is either
+ * GLOBAL (offered to every org) or scoped to ONE org (e.g. PHSC's academic
+ * letters). The form fields + letter text live in code (reportTypes.tsx /
+ * documentTypes.tsx), built from uploads in development; the display name +
+ * category are editable here for the org you're currently viewing. Switch orgs
+ * (top of the sidebar) to manage another org's report config.
  */
 import React, { useEffect, useState } from 'react';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
@@ -13,14 +12,14 @@ import { db } from '../../lib/firebase';
 import { useDoc, orgConfigPath } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import type { ReportCategory, ReportConfigDoc } from '../../types';
-import { Button, Field, Input, PageHeader, Select } from '../../components/ui';
+import { Badge, Button, Field, Input, PageHeader, Select } from '../../components/ui';
 import { logAudit } from '../sessions/audit';
 import { REPORT_TYPES } from '../cadre/reports/reportTypes';
 import { reportCategoriesOf, effectiveReportTypes } from '../cadre/reports/reportConfig';
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 
-interface FormRow { id: string; baseName: string; name: string; category: string }
+interface FormRow { id: string; baseName: string; name: string; category: string; scope: string }
 
 export function ReportFormsAdminPage() {
   const { firebaseUser, orgId } = useAuth();
@@ -36,11 +35,18 @@ export function ReportFormsAdminPage() {
   useEffect(() => {
     if (seeded || loading) return;
     setCats(reportCategoriesOf(config));
-    const eff = effectiveReportTypes(config);
-    const baseName = (id: string) => REPORT_TYPES.find((b) => b.id === id)?.name ?? id;
-    setRows(eff.map((t) => ({ id: t.id, baseName: baseName(t.id), name: t.name, category: t.category })));
+    // Only forms available to the org being viewed: global + this-org-scoped.
+    const eff = effectiveReportTypes(config).filter((t) => !t.orgScope || t.orgScope === orgId);
+    const byId = (id: string) => REPORT_TYPES.find((b) => b.id === id);
+    setRows(eff.map((t) => ({
+      id: t.id,
+      baseName: byId(t.id)?.name ?? t.id,
+      name: t.name,
+      category: t.category,
+      scope: byId(t.id)?.orgScope ?? 'global',
+    })));
     setSeeded(true);
-  }, [config, loading, seeded]);
+  }, [config, loading, seeded, orgId]);
 
   const setRow = (id: string, patch: Partial<FormRow>) =>
     setRows((p) => p.map((r) => (r.id === id ? { ...r, ...patch } : r)));
@@ -86,12 +92,14 @@ export function ReportFormsAdminPage() {
 
   return (
     <div>
-      <PageHeader kicker="Admin" title="Report Forms" />
+      <PageHeader kicker="Platform Owner" title="Report Forms" />
       <p className="mb-4 max-w-2xl text-sm text-slate-500">
-        Rename the report forms and sort them into categories. The form fields and the official letter text
-        are built in code — adding a brand-new form happens in development, after which it appears below to be
-        named and categorized. Disciplines choose which <strong>categories</strong> they offer under
-        {' '}<strong>Curriculum &amp; Hours</strong>.
+        The document library for the organization you’re currently viewing. Each form is either
+        {' '}<strong>Global</strong> (offered to every org) or scoped to one org (badged below — e.g. PHSC’s
+        academic letters). Form fields and the official letter text are built in code from uploads; the
+        display name + category are editable here. Disciplines choose which <strong>categories</strong> they
+        offer under <strong>Curriculum &amp; Hours</strong>. Switch orgs from the top of the sidebar to manage
+        another org’s forms.
       </p>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -123,6 +131,11 @@ export function ReportFormsAdminPage() {
           <div className="space-y-3">
             {rows.map((r) => (
               <div key={r.id} className="rounded-md border border-watch-100 p-2">
+                <div className="mb-1 flex justify-end">
+                  {r.scope === 'global'
+                    ? <Badge tone="green">Global</Badge>
+                    : <Badge tone="amber">{r.scope} only</Badge>}
+                </div>
                 <Field label="Display name" hint={`Built-in: ${r.baseName}`}>
                   <Input value={r.name} onChange={(e) => setRow(r.id, { name: e.target.value })} />
                 </Field>
