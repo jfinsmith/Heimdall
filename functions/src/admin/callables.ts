@@ -9,7 +9,7 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { randomBytes } from 'crypto';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
-import { notify } from '../gjallarhorn/notify';
+import { notify, notifyAdmins } from '../gjallarhorn/notify';
 import { renderEmail, detailRows, escapeHtml } from '../gjallarhorn/templates';
 import type { AcademyDoc, Role } from '../types';
 import { ADMIN_ROLES, STAFF_ROLES } from '../types';
@@ -617,4 +617,172 @@ export const listAllFeedback = onCall(async (request) => {
     };
   });
   return { reports };
+});
+
+// ── Onboarding: site-code join + platform-owner queue ─────────────────────────
+
+/** Find the single org whose settings.siteCode matches (trimmed, case-insensitive). */
+async function findOrgIdBySiteCode(code: string): Promise<string | null> {
+  const norm = code.trim().toLowerCase();
+  if (!norm) return null;
+  const snap = await getFirestore().collection('settings').get();
+  const matches = snap.docs.filter(
+    (d) => d.id !== 'global' && String((d.data().siteCode as string) ?? '').trim().toLowerCase() === norm
+  );
+  return matches.length === 1 ? matches[0].id : null;
+}
+
+/**
+ * A signed-in, ORG-LESS user joins an org by its site code → routed into that
+ * org's PENDING queue (an admin still approves + assigns a role). Already-assigned
+ * users cannot hop orgs with a code.
+ */
+export const joinOrgByCode = onCall<{ code: string }>(async (request) => {
+  const caller = request.auth;
+  if (!caller) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = getFirestore();
+  const me = (await db.doc(`users/${caller.uid}`).get()).data() ?? {};
+  if (me.orgId) throw new HttpsError('failed-precondition', 'Your account already belongs to an organization.');
+  if (me.status === 'suspended') throw new HttpsError('permission-denied', 'This account is suspended.');
+
+  const code = (request.data.code ?? '').trim();
+  if (!code) throw new HttpsError('invalid-argument', 'Enter a join code.');
+  const orgId = await findOrgIdBySiteCode(code);
+  if (!orgId) throw new HttpsError('not-found', 'That code did not match any organization.');
+
+  // Stamp the tenant claim + doc (claim first so the live session refreshes in),
+  // clear any prior denial. Stays pending — an admin approves AND assigns the
+  // role. CRITICAL: strip any stale `role` claim/field. firestore.rules derives
+  // admin/staff rights from the token role alone (not doc status), so a role
+  // carried over from a prior org would grant unapproved access here.
+  const existing = { ...((await getAuth().getUser(caller.uid).catch(() => null))?.customClaims ?? {}) } as Record<string, unknown>;
+  delete existing.role;
+  await getAuth().setCustomUserClaims(caller.uid, { ...existing, orgId });
+  await db.doc(`users/${caller.uid}`).set(
+    { orgId, role: FieldValue.delete(), deniedFromOrgId: FieldValue.delete(), updatedAt: FieldValue.serverTimestamp() },
+    { merge: true }
+  );
+  await notifyAdmins(
+    {
+      dedupeKey: `join_${caller.uid}_${orgId}`,
+      type: 'new_account_pending',
+      title: 'New account request',
+      body: `${me.displayName || me.email || 'A user'} joined via site code and is awaiting approval.`,
+      link: '/admin/users',
+    },
+    orgId
+  );
+  return { ok: true, orgId };
+});
+
+/** Platform owner assigns an account to an org (+ optional role) — the owner-queue action. */
+export const assignUserToOrg = onCall<{ uid: string; orgId: string; role?: Role }>(async (request) => {
+  const caller = request.auth;
+  if (!caller) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = getFirestore();
+  const callerDoc = await db.doc(`users/${caller.uid}`).get();
+  if (!callerDoc.exists || callerDoc.data()!.platformOwner !== true) {
+    throw new HttpsError('permission-denied', 'Only the platform owner may assign accounts to organizations.');
+  }
+  const { uid, orgId, role } = request.data;
+  if (!uid || !orgId) throw new HttpsError('invalid-argument', 'Provide a user and an organization.');
+  if (role && !VALID_ROLES.includes(role)) throw new HttpsError('invalid-argument', 'Invalid role.');
+  if (!(await db.doc(`orgs/${orgId}`).get()).exists) throw new HttpsError('not-found', 'That organization does not exist.');
+
+  // Strip any stale role first; set it only if the owner explicitly chose one
+  // (otherwise the account lands role-less + pending for the org admin to assign).
+  const existing = { ...((await getAuth().getUser(uid).catch(() => null))?.customClaims ?? {}) } as Record<string, unknown>;
+  delete existing.role;
+  await getAuth().setCustomUserClaims(uid, { ...existing, orgId, ...(role ? { role } : {}) });
+  await db.doc(`users/${uid}`).set(
+    { orgId, ...(role ? { role } : { role: FieldValue.delete() }), deniedFromOrgId: FieldValue.delete(), updatedAt: FieldValue.serverTimestamp() },
+    { merge: true }
+  );
+  await db.collection('auditLog').add({
+    actorUid: caller.uid, action: 'platform.assign_org', targetType: 'user', targetId: uid,
+    summary: `Assigned to org ${orgId}${role ? ` as ${role}` : ''}`, orgId, createdAt: FieldValue.serverTimestamp(),
+  });
+  return { ok: true };
+});
+
+/**
+ * Deny a pending account: clears its org (bounces it back to the platform owner's
+ * queue) and records the denying org. Caller must be an admin of the account's
+ * CURRENT org, or the platform owner.
+ */
+export const denyUser = onCall<{ uid: string }>(async (request) => {
+  const caller = request.auth;
+  if (!caller) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = getFirestore();
+  const callerData = (await db.doc(`users/${caller.uid}`).get()).data() ?? {};
+  const { uid } = request.data;
+  if (!uid) throw new HttpsError('invalid-argument', 'Missing user.');
+  if (uid === caller.uid) throw new HttpsError('failed-precondition', 'You cannot deny your own account.');
+
+  const target = (await db.doc(`users/${uid}`).get()).data();
+  if (!target) throw new HttpsError('not-found', 'User not found.');
+  // Deny acts only on accounts AWAITING approval. Removing an already-active
+  // member is deactivate/suspend, not deny — and gating on 'pending' also stops a
+  // suspended member being bounced to a clean pending state (suspension escape).
+  if (target.status !== 'pending') {
+    throw new HttpsError('failed-precondition', 'Only accounts awaiting approval can be denied.');
+  }
+  const isOwner = callerData.platformOwner === true;
+  const sameOrgAdmin = ADMIN_ROLES.includes(callerData.role as Role) && !!callerData.orgId && callerData.orgId === target.orgId;
+  if (!isOwner && !sameOrgAdmin) {
+    throw new HttpsError('permission-denied', "Only this organization's admins or the platform owner may deny this account.");
+  }
+
+  const fromOrg = target.orgId as string | undefined;
+  // Clear the tenant + role claim/field → the account is org-less and role-less
+  // again (owner queue); it can re-enter a different site code. Stripping role is
+  // essential: the rules trust the token role, so a retained role would grant
+  // access on the next org this account joins.
+  const existing = ((await getAuth().getUser(uid).catch(() => null))?.customClaims ?? {}) as Record<string, unknown>;
+  delete existing.orgId;
+  delete existing.role;
+  await getAuth().setCustomUserClaims(uid, existing);
+  await db.doc(`users/${uid}`).set(
+    { orgId: FieldValue.delete(), role: FieldValue.delete(), status: 'pending', ...(fromOrg ? { deniedFromOrgId: fromOrg } : {}), updatedAt: FieldValue.serverTimestamp() },
+    { merge: true }
+  );
+  await db.collection('auditLog').add({
+    actorUid: caller.uid, action: 'admin.deny_user', targetType: 'user', targetId: uid,
+    summary: `Denied join${fromOrg ? ` to ${fromOrg}` : ''}`, ...(fromOrg ? { orgId: fromOrg } : {}), createdAt: FieldValue.serverTimestamp(),
+  });
+  return { ok: true };
+});
+
+/** Platform-owner queue: org-less accounts (awaiting assignment, incl. denied) + an org summary. */
+export const listOwnerQueue = onCall(async (request) => {
+  const caller = request.auth;
+  if (!caller) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = getFirestore();
+  const callerDoc = await db.doc(`users/${caller.uid}`).get();
+  if (!callerDoc.exists || callerDoc.data()!.platformOwner !== true) {
+    throw new HttpsError('permission-denied', 'Only the platform owner may view the owner queue.');
+  }
+  const [usersSnap, orgsSnap] = await Promise.all([db.collection('users').get(), db.collection('orgs').get()]);
+  const orgName = new Map(orgsSnap.docs.map((o) => [o.id, (o.data().legalName as string) || o.id]));
+  const counts: Record<string, number> = {};
+  usersSnap.docs.forEach((d) => {
+    const o = d.data().orgId as string | undefined;
+    if (o) counts[o] = (counts[o] ?? 0) + 1;
+  });
+  const queue = usersSnap.docs
+    .filter((d) => !d.data().orgId)
+    .map((d) => {
+      const u = d.data();
+      const denied = u.deniedFromOrgId as string | undefined;
+      return {
+        uid: d.id,
+        email: (u.email as string) ?? '',
+        displayName: (u.displayName as string) ?? '',
+        status: (u.status as string) ?? 'pending',
+        deniedFromOrgName: denied ? orgName.get(denied) ?? denied : null,
+        createdAtMs: (u.createdAt as { toMillis?: () => number })?.toMillis?.() ?? null,
+      };
+    });
+  const orgs = orgsSnap.docs.map((o) => ({ orgId: o.id, legalName: orgName.get(o.id)!, userCount: counts[o.id] ?? 0 }));
+  return { queue, orgs };
 });

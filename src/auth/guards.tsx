@@ -49,6 +49,14 @@ export function RequireAdmin() {
   return <Outlet />;
 }
 
+/** Platform owner only (HEIMDALL operator) — cross-org owner console. */
+export function RequirePlatformOwner() {
+  const { platformOwner, loading } = useAuth();
+  if (loading) return <FullPageSpinner />;
+  if (!platformOwner) return <Navigate to="/" replace />;
+  return <Outlet />;
+}
+
 function FullPageSpinner() {
   return (
     <div className="flex h-screen items-center justify-center bg-watch-950">

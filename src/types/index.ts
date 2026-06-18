@@ -132,6 +132,9 @@ export interface UserDoc {
   orgId?: string;
   /** Product owner — manages orgs/billing + cross-org feedback; NOT a tenant role. */
   platformOwner?: boolean;
+  /** Set when an org admin DENIES a pending join — the account is bounced back to
+   *  the platform owner's queue (orgId cleared); records which org turned them away. */
+  deniedFromOrgId?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -193,6 +196,12 @@ export interface GlobalSettings {
   jurisdiction?: 'FL' | 'neutral';
   /** Optional tagline under the org name in the letterhead (non-PHSC orgs). */
   letterheadTagline?: string;
+  /**
+   * Per-org join code (a shared "site password"). A signed-up user who enters it
+   * on the awaiting-org screen is routed into THIS org's pending queue (still
+   * admin-approved). Blank = no code join. Set by an org admin in Org Settings.
+   */
+  siteCode?: string;
   /** Per-org editable display labels for ranks (presentation only — keys/rules unchanged). */
   roleLabels?: Partial<Record<Role, string>>;
   allowedEmailDomains: string[]; // empty = allow any

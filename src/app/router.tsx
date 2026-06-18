@@ -8,7 +8,7 @@
 import React, { Suspense, lazy } from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { AppShell } from './AppShell';
-import { RequireAdmin, RequireAuth, RequireStaff } from '../auth/guards';
+import { RequireAdmin, RequireAuth, RequireStaff, RequirePlatformOwner } from '../auth/guards';
 import { Spinner } from '../components/ui';
 // Auth/entry pages stay eager — they're small and needed immediately on load.
 import { SignInPage } from '../auth/SignInPage';
@@ -43,6 +43,7 @@ const CadetReportPrintPage = lazy(() => import('../features/cadre/reports/CadetR
 const FeedbackReportPage = lazy(() => import('../features/feedback/FeedbackReportPage').then((m) => ({ default: m.FeedbackReportPage })));
 const FeedbackAdminPage = lazy(() => import('../features/feedback/FeedbackAdminPage').then((m) => ({ default: m.FeedbackAdminPage })));
 const ReportFormsAdminPage = lazy(() => import('../features/admin/ReportFormsAdminPage').then((m) => ({ default: m.ReportFormsAdminPage })));
+const OwnerConsolePage = lazy(() => import('../features/admin/OwnerConsolePage').then((m) => ({ default: m.OwnerConsolePage })));
 
 function RouteFallback() {
   return (
@@ -99,6 +100,11 @@ export function AppRouter() {
                 <Route path="/admin/settings" element={<SettingsAdminPage />} />
                 <Route path="/admin/gjallarhorn" element={<GjallarhornSettingsPage />} />
                 <Route path="/admin/audit" element={<AuditLogPage />} />
+              </Route>
+
+              {/* Platform owner only — cross-org HEIMDALL operator console */}
+              <Route element={<RequirePlatformOwner />}>
+                <Route path="/owner" element={<OwnerConsolePage />} />
               </Route>
             </Route>
           </Route>

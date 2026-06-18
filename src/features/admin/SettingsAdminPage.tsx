@@ -23,6 +23,7 @@ export function SettingsAdminPage() {
   const [payTarget, setPayTarget] = useState(85);
   const [jurisdiction, setJurisdiction] = useState<'FL' | 'neutral'>('neutral');
   const [tagline, setTagline] = useState('');
+  const [siteCode, setSiteCode] = useState('');
   const [saved, setSaved] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadErr, setUploadErr] = useState<string | null>(null);
@@ -53,6 +54,7 @@ export function SettingsAdminPage() {
     setPayTarget(settings.payPeriodTargetHours ?? 85);
     setJurisdiction(settings.jurisdiction ?? (orgId === 'phsc' ? 'FL' : 'neutral'));
     setTagline(settings.letterheadTagline ?? '');
+    setSiteCode(settings.siteCode ?? '');
   }, [settings, orgId]);
 
   async function save(e: React.FormEvent) {
@@ -68,6 +70,7 @@ export function SettingsAdminPage() {
         payPeriodTargetHours: payTarget,
         jurisdiction,
         letterheadTagline: tagline,
+        siteCode: siteCode.trim(),
       },
       { merge: true }
     );
@@ -139,6 +142,12 @@ export function SettingsAdminPage() {
         </Field>
         <Field label="Letterhead tagline (optional)" hint="Shown under your organization name on printed letters">
           <Input value={tagline} onChange={(e) => setTagline(e.target.value)} />
+        </Field>
+        <Field
+          label="Site join code (optional)"
+          hint="A shared code new members enter on the sign-in 'awaiting organization' screen to join THIS organization (they still land in your pending queue for approval). Blank = no code join. Treat it like a password."
+        >
+          <Input value={siteCode} onChange={(e) => setSiteCode(e.target.value)} placeholder="e.g. PHSC-CADRE-2026" />
         </Field>
         <Field
           label="Auto-join email domains"

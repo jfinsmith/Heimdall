@@ -25,6 +25,7 @@ const createUserAccount = httpsCallable<
 >(functions, 'createUserAccount');
 const sendActivationEmail = httpsCallable<{ uid: string; password: string }, { ok: boolean }>(functions, 'sendActivationEmail');
 const setUserSuspension = httpsCallable<{ uid: string; suspended: boolean; reason?: string }, { ok: boolean }>(functions, 'setUserSuspension');
+const denyUser = httpsCallable<{ uid: string }, { ok: boolean }>(functions, 'denyUser');
 
 // Memorable temp passwords in the style "Forest-Tango-Beacon-656": three distinct
 // words plus a 3-digit number, dash-separated — easy to read aloud or type.
@@ -83,6 +84,24 @@ export function UsersAdminPage() {
       await logAudit(firebaseUser!.uid, 'user.approve', 'user', u.id, `Approved ${u.displayName} as ${role}`);
     } catch (err) {
       setError(`Approving ${u.displayName} failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function deny(u: WithId<UserDoc>) {
+    if (
+      !window.confirm(
+        `Deny ${u.displayName}? Their account is removed from this organization and returned to the platform owner's queue (they are not deleted).`
+      )
+    )
+      return;
+    setBusy(u.id);
+    setError(null);
+    try {
+      await denyUser({ uid: u.id });
+    } catch (err) {
+      setError(`Denying ${u.displayName} failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setBusy(null);
     }
@@ -162,6 +181,14 @@ export function UsersAdminPage() {
                     </Select>
                     <Button variant="primary" disabled={busy === u.id} onClick={() => approve(u, chosen)}>
                       Approve as {roleLabels[chosen]}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="text-red-600 hover:bg-red-50"
+                      disabled={busy === u.id}
+                      onClick={() => deny(u)}
+                    >
+                      Deny
                     </Button>
                   </span>
                 </li>
