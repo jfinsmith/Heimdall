@@ -27,16 +27,16 @@ describe('disciplineTally', () => {
     expect(t.warnings).toBe(2);
     expect(t.points).toBe(1);
   });
-  it('weights A/B/C/D as 1/2/3/4 (three escalating tardies = 6)', () => {
+  it('weights A/B/C/D as 1/3/6/12 (A+B+C = 10)', () => {
     const t = disciplineTally([v('A'), v('B'), v('C')]);
-    expect(t.points).toBe(6);
+    expect(t.points).toBe(10);
     expect(t.counts).toEqual({ A: 1, B: 1, C: 1, D: 0 });
   });
   it('three same-level demerits add to 3 (3×A)', () => {
     expect(disciplineTally([v('A'), v('A'), v('A')]).points).toBe(3);
   });
-  it('demerit D weighs 4', () => {
-    expect(disciplineTally([v('D')]).points).toBe(4);
+  it('demerit D weighs 12 (automatic dismissal)', () => {
+    expect(disciplineTally([v('D')]).points).toBe(12);
   });
   it('empty/undefined is clean', () => {
     expect(disciplineTally().points).toBe(0);
@@ -45,9 +45,11 @@ describe('disciplineTally', () => {
 });
 
 describe('effectiveScore', () => {
-  it('takes the best of primary and reexam', () => {
-    expect(effectiveScore({ score: 60, reexamScore: 85 })).toBe(85);
-    expect(effectiveScore({ score: 92 })).toBe(92);
+  it('caps a passing re-exam at the pass mark (80); a passing primary stands', () => {
+    expect(effectiveScore({ score: 60, reexamScore: 85 })).toBe(80); // re-exam capped at 80
+    expect(effectiveScore({ score: 60, reexamScore: 95 })).toBe(80); // any re-exam → max 80
+    expect(effectiveScore({ score: 60, reexamScore: 70 })).toBe(70); // re-exam still failing keeps actual
+    expect(effectiveScore({ score: 92 })).toBe(92); // passing primary unchanged
   });
   it('returns null when no numeric score', () => {
     expect(effectiveScore({ status: 'na' })).toBeNull();
