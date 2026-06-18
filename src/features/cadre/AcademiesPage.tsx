@@ -338,6 +338,13 @@ function CreateAcademyModal({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    // Never create an academy without a tenant — an orgId-less (or null) academy
+    // is invisible to the org-scoped lists and breaks every session/roster filed
+    // under it. orgId is briefly null only before the profile loads.
+    if (!orgId) {
+      alert('Your account is still loading its organization — please reload and try again.');
+      return;
+    }
     setBusy(true);
     await addDoc(collection(db, 'academies'), {
       orgId,

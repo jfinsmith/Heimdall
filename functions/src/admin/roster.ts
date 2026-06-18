@@ -68,12 +68,16 @@ function decryptSsn(blob: string, orgId?: string): string {
 
 const digits = (s: string) => (s || '').replace(/\D/g, '');
 
-async function requireStaff(uid: string | undefined): Promise<{ uid: string; name: string }> {
+async function requireStaff(uid: string | undefined): Promise<{ uid: string; name: string; orgId?: string }> {
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
   const snap = await getFirestore().doc(`users/${uid}`).get();
   const role = snap.exists ? (snap.data()!.role as Role) : null;
   if (!role || !STAFF_ROLES.includes(role)) throw new HttpsError('permission-denied', 'Staff only.');
-  return { uid, name: (snap.data()?.displayName as string) || 'A staff member' };
+  return {
+    uid,
+    name: (snap.data()?.displayName as string) || 'A staff member',
+    orgId: snap.data()?.orgId as string | undefined,
+  };
 }
 
 interface MemberInput {
@@ -101,9 +105,11 @@ export const rosterCreateMember = onCall<{ academyId: string; member: MemberInpu
     const academy = await db.doc(`academies/${academyId}`).get();
     if (!academy.exists) throw new HttpsError('not-found', 'Academy not found.');
     if (academy.data()!.isTemplate) throw new HttpsError('failed-precondition', 'Templates do not have rosters.');
-    // The member's tenant = its academy's. Stamped on the member (backfill
-    // consistency) and bound into the SSN ciphertext as AAD (undefined pre-backfill).
-    const orgId = academy.data()!.orgId as string | undefined;
+    // The member's tenant = its academy's, falling back to the staff caller's org
+    // if the academy somehow lacks one — so a member is NEVER written without an
+    // orgId (an org-less member fails the inOrg read rule and breaks the whole
+    // roster list query). Also bound into the SSN ciphertext as AAD.
+    const orgId = (academy.data()!.orgId as string | undefined) ?? caller.orgId;
 
     const ssn = digits(request.data.ssn ?? '');
     const fields: Record<string, unknown> = {

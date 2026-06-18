@@ -96,7 +96,8 @@ export function SessionDetailModal({ sessionId, onClose, onEdit }: Props) {
       const nextEnd = session.end.toDate();
       nextEnd.setDate(nextEnd.getDate() + dayDelta);
       await addDoc(collection(db, 'sessions'), {
-        orgId,
+        // Inherit the source session's tenant (reliable) over the possibly-null auth orgId.
+        orgId: session.orgId ?? orgId,
         academyId: session.academyId,
         courseId: session.courseId,
         courseName: session.courseName,
@@ -246,7 +247,7 @@ export function SessionDetailModal({ sessionId, onClose, onEdit }: Props) {
                 try {
                   await updateDoc(doc(db, 'sessions', sessionId), { status: 'open', updatedAt: serverTimestamp() });
                   await addDoc(collection(db, 'coursePublishEvents'), {
-                    orgId,
+                    orgId: session.orgId ?? orgId,
                     academyId: session.academyId,
                     courseLabel: session.title || session.courseName,
                     sessionCount: 1,
