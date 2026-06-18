@@ -7,7 +7,7 @@
 import React, { useMemo, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
-import { doc, orderBy, serverTimestamp, updateDoc, deleteDoc } from 'firebase/firestore';
+import { doc, serverTimestamp, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db, functions } from '../../../lib/firebase';
 import { useCollection, useDoc, type WithId } from '../../../lib/firestore';
 import type { AcademyDoc, CurriculumDoc, RosterAgency, RosterMemberDoc } from '../../../types';
@@ -33,11 +33,14 @@ type Tab = 'members' | RosterModuleKey;
 export function RosterPage() {
   const { academyId = '' } = useParams();
   const { data: academy, loading } = useDoc<AcademyDoc>(academyId ? `academies/${academyId}` : null);
-  const { data: members } = useCollection<RosterMemberDoc>(
+  const { data: membersRaw, error: membersError } = useCollection<RosterMemberDoc>(
     academyId ? `academies/${academyId}/roster` : null,
-    [orderBy('no')],
+    [],
     [academyId]
   );
+  // useCollection org-scopes the roster subcollection; sort by roster number
+  // client-side (dropping orderBy keeps the query on a single-field index).
+  const members = useMemo(() => [...membersRaw].sort((a, b) => (a.no ?? 0) - (b.no ?? 0)), [membersRaw]);
   const { data: curriculum } = useDoc<CurriculumDoc>(academy ? `curricula/${academy.discipline}` : null);
   const [tab, setTab] = useState<Tab>('members');
 
@@ -86,6 +89,12 @@ export function RosterPage() {
           <Badge tone="green">{active.length} active</Badge>
           {withdrawn.length > 0 && <Badge tone="slate">{withdrawn.length} withdrawn</Badge>}
         </div>
+        {membersError && (
+          <div className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+            Couldn’t load the roster (a permission error). If members exist in the database but not here, an
+            org-stamp repair is needed — re-run the backfill or contact the platform owner.
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="mb-5 flex gap-1 border-b border-watch-100">

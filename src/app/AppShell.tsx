@@ -36,12 +36,21 @@ function useOrgSwitch(enabled: boolean) {
       setBusy(true);
       try {
         await ownerSwitchOrg({ orgId: target });
-        await auth.currentUser?.getIdToken(true);
-        window.location.assign('/');
       } catch (e) {
         alert((e as Error).message || 'Could not switch organizations.');
         setBusy(false);
+        return;
       }
+      // Switch persisted (claim + doc). Refresh the token best-effort, then hard
+      // reload REGARDLESS — a fresh boot re-reads the token and AuthContext
+      // reconciles, so a transient getIdToken failure can't leave the session
+      // half-switched (client filtering on the new org while rules see the old).
+      try {
+        await auth.currentUser?.getIdToken(true);
+      } catch {
+        /* the reload re-bootstraps auth and force-refreshes the token itself */
+      }
+      window.location.assign('/');
     },
     [orgId, busy]
   );

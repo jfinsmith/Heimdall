@@ -27,6 +27,12 @@ export type WithId<T> = T & { id: string };
  * this hook.)
  */
 const NON_ORG_SCOPED = new Set(['orgs', 'notifications', 'mail', 'defaultCurricula']);
+// Org-owned SUBCOLLECTIONS (academies/{id}/roster, etc.). Their list reads must
+// also be filtered by orgId — a subcollection list query with no orgId filter is
+// denied ENTIRELY by Firestore if any sibling doc fails the per-doc inOrg rule
+// (e.g. one org-less leftover), which silently empties the whole list. Filtering
+// makes Firestore evaluate the rule only on matching docs (excluding the rest).
+const ORG_SCOPED_SUBCOLLECTIONS = new Set(['roster', 'reports', 'signups']);
 
 interface QueryState<T> {
   data: T[];
@@ -53,8 +59,15 @@ export function useCollection<T = DocumentData>(
   // Subcollections (e.g. academies/{id}/roster) inherit their parent's org and
   // are not filtered here.
   const segments = path ? path.split('/').filter(Boolean) : [];
+  const lastSeg = segments[segments.length - 1];
+  // Inject the orgId filter for org-owned top-level collections AND org-owned
+  // subcollections (collection paths have an odd segment count).
   const orgScope =
-    orgId && segments.length === 1 && !NON_ORG_SCOPED.has(segments[0]) ? orgId : null;
+    orgId &&
+    ((segments.length === 1 && !NON_ORG_SCOPED.has(segments[0])) ||
+      (segments.length >= 3 && segments.length % 2 === 1 && ORG_SCOPED_SUBCOLLECTIONS.has(lastSeg)))
+      ? orgId
+      : null;
 
   const q: Query | null = useMemo(
     () => {

@@ -198,6 +198,10 @@ function CurriculumEditorModal({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (!isDefaults && !orgId) {
+      alert('Your account is still loading its organization — reload and try again.');
+      return;
+    }
     setBusy(true);
     // Base key (e.g. le_brt) vs. doc id. Org curricula get an org-namespaced doc
     // id ({orgId}__{key}) so two tenants can both have an 'le_brt' without colliding

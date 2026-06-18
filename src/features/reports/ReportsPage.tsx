@@ -43,10 +43,13 @@ export function ReportsPage() {
   }
 
   async function exportSignups() {
+    if (!orgId) return;
     const rows: (string | number)[][] = [];
     const targets = academyId ? academySessions : sessions;
     for (const s of targets) {
-      const snap = await getDocs(collection(db, 'sessions', s.id, 'signups'));
+      // Org-filter the signups subcollection: an unfiltered list is denied whole
+      // if any sibling signup is org-less (the list-denial bug).
+      const snap = await getDocs(query(collection(db, 'sessions', s.id, 'signups'), where('orgId', '==', orgId)));
       snap.forEach((d) => {
         const su = d.data();
         rows.push([
@@ -62,11 +65,11 @@ export function ReportsPage() {
   }
 
   async function exportInstructorHours() {
-    // Tenant-scoped (dormant until orgId is backfilled) — an unscoped users/
-    // assignments scan would otherwise read every org's data once pooled.
-    const orgC = orgId ? [where('orgId', '==', orgId)] : [];
-    const snap = await getDocs(query(collection(db, 'assignments'), where('status', '==', 'confirmed'), ...orgC));
-    const usersSnap = await getDocs(query(collection(db, 'users'), ...orgC));
+    // Tenant-scoped. NEVER fall back to an unconstrained scan — no orgId means
+    // "read nothing", not "read every org" (cross-org leak / list-denial).
+    if (!orgId) return;
+    const snap = await getDocs(query(collection(db, 'assignments'), where('status', '==', 'confirmed'), where('orgId', '==', orgId)));
+    const usersSnap = await getDocs(query(collection(db, 'users'), where('orgId', '==', orgId)));
     const names = new Map(usersSnap.docs.map((d) => [d.id, (d.data() as UserDoc).displayName]));
     const totals = new Map<string, { sessions: number; hours: number }>();
     snap.forEach((d) => {

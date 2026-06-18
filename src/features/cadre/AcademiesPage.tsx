@@ -248,7 +248,7 @@ function DeleteAcademyModal({
       const refs: ReturnType<typeof doc>[] = [];
       setProgress('Clearing sign-ups…');
       for (const sess of sessionsSnap.docs) {
-        const signups = await getDocs(collection(db, 'sessions', sess.id, 'signups'));
+        const signups = await getDocs(query(collection(db, 'sessions', sess.id, 'signups'), ...(academy.orgId ? [where('orgId', '==', academy.orgId)] : [])));
         signups.forEach((su) => refs.push(su.ref));
         refs.push(sess.ref);
       }

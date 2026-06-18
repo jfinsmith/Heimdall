@@ -15,7 +15,7 @@ import { SessionDetailModal } from '../sessions/SessionDetailModal';
 import { signUpForSlot, SignupError } from '../sessions/useSignup';
 
 export function BrowseOpenSessionsPage() {
-  const { firebaseUser, profile, role } = useAuth();
+  const { firebaseUser, profile, role, orgId } = useAuth();
   const [detailId, setDetailId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busySlot, setBusySlot] = useState<string | null>(null);
@@ -60,7 +60,7 @@ export function BrowseOpenSessionsPage() {
     setMessage(null);
     setBusySlot(`${sessionId}:${slotId}`);
     try {
-      await signUpForSlot(firebaseUser.uid, sessionId, slotId);
+      await signUpForSlot(firebaseUser.uid, sessionId, slotId, { orgId: orgId ?? undefined });
       setMessage('Signed up — confirmation will arrive from Gjallarhorn.');
     } catch (err) {
       setMessage(err instanceof SignupError ? err.message : 'Sign-up failed.');

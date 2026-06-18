@@ -66,12 +66,19 @@ export async function signUpForSlot(
   uid: string,
   sessionId: string,
   slotId: string,
-  opts: { allowWaitlist?: boolean } = {}
+  opts: { allowWaitlist?: boolean; orgId?: string } = {}
 ): Promise<SignupResult> {
   // ── Pre-check: double-booking against confirmed assignments ──────────────
   const sessionRefForWindow = doc(db, 'sessions', sessionId);
   const existing = await getDocs(
-    query(collection(db, 'assignments'), where('uid', '==', uid), where('status', '==', 'confirmed'))
+    // Org-filter so an org-less/foreign assignment sibling can't deny the whole
+    // pre-check query (which would block sign-up entirely).
+    query(
+      collection(db, 'assignments'),
+      where('uid', '==', uid),
+      where('status', '==', 'confirmed'),
+      ...(opts.orgId ? [where('orgId', '==', opts.orgId)] : [])
+    )
   );
 
   const result = await runTransaction(db, async (tx) => {

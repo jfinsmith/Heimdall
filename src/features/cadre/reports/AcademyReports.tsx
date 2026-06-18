@@ -3,9 +3,9 @@
  * the fill/edit form. Shared by the standalone Cadet Reports page and the Roster
  * module's Reports tab. Report types are discipline-scoped (LE only for now).
  */
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { addDoc, collection, deleteDoc, doc, limit, orderBy, serverTimestamp, updateDoc, where } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, limit, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { useCollection, useDoc, orgConfigPath, type WithId } from '../../../lib/firestore';
 import { useAuth } from '../../../auth/AuthContext';
@@ -29,8 +29,14 @@ const today = () => {
 export function AcademyReports({ academy }: { academy: WithId<AcademyDoc> }) {
   const { profile, orgId } = useAuth();
   const academyId = academy.id;
-  const { data: roster } = useCollection<RosterMemberDoc>(`academies/${academyId}/roster`, [orderBy('no')], [academyId]);
-  const { data: reports } = useCollection<AcademyReportDoc>(`academies/${academyId}/reports`, [orderBy('createdAt', 'desc')], [academyId]);
+  // Org-scoped in useCollection; sorted client-side (no orderBy → single-field index).
+  const { data: rosterRaw } = useCollection<RosterMemberDoc>(`academies/${academyId}/roster`, [], [academyId]);
+  const roster = useMemo(() => [...rosterRaw].sort((a, b) => (a.no ?? 0) - (b.no ?? 0)), [rosterRaw]);
+  const { data: reportsRaw, error: reportsError } = useCollection<AcademyReportDoc>(`academies/${academyId}/reports`, [], [academyId]);
+  const reports = useMemo(
+    () => [...reportsRaw].sort((a, b) => ((b.createdAt as { toMillis?: () => number })?.toMillis?.() ?? 0) - ((a.createdAt as { toMillis?: () => number })?.toMillis?.() ?? 0)),
+    [reportsRaw]
+  );
   const { data: directors } = useCollection<UserDoc>('users', [where('role', '==', 'director'), limit(1)]);
   const directorName = directors[0]?.displayName ?? 'Academy Director';
   const { data: curriculum } = useDoc<CurriculumDoc>(academy.discipline ? `curricula/${academy.discipline}` : null);
@@ -99,6 +105,12 @@ export function AcademyReports({ academy }: { academy: WithId<AcademyDoc> }) {
       )}
 
       <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-watch-600">Filed reports ({reports.length})</h2>
+      {reportsError && (
+        <div className="mb-2 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+          Couldn’t load filed reports (a permission error). If a report was saved to the database but isn’t
+          listed here, an org-stamp repair is needed — re-run the backfill or contact the platform owner.
+        </div>
+      )}
       <div className="overflow-x-auto rounded-lg border border-watch-100 bg-white shadow-sm">
         <table className="w-full text-left text-sm">
           <thead className="bg-watch-50 text-xs uppercase tracking-wider text-watch-600">

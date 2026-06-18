@@ -49,7 +49,7 @@ export function SessionDetailModal({ sessionId, onClose, onEdit }: Props) {
     setError(null);
     setBusy(true);
     try {
-      const res = await signUpForSlot(firebaseUser.uid, sessionId, slotId, { allowWaitlist });
+      const res = await signUpForSlot(firebaseUser.uid, sessionId, slotId, { allowWaitlist, orgId: orgId ?? undefined });
       if (res.status === 'waitlist') setError('Slot is full — you have been placed on the waitlist.');
     } catch (err) {
       if (err instanceof SignupError && err.message === 'FULL') {

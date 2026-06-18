@@ -72,6 +72,10 @@ async function promoteFromWaitlist(sessionId: string, slotId: string): Promise<b
     tx.set(db().doc(`assignments/${sessionId}_${candidate.uid}`), {
       uid: candidate.uid,
       sessionId,
+      // Stamp the tenant (Admin SDK bypasses the rule that would block an org-less
+      // assignment) — otherwise the auto-promoted instructor's assignment is
+      // org-less and silently filtered out of every schedule view.
+      orgId: session.orgId,
       academyId: session.academyId,
       role: candidate.role,
       courseName: session.courseName,
