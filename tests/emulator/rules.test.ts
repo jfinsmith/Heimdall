@@ -56,6 +56,8 @@ beforeEach(async () => {
     await setDoc(doc(db, 'sessions/sB'), { academyId: 'aB', status: 'open', roleSlots: [], start: new Date(), orgId: BETA });
     await setDoc(doc(db, 'settings/' + BETA), { orgName: 'Beta College' });
     await setDoc(doc(db, 'auditLog/lB'), { actorUid: 'erin', action: 'x', summary: 's', orgId: BETA });
+    await setDoc(doc(db, 'orgs/' + ORG), { orgId: ORG, legalName: 'PHSC' });
+    await setDoc(doc(db, 'orgs/' + BETA), { orgId: BETA, legalName: 'Beta College' });
   });
 });
 
@@ -223,16 +225,12 @@ describe('tenant isolation (orgId)', () => {
     await assertFails(getDoc(doc(as('dave', 'director', null), 'academies/aB')));
   });
   it('orgs: read own org doc + platform-owner; not another tenant\'s', async () => {
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
-      await setDoc(doc(ctx.firestore(), 'orgs/' + ORG), { orgId: ORG, legalName: 'PHSC' });
-      await setDoc(doc(ctx.firestore(), 'orgs/' + BETA), { orgId: BETA, legalName: 'Beta' });
-    });
     await assertSucceeds(getDoc(doc(as('dave', 'director'), 'orgs/' + ORG)));
     await assertFails(getDoc(doc(as('dave', 'director'), 'orgs/' + BETA)));
     // platform owner reads any org
     const owner = testEnv.authenticatedContext('owner', { role: 'director', orgId: ORG, platformOwner: true }).firestore();
     await assertSucceeds(getDoc(doc(owner, 'orgs/' + BETA)));
-    // even the platform owner / a director cannot client-write an org doc
+    // even a director cannot client-write an org doc (write:false)
     await assertFails(setDoc(doc(as('dave', 'director'), 'orgs/' + ORG), { orgId: ORG, legalName: 'x' }));
   });
 
