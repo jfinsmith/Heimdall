@@ -39,14 +39,29 @@ export const setUserRole = onCall<{ uid: string; role: Role }>(async (request) =
   // director-only restriction here, by design.
 
   // Preserve the user's tenant + platform claims — setCustomUserClaims REPLACES
-  // all claims, so a role change must not drop orgId / platformOwner.
+  // all claims, so a role change must not drop orgId / platformOwner. When the
+  // target has NO org yet (e.g. a self-registered user being given a role),
+  // they inherit the assigning admin's org — this is the onboarding path that
+  // keeps them from being locked out by the org-isolation rules. An existing
+  // orgId is never reassigned across tenants.
   const targetSnap = await getFirestore().doc(`users/${uid}`).get();
   const tdata = targetSnap.data() ?? {};
+  const callerOrgId = callerDoc.data()?.orgId as string | undefined;
+  const effectiveOrgId = (tdata.orgId as string | undefined) ?? callerOrgId;
   const claims: Record<string, unknown> = { role };
-  if (tdata.orgId) claims.orgId = tdata.orgId;
+  if (effectiveOrgId) claims.orgId = effectiveOrgId;
   if (tdata.platformOwner === true) claims.platformOwner = true;
   await getAuth().setCustomUserClaims(uid, claims);
-  await getFirestore().doc(`users/${uid}`).set({ role, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  await getFirestore().doc(`users/${uid}`).set(
+    {
+      role,
+      // Only write orgId when the target lacked one (joining the admin's org);
+      // never overwrite an existing tenant.
+      ...(!tdata.orgId && effectiveOrgId ? { orgId: effectiveOrgId } : {}),
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
 
   await getFirestore().collection('auditLog').add({
     actorUid: caller.uid,
@@ -54,6 +69,7 @@ export const setUserRole = onCall<{ uid: string; role: Role }>(async (request) =
     targetType: 'user',
     targetId: uid,
     summary: `Role set to ${role}`,
+    ...(effectiveOrgId ? { orgId: effectiveOrgId } : {}),
     createdAt: FieldValue.serverTimestamp(),
   });
 
@@ -152,6 +168,7 @@ export const createUserAccount = onCall<{
     targetType: 'user',
     targetId: uid,
     summary: `${adopted ? 'Re-created (adopted orphaned login for)' : 'Created'} ${displayName} (${role})`,
+    ...(callerOrgId ? { orgId: callerOrgId } : {}),
     createdAt: FieldValue.serverTimestamp(),
   });
 
@@ -252,6 +269,7 @@ export const createOrg = onCall<{ shortCode: string; legalName: string; firstAdm
     targetType: 'org',
     targetId: orgId,
     summary: `Created org ${legalName} (${orgId})`,
+    orgId,
     createdAt: FieldValue.serverTimestamp(),
   });
   return { ok: true, orgId };
@@ -281,12 +299,12 @@ export const sendActivationEmail = onCall<{ uid: string; password: string }>(asy
 
   const userSnap = await db.doc(`users/${uid}`).get();
   if (!userSnap.exists) throw new HttpsError('not-found', 'User not found.');
-  const user = userSnap.data() as { email?: string; displayName?: string };
+  const user = userSnap.data() as { email?: string; displayName?: string; orgId?: string };
   const email = (user.email ?? '').trim();
   const displayName = (user.displayName ?? '').trim() || 'there';
   if (!email) throw new HttpsError('failed-precondition', 'That user has no email on file.');
 
-  const settingsSnap = await db.doc(`settings/${(user as { orgId?: string }).orgId || 'global'}`).get();
+  const settingsSnap = await db.doc(`settings/${user.orgId || 'global'}`).get();
   const orgName = settingsSnap.exists ? ((settingsSnap.data()!.orgName as string) || 'the Training Academy') : 'the Training Academy';
 
   const creds = detailRows([
@@ -317,6 +335,7 @@ export const sendActivationEmail = onCall<{ uid: string; password: string }>(asy
   await db.collection('mail').add({
     to: [email],
     message: { subject: content.subject, html: content.html, text: content.text },
+    ...(user.orgId ? { orgId: user.orgId } : {}),
     createdAt: FieldValue.serverTimestamp(),
   });
   await db.collection('auditLog').add({
@@ -325,6 +344,7 @@ export const sendActivationEmail = onCall<{ uid: string; password: string }>(asy
     targetType: 'user',
     targetId: uid,
     summary: `Sent activation email to ${email}`,
+    ...(user.orgId ? { orgId: user.orgId } : {}),
     createdAt: FieldValue.serverTimestamp(),
   });
 
@@ -356,7 +376,7 @@ export const setUserSuspension = onCall<{ uid: string; suspended: boolean; reaso
 
   const userSnap = await db.doc(`users/${uid}`).get();
   if (!userSnap.exists) throw new HttpsError('not-found', 'User not found.');
-  const user = userSnap.data() as { email?: string; displayName?: string };
+  const user = userSnap.data() as { email?: string; displayName?: string; orgId?: string };
   const displayName = (user.displayName ?? '').trim() || 'there';
 
   await db.doc(`users/${uid}`).set(
@@ -407,6 +427,7 @@ export const setUserSuspension = onCall<{ uid: string; suspended: boolean; reaso
     targetType: 'user',
     targetId: uid,
     summary: suspended ? `Suspended ${displayName}: ${reason}` : `Reinstated ${displayName}`,
+    ...(user.orgId ? { orgId: user.orgId } : {}),
     createdAt: FieldValue.serverTimestamp(),
   });
 
@@ -472,6 +493,7 @@ export const academyApproval = onCall<{
       targetType: 'academy',
       targetId: academyId,
       summary: `${callerName}: ${action} → ${approval!.state} (${label})`,
+      ...(academy.orgId ? { orgId: academy.orgId } : {}),
       createdAt: FieldValue.serverTimestamp(),
     });
     return { ok: true, state: approval!.state };

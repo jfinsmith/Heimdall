@@ -42,7 +42,7 @@ const academyApproval = httpsCallable<
 
 export function AcademyBuilderPage() {
   const { academyId } = useParams<{ academyId: string }>();
-  const { firebaseUser } = useAuth();
+  const { firebaseUser, orgId } = useAuth();
   const { data: academy } = useDoc<AcademyDoc>(academyId ? `academies/${academyId}` : null);
   const { data: curriculum } = useDoc<CurriculumDoc>(academy ? `curricula/${academy.discipline}` : null);
   const { data: sessions } = useCollection<SessionDoc>(
@@ -328,6 +328,7 @@ export function AcademyBuilderPage() {
   async function announceCourse(courseLabel: string, target: CoursePublishTarget, sessionCount: number) {
     if (!firebaseUser || sessionCount <= 0) return;
     await addDoc(collection(db, 'coursePublishEvents'), {
+      orgId,
       academyId: academyId!,
       courseLabel,
       sessionCount,

@@ -21,6 +21,7 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
 import { auth, db, googleProvider } from '../lib/firebase';
+import { setAuditOrgId } from '../features/sessions/audit';
 import type { Role, UserDoc } from '../types';
 
 interface AuthState {
@@ -77,6 +78,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setFirebaseUser(user);
       if (!user) {
         setProfile(null);
+        setAuditOrgId(null);
         setLoading(false);
       }
     });
@@ -89,6 +91,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (snap.exists()) {
         const data = snap.data() as UserDoc;
         setProfile({ id: snap.id, ...data });
+        // Mirror the tenant into the audit module so logAudit() stamps orgId.
+        setAuditOrgId(data.orgId ?? null);
         // Refresh the token when any claim that rules depend on (role, orgId,
         // platformOwner) is stale vs the profile — e.g. right after the org
         // backfill mints an orgId claim, so the session isn't locked out for up

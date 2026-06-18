@@ -158,6 +158,7 @@ function CurriculumEditorModal({
       ...(c.defaultRoleSlots && c.defaultRoleSlots.length ? { defaultRoleSlots: c.defaultRoleSlots } : {}),
     }));
     await setDoc(doc(db, 'curricula', id), {
+      orgId: orgId!,
       key: id,
       label,
       fdleProgram,

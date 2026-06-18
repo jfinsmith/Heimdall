@@ -620,6 +620,8 @@ export interface SessionDoc {
 export type SignupStatus = 'confirmed' | 'waitlist' | 'withdrawn';
 
 export interface SignupDoc {
+  /** Tenant (orgs/{orgId}); set at provisioning/backfill. */
+  orgId?: string;
   uid: string;
   displayName: string;
   role: SlotRole;

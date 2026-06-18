@@ -1,19 +1,25 @@
 rules_version = '2';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HEIMDALL Firestore security rules — enforces the §4 RBAC matrix.
+// HEIMDALL Firestore security rules — enforces the §4 RBAC matrix AND pooled
+// multi-tenant isolation (Phase 5 cutover).
 //
-// Roles ride on a custom auth claim (request.auth.token.role) written by the
-// `setUserRole` callable. Chain of command:
-//   instructor → coordinator → sergeant → lieutenant → director
+// Roles ride on a custom auth claim (request.auth.token.role); the tenant rides
+// on request.auth.token.orgId (minted by the admin callables + the org backfill).
+// Chain of command: instructor → coordinator → sergeant → lieutenant → director.
+//
+// TENANT ISOLATION: every org-owned doc carries an `orgId` field, and a caller
+// may only touch docs whose orgId matches their own claim (inOrg). Reads/lists
+// therefore REQUIRE the client query to be orgId-constrained (centralized in
+// useCollection); creates must stamp the caller's orgId; orgId is immutable on
+// update. A caller whose token lacks an orgId claim matches nothing — the
+// AuthContext force-refresh mints the claim into the live token at sign-in so a
+// freshly-backfilled session isn't locked out.
 //
 // Known rules-language limits, mitigated in code:
-//  • `roleSlots[].filledBy.length <= count` cannot be fully expressed here —
-//    the client transaction enforces it; a guard below restricts which fields
-//    non-staff may touch on a session.
-//  • `qualifications[].verified` (array of maps) cannot be iterated — the
-//    authoritative gate is the flat `verifiedQualKeys` array, which self-edits
-//    must keep unchanged.
+//  • roleSlots[].filledBy.length <= count — enforced in the sign-up transaction.
+//  • qualifications[].verified (array of maps) — gated via the flat
+//    verifiedQualKeys array, which self-edits must keep unchanged.
 // ─────────────────────────────────────────────────────────────────────────────
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -39,6 +45,19 @@ service cloud.firestore {
     function unchanged(field) {
       return request.resource.data.get(field, null) == resource.data.get(field, null);
     }
+    // ── Tenant helpers ──────────────────────────────────────────────────────
+    // The caller's tenant from their custom claim (null if unsigned/unassigned).
+    function tokenOrgId() {
+      return signedIn() ? request.auth.token.get('orgId', null) : null;
+    }
+    function isPlatformOwner() {
+      return signedIn() && request.auth.token.get('platformOwner', false) == true;
+    }
+    // A doc belongs to the caller's tenant. Requires the caller to HAVE an org
+    // claim, so an orgless/stale token can't read orgless docs as a back door.
+    function inOrg(data) {
+      return tokenOrgId() != null && data.get('orgId', null) == tokenOrgId();
+    }
     // A class may be published only after the captain's approval. Templates are
     // exempt. (Repeated get() on the same path is cached → one read.)
     function academyOkToPublish(aid) {
@@ -46,11 +65,23 @@ service cloud.firestore {
           || get(/databases/$(database)/documents/academies/$(aid)).data.get(['approval', 'state'], '') == 'approved';
     }
 
+    // ── orgs (tenant registry) ───────────────────────────────────────────────
+    // Read your own org; the platform owner reads all (owner console). Writes are
+    // the createOrg callable (Admin SDK) only.
+    match /orgs/{orgId} {
+      allow read: if signedIn() && (orgId == tokenOrgId() || isPlatformOwner());
+      allow write: if false;
+    }
+
     // ── users ──────────────────────────────────────────────────────────────
-    // Own doc: read + create + limited update. role / status / verifiedQualKeys
-    // are admin-or-staff-set only.
+    // Own doc: read + create + limited update. Staff read/manage SAME-TENANT
+    // users only. role / status / verifiedQualKeys are admin-or-staff-set; orgId
+    // / platformOwner are server-managed (Admin SDK). A freshly self-registered
+    // user has no orgId yet and is reachable only by themselves until an admin
+    // assigns a role (setUserRole stamps the admin's org); surfacing such pending
+    // cross-org registrations to the right admin is Phase-6 (multi-tenant sign-in).
     match /users/{uid} {
-      allow read: if isOwner(uid) || isStaff();
+      allow read: if isOwner(uid) || (isStaff() && inOrg(resource.data));
       allow create: if isOwner(uid)
         && request.resource.data.role == 'instructor'
         && request.resource.data.status == 'pending'
@@ -67,11 +98,12 @@ service cloud.firestore {
       // scripts), which bypass these rules. No client update — not even an admin —
       // may change them; the role-minting callable trusts the user doc.
       allow update: if unchanged('orgId') && unchanged('platformOwner') && (
-        isAdmin()
+        (isAdmin() && inOrg(resource.data))
         // Staff (coordinator/sergeant) may approve accounts and verify quals on
-        // OTHER users, but may not change roles, and may NOT self-grant their own
-        // status / verifiedQualKeys (no self-escalation past the FDLE gate).
+        // OTHER same-tenant users, but may not change roles, and may NOT
+        // self-grant their own status / verifiedQualKeys (no self-escalation).
         || (isStaff()
+            && inOrg(resource.data)
             && unchanged('role')
             && (request.auth.uid != uid || (unchanged('status') && unchanged('verifiedQualKeys'))))
         // Self-service: profile fields only.
@@ -80,66 +112,78 @@ service cloud.firestore {
             && unchanged('status')
             && unchanged('verifiedQualKeys')
             && unchanged('email')));
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() && inOrg(resource.data);
     }
 
-    // ── settings/global ────────────────────────────────────────────────────
+    // ── settings/{orgId} (per-tenant config; doc id == orgId) ────────────────
+    // Read/write ONLY your own org's settings doc. (The legacy 'global' doc is no
+    // longer client-readable post-cutover; the Admin SDK still reads it server-side.)
     match /settings/{docId} {
-      allow read: if signedIn();
-      allow write: if isAdmin();
+      allow read: if signedIn() && docId == tokenOrgId();
+      allow write: if isAdmin() && docId == tokenOrgId();
     }
 
-    // ── reportConfig/global (report categories + name overrides) ────────────
-    // Everyone needs it to render report names/categories; only admins edit.
+    // ── reportConfig/{orgId} (per-tenant report categories + name overrides) ─
     match /reportConfig/{docId} {
-      allow read: if signedIn();
-      allow write: if isAdmin();
+      allow read: if signedIn() && docId == tokenOrgId();
+      allow write: if isAdmin() && docId == tokenOrgId();
     }
 
     // ── feedbackReports (member-submitted bug / feature reports) ────────────
-    // Any signed-in member files their own; admins read & triage all.
+    // A member files their own (stamped with their org); same-org admins triage.
+    // (Cross-org owner visibility is a later phase.)
     match /feedbackReports/{id} {
-      allow read: if isAdmin() || isOwner(resource.data.submittedByUid);
+      allow read: if (isAdmin() && inOrg(resource.data)) || isOwner(resource.data.submittedByUid);
       allow create: if signedIn()
         && request.resource.data.submittedByUid == request.auth.uid
+        && inOrg(request.resource.data)
         && request.resource.data.status == 'new'
         && request.resource.data.kind in ['bug', 'feature']
         && request.resource.data.title is string
         && request.resource.data.description is string;
-      allow update, delete: if isAdmin();
+      allow update, delete: if isAdmin() && inOrg(resource.data);
     }
 
     // ── courseCatalog ──────────────────────────────────────────────────────
     match /courseCatalog/{courseId} {
-      allow read: if signedIn();
-      allow write: if isStaff();
+      allow read: if signedIn() && inOrg(resource.data);
+      allow create: if isStaff() && inOrg(request.resource.data);
+      allow update: if isStaff() && inOrg(resource.data) && unchanged('orgId');
+      allow delete: if isStaff() && inOrg(resource.data);
     }
 
     // ── curricula (admin-editable disciplines + minimum hours) ─────────────
     match /curricula/{key} {
-      allow read: if signedIn();
-      allow write: if isAdmin();
+      allow read: if signedIn() && inOrg(resource.data);
+      allow create: if isAdmin() && inOrg(request.resource.data);
+      allow update: if isAdmin() && inOrg(resource.data) && unchanged('orgId');
+      allow delete: if isAdmin() && inOrg(resource.data);
     }
 
     // ── coursePublishEvents ────────────────────────────────────────────────
-    // Staff queue a "course opened for sign-up" event; Gjallarhorn fans it
-    // out to eligible instructors (one email each).
     match /coursePublishEvents/{id} {
-      allow read: if isStaff();
-      allow create: if isStaff() && request.resource.data.requestedBy == request.auth.uid;
+      allow read: if isStaff() && inOrg(resource.data);
+      allow create: if isStaff()
+        && request.resource.data.requestedBy == request.auth.uid
+        && inOrg(request.resource.data);
       allow update, delete: if false;
     }
 
     // ── academies ──────────────────────────────────────────────────────────
-    // Instructors see published lifecycle states only; staff see everything.
+    // Instructors see published lifecycle states only; staff see everything —
+    // both within their own tenant. Lists MUST be orgId-constrained (useCollection).
     match /academies/{academyId} {
-      allow read: if isStaff()
-        || (signedIn() && resource.data.status in ['published', 'in_progress', 'completed']);
-      allow create, delete: if isStaff();
-      // Staff edit freely, EXCEPT moving into a published lifecycle state, which
-      // requires the captain's approval (templates exempt). Approval transitions
-      // themselves are written by the academyApproval callable (Admin SDK).
-      allow update: if isStaff() && (
+      allow read: if inOrg(resource.data) && (
+        isStaff()
+        || (signedIn() && resource.data.status in ['published', 'in_progress', 'completed'])
+      );
+      allow create: if isStaff() && inOrg(request.resource.data);
+      allow delete: if isStaff() && inOrg(resource.data);
+      // Staff edit freely within their org, EXCEPT moving into a published
+      // lifecycle state, which requires the captain's approval (templates exempt).
+      // orgId is immutable. Approval transitions are written by the academyApproval
+      // callable (Admin SDK).
+      allow update: if isStaff() && inOrg(resource.data) && unchanged('orgId') && (
         !(request.resource.data.status in ['published', 'in_progress', 'completed'])
         || resource.data.status in ['published', 'in_progress', 'completed']
         || request.resource.data.get('isTemplate', false) == true
@@ -147,95 +191,96 @@ service cloud.firestore {
       );
 
       // ── roster (per-academy cadets) ──────────────────────────────────────
-      // Staff-only — holds PII. The encrypted SSN fields are owned by the roster
-      // callables (Admin SDK); a client update may not alter them.
+      // Same-tenant staff only — holds PII. Encrypted SSN fields are owned by the
+      // roster callables (Admin SDK); a client write may not set/alter them.
       match /roster/{memberId} {
-        allow read: if isStaff();
-        // The encrypted SSN may ONLY originate from the roster callable (Admin
-        // SDK, which bypasses rules) — a direct client create may not set it,
-        // and an update may not change it.
+        allow read: if isStaff() && inOrg(resource.data);
         allow create: if isStaff()
+          && inOrg(request.resource.data)
           && !('ssnCipher' in request.resource.data)
           && !('ssnLast4' in request.resource.data);
-        allow delete: if isStaff();
+        allow delete: if isStaff() && inOrg(resource.data);
         allow update: if isStaff()
+          && inOrg(resource.data)
+          && unchanged('orgId')
           && request.resource.data.get('ssnCipher', '') == resource.data.get('ssnCipher', '')
           && request.resource.data.get('ssnLast4', '') == resource.data.get('ssnLast4', '');
       }
 
       // ── academic-action reports (cadet exam-failure / dismissal letters) ──
-      // Staff-only — they reference cadet academic records.
       match /reports/{reportId} {
-        allow read, write: if isStaff();
+        allow read: if isStaff() && inOrg(resource.data);
+        allow create: if isStaff() && inOrg(request.resource.data);
+        allow update: if isStaff() && inOrg(resource.data) && unchanged('orgId');
+        allow delete: if isStaff() && inOrg(resource.data);
       }
     }
 
     // ── sessions ───────────────────────────────────────────────────────────
     match /sessions/{sessionId} {
-      allow read: if isStaff() || (signedIn() && resource.data.status != 'draft');
-      // NOTE: delete must be separate — on a delete there is no
-      // request.resource, so a roleSlots check would always deny it.
+      allow read: if inOrg(resource.data) && (isStaff() || (signedIn() && resource.data.status != 'draft'));
       // New sessions must be draft unless the parent academy is approved/template
       // (so a session can't be created already-visible to dodge approval).
-      allow create: if isStaff() && request.resource.data.roleSlots is list
+      allow create: if isStaff()
+        && inOrg(request.resource.data)
+        && request.resource.data.roleSlots is list
         && (request.resource.data.status == 'draft' || academyOkToPublish(request.resource.data.academyId));
-      allow delete: if isStaff();
-      // Staff edit freely, EXCEPT flipping a session from draft to a visible
-      // status (publishing), which requires the parent academy's approval. The
-      // status-unchanged short-circuit keeps normal edits off the get(). Non-staff
-      // updates exist only for the sign-up transaction: they may touch ONLY
-      // roleSlots / status / updatedAt, may not invent new slots, and the count
-      // math itself is enforced in the transaction.
-      allow update: if (isStaff() && (
+      // NOTE: delete is separate — on delete there is no request.resource.
+      allow delete: if isStaff() && inOrg(resource.data);
+      // Staff edit freely within their org, EXCEPT flipping draft→visible
+      // (publishing), which requires the parent academy's approval. orgId is
+      // immutable. Non-staff updates exist only for the sign-up transaction: they
+      // may touch ONLY roleSlots / status / updatedAt, may not invent new slots,
+      // and the count math is enforced in the transaction.
+      allow update: if (isStaff() && inOrg(resource.data) && unchanged('orgId') && (
             request.resource.data.status == resource.data.status
             || request.resource.data.status == 'draft'
             || resource.data.status != 'draft'
             || academyOkToPublish(resource.data.academyId)
           ))
         || (signedIn()
+            && inOrg(resource.data)
+            && unchanged('orgId')
             && request.resource.data.diff(resource.data).affectedKeys()
                  .hasOnly(['roleSlots', 'status', 'updatedAt'])
             && request.resource.data.roleSlots.size() == resource.data.roleSlots.size()
             && request.resource.data.status in ['open', 'fully_staffed']);
 
       // ── signups subcollection ────────────────────────────────────────────
-      // A user manages only their own signup doc; coordinators+ may write any
-      // (approve/override). Qualification gating happens in the transaction
-      // against the rule-protected users.verifiedQualKeys.
+      // Same-tenant. A user manages only their own signup doc; staff write any.
       match /signups/{uid} {
-        allow read: if signedIn();
-        allow create: if isStaff()
+        allow read: if signedIn() && inOrg(resource.data);
+        allow create: if (isStaff() && inOrg(request.resource.data))
           || (isOwner(uid)
               && request.resource.data.uid == uid
+              && inOrg(request.resource.data)
               && request.resource.data.status in ['confirmed', 'waitlist']
               && get(/databases/$(database)/documents/users/$(uid)).data.status == 'active');
-        // Owners may only flip their own signup among valid states (e.g.
-        // withdraw); arbitrary status strings are rejected. Waitlist promotion
-        // of another user is done by the Cloud Function (Admin SDK).
-        allow update: if isStaff()
-          || (isOwner(uid) && request.resource.data.status in ['confirmed', 'waitlist', 'withdrawn']);
-        allow delete: if isStaff();
+        allow update: if (isStaff() && inOrg(resource.data))
+          || (isOwner(uid) && inOrg(resource.data) && request.resource.data.status in ['confirmed', 'waitlist', 'withdrawn']);
+        allow delete: if isStaff() && inOrg(resource.data);
       }
     }
 
     // ── assignments ────────────────────────────────────────────────────────
-    // Denormalized mirror. Readable by owner + staff. Written by the sign-up
-    // transaction (owner, own uid only) and by Cloud Functions (Admin SDK
-    // bypasses rules). Waitlist promotion of another user is coordinator work
-    // or function work, never an arbitrary client.
+    // Denormalized mirror. Readable by owner + staff, within tenant. Written by
+    // the sign-up transaction (owner, own uid) and Cloud Functions (Admin SDK).
     match /assignments/{assignmentId} {
-      allow read: if isStaff() || (signedIn() && resource.data.uid == request.auth.uid);
-      allow create: if isStaff()
-        || (signedIn() && request.resource.data.uid == request.auth.uid);
-      allow update: if isStaff()
+      allow read: if inOrg(resource.data) && (isStaff() || resource.data.uid == request.auth.uid);
+      allow create: if inOrg(request.resource.data)
+        && (isStaff() || request.resource.data.uid == request.auth.uid);
+      allow update: if (isStaff() && inOrg(resource.data) && unchanged('orgId'))
         || (signedIn()
+            && inOrg(resource.data)
+            && unchanged('orgId')
             && resource.data.uid == request.auth.uid
             && request.resource.data.uid == request.auth.uid);
-      allow delete: if isStaff();
+      allow delete: if isStaff() && inOrg(resource.data);
     }
 
     // ── notifications ──────────────────────────────────────────────────────
-    // Function-written; owner may read and mark read.
+    // Per-recipient (uid is the scope; a user belongs to one tenant). Function-
+    // written; owner may read and mark read.
     match /notifications/{notificationId} {
       allow read: if signedIn() && resource.data.uid == request.auth.uid;
       allow create: if false; // Gjallarhorn (Admin SDK) only
@@ -246,28 +291,30 @@ service cloud.firestore {
     }
 
     // ── mail ───────────────────────────────────────────────────────────────
-    // Watched by the Trigger Email extension. Server-written ONLY.
+    // Watched by the Trigger Email extension. Server-written ONLY; same-tenant
+    // admin read (notify() stamps orgId on each mail doc).
     match /mail/{mailId} {
-      allow read: if isAdmin();
+      allow read: if isAdmin() && inOrg(resource.data);
       allow write: if false; // functions/Admin SDK only
     }
 
     // ── bulkMessages ───────────────────────────────────────────────────────
-    // Staff queue a message; the Gjallarhorn fan-out function (Admin SDK)
-    // marks it sent.
     match /bulkMessages/{id} {
-      allow read: if isStaff();
+      allow read: if isStaff() && inOrg(resource.data);
       allow create: if isStaff()
         && request.resource.data.requestedBy == request.auth.uid
+        && inOrg(request.resource.data)
         && request.resource.data.status == 'pending';
       allow update, delete: if false;
     }
 
     // ── auditLog ───────────────────────────────────────────────────────────
-    // Append-only from clients (must stamp their own uid); admin read.
+    // Append-only from clients (must stamp own uid + own org); same-tenant admin read.
     match /auditLog/{logId} {
-      allow read: if isAdmin();
-      allow create: if signedIn() && request.resource.data.actorUid == request.auth.uid;
+      allow read: if isAdmin() && inOrg(resource.data);
+      allow create: if signedIn()
+        && request.resource.data.actorUid == request.auth.uid
+        && inOrg(request.resource.data);
       allow update, delete: if false;
     }
 

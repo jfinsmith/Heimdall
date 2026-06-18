@@ -309,6 +309,7 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
       } else {
         const ref = await addDoc(collection(db, 'sessions'), {
           ...payload,
+          orgId: academy.orgId,
           // Visible on the calendar once the academy is published, but sign-ups
           // stay closed until the coordinator opens the course.
           status: academy.status === 'draft' ? 'draft' : 'scheduled',
@@ -335,6 +336,7 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
           if (prevUids.has(uid)) continue; // unchanged
           await setDoc(doc(db, 'sessions', sessionId, 'signups', uid), {
             uid,
+            orgId: academy.orgId,
             displayName: userName(uid),
             role: info.role,
             slotId: info.slotId,
@@ -343,6 +345,7 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
           });
           await setDoc(doc(db, 'assignments', `${sessionId}_${uid}`), {
             uid,
+            orgId: academy.orgId,
             sessionId,
             academyId: academy.id,
             role: info.role,

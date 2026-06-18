@@ -24,7 +24,7 @@ interface Props {
 }
 
 export function SessionDetailModal({ sessionId, onClose, onEdit }: Props) {
-  const { firebaseUser, profile, role } = useAuth();
+  const { firebaseUser, profile, role, orgId } = useAuth();
   const { data: session } = useDoc<SessionDoc>(`sessions/${sessionId}`);
   const { data: signups } = useCollection<SignupDoc>(
     `sessions/${sessionId}/signups`,
@@ -96,6 +96,7 @@ export function SessionDetailModal({ sessionId, onClose, onEdit }: Props) {
       const nextEnd = session.end.toDate();
       nextEnd.setDate(nextEnd.getDate() + dayDelta);
       await addDoc(collection(db, 'sessions'), {
+        orgId,
         academyId: session.academyId,
         courseId: session.courseId,
         courseName: session.courseName,
@@ -245,6 +246,7 @@ export function SessionDetailModal({ sessionId, onClose, onEdit }: Props) {
                 try {
                   await updateDoc(doc(db, 'sessions', sessionId), { status: 'open', updatedAt: serverTimestamp() });
                   await addDoc(collection(db, 'coursePublishEvents'), {
+                    orgId,
                     academyId: session.academyId,
                     courseLabel: session.title || session.courseName,
                     sessionCount: 1,

@@ -321,6 +321,7 @@ function CreateAcademyModal({
   const [primary, setPrimary] = useState('');
   const [secondary, setSecondary] = useState('');
   const [busy, setBusy] = useState(false);
+  const { orgId } = useAuth();
 
   // Disciplines come from the admin-editable curricula collection; the
   // default target hours are that curriculum's course-hour sum.
@@ -339,6 +340,7 @@ function CreateAcademyModal({
     e.preventDefault();
     setBusy(true);
     await addDoc(collection(db, 'academies'), {
+      orgId,
       name,
       shortName,
       discipline,
@@ -491,6 +493,7 @@ function CloneAcademyModal({
     const { id: _id, ...sourceData } = source;
     const academyRef = await addDoc(collection(db, 'academies'), {
       ...sourceData,
+      orgId: source.orgId,
       name,
       shortName,
       isTemplate: false,
@@ -513,6 +516,7 @@ function CloneAcademyModal({
       const ref = doc(collection(db, 'sessions'));
       batch.set(ref, {
         ...s,
+        orgId: source.orgId, // explicit (don't depend on the source session's backfill state)
         academyId: academyRef.id,
         start: tsFromDate(new Date(s.start.toDate().getTime() + offsetMs)),
         end: tsFromDate(new Date(s.end.toDate().getTime() + offsetMs)),

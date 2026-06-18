@@ -115,6 +115,7 @@ export async function notify(opts: NotifyOptions): Promise<void> {
     });
 
   // `mail` docs are server-written only; the Trigger Email extension sends them.
+  // Stamp the recipient's tenant so the same-tenant admin read rule can scope it.
   const mailData = {
     to: [email],
     message: {
@@ -123,6 +124,7 @@ export async function notify(opts: NotifyOptions): Promise<void> {
       text: content.text,
       ...(opts.attachments ? { attachments: opts.attachments } : {}),
     },
+    ...(recipientOrgId ? { orgId: recipientOrgId } : {}),
     createdAt: FieldValue.serverTimestamp(),
   };
   if (opts.dedupeKey) await idempotentCreate(db().collection('mail').doc(`m_${opts.dedupeKey}`), mailData);

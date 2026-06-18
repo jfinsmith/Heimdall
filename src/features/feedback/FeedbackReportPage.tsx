@@ -51,14 +51,15 @@ export function FeedbackReportPage() {
     setBusy(true);
     setError(null);
     try {
-      // Upload screenshots under the member's own uid (Storage rules enforce this).
+      // Upload screenshots under the member's own org + uid (Storage rules scope
+      // reads to same-tenant admins / the owner).
       const stamp = [...crypto.getRandomValues(new Uint8Array(8))].map((b) => b.toString(16).padStart(2, '0')).join('');
       const screenshotUrls: string[] = [];
       let uploadFailed = false;
       for (let i = 0; i < files.length; i++) {
         const f = files[i];
         try {
-          const r = ref(storage, `feedback/${firebaseUser.uid}/${stamp}/${i}-${f.name.replace(/[^\w.-]+/g, '_')}`);
+          const r = ref(storage, `feedback/${orgId || 'none'}/${firebaseUser.uid}/${stamp}/${i}-${f.name.replace(/[^\w.-]+/g, '_')}`);
           await uploadBytes(r, f, { contentType: f.type });
           screenshotUrls.push(await getDownloadURL(r));
         } catch {

@@ -60,6 +60,10 @@ jobs:
   # Independent so a rules/index permission gap can't block the app deploy.
   deploy-rules:
     runs-on: ubuntu-latest
+    # Never ship security rules that fail their emulator tests, and deploy the
+    # new client (hosting) first so a rules tightening can't reject the old
+    # bundle's writes. A failure in either gate blocks the rules deploy.
+    needs: [build-and-deploy, emulator-tests]
     steps:
       - uses: actions/checkout@v4
       - name: Write service account

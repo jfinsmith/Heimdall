@@ -10,15 +10,21 @@ service firebase.storage {
       return signedIn() && request.auth.token.role in ['director', 'lieutenant'];
     }
 
-    // Bug / feature report screenshots. A member uploads under their own uid;
-    // admins can read every report's images for triage. Images only, ≤ 10 MB.
-    match /feedback/{uid}/{allPaths=**} {
-      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+    // Bug / feature report screenshots, partitioned by tenant: feedback/{orgId}/{uid}/…
+    // The uploader writes under their own uid; reads are scoped to a SAME-TENANT
+    // admin (orgId path segment == the admin's org claim) or the owner. This
+    // prevents an admin in one college from reading another college's report
+    // images. Images only, ≤ 10 MB.
+    match /feedback/{orgId}/{uid}/{allPaths=**} {
+      allow read: if (isAdmin() && orgId == request.auth.token.get('orgId', null))
+        || (signedIn() && request.auth.uid == uid);
       allow write: if signedIn()
         && request.auth.uid == uid
+        && orgId == request.auth.token.get('orgId', null)
         && request.resource.size < 10 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
-      allow delete: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow delete: if (isAdmin() && orgId == request.auth.token.get('orgId', null))
+        || (signedIn() && request.auth.uid == uid);
     }
 
     // Everything else: locked down by default.

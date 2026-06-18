@@ -137,6 +137,7 @@ export async function signUpForSlot(
       if (!opts.allowWaitlist) throw new SignupError('FULL'); // sentinel — UI offers waitlist
       tx.set(signupRef, {
         uid,
+        orgId: session.orgId,
         displayName: user.displayName,
         role: slot.role,
         slotId,
@@ -155,6 +156,7 @@ export async function signUpForSlot(
     tx.update(sessionRefForWindow, { roleSlots: newSlots, status: newStatus, updatedAt: now });
     tx.set(signupRef, {
       uid,
+      orgId: session.orgId,
       displayName: user.displayName,
       role: slot.role,
       slotId,
@@ -163,6 +165,7 @@ export async function signUpForSlot(
     } satisfies SignupDoc);
     tx.set(doc(db, 'assignments', `${sessionId}_${uid}`), {
       uid,
+      orgId: session.orgId,
       sessionId,
       academyId: session.academyId,
       role: slot.role,

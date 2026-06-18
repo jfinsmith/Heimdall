@@ -178,6 +178,7 @@ function ReportFormModal({
       } else {
         await addDoc(collection(db, 'academies', academy.id, 'reports'), {
           ...payload,
+          orgId: academy.orgId,
           createdBy: firebaseUser!.uid,
           createdByName: fromName,
           createdAt: serverTimestamp(),

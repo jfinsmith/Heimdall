@@ -155,6 +155,7 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
         const end = combineDateTime(ds, endTime);
         const ref = doc(collection(db, 'sessions'));
         batch.set(ref, {
+          orgId: academy.orgId,
           academyId: academy.id,
           courseId: isCustom ? 'custom' : selectedOption?.value ?? courseId,
           courseName,
@@ -188,6 +189,7 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
         for (const { ref, start, end } of created) {
           const now = Timestamp.now();
           await setDoc(doc(db, 'assignments', `${ref.id}_${defaultCoord}`), {
+            orgId: academy.orgId,
             uid: defaultCoord,
             sessionId: ref.id,
             academyId: academy.id,
