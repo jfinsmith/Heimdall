@@ -582,6 +582,14 @@ export interface RoleSlot {
 export interface SessionDoc {
   /** Tenant (orgs/{orgId}); set at provisioning/backfill. */
   orgId?: string;
+  /**
+   * Block kind. Undefined/'session' = a real instructional block. 'lunch' = a
+   * non-instructional placeholder (break/lunch) shown on the builder + printed
+   * schedule for context — always hours:0, no roleSlots, never staffed/signed
+   * up for, and excluded from every hours total. This is SEPARATE from the
+   * per-session lunch carve-out (lunchMinutes), which still applies to sessions.
+   */
+  kind?: 'session' | 'lunch';
   academyId: string;
   courseId: string;
   courseName: string;     // denormalized from courseCatalog

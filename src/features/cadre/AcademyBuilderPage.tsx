@@ -27,6 +27,7 @@ import { QUALIFICATION_LABELS } from '../../types';
 import { Badge, Button, Field, Input, PageHeader, Select } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import { SessionFormModal } from './SessionFormModal';
+import { LunchBlockModal } from './LunchBlockModal';
 import { RecurringGeneratorModal } from './RecurringGeneratorModal';
 import { SessionDetailModal } from '../sessions/SessionDetailModal';
 import { sessionToEvent, renderEventContent } from './sessionEvents';
@@ -72,6 +73,8 @@ export function AcademyBuilderPage() {
   const [showWeekends, setShowWeekends] = useState(false);
   const [search, setSearch] = useState('');
   const [detailSession, setDetailSession] = useState<WithId<SessionDoc> | null>(null);
+  const [lunchOpen, setLunchOpen] = useState(false);
+  const [lunchSession, setLunchSession] = useState<WithId<SessionDoc> | null>(null);
   const [signupModal, setSignupModal] = useState<{
     label: string;
     mode: 'open' | 'announce';
@@ -264,8 +267,12 @@ export function AcademyBuilderPage() {
     await updateDoc(doc(db, 'sessions', s.id), {
       start: tsFromDate(start),
       end: tsFromDate(end),
-      // Preserve the lunch carve-out — instructional hours exclude it (unless lunch counts).
-      hours: Math.max(0, hoursBetween(start, end) - (s.lunchCountsTowardHours ? 0 : (s.lunchMinutes ?? 0) / 60)),
+      // Lunch placeholders never carry hours; sessions recompute from the new span
+      // (preserving their lunch carve-out, unless lunch counts).
+      hours:
+        s.kind === 'lunch'
+          ? 0
+          : Math.max(0, hoursBetween(start, end) - (s.lunchCountsTowardHours ? 0 : (s.lunchMinutes ?? 0) / 60)),
       updatedAt: serverTimestamp(),
     });
     if (firebaseUser) {
@@ -380,6 +387,15 @@ export function AcademyBuilderPage() {
             )}
             <Button onClick={() => setEditOpen(true)}>Edit academy</Button>
             <Button onClick={() => setRecurringOpen(true)}>Recurring blocks</Button>
+            <Button
+              onClick={() => {
+                setLunchSession(null);
+                setFormDate(undefined);
+                setLunchOpen(true);
+              }}
+            >
+              Add lunch
+            </Button>
             <Button
               variant="primary"
               onClick={() => {
@@ -592,7 +608,15 @@ export function AcademyBuilderPage() {
           eventResize={onEventChange}
           eventClick={(arg) => {
             const s = arg.event.extendedProps.session as WithId<SessionDoc> | undefined;
-            if (s) setDetailSession(s);
+            if (!s) return;
+            // Lunch placeholders open their own lightweight editor, not the
+            // session detail (which is all staffing/sign-up UI).
+            if (s.kind === 'lunch') {
+              setLunchSession(s);
+              setLunchOpen(true);
+            } else {
+              setDetailSession(s);
+            }
           }}
           // Click an empty day/slot to add a session prefilled to that date.
           dateClick={(arg) => {
@@ -603,6 +627,7 @@ export function AcademyBuilderPage() {
           height="auto"
           slotMinTime="05:00:00"
           slotMaxTime="23:00:00"
+          snapDuration="00:15:00"
           slotEventOverlap={false}
           expandRows
           listDayFormat={{ weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' }}
@@ -624,6 +649,17 @@ export function AcademyBuilderPage() {
         <SessionFormModal academy={academy} session={formSession} defaultDate={formDate} onClose={() => setFormOpen(false)} />
       )}
       {recurringOpen && <RecurringGeneratorModal academy={academy} onClose={() => setRecurringOpen(false)} />}
+      {lunchOpen && (
+        <LunchBlockModal
+          academy={academy}
+          lunch={lunchSession}
+          defaultDate={formDate}
+          onClose={() => {
+            setLunchOpen(false);
+            setLunchSession(null);
+          }}
+        />
+      )}
       {editOpen && <EditAcademyModal academy={academy} onClose={() => setEditOpen(false)} />}
       {detailSession && (
         <SessionDetailModal

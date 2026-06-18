@@ -98,6 +98,12 @@ body {
   overflow: hidden;
   line-height: 1.2;
 }
+/* Lunch / break placeholder block — italic + centered so it reads as a non-class. */
+.hd-event--lunch {
+  display: flex;
+  align-items: center;
+  font-style: italic;
+}
 /* Lunch break band drawn across the session at the lunch time */
 .hd-lunch {
   position: absolute;

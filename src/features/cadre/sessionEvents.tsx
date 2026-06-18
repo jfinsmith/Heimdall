@@ -22,9 +22,11 @@ export const STATUS_COLORS = {
   draft: '#64748b',
   scheduled: '#374b78',
   completed: '#16203a',
+  lunch: '#78716c', // warm gray — reads as a neutral break, not a class
 } as const;
 
 export function sessionColor(s: SessionDoc): string {
+  if (s.kind === 'lunch') return STATUS_COLORS.lunch;
   if (s.status === 'cancelled') return STATUS_COLORS.critical;
   if (s.status === 'draft') return STATUS_COLORS.draft;
   if (s.status === 'scheduled') return STATUS_COLORS.scheduled;
@@ -86,6 +88,16 @@ export function renderEventContent(arg: EventContentArg): React.ReactNode | unde
   if (!s) return undefined;
   const prefix = arg.event.extendedProps.academyPrefix as string | undefined;
   const durationMin = (arg.event.end!.getTime() - arg.event.start!.getTime()) / 60000;
+
+  // Lunch / break placeholders: a simple labelled block, never the full
+  // course/staffing chrome (regardless of how short the block is).
+  if (s.kind === 'lunch') {
+    return (
+      <div className="hd-event hd-event--lunch" title={`${s.courseName}${arg.timeText ? ` · ${arg.timeText}` : ''}`}>
+        <span className="hd-event-tiny-title">🍴 {s.courseName}</span>
+      </div>
+    );
+  }
 
   if (durationMin <= 20) {
     return (

@@ -45,6 +45,7 @@ export function StaffingBoardPage() {
     const cols: Record<Column, WithId<SessionDoc>[]> = { draft: [], scheduled: [], understaffed: [], fully_staffed: [] };
     for (const s of sessions) {
       if (s.status === 'cancelled' || s.status === 'completed') continue;
+      if (s.kind === 'lunch') continue; // placeholders aren't staffable
       if (s.status === 'draft') cols.draft.push(s);
       // 'scheduled' = on the calendar but sign-ups not opened yet — staffing
       // math doesn't apply until a coordinator opens the course.
