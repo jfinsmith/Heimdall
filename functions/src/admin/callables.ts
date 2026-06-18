@@ -330,6 +330,7 @@ export const sendActivationEmail = onCall<{ uid: string; password: string }>(asy
     ctaLabel: 'Sign in to activate',
     ctaUrl: SITE_URL,
     orgName,
+    logoUrl: settingsSnap.data()?.logoUrl as string | undefined,
   });
 
   await db.collection('mail').add({

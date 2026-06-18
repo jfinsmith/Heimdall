@@ -121,6 +121,7 @@ export const onSignupWritten = onDocumentWritten('sessions/{sessionId}/signups/{
         bodyHtml: `<p>${escapeHtml(after.displayName)}, you are confirmed as <strong>${escapeHtml(after.role.replace('_', ' '))}</strong>.</p>${details.html}`,
         bodyText: `${after.displayName}, you are confirmed as ${after.role.replace('_', ' ')}.\n\n${details.text}`,
         orgName: settings?.orgName,
+        logoUrl: settings?.logoUrl,
       }),
       attachments: [{ filename: 'session.ics', content: sessionIcs(sessionId, session) }],
     });
@@ -235,6 +236,7 @@ export const onSessionUpdated = onDocumentUpdated('sessions/{sessionId}', async 
           bodyHtml: `<p>${escapeHtml(su.displayName)}, your assigned session has been <strong>${what}</strong>.</p>${details.html}`,
           bodyText: `${su.displayName}, your assigned session has been ${what}.\n\n${details.text}`,
           orgName: settings?.orgName,
+          logoUrl: settings?.logoUrl,
         }),
       });
     })

@@ -4,7 +4,8 @@
  */
 import React, { useEffect, useState } from 'react';
 import { doc, setDoc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '../../lib/firebase';
 import { useDoc, orgConfigPath } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import type { GlobalSettings } from '../../types';
@@ -21,6 +22,24 @@ export function SettingsAdminPage() {
   const [domains, setDomains] = useState('');
   const [payTarget, setPayTarget] = useState(85);
   const [saved, setSaved] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadErr, setUploadErr] = useState<string | null>(null);
+
+  async function uploadLogo(file: File) {
+    if (!orgId) { setUploadErr('Your account has no organization yet.'); return; }
+    setUploading(true);
+    setUploadErr(null);
+    try {
+      const ext = (file.name.split('.').pop() || 'png').replace(/[^a-z0-9]/gi, '').toLowerCase();
+      const r = ref(storage, `branding/${orgId}/logo-${Date.now()}.${ext}`);
+      await uploadBytes(r, file, { contentType: file.type });
+      setLogoUrl(await getDownloadURL(r));
+    } catch (e) {
+      setUploadErr((e as Error).message || 'Upload failed — confirm Firebase Storage is enabled, or paste a URL instead.');
+    } finally {
+      setUploading(false);
+    }
+  }
 
   useEffect(() => {
     if (!settings) return;
@@ -72,8 +91,35 @@ export function SettingsAdminPage() {
             <Input type="color" value={accent} onChange={(e) => setAccent(e.target.value)} />
           </Field>
         </div>
-        <Field label="Logo URL (optional)" hint="Used in email headers; leave blank for the built-in Gjallarhorn mark">
-          <Input value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} />
+        <Field
+          label="Organization logo (optional)"
+          hint="Shown in the app, on printed documents, and in email. Upload an image, or paste a URL. Blank = the Heimdall wordmark. Remember to Save."
+        >
+          <div className="space-y-2">
+            {logoUrl && (
+              <div className="flex items-center gap-3 rounded-md border border-watch-100 bg-watch-50 p-2">
+                <img src={logoUrl} alt="Current logo" style={{ height: 40, width: 'auto', maxWidth: 220, objectFit: 'contain' }} />
+                <Button type="button" variant="ghost" className="text-red-600 hover:bg-red-50" onClick={() => setLogoUrl('')}>
+                  Remove
+                </Button>
+              </div>
+            )}
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="inline-flex cursor-pointer items-center rounded-md border border-watch-200 bg-white px-3 py-2 text-sm font-medium text-watch-700 hover:bg-watch-50">
+                {uploading ? 'Uploading…' : 'Upload image'}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  disabled={uploading}
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadLogo(f); e.target.value = ''; }}
+                />
+              </label>
+              <span className="text-xs text-slate-400">or</span>
+              <Input className="flex-1" placeholder="https://…/logo.png" value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} />
+            </div>
+            {uploadErr && <p className="text-sm text-red-600">{uploadErr}</p>}
+          </div>
         </Field>
         <Field
           label="Auto-join email domains"

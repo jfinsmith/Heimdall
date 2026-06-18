@@ -22,7 +22,8 @@ import { useCollection, useDoc, type WithId } from '../../lib/firestore';
 import { useGlobalSettings } from '../../app/providers';
 import type { AcademyDoc, SessionDoc, UserDoc } from '../../types';
 import { SLOT_ROLE_LABELS } from '../../types';
-import { WordmarkHorizontal, WordmarkStacked } from '../../brand/Logo';
+import { WordmarkHorizontal } from '../../brand/Logo';
+import { OrgLogo } from '../../brand/OrgLogo';
 import { Button } from '../../components/ui';
 
 const TZ = 'America/New_York';
@@ -148,7 +149,7 @@ export function PrintableSchedulePage() {
           <section className="page-break flex flex-col items-center justify-center text-center" style={{ minHeight: '9in' }}>
             <div className="h-1.5 w-24" style={{ backgroundColor: amber }} />
             <div className="my-8">
-              <WordmarkStacked size={150} />
+              <OrgLogo size={150} fallback="stacked" />
             </div>
             <div className="text-sm uppercase tracking-[0.3em] text-slate-500">{orgName}</div>
             <div className="mt-10 text-base font-semibold uppercase tracking-[0.35em]" style={{ color: amber }}>

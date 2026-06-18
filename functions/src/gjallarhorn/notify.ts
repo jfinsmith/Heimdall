@@ -112,6 +112,7 @@ export async function notify(opts: NotifyOptions): Promise<void> {
       bodyHtml: escapeHtml(opts.body).replace(/\n/g, '<br/>'),
       bodyText: opts.body,
       orgName: settings?.orgName,
+      logoUrl: settings?.logoUrl,
     });
 
   // `mail` docs are server-written only; the Trigger Email extension sends them.

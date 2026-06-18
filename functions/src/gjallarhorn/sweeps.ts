@@ -70,6 +70,7 @@ export const gjallarhornDailySweep = onSchedule(
           bodyHtml: `<p>The horn sounds: you have an assignment coming up.</p>${details.html}`,
           bodyText: `The horn sounds: you have an assignment coming up.\n\n${details.text}`,
           orgName: settings?.orgName,
+          logoUrl: settings?.logoUrl,
         }),
       });
       await doc.ref.update({ reminderSent: true });

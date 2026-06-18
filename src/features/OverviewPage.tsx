@@ -13,7 +13,7 @@ import type { AcademyDoc, AssignmentDoc, SessionDoc } from '../types';
 import { unfilledSlots } from '../types';
 import { PageHeader, StatusPill, EmptyState, Spinner } from '../components/ui';
 import { SessionDetailModal } from './sessions/SessionDetailModal';
-import { WordmarkStacked } from '../brand/Logo';
+import { OrgLogo } from '../brand/OrgLogo';
 
 export function OverviewPage() {
   const { firebaseUser, profile, role } = useAuth();
@@ -53,7 +53,7 @@ export function OverviewPage() {
     <div>
       {/* Brand banner — the full engraved lockup on the night-watch panel */}
       <div className="mb-6 flex justify-center rounded-xl bg-watch-950 px-6 py-8 shadow-sm">
-        <WordmarkStacked size={170} />
+        <OrgLogo size={170} fallback="stacked" />
       </div>
 
       <PageHeader kicker="HEIMDALL" title={`The watch is yours, ${profile?.displayName?.split(' ')[0] ?? ''}`} />

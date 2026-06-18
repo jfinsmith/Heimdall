@@ -9,7 +9,7 @@ import { useAuth } from '../auth/AuthContext';
 import { can } from '../lib/rbac';
 import { useRoleLabels } from './providers';
 import { useClickOutside } from '../lib/useClickOutside';
-import { WordmarkHorizontal } from '../brand/Logo';
+import { OrgLogo, PoweredByHeimdall } from '../brand/OrgLogo';
 import { NotificationBell } from '../components/NotificationBell';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Button } from '../components/ui';
@@ -138,7 +138,7 @@ export function AppShell() {
       >
         <div className="flex h-14 items-center px-4">
           <NavLink to="/" className="text-watch-50 [&_svg]:text-bifrost-400">
-            <WordmarkHorizontal size={26} />
+            <OrgLogo size={26} fallback="horizontal" />
           </NavLink>
         </div>
         {nav}
@@ -195,7 +195,8 @@ export function AppShell() {
           </ErrorBoundary>
         </main>
         <footer className="no-print px-8 py-4 text-center text-xs text-watch-300">
-          HEIMDALL · CADRE — Coordinated Academy Duty &amp; Roster Engine · Sounded by Gjallarhorn
+          <div>CADRE — Coordinated Academy Duty &amp; Roster Engine · Sounded by Gjallarhorn</div>
+          <div className="mt-1 flex justify-center"><PoweredByHeimdall className="!text-watch-400" /></div>
         </footer>
       </div>
     </div>

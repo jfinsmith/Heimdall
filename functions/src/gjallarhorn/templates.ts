@@ -37,8 +37,24 @@ export function renderEmail(opts: {
   ctaLabel?: string;
   ctaUrl?: string;
   orgName?: string;
+  /** Per-org logo (settings.logoUrl). Shown in the header when present; the
+   *  footer keeps the Heimdall attribution either way. */
+  logoUrl?: string;
 }): EmailContent {
-  const { subject, heading, bodyHtml, bodyText, ctaLabel, ctaUrl, orgName } = opts;
+  const { subject, heading, bodyHtml, bodyText, ctaLabel, ctaUrl, orgName, logoUrl } = opts;
+  // Only embed a clean https URL, with quotes neutralized, to prevent any
+  // attribute breakout from a pasted logo URL.
+  const safeLogo = logoUrl && /^https:\/\/\S+$/.test(logoUrl) ? logoUrl.replace(/"/g, '%22') : '';
+  // Header: the org's own logo (prominent) when set, else the Heimdall mark.
+  const header = safeLogo
+    ? `<table role="presentation" cellpadding="0" cellspacing="0"><tr>
+            <td style="vertical-align:middle;padding-right:12px;"><img src="${safeLogo}" alt="" style="display:block;border:0;max-height:38px;width:auto;" /></td>
+            <td style="vertical-align:middle;font-family:Arial,sans-serif;font-size:16px;font-weight:bold;color:#f4f6fb;">${escapeHtml(orgName ?? '')}</td>
+          </tr></table>`
+    : `<table role="presentation" cellpadding="0" cellspacing="0"><tr>
+            <td style="vertical-align:middle;padding-right:10px;">${MARK_IMG}</td>
+            <td style="vertical-align:middle;font-family:Arial,sans-serif;font-size:18px;letter-spacing:4px;font-weight:bold;color:#f4f6fb;">HEIMDALL</td>
+          </tr></table>`;
   const cta =
     ctaLabel && ctaUrl
       ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px 0;"><tr><td style="background:${BRAND_AMBER};border-radius:6px;">
@@ -52,12 +68,9 @@ export function renderEmail(opts: {
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6fb;padding:24px 0;">
     <tr><td align="center">
       <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;">
-        <!-- HEIMDALL header -->
+        <!-- Org / HEIMDALL header -->
         <tr><td style="background:${BRAND_NAVY};padding:18px 28px;">
-          <table role="presentation" cellpadding="0" cellspacing="0"><tr>
-            <td style="vertical-align:middle;padding-right:10px;">${MARK_IMG}</td>
-            <td style="vertical-align:middle;font-family:Arial,sans-serif;font-size:18px;letter-spacing:4px;font-weight:bold;color:#f4f6fb;">HEIMDALL</td>
-          </tr></table>
+          ${header}
         </td></tr>
         <!-- Body -->
         <tr><td style="padding:28px;font-family:Arial,sans-serif;color:#1f2a45;">

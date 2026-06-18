@@ -27,6 +27,17 @@ service firebase.storage {
         || (signedIn() && request.auth.uid == uid);
     }
 
+    // Per-org logo (branding). Public read — a logo is a non-sensitive brand
+    // asset shown in-app, on printed documents, and in outbound email (to
+    // recipients who may not be signed in). Only that org's admin may upload it.
+    match /branding/{orgId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin()
+        && orgId == request.auth.token.get('orgId', null)
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
     // Everything else: locked down by default.
     match /{allPaths=**} {
       allow read, write: if false;
