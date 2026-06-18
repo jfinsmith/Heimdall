@@ -96,6 +96,7 @@ export interface RoleSlot {
 }
 
 export interface SessionDoc {
+  orgId?: string;
   academyId: string;
   courseId: string;
   courseName: string;
@@ -120,6 +121,7 @@ export type ApprovalState =
   | 'changes_requested';
 
 export interface AcademyDoc {
+  orgId?: string;
   name: string;
   shortName?: string;
   coordinatorIds: string[];

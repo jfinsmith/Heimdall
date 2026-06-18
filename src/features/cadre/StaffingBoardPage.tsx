@@ -257,7 +257,7 @@ function InstructorLoadTable({ load }: { load: Map<string, { name: string; sessi
  * (clients cannot write to `mail/` directly — rules forbid it).
  */
 function BulkMessageModal({ academies, onClose }: { academies: WithId<AcademyDoc>[]; onClose: () => void }) {
-  const { firebaseUser } = useAuth();
+  const { firebaseUser, orgId } = useAuth();
   const [academyId, setAcademyId] = useState('');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
@@ -269,6 +269,7 @@ function BulkMessageModal({ academies, onClose }: { academies: WithId<AcademyDoc
     setBusy(true);
     await addDoc(collection(db, 'bulkMessages'), {
       academyId,                       // '' = all signed-up instructors everywhere
+      ...(orgId ? { orgId } : {}),     // tenant scope (dormant until backfill)
       subject,
       body,
       requestedBy: firebaseUser?.uid ?? '',

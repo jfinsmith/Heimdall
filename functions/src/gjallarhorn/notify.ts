@@ -134,13 +134,19 @@ export async function notifyCoordinators(
 /** Per-recipient dedupe id from a fan-out base key (undefined base = no dedupe). */
 const keyFor = (base: string | undefined, uid: string) => (base ? `${base}_${uid}` : undefined);
 
-/** Notify every command-level admin (active directors + lieutenants). */
-export async function notifyAdmins(payload: Omit<NotifyOptions, 'uid' | 'email'>): Promise<void> {
-  const admins = await db()
+/**
+ * Notify every command-level admin (active directors + lieutenants). When an
+ * orgId is given, only that tenant's admins are notified — pass it for any
+ * org-specific event so command in OTHER orgs never receives it (or its PII).
+ * Omit it (or pass undefined) for the single-tenant case (pre-backfill).
+ */
+export async function notifyAdmins(payload: Omit<NotifyOptions, 'uid' | 'email'>, orgId?: string): Promise<void> {
+  let q: FirebaseFirestore.Query = db()
     .collection('users')
     .where('role', 'in', ['director', 'lieutenant'])
-    .where('status', '==', 'active')
-    .get();
+    .where('status', '==', 'active');
+  if (orgId) q = q.where('orgId', '==', orgId);
+  const admins = await q.get();
   await Promise.all(admins.docs.map((d) => notify({ ...payload, uid: d.id, dedupeKey: keyFor(payload.dedupeKey, d.id) })));
 }
 

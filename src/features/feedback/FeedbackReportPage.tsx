@@ -22,7 +22,7 @@ const SEVERITIES: { value: FeedbackSeverity; bug: string; feature: string }[] = 
 const ta = 'w-full rounded-md border border-watch-200 px-3 py-2 text-sm focus:border-bifrost-400 focus:outline-none focus:ring-1 focus:ring-bifrost-400';
 
 export function FeedbackReportPage() {
-  const { firebaseUser, profile, role } = useAuth();
+  const { firebaseUser, profile, role, orgId } = useAuth();
   const [kind, setKind] = useState<FeedbackKind>('bug');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -79,6 +79,7 @@ export function FeedbackReportPage() {
         ...(screenshotUrls.length ? { screenshotUrls } : {}),
         pageUrl: document.referrer || '',
         userAgent: navigator.userAgent,
+        ...(orgId ? { orgId } : {}),
         submittedByUid: firebaseUser.uid,
         submittedByName: profile?.displayName ?? firebaseUser.displayName ?? '',
         ...(firebaseUser.email ? { submittedByEmail: firebaseUser.email } : {}),

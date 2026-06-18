@@ -242,7 +242,7 @@ function DeleteAcademyModal({
     setBusy(true);
     try {
       setProgress('Finding sessions…');
-      const sessionsSnap = await getDocs(query(collection(db, 'sessions'), where('academyId', '==', academy.id)));
+      const sessionsSnap = await getDocs(query(collection(db, 'sessions'), where('academyId', '==', academy.id), ...(academy.orgId ? [where('orgId', '==', academy.orgId)] : [])));
       // Collect every doc to remove: each session's sign-ups, the sessions, the
       // assignment mirrors, and finally the academy itself.
       const refs: ReturnType<typeof doc>[] = [];
@@ -252,7 +252,7 @@ function DeleteAcademyModal({
         signups.forEach((su) => refs.push(su.ref));
         refs.push(sess.ref);
       }
-      const assignmentsSnap = await getDocs(query(collection(db, 'assignments'), where('academyId', '==', academy.id)));
+      const assignmentsSnap = await getDocs(query(collection(db, 'assignments'), where('academyId', '==', academy.id), ...(academy.orgId ? [where('orgId', '==', academy.orgId)] : [])));
       assignmentsSnap.forEach((a) => refs.push(a.ref));
       refs.push(doc(db, 'academies', academy.id));
 
@@ -503,7 +503,7 @@ function CloneAcademyModal({
     });
 
     setProgress('Copying sessions…');
-    const sessionsSnap = await getDocs(query(collection(db, 'sessions'), where('academyId', '==', source.id)));
+    const sessionsSnap = await getDocs(query(collection(db, 'sessions'), where('academyId', '==', source.id), ...(source.orgId ? [where('orgId', '==', source.orgId)] : [])));
 
     // Batched writes, 400 per batch (Firestore limit is 500).
     let batch = writeBatch(db);

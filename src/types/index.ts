@@ -304,6 +304,8 @@ export interface AcademyApproval {
 }
 
 export interface AcademyDoc {
+  /** Tenant (orgs/{orgId}); set at provisioning/backfill. */
+  orgId?: string;
   /** Short class designation used as the calendar prefix, e.g. "LE 131", "CO 67". */
   shortName: string;
   name: string;            // e.g. "LE 131 (May Start)"
@@ -464,6 +466,8 @@ export type FeedbackStatus = 'new' | 'in_progress' | 'resolved' | 'wont_fix';
 
 /** A member-submitted bug report or feature request (collection `feedbackReports`). */
 export interface FeedbackReportDoc {
+  /** Tenant (orgs/{orgId}); set at provisioning/backfill. */
+  orgId?: string;
   kind: FeedbackKind;
   title: string;
   description: string;
@@ -538,6 +542,8 @@ export type RosterModuleKey =
   | 'reports';
 
 export interface CurriculumDoc {
+  /** Tenant (orgs/{orgId}); set at provisioning/backfill. */
+  orgId?: string;
   key: string;             // doc id, e.g. 'le_brt'
   label: string;           // "Law Enforcement (Basic Recruit)"
   fdleProgram: string;
@@ -574,6 +580,8 @@ export interface RoleSlot {
 }
 
 export interface SessionDoc {
+  /** Tenant (orgs/{orgId}); set at provisioning/backfill. */
+  orgId?: string;
   academyId: string;
   courseId: string;
   courseName: string;     // denormalized from courseCatalog
@@ -622,6 +630,8 @@ export interface SignupDoc {
 
 /** Denormalized mirror powering "My Schedule" and Gjallarhorn reminders. */
 export interface AssignmentDoc {
+  /** Tenant (orgs/{orgId}); set at provisioning/backfill. */
+  orgId?: string;
   uid: string;
   sessionId: string;
   academyId: string;
@@ -675,6 +685,8 @@ export interface MailDoc {
 }
 
 export interface AuditLogDoc {
+  /** Tenant (orgs/{orgId}); set at provisioning/backfill. */
+  orgId?: string;
   actorUid: string;
   action: string;
   targetType: string;

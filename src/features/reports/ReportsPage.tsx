@@ -7,12 +7,14 @@ import { Link } from 'react-router-dom';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useCollection } from '../../lib/firestore';
+import { useAuth } from '../../auth/AuthContext';
 import { downloadCsv } from '../../lib/csv';
 import { fmtDate } from '../../lib/time';
 import type { AcademyDoc, AssignmentDoc, SessionDoc, UserDoc } from '../../types';
 import { Badge, Button, PageHeader, Select, Field } from '../../components/ui';
 
 export function ReportsPage() {
+  const { orgId } = useAuth();
   const { data: allAcademies } = useCollection<AcademyDoc>('academies');
   const academies = allAcademies.filter((a) => !a.isTemplate);
   const { data: sessions } = useCollection<SessionDoc>('sessions');
@@ -60,8 +62,11 @@ export function ReportsPage() {
   }
 
   async function exportInstructorHours() {
-    const snap = await getDocs(query(collection(db, 'assignments'), where('status', '==', 'confirmed')));
-    const usersSnap = await getDocs(collection(db, 'users'));
+    // Tenant-scoped (dormant until orgId is backfilled) — an unscoped users/
+    // assignments scan would otherwise read every org's data once pooled.
+    const orgC = orgId ? [where('orgId', '==', orgId)] : [];
+    const snap = await getDocs(query(collection(db, 'assignments'), where('status', '==', 'confirmed'), ...orgC));
+    const usersSnap = await getDocs(query(collection(db, 'users'), ...orgC));
     const names = new Map(usersSnap.docs.map((d) => [d.id, (d.data() as UserDoc).displayName]));
     const totals = new Map<string, { sessions: number; hours: number }>();
     snap.forEach((d) => {

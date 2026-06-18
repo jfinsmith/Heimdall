@@ -451,9 +451,13 @@ export const academyApproval = onCall<{
   const now = Timestamp.now();
   const step = (decision: string) => ({ uid: callerUid, name: callerName, role: callerRole, decision, ...(note ? { note } : {}), at: now });
 
-  // The single active user holding a command role (there is exactly one each).
+  // The single active user holding a command role IN THIS ACADEMY'S ORG (there
+  // is exactly one each per org). Scoped by orgId so a pooled DB doesn't find
+  // command across tenants (which would throw "exactly one" or route cross-org).
   async function single(role: Role): Promise<{ uid: string; name: string }> {
-    const q = await db.collection('users').where('role', '==', role).where('status', '==', 'active').get();
+    let query: FirebaseFirestore.Query = db.collection('users').where('role', '==', role).where('status', '==', 'active');
+    if (academy.orgId) query = query.where('orgId', '==', academy.orgId);
+    const q = await query.get();
     if (q.empty) throw new HttpsError('failed-precondition', `No active ${role} exists to route to — add one first.`);
     if (q.size > 1) throw new HttpsError('failed-precondition', `There must be exactly one ${role}; found ${q.size}.`);
     return { uid: q.docs[0].id, name: (q.docs[0].data().displayName as string) || role };

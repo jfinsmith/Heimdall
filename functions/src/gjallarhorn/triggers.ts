@@ -252,7 +252,7 @@ export const onUserCreated = onDocumentCreated('users/{uid}', async (event) => {
     title: 'New account request',
     body: `${data.displayName || data.email} requested a HEIMDALL account and is awaiting approval.`,
     link: '/admin/users',
-  });
+  }, data.orgId);
 });
 
 // ── User account / qualification approvals ─────────────────────────────────
@@ -323,6 +323,7 @@ export const onCoursePublished = onDocumentCreated('coursePublishEvents/{id}', a
 
   const academy = await db().doc(`academies/${academyId}`).get();
   const academyLabel = academy.exists ? (academy.data()!.shortName || academy.data()!.name) : '';
+  const academyOrgId = academy.exists ? (academy.data()!.orgId as string | undefined) : undefined;
 
   // Resolve recipients for the email blast (the course is visible to all eligible
   // instructors regardless — this only controls who gets pushed an email).
@@ -330,7 +331,10 @@ export const onCoursePublished = onDocumentCreated('coursePublishEvents/{id}', a
   if (target.mode === 'users') {
     recipientIds = target.uids ?? [];
   } else {
-    const users = await db().collection('users').where('status', '==', 'active').get();
+    // Scope to the academy's own tenant so a pooled DB doesn't notify other orgs' instructors.
+    let uq: FirebaseFirestore.Query = db().collection('users').where('status', '==', 'active');
+    if (academyOrgId) uq = uq.where('orgId', '==', academyOrgId);
+    const users = await uq.get();
     recipientIds = users.docs
       .filter((d) => {
         const u = d.data() as UserDoc;
@@ -372,7 +376,7 @@ export const onFeedbackCreated = onDocumentCreated('feedbackReports/{id}', async
     title: `${kind}: ${data.title ?? ''}`.trim(),
     body: `${who} submitted a ${kind.toLowerCase()}${sev}${data.area ? ` in ${data.area}` : ''}.\n\n${data.description ?? ''}`,
     link: '/admin/feedback',
-  });
+  }, data.orgId as string | undefined);
 });
 
 // ── Bulk message fan-out (from the Staffing Board) ─────────────────────────
@@ -390,8 +394,11 @@ export const onBulkMessageCreated = onDocumentCreated('bulkMessages/{id}', async
   });
   if (!claimed) return;
 
-  // Audience: instructors with upcoming confirmed assignments (optionally per academy).
+  // Audience: instructors with upcoming confirmed assignments (optionally per
+  // academy). Scoped to the sender's org so an "all academies" blast never
+  // reaches another tenant's instructors (dormant until orgId is backfilled).
   let q = db().collection('assignments').where('status', '==', 'confirmed') as FirebaseFirestore.Query;
+  if (data.orgId) q = q.where('orgId', '==', data.orgId);
   if (data.academyId) q = q.where('academyId', '==', data.academyId);
   const snap = await q.get();
   const uids = [
