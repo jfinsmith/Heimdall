@@ -105,6 +105,7 @@ export function AppRouter() {
               {/* Platform owner only — cross-org HEIMDALL operator console */}
               <Route element={<RequirePlatformOwner />}>
                 <Route path="/owner" element={<OwnerConsolePage />} />
+                <Route path="/owner/curricula" element={<CurriculumAdminPage scope="defaults" />} />
                 <Route path="/owner/feedback" element={<FeedbackAdminPage />} />
                 <Route path="/owner/audit" element={<OwnerAuditPage />} />
               </Route>

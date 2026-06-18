@@ -165,6 +165,7 @@ export function AppShell() {
         <>
           <SectionLabel title="HEIMDALL platform operator">Platform</SectionLabel>
           <NavItem to="/owner" label="Owner Console" />
+          <NavItem to="/owner/curricula" label="Default Curricula" />
           <NavItem to="/owner/feedback" label="Bug & Feature Reports" />
           <NavItem to="/owner/audit" label="Audit Log (all orgs)" />
         </>
