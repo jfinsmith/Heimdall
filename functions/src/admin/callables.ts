@@ -215,7 +215,13 @@ export const bootstrapFirstDirector = onCall(async (request) => {
  * optionally, seats a first admin (captain/director) into it. Does NOT change
  * any existing org's data — pooled isolation is enforced by rules (Phase 5).
  */
-export const createOrg = onCall<{ shortCode: string; legalName: string; firstAdminUid?: string }>(async (request) => {
+export const createOrg = onCall<{
+  shortCode: string;
+  legalName: string;
+  firstAdminUid?: string;
+  allowedEmailDomains?: string[];
+  jurisdiction?: 'FL' | 'neutral';
+}>(async (request) => {
   const caller = request.auth;
   if (!caller) throw new HttpsError('unauthenticated', 'Sign in required.');
   const db = getFirestore();
@@ -228,6 +234,10 @@ export const createOrg = onCall<{ shortCode: string; legalName: string; firstAdm
   const slug = (request.data.shortCode ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 12);
   if (!slug) throw new HttpsError('invalid-argument', 'shortCode must contain letters or digits.');
   if (!legalName) throw new HttpsError('invalid-argument', 'legalName is required.');
+  const domains = (request.data.allowedEmailDomains ?? [])
+    .map((d) => String(d).trim().toLowerCase())
+    .filter(Boolean);
+  const jurisdiction = request.data.jurisdiction === 'FL' ? 'FL' : 'neutral';
 
   // Allocate a unique id; re-check existence inside a transaction (collision-safe).
   let orgId = '';
@@ -250,13 +260,33 @@ export const createOrg = onCall<{ shortCode: string; legalName: string; firstAdm
   }
   if (!orgId) throw new HttpsError('internal', 'Could not allocate a unique org id; please retry.');
 
+  // Seed a minimal settings doc so the org has branding + join config from day one
+  // (the admin refines the rest in Org Settings). Required GlobalSettings fields only.
+  await db.doc(`settings/${orgId}`).set(
+    {
+      orgName: legalName,
+      brandPrimaryColor: '#16203a',
+      brandAccentColor: '#d99320',
+      logoUrl: '',
+      allowedEmailDomains: domains,
+      payPeriodTargetHours: 85,
+      jurisdiction,
+      letterheadTagline: '',
+      siteCode: '',
+    },
+    { merge: true }
+  );
+
   // Optionally seat the first admin, preserving their other claims.
   const firstAdminUid = (request.data.firstAdminUid ?? '').trim();
   if (firstAdminUid) {
     const adminUser = await getAuth().getUser(firstAdminUid).catch(() => null);
     if (!adminUser) throw new HttpsError('not-found', 'firstAdminUid does not match an existing account.');
-    const existing = adminUser.customClaims ?? {};
-    await getAuth().setCustomUserClaims(firstAdminUid, { ...existing, role: 'director', orgId });
+    // Set claims explicitly (don't spread the account's old claims): a fresh
+    // role+orgId, preserving only platformOwner. Avoids carrying a stale role or
+    // foreign orgId into the new tenant (see [[org-transition-strip-role-claim]]).
+    const wasOwner = (adminUser.customClaims ?? {}).platformOwner === true;
+    await getAuth().setCustomUserClaims(firstAdminUid, { role: 'director', orgId, ...(wasOwner ? { platformOwner: true } : {}) });
     await db.doc(`users/${firstAdminUid}`).set(
       { role: 'director', orgId, status: 'active', updatedAt: FieldValue.serverTimestamp() },
       { merge: true }
@@ -785,4 +815,210 @@ export const listOwnerQueue = onCall(async (request) => {
     });
   const orgs = orgsSnap.docs.map((o) => ({ orgId: o.id, legalName: orgName.get(o.id)!, userCount: counts[o.id] ?? 0 }));
   return { queue, orgs };
+});
+
+// ── Owner console v2: org drill-down, admin provisioning, cross-org audit ─────
+
+/** Platform-owner: full detail for one org — settings summary + member roster + counts. */
+export const getOrgDetail = onCall<{ orgId: string }>(async (request) => {
+  const caller = request.auth;
+  if (!caller) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = getFirestore();
+  const callerDoc = await db.doc(`users/${caller.uid}`).get();
+  if (!callerDoc.exists || callerDoc.data()!.platformOwner !== true) {
+    throw new HttpsError('permission-denied', 'Only the platform owner may view organization detail.');
+  }
+  const orgId = (request.data.orgId ?? '').trim();
+  if (!orgId) throw new HttpsError('invalid-argument', 'Missing organization.');
+  const orgSnap = await db.doc(`orgs/${orgId}`).get();
+  if (!orgSnap.exists) throw new HttpsError('not-found', 'That organization does not exist.');
+  const [settingsSnap, usersSnap] = await Promise.all([
+    db.doc(`settings/${orgId}`).get(),
+    db.collection('users').where('orgId', '==', orgId).get(),
+  ]);
+  const members = usersSnap.docs.map((d) => {
+    const u = d.data();
+    return {
+      uid: d.id,
+      displayName: (u.displayName as string) ?? '',
+      email: (u.email as string) ?? '',
+      role: (u.role as string) ?? '',
+      status: (u.status as string) ?? 'pending',
+      rank: (u.rank as string) ?? '',
+    };
+  });
+  const s = settingsSnap.data() ?? {};
+  const o = orgSnap.data()!;
+  return {
+    org: { orgId, legalName: (o.legalName as string) || orgId, status: (o.status as string) ?? 'active', shortCode: (o.shortCode as string) ?? '' },
+    settings: {
+      orgName: (s.orgName as string) ?? '',
+      allowedEmailDomains: (s.allowedEmailDomains as string[]) ?? [],
+      siteCode: (s.siteCode as string) ?? '',
+      jurisdiction: (s.jurisdiction as string) ?? '',
+    },
+    members,
+    memberCount: members.length,
+    pendingCount: members.filter((m) => m.status === 'pending').length,
+  };
+});
+
+/**
+ * Platform-owner: create an organization's administrator account (the onboarding
+ * step after creating the org). Creates a fresh Auth login with an admin role +
+ * the target org's claim, ACTIVE, force-password-change, a strong temp password,
+ * and emails activation. Role is constrained to the admin roles. Adopts an
+ * orphaned Auth login (account exists, no profile) the same way createUserAccount does.
+ */
+export const createOrgAdmin = onCall<{ orgId: string; email: string; displayName: string; role?: Role }>(async (request) => {
+  const caller = request.auth;
+  if (!caller) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = getFirestore();
+  const callerDoc = await db.doc(`users/${caller.uid}`).get();
+  if (!callerDoc.exists || callerDoc.data()!.platformOwner !== true) {
+    throw new HttpsError('permission-denied', 'Only the platform owner may create organization administrators.');
+  }
+  const orgId = (request.data.orgId ?? '').trim();
+  const email = (request.data.email ?? '').trim().toLowerCase();
+  const displayName = (request.data.displayName ?? '').trim();
+  const role: Role = request.data.role && ADMIN_ROLES.includes(request.data.role) ? request.data.role : 'director';
+  if (!orgId) throw new HttpsError('invalid-argument', 'Provide an organization.');
+  if (!email || !email.includes('@')) throw new HttpsError('invalid-argument', 'A valid email is required.');
+  if (!displayName) throw new HttpsError('invalid-argument', 'A display name is required.');
+  if (!(await db.doc(`orgs/${orgId}`).get()).exists) throw new HttpsError('not-found', 'That organization does not exist.');
+
+  const password = `Heimdall-${randomBytes(4).toString('hex')}`;
+  let uid: string;
+  let adopted = false;
+  try {
+    const created = await getAuth().createUser({ email, password, displayName });
+    uid = created.uid;
+  } catch (err) {
+    const code = (err as { code?: string }).code;
+    if (code === 'auth/email-already-exists') {
+      const existing = await getAuth().getUserByEmail(email);
+      const profileSnap = await db.doc(`users/${existing.uid}`).get();
+      if (profileSnap.exists) throw new HttpsError('already-exists', `An account already exists for ${email}.`);
+      await getAuth().updateUser(existing.uid, { password, displayName });
+      uid = existing.uid;
+      adopted = true;
+    } else if (code === 'auth/invalid-email') {
+      throw new HttpsError('invalid-argument', `"${email}" is not a valid email address.`);
+    } else {
+      throw new HttpsError('internal', (err as Error).message || 'Failed to create the account.');
+    }
+  }
+
+  await getAuth().setCustomUserClaims(uid, { role, orgId });
+  await db.doc(`users/${uid}`).set(
+    {
+      email, displayName, photoURL: '', phone: '', rank: '', agency: '',
+      role, orgId, status: 'active', qualifications: [], verifiedQualKeys: [],
+      notificationPrefs: { email: true, reminderLeadHours: 48, digest: true },
+      mustChangePassword: true,
+      createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  // Activation email (mirrors sendActivationEmail) so the new admin gets credentials.
+  const settingsSnap = await db.doc(`settings/${orgId}`).get();
+  const orgName = (settingsSnap.data()?.orgName as string) || 'the Training Academy';
+  const creds = detailRows([['Sign-in email', email], ['Temporary password', password]]);
+  const safeName = escapeHtml(displayName);
+  const content = renderEmail({
+    subject: `[HEIMDALL] Activate your ${orgName} administrator account`,
+    heading: 'Activate your administrator account',
+    bodyHtml:
+      `Hi ${safeName},<br/><br/>` +
+      `An administrator account was created for you on HEIMDALL for ${escapeHtml(orgName)}. ` +
+      `Sign in with the temporary password below — you'll choose your own password the first time you log in. ` +
+      `As an administrator you can add members, set your organization's join code, and manage your academy.<br/><br/>` +
+      creds.html,
+    bodyText:
+      `Hi ${displayName},\n\n` +
+      `An administrator account was created for you on HEIMDALL for ${orgName}. ` +
+      `Sign in with the temporary password below — you'll choose your own password the first time you log in.\n\n` +
+      `${creds.text}\n\nSign in: ${SITE_URL}`,
+    ctaLabel: 'Sign in to activate',
+    ctaUrl: SITE_URL,
+    orgName,
+    logoUrl: settingsSnap.data()?.logoUrl as string | undefined,
+  });
+  await db.collection('mail').add({
+    to: [email],
+    message: { subject: content.subject, html: content.html, text: content.text },
+    orgId,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+  await db.collection('auditLog').add({
+    actorUid: caller.uid, action: 'platform.create_org_admin', targetType: 'user', targetId: uid,
+    summary: `${adopted ? 'Adopted login as' : 'Created'} ${role} ${displayName} for ${orgId}`, orgId,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+  return { ok: true, uid, tempPassword: password, emailed: true };
+});
+
+/**
+ * Platform-owner: permanently delete an UNASSIGNED (org-less) account — the
+ * "deny → delete" path from the owner queue. Guarded to org-less accounts only;
+ * an account that belongs to an org must be removed from it (denyUser) first.
+ */
+export const deleteUnassignedAccount = onCall<{ uid: string }>(async (request) => {
+  const caller = request.auth;
+  if (!caller) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = getFirestore();
+  const callerDoc = await db.doc(`users/${caller.uid}`).get();
+  if (!callerDoc.exists || callerDoc.data()!.platformOwner !== true) {
+    throw new HttpsError('permission-denied', 'Only the platform owner may delete accounts.');
+  }
+  const uid = (request.data.uid ?? '').trim();
+  if (!uid) throw new HttpsError('invalid-argument', 'Missing user.');
+  if (uid === caller.uid) throw new HttpsError('failed-precondition', 'You cannot delete your own account.');
+  const target = (await db.doc(`users/${uid}`).get()).data();
+  if (!target) throw new HttpsError('not-found', 'User not found.');
+  if (target.orgId) throw new HttpsError('failed-precondition', 'Only unassigned accounts can be deleted here — remove the account from its organization first.');
+  if (target.platformOwner === true) throw new HttpsError('failed-precondition', 'A platform owner account cannot be deleted here.');
+  const email = (target.email as string) ?? uid;
+  await db.doc(`users/${uid}`).delete();
+  await getAuth().deleteUser(uid).catch(() => null);
+  await db.collection('auditLog').add({
+    actorUid: caller.uid, action: 'platform.delete_account', targetType: 'user', targetId: uid,
+    summary: `Deleted unassigned account ${email}`, createdAt: FieldValue.serverTimestamp(),
+  });
+  return { ok: true };
+});
+
+/** Platform-owner: recent audit entries across ALL organizations (owner oversight). */
+export const listAllAuditLog = onCall<{ limit?: number }>(async (request) => {
+  const caller = request.auth;
+  if (!caller) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = getFirestore();
+  const callerDoc = await db.doc(`users/${caller.uid}`).get();
+  if (!callerDoc.exists || callerDoc.data()!.platformOwner !== true) {
+    throw new HttpsError('permission-denied', 'Only the platform owner may view the cross-organization audit log.');
+  }
+  const lim = Math.min(Math.max(request.data.limit ?? 200, 1), 500);
+  const [logSnap, usersSnap, orgsSnap] = await Promise.all([
+    db.collection('auditLog').orderBy('createdAt', 'desc').limit(lim).get(),
+    db.collection('users').get(),
+    db.collection('orgs').get(),
+  ]);
+  const userName = new Map(usersSnap.docs.map((u) => [u.id, (u.data().displayName as string) || (u.data().email as string) || u.id]));
+  const orgName = new Map(orgsSnap.docs.map((o) => [o.id, (o.data().legalName as string) || o.id]));
+  const entries = logSnap.docs.map((d) => {
+    const a = d.data();
+    const orgId = a.orgId as string | undefined;
+    return {
+      id: d.id,
+      action: (a.action as string) ?? '',
+      summary: (a.summary as string) ?? '',
+      actorName: userName.get(a.actorUid as string) ?? (a.actorUid as string) ?? '',
+      targetType: (a.targetType as string) ?? '',
+      orgId: orgId ?? null,
+      orgName: orgId ? orgName.get(orgId) ?? orgId : null,
+      createdAtMs: (a.createdAt as { toMillis?: () => number })?.toMillis?.() ?? null,
+    };
+  });
+  return { entries };
 });

@@ -44,6 +44,7 @@ const FeedbackReportPage = lazy(() => import('../features/feedback/FeedbackRepor
 const FeedbackAdminPage = lazy(() => import('../features/feedback/FeedbackAdminPage').then((m) => ({ default: m.FeedbackAdminPage })));
 const ReportFormsAdminPage = lazy(() => import('../features/admin/ReportFormsAdminPage').then((m) => ({ default: m.ReportFormsAdminPage })));
 const OwnerConsolePage = lazy(() => import('../features/admin/OwnerConsolePage').then((m) => ({ default: m.OwnerConsolePage })));
+const OwnerAuditPage = lazy(() => import('../features/admin/OwnerAuditPage').then((m) => ({ default: m.OwnerAuditPage })));
 
 function RouteFallback() {
   return (
@@ -95,7 +96,6 @@ export function AppRouter() {
                 <Route path="/admin/permissions" element={<PermissionsPage />} />
                 <Route path="/admin/curriculum" element={<CurriculumAdminPage />} />
                 <Route path="/admin/report-forms" element={<ReportFormsAdminPage />} />
-                <Route path="/admin/feedback" element={<FeedbackAdminPage />} />
                 <Route path="/admin/holidays" element={<HolidaysAdminPage />} />
                 <Route path="/admin/settings" element={<SettingsAdminPage />} />
                 <Route path="/admin/gjallarhorn" element={<GjallarhornSettingsPage />} />
@@ -105,6 +105,8 @@ export function AppRouter() {
               {/* Platform owner only — cross-org HEIMDALL operator console */}
               <Route element={<RequirePlatformOwner />}>
                 <Route path="/owner" element={<OwnerConsolePage />} />
+                <Route path="/owner/feedback" element={<FeedbackAdminPage />} />
+                <Route path="/owner/audit" element={<OwnerAuditPage />} />
               </Route>
             </Route>
           </Route>

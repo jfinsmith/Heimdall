@@ -61,7 +61,8 @@ export function FeedbackAdminPage() {
   const [statusFilter, setStatusFilter] = useState<'all' | FeedbackStatus>('all');
   const [kindFilter, setKindFilter] = useState<'all' | 'bug' | 'feature'>('all');
   // Platform-owner cross-org view (read-only; other orgs' screenshots redacted).
-  const [allOrgs, setAllOrgs] = useState(false);
+  // Owner-only page now — default to the all-organizations view.
+  const [allOrgs, setAllOrgs] = useState(true);
   const [ownerReports, setOwnerReports] = useState<OwnerReport[] | null>(null);
   const [ownerLoading, setOwnerLoading] = useState(false);
   const [ownerError, setOwnerError] = useState<string | null>(null);
@@ -107,7 +108,7 @@ export function FeedbackAdminPage() {
 
   return (
     <div>
-      <PageHeader back kicker="Admin" title="Bug & Feature Reports" />
+      <PageHeader back kicker="Platform Owner" title="Bug & Feature Reports" />
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <Badge tone={openCount ? 'amber' : 'green'}>{openCount} open</Badge>
         <Field label="Status" className="w-44">

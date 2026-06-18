@@ -318,7 +318,7 @@ export const onUserCreated = onDocumentCreated('users/{uid}', async (event) => {
           type: 'new_account_pending',
           title: 'Unassigned account request',
           body: `${data.displayName || data.email} (${data.email}) registered but matched no organization. Assign them to a tenant to continue.`,
-          link: '/admin/users',
+          link: '/owner',
         })
       )
     );
@@ -440,13 +440,20 @@ export const onFeedbackCreated = onDocumentCreated('feedbackReports/{id}', async
   const kind = data.kind === 'feature' ? 'Feature request' : 'Bug report';
   const who = data.submittedByName || 'A member';
   const sev = data.severity ? ` · ${data.severity}` : '';
-  await notifyAdmins({
-    dedupeKey: event.id,
-    type: 'feedback_submitted',
-    title: `${kind}: ${data.title ?? ''}`.trim(),
-    body: `${who} submitted a ${kind.toLowerCase()}${sev}${data.area ? ` in ${data.area}` : ''}.\n\n${data.description ?? ''}`,
-    link: '/admin/feedback',
-  }, data.orgId as string | undefined);
+  // Bug/feature triage is platform-owner-only now → notify the owner(s), not org admins.
+  const owners = await db().collection('users').where('platformOwner', '==', true).get();
+  await Promise.all(
+    owners.docs.map((o) =>
+      notify({
+        uid: o.id,
+        dedupeKey: `${event.id}_${o.id}`,
+        type: 'feedback_submitted',
+        title: `${kind}: ${data.title ?? ''}`.trim(),
+        body: `${who} submitted a ${kind.toLowerCase()}${sev}${data.area ? ` in ${data.area}` : ''}.\n\n${data.description ?? ''}`,
+        link: '/owner/feedback',
+      })
+    )
+  );
 });
 
 // ── Bulk message fan-out (from the Staffing Board) ─────────────────────────
