@@ -9,7 +9,8 @@ import { useAuth } from '../auth/AuthContext';
 import { can } from '../lib/rbac';
 import { useRoleLabels } from './providers';
 import { useClickOutside } from '../lib/useClickOutside';
-import { OrgLogo, PoweredByHeimdall } from '../brand/OrgLogo';
+import { PoweredByHeimdall } from '../brand/OrgLogo';
+import { WordmarkHorizontal } from '../brand/Logo';
 import { NotificationBell } from '../components/NotificationBell';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Button } from '../components/ui';
@@ -145,7 +146,8 @@ export function AppShell() {
       >
         <div className="flex h-14 items-center px-4">
           <NavLink to="/" className="text-watch-50 [&_svg]:text-bifrost-400">
-            <OrgLogo size={26} fallback="horizontal" />
+            {/* HEIMDALL platform branding in the app UI (org branding is for printed documents). */}
+            <WordmarkHorizontal size={26} />
           </NavLink>
         </div>
         {nav}

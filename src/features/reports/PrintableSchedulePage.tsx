@@ -166,7 +166,7 @@ export function PrintableSchedulePage() {
             <div className="mt-6 grid grid-cols-2 gap-x-12 gap-y-2 text-sm">
               <CoverMeta label="Dates" value={dateRange} />
               <CoverMeta label="Span" value={`${stats.weeks} weeks · ${stats.days} class days`} />
-              <CoverMeta label="Program hours" value={`${stats.hours} / ${academy.targetTotalHours} hrs`} />
+              <CoverMeta label="Program hours" value={`${academy.targetTotalHours} hrs`} />
               <CoverMeta label="Location" value={academy.location} />
             </div>
             {mode === 'staff' && coordinators.length > 0 && (

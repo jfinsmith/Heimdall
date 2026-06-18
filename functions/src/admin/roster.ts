@@ -106,14 +106,19 @@ export const rosterCreateMember = onCall<{ academyId: string; member: MemberInpu
     if (!academy.exists) throw new HttpsError('not-found', 'Academy not found.');
     if (academy.data()!.isTemplate) throw new HttpsError('failed-precondition', 'Templates do not have rosters.');
     // The member's tenant = its academy's, falling back to the staff caller's org
-    // if the academy somehow lacks one — so a member is NEVER written without an
-    // orgId (an org-less member fails the inOrg read rule and breaks the whole
-    // roster list query). Also bound into the SSN ciphertext as AAD.
+    // if the academy somehow lacks one. Bound into the SSN ciphertext as AAD.
     const orgId = (academy.data()!.orgId as string | undefined) ?? caller.orgId;
+    // Hard requirement: NEVER write an org-less member. An org-less doc fails the
+    // inOrg read rule and — because the roster is a subcollection LIST query —
+    // denies the ENTIRE roster read, so the whole roster silently vanishes from
+    // the module. Fail loudly here instead of writing a poison doc.
+    if (!orgId) {
+      throw new HttpsError('failed-precondition', 'Your account is not linked to an organization yet. Reload and try again, or contact the platform owner.');
+    }
 
     const ssn = digits(request.data.ssn ?? '');
     const fields: Record<string, unknown> = {
-      ...(orgId ? { orgId } : {}),
+      orgId,
       fullName: member.fullName.trim(),
       agency: member.agency || 'PSO',
       ...(member.agencyOther ? { agencyOther: member.agencyOther.trim() } : {}),
