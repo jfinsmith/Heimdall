@@ -9,7 +9,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import type { AcademyDoc, CurriculumDoc, RosterMemberDoc } from '../../../types';
 import type { WithId } from '../../../lib/firestore';
 import { fmtDate } from '../../../lib/time';
-import { Button, Field, Input, Select } from '../../../components/ui';
+import { Button, Field, Input, Select, TextArea } from '../../../components/ui';
 
 const todayStr = () => {
   const d = new Date();
@@ -48,6 +48,8 @@ export function AttendanceTab({
   const [seqNo, setSeqNo] = useState('');
   const [lunch, setLunch] = useState('1200 - 1300');
   const [totalHours, setTotalHours] = useState(String(curriculum?.totalHours ?? academy.targetTotalHours));
+  // Ad-hoc people taking this course who are NOT on the roster (one name per line).
+  const [additionalTakers, setAdditionalTakers] = useState('');
 
   // Reset per-course defaults when the course changes.
   useEffect(() => {
@@ -58,6 +60,13 @@ export function AttendanceTab({
   const programDates = `${fmtDate(academy.startDate)} - ${fmtDate(academy.endDate)}`;
   const cadets = useMemo(() => members.filter((m) => !m.blockTaker).sort((a, b) => a.no - b.no), [members]);
   const blockTakers = useMemo(() => members.filter((m) => m.blockTaker).sort((a, b) => a.no - b.no), [members]);
+  // "Additional course takers" = roster-flagged block takers PLUS ad-hoc typed
+  // names (not on the roster). They print in a clearly separated bottom section.
+  const extraTakers = useMemo(
+    () => additionalTakers.split('\n').map((s) => s.trim()).filter(Boolean).map((name, i) => ({ id: `extra-${i}`, no: 0, fullName: name, status: '' })),
+    [additionalTakers]
+  );
+  const additionalSection = useMemo(() => [...blockTakers, ...extraTakers], [blockTakers, extraTakers]);
 
   return (
     <div>
@@ -75,6 +84,9 @@ export function AttendanceTab({
         <Field label="Course Seq. #"><Input value={seqNo} onChange={(e) => setSeqNo(e.target.value)} placeholder="65-2026-2010-2" /></Field>
         <Field label="Total hours"><Input value={totalHours} onChange={(e) => setTotalHours(e.target.value)} /></Field>
         <Field label="Lunch (From - To)"><Input value={lunch} onChange={(e) => setLunch(e.target.value)} /></Field>
+        <Field label="Additional course takers (one name per line)" className="sm:col-span-2" hint="People taking this course who are NOT on the roster — printed in a separate section at the bottom.">
+          <TextArea value={additionalTakers} onChange={(e) => setAdditionalTakers(e.target.value)} rows={3} placeholder={'Jane Smith\nJohn Doe'} />
+        </Field>
         <div className="flex items-end">
           <Button variant="primary" onClick={() => window.print()}>Print attendance roster</Button>
         </div>
@@ -103,8 +115,8 @@ export function AttendanceTab({
               <Cell><Lbl>Total Hours</Lbl>{totalHours}</Cell>
             </tr>
             <tr>
-              <Cell><Lbl>Additional</Lbl>{additional}</Cell>
-              <Cell wide><Lbl>Lunch (From - To)</Lbl>{lunch}</Cell>
+              <Cell wide><Lbl>Additional</Lbl>{additional}</Cell>
+              <Cell><Lbl>Lunch (From - To)</Lbl>{lunch}</Cell>
             </tr>
           </tbody>
         </table>
@@ -118,7 +130,7 @@ export function AttendanceTab({
         </p>
 
         <RosterTable title={null} rows={cadets} />
-        {blockTakers.length > 0 && <RosterTable title="Additional Block Takers" rows={blockTakers} renumber />}
+        {additionalSection.length > 0 && <RosterTable title="Additional Course Takers" rows={additionalSection} renumber />}
 
         <div className="mt-8 flex items-end gap-8 text-xs">
           <div className="flex-1 border-t border-black pt-1">Instructor's Signature</div>
