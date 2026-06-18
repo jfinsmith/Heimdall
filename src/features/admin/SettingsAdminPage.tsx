@@ -9,7 +9,7 @@ import { db, storage } from '../../lib/firebase';
 import { useDoc, orgConfigPath } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import type { GlobalSettings } from '../../types';
-import { Button, Field, Input, PageHeader } from '../../components/ui';
+import { Button, Field, Input, PageHeader, Select } from '../../components/ui';
 import { logAudit } from '../sessions/audit';
 
 export function SettingsAdminPage() {
@@ -21,6 +21,8 @@ export function SettingsAdminPage() {
   const [logoUrl, setLogoUrl] = useState('');
   const [domains, setDomains] = useState('');
   const [payTarget, setPayTarget] = useState(85);
+  const [jurisdiction, setJurisdiction] = useState<'FL' | 'neutral'>('neutral');
+  const [tagline, setTagline] = useState('');
   const [saved, setSaved] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadErr, setUploadErr] = useState<string | null>(null);
@@ -49,7 +51,9 @@ export function SettingsAdminPage() {
     setLogoUrl(settings.logoUrl ?? '');
     setDomains(settings.allowedEmailDomains.join(', '));
     setPayTarget(settings.payPeriodTargetHours ?? 85);
-  }, [settings]);
+    setJurisdiction(settings.jurisdiction ?? (orgId === 'phsc' ? 'FL' : 'neutral'));
+    setTagline(settings.letterheadTagline ?? '');
+  }, [settings, orgId]);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -62,6 +66,8 @@ export function SettingsAdminPage() {
         logoUrl,
         allowedEmailDomains: domains.split(',').map((d) => d.trim()).filter(Boolean),
         payPeriodTargetHours: payTarget,
+        jurisdiction,
+        letterheadTagline: tagline,
       },
       { merge: true }
     );
@@ -120,6 +126,19 @@ export function SettingsAdminPage() {
             </div>
             {uploadErr && <p className="text-sm text-red-600">{uploadErr}</p>}
           </div>
+        </Field>
+        <Field
+          label="Document jurisdiction"
+          hint="Governs the statutory wording on academic-action letters: Florida renders the FDLE/CJSTC (F.A.C.) clauses; Generic renders state-neutral wording."
+          className="max-w-xs"
+        >
+          <Select value={jurisdiction} onChange={(e) => setJurisdiction(e.target.value as 'FL' | 'neutral')}>
+            <option value="FL">Florida (FDLE / CJSTC)</option>
+            <option value="neutral">Generic (state-neutral)</option>
+          </Select>
+        </Field>
+        <Field label="Letterhead tagline (optional)" hint="Shown under your organization name on printed letters">
+          <Input value={tagline} onChange={(e) => setTagline(e.target.value)} />
         </Field>
         <Field
           label="Auto-join email domains"

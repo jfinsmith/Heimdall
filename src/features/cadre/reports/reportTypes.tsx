@@ -1,7 +1,14 @@
 /**
  * Academic-action report registry. Each entry defines the form fields a
- * coordinator fills and the exact letter body (verbatim from the PHSC/FDLE
- * forms) used for the printable memorandum. These four are Law Enforcement only.
+ * coordinator fills and the letter body used for the printable memorandum.
+ *
+ * `body`        — the Florida (FDLE/CJSTC) wording, VERBATIM from the official
+ *                 PHSC forms (F.A.C. rule citations etc.). Rendered for orgs whose
+ *                 jurisdiction is 'FL' (the founding PHSC org). Do not edit — it's
+ *                 the legal text of record.
+ * `bodyNeutral` — a state-agnostic equivalent (no F.A.C./Florida-specific
+ *                 citations) rendered for every other jurisdiction. A reasonable
+ *                 default; orgs can author their own once the document builder ships.
  */
 import React from 'react';
 import type { ReportTypeId } from '../../../types';
@@ -22,13 +29,16 @@ export interface ReportType {
   purpose: string;
   reSubject: string; // "Re:" line + distribution footer subject
   fields: ReportField[];
+  /** Florida (FDLE/CJSTC) body — verbatim legal text. */
   body: (d: Record<string, string>) => React.ReactNode;
+  /** Jurisdiction-neutral body (no state-specific citations). */
+  bodyNeutral?: (d: Record<string, string>) => React.ReactNode;
 }
 
 /** Underlined fill-in blank, mirroring the form's blanks. */
 function U({ children }: { children?: React.ReactNode }) {
   const empty = children === undefined || children === null || children === '';
-  return <span className="border-b border-black px-1 font-medium">{empty ? '     ' : children}</span>;
+  return <span className="border-b border-black px-1 font-medium">{empty ? '     ' : children}</span>;
 }
 const label = (v?: string) => v || undefined;
 const code = (v?: string) => (v ? v.split(' ')[0] : undefined);
@@ -54,6 +64,15 @@ export const REPORT_TYPES: ReportType[] = [
         <p>Please contact the Academy office if you have any questions or require further clarification.</p>
       </>
     ),
+    bodyNeutral: (d) => (
+      <>
+        <p>On <U>{label(d.examDate)}</U> you did not achieve a passing score on the final written end-of-course examination for <U>{label(d.course)}</U> with a score of (<U>{label(d.score)}</U>%).</p>
+        <p>Your basic recruit training program requires a minimum passing score on each written end-of-course examination, as established by the program's governing standards.</p>
+        <p>You are being provided the opportunity to retake the required written end-of-course examination for <U>{code(d.course)}</U>. The re-examination is scheduled for <U>{label(d.reexamDate)}</U>. Please note that, regardless of the score you achieve on the re-examination, a passing grade will be recorded as the minimum passing score.</p>
+        <p>Should you not attain a passing score on the re-examination, you will receive a grade of "F" for the course and will be required to retake <U>{code(d.course)}</U> in its entirety at a future date. Successful completion of this course, as well as all other courses required by the training program, is necessary for you to receive a certificate of completion and to become eligible for the certification examination.</p>
+        <p>Please contact the Academy office if you have any questions or require further clarification.</p>
+      </>
+    ),
   },
   {
     id: 'proficiency_fail',
@@ -69,6 +88,14 @@ export const REPORT_TYPES: ReportType[] = [
         <p>On <U>{label(d.proficiencyDate)}</U>, you failed to pass the required proficiencies, after being given ample time to prepare and remediation for CJK <U>{label(d.course)}</U>. Per rule 11B-35.0024(1) F.A.C., "Students enrolled in a Commission-Approved Basic Recruit Training Program, Instructor Training Courses, or Specialized or Advanced Training Course shall qualify through demonstration of proficiency skill(s) in the applicable course(s) and pass a written end-of-course examination."</p>
         <p>You must complete a course retake of CJK <U>{code(d.course)}</U> at a future date. Per Rule 11B-35.0024 (1) F.A.C., you must successfully complete and achieve a passing grade in all courses required by the Florida CMS Law Enforcement Recruit Training Program in order to receive a Certificate of Completion and a voucher for the State Officer Certification Exam from Pasco-Hernando State College.</p>
         <p>You will be able to continue in PHSC Academy, however, if you receive a failing grade in any future courses, you will be dismissed from the Academy. You may be allowed to enroll in a future Academy upon receiving authorization from the Academy Director.</p>
+        <p>Please contact the Academy office if you have any questions or require further clarification.</p>
+      </>
+    ),
+    bodyNeutral: (d) => (
+      <>
+        <p>On <U>{label(d.proficiencyDate)}</U>, you failed to pass the required proficiencies, after being given ample time to prepare and remediation for <U>{label(d.course)}</U>. Students enrolled in the basic recruit training program must qualify through demonstration of proficiency skill(s) in the applicable course(s) and pass a written end-of-course examination.</p>
+        <p>You must complete a course retake of <U>{code(d.course)}</U> at a future date. You must successfully complete and achieve a passing grade in all courses required by the training program in order to receive a certificate of completion and become eligible for the certification examination.</p>
+        <p>You will be able to continue in the Academy, however, if you receive a failing grade in any future courses, you will be dismissed from the Academy. You may be allowed to enroll in a future Academy upon receiving authorization from the Academy Director.</p>
         <p>Please contact the Academy office if you have any questions or require further clarification.</p>
       </>
     ),
@@ -94,6 +121,16 @@ export const REPORT_TYPES: ReportType[] = [
         <p>Please contact the Academy office if you have any questions or require further clarification.</p>
       </>
     ),
+    bodyNeutral: (d) => (
+      <>
+        <p>On <U>{label(d.examDate)}</U> you did not achieve a passing score on the final written end-of-course examination for <U>{label(d.course)}</U> with a score of (<U>{label(d.score)}</U>%).</p>
+        <p>Your basic recruit training program requires a minimum passing score on each written end-of-course examination.</p>
+        <p>You were already provided the opportunity to retake the required written end-of-course examination for <U>{code(d.course)}</U>.</p>
+        <p>Therefore, you are no longer eligible to retake the end-of-course examination for <U>{code(d.course)}</U>. You must complete a course retake of <U>{code(d.course)}</U> at a future date. You must successfully complete and achieve a passing grade in all courses required by the training program in order to receive a certificate of completion and be eligible for the certification examination.</p>
+        <p>You will be able to continue in the Academy <U>{label(d.className)}</U>, however, if you receive a failing grade in any future courses, you will be dismissed from the Academy. You may be allowed to enroll in a future Academy upon receiving authorization from the Academy Director.</p>
+        <p>Please contact the Academy office if you have any questions or require further clarification.</p>
+      </>
+    ),
   },
   {
     id: 'academy_dismissal',
@@ -114,6 +151,16 @@ export const REPORT_TYPES: ReportType[] = [
         <p>In accordance with Rule 11B-35.0024(2)(a), F.A.C., you were previously provided the opportunity to retake the required written end-of-course examination for CJK <U>{code(d.course)}</U>.</p>
         <p>You did not qualify for a re-examination of CJK <U>{code(d.course)}</U> course under the provisions of Rule 11B-35.001(13)(a), (1 - 2), or (b), F.A.C. therefore you failed that block.</p>
         <p>As of <U>{label(d.secondFailDate)}</U> you have failed 2 blocks within the Basic Recruit Training Program. Per the Cadet Manual, Section 6.02. "Cadets who fail more than one course will be dismissed from the Basic Recruit Training Program." Therefore, you are officially dismissed from Class <U>{label(d.className)}</U>. You may enroll in a future Basic Recruit Training Academy and complete the program upon approval from the academy director.</p>
+        <p>Please contact the Academy office if you have any questions or require further clarification.</p>
+      </>
+    ),
+    bodyNeutral: (d) => (
+      <>
+        <p>On <U>{label(d.examDate)}</U> you did not achieve a passing score on the final written end-of-course examination for <U>{label(d.course)}</U> with a score of (<U>{label(d.score)}</U>%).</p>
+        <p>Your basic recruit training program requires a minimum passing score on each written end-of-course examination.</p>
+        <p>You were previously provided the opportunity to retake the required written end-of-course examination for <U>{code(d.course)}</U>.</p>
+        <p>You did not qualify for a re-examination of <U>{code(d.course)}</U>; therefore you failed that block.</p>
+        <p>As of <U>{label(d.secondFailDate)}</U> you have failed 2 blocks within the basic recruit training program. Per the Cadet Manual, cadets who fail more than one course will be dismissed from the program. Therefore, you are officially dismissed from Class <U>{label(d.className)}</U>. You may enroll in a future basic recruit training academy and complete the program upon approval from the Academy Director.</p>
         <p>Please contact the Academy office if you have any questions or require further clarification.</p>
       </>
     ),

@@ -6,6 +6,8 @@
 import React from 'react';
 import type { AcademyReportDoc } from '../../../types';
 import type { WithId } from '../../../lib/firestore';
+import { useAuth } from '../../../auth/AuthContext';
+import { useGlobalSettings } from '../../../app/providers';
 import { getReportType } from './reportTypes';
 
 const CAMPUSES = [
@@ -36,8 +38,19 @@ export function ReportLetter({
   fromName: string;
 }) {
   const type = getReportType(report.type);
+  const settings = useGlobalSettings();
+  const { orgId } = useAuth();
   if (!type) return null;
   const director = directorName || 'Academy Director';
+
+  // The founding PHSC org keeps its official multi-campus letterhead verbatim;
+  // every other tenant gets a letterhead built from its own settings (logo +
+  // name + tagline). Jurisdiction gates the statutory body: 'FL' renders the
+  // verbatim Florida (FDLE/CJSTC) text; anything else the neutral version.
+  const isFoundingPhsc = orgId === 'phsc';
+  const fl = (settings?.jurisdiction ?? (isFoundingPhsc ? 'FL' : 'neutral')) === 'FL';
+  const renderBody = !fl && type.bodyNeutral ? type.bodyNeutral : type.body;
+  const orgTitle = (settings?.orgName || 'Training Academy').toUpperCase();
 
   // Stored as ISO (yyyy-mm-dd) for clean editing; rendered as M/D/YYYY.
   const fmtD = (s?: string) => (s && /^\d{4}-\d{2}-\d{2}$/.test(s) ? `${+s.slice(5, 7)}/${+s.slice(8, 10)}/${s.slice(0, 4)}` : s || '');
@@ -47,20 +60,35 @@ export function ReportLetter({
 
   return (
     <div className="mx-auto max-w-[8.5in] bg-white p-8 text-[11px] leading-snug text-black">
-      {/* Letterhead */}
-      <div className="border-b-2 border-black pb-2 text-center">
-        <div className="text-xl font-bold tracking-wide">PASCO-HERNANDO STATE COLLEGE</div>
-        <div className="text-[9px] font-semibold tracking-[0.2em]">EXCELLENCE • INTEGRITY • SUCCESS • EQUITY • COMMUNITY</div>
-      </div>
-      <div className="mt-1 grid grid-cols-3 gap-x-3 gap-y-0.5 text-[7px] leading-tight text-black/80">
-        {CAMPUSES.map(([n, addr, tel]) => (
-          <div key={n}>
-            <div className="font-bold">{n}</div>
-            <div>{addr}</div>
-            <div>{tel}</div>
+      {/* Letterhead — founding PHSC keeps its official multi-campus header;
+          other tenants get their own logo + name + tagline. */}
+      {isFoundingPhsc ? (
+        <>
+          <div className="border-b-2 border-black pb-2 text-center">
+            <div className="text-xl font-bold tracking-wide">PASCO-HERNANDO STATE COLLEGE</div>
+            <div className="text-[9px] font-semibold tracking-[0.2em]">EXCELLENCE • INTEGRITY • SUCCESS • EQUITY • COMMUNITY</div>
           </div>
-        ))}
-      </div>
+          <div className="mt-1 grid grid-cols-3 gap-x-3 gap-y-0.5 text-[7px] leading-tight text-black/80">
+            {CAMPUSES.map(([n, addr, tel]) => (
+              <div key={n}>
+                <div className="font-bold">{n}</div>
+                <div>{addr}</div>
+                <div>{tel}</div>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        <div className="flex flex-col items-center border-b-2 border-black pb-2 text-center">
+          {settings?.logoUrl && (
+            <img src={settings.logoUrl} alt="" style={{ height: 56, width: 'auto', objectFit: 'contain', marginBottom: 6 }} />
+          )}
+          <div className="text-xl font-bold tracking-wide">{orgTitle}</div>
+          {settings?.letterheadTagline && (
+            <div className="text-[9px] font-semibold tracking-[0.2em]">{settings.letterheadTagline.toUpperCase()}</div>
+          )}
+        </div>
+      )}
 
       {/* Memo header */}
       <div className="mt-5 space-y-1">
@@ -73,8 +101,8 @@ export function ReportLetter({
 
       <hr className="my-3 border-black" />
 
-      {/* Body (verbatim per report type) */}
-      <div className="space-y-2 text-justify [&_p]:m-0">{type.body(display)}</div>
+      {/* Body — Florida statutory text for FL orgs, neutral text otherwise. */}
+      <div className="space-y-2 text-justify [&_p]:m-0">{renderBody(display)}</div>
 
       {/* Director signature */}
       <div className="mt-8">

@@ -184,6 +184,15 @@ export interface GlobalSettings {
   brandPrimaryColor: string;
   brandAccentColor: string;
   logoUrl?: string;
+  /**
+   * Document jurisdiction for academic-action letters. 'FL' renders the
+   * Florida FDLE/CJSTC statutory clauses (F.A.C. rule citations); 'neutral'
+   * (default for non-founding orgs) renders state-agnostic wording. The founding
+   * PHSC org defaults to 'FL' so its official memos are unchanged.
+   */
+  jurisdiction?: 'FL' | 'neutral';
+  /** Optional tagline under the org name in the letterhead (non-PHSC orgs). */
+  letterheadTagline?: string;
   /** Per-org editable display labels for ranks (presentation only — keys/rules unchanged). */
   roleLabels?: Partial<Record<Role, string>>;
   allowedEmailDomains: string[]; // empty = allow any
