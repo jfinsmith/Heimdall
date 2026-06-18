@@ -5,8 +5,8 @@
  * code change.
  */
 import React, { createContext, useContext, useEffect } from 'react';
-import { AuthProvider } from '../auth/AuthContext';
-import { useDoc } from '../lib/firestore';
+import { AuthProvider, useAuth } from '../auth/AuthContext';
+import { useDoc, orgConfigPath } from '../lib/firestore';
 import { rankLabels } from '../lib/rbac';
 import type { GlobalSettings, Role } from '../types';
 
@@ -22,7 +22,9 @@ export function useRoleLabels(): Record<Role, string> {
 }
 
 function BrandProvider({ children }: { children: React.ReactNode }) {
-  const { data: settings } = useDoc<GlobalSettings>('settings/global');
+  // Per-org settings (doc id == orgId), falling back to 'global' pre-backfill.
+  const { orgId } = useAuth();
+  const { data: settings } = useDoc<GlobalSettings>(orgConfigPath('settings', orgId));
 
   useEffect(() => {
     if (!settings) return;

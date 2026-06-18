@@ -8,6 +8,7 @@ import React, { useEffect, useState } from 'react';
 import { deleteField, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../auth/AuthContext';
+import { orgConfigPath } from '../../lib/firestore';
 import { useGlobalSettings } from '../../app/providers';
 import { CHAIN_OF_COMMAND, PERMISSION_MATRIX, RANKS, ROLE_SUMMARIES, getRankLabel } from '../../lib/rbac';
 import type { Role } from '../../types';
@@ -17,7 +18,7 @@ import { logAudit } from '../sessions/audit';
 const stripTitle = (label: string) => label.replace(/\s*\(.*\)\s*$/, '');
 
 export function PermissionsPage() {
-  const { firebaseUser } = useAuth();
+  const { firebaseUser, orgId } = useAuth();
   const settings = useGlobalSettings();
   const label = (role: Role) => getRankLabel(role, settings);
 
@@ -45,7 +46,7 @@ export function PermissionsPage() {
       const v = labels[r.key]?.trim();
       roleLabels[r.key] = v && v !== r.defaultLabel ? v : deleteField();
     }
-    await setDoc(doc(db, 'settings', 'global'), { roleLabels, updatedAt: serverTimestamp() }, { merge: true });
+    await setDoc(doc(db, orgConfigPath('settings', orgId)), { roleLabels, updatedAt: serverTimestamp() }, { merge: true });
     if (firebaseUser) await logAudit(firebaseUser.uid, 'settings.role_labels', 'settings', 'global', 'Updated rank labels');
     setBusy(false);
     setSaved(true);

@@ -8,7 +8,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { doc, setDoc, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { useCollection, useDoc } from '../../lib/firestore';
+import { useCollection, useDoc, orgConfigPath } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import type { EmailAutomationKey, GlobalSettings, Role, UserDoc } from '../../types';
 import { EMAIL_AUTOMATIONS } from '../../types';
@@ -23,9 +23,9 @@ import { logAudit } from '../sessions/audit';
 const ROLE_ORDER: Role[] = RANK_ORDER_ASC.filter((r) => r !== 'guest');
 
 export function GjallarhornSettingsPage() {
-  const { firebaseUser } = useAuth();
+  const { firebaseUser, orgId } = useAuth();
   const roleLabels = useRoleLabels();
-  const { data: settings } = useDoc<GlobalSettings>('settings/global');
+  const { data: settings } = useDoc<GlobalSettings>(orgConfigPath('settings', orgId));
   const { data: commandUsers } = useCollection<UserDoc>('users', [
     where('role', 'in', ['coordinator', 'sergeant', 'lieutenant', 'director']),
   ]);
@@ -82,7 +82,7 @@ export function GjallarhornSettingsPage() {
     e.preventDefault();
     setBusy(true);
     await setDoc(
-      doc(db, 'settings', 'global'),
+      doc(db, orgConfigPath('settings', orgId)),
       {
         emailMasterEnabled: masterOn,
         emailAutomations: automations,

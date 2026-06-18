@@ -5,15 +5,15 @@
 import React, { useEffect, useState } from 'react';
 import { doc, setDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { useDoc } from '../../lib/firestore';
+import { useDoc, orgConfigPath } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import type { GlobalSettings } from '../../types';
 import { Button, Field, Input, PageHeader } from '../../components/ui';
 import { logAudit } from '../sessions/audit';
 
 export function SettingsAdminPage() {
-  const { firebaseUser } = useAuth();
-  const { data: settings } = useDoc<GlobalSettings>('settings/global');
+  const { firebaseUser, orgId } = useAuth();
+  const { data: settings } = useDoc<GlobalSettings>(orgConfigPath('settings', orgId));
   const [orgName, setOrgName] = useState('');
   const [primary, setPrimary] = useState('#16203a');
   const [accent, setAccent] = useState('#d99320');
@@ -35,7 +35,7 @@ export function SettingsAdminPage() {
   async function save(e: React.FormEvent) {
     e.preventDefault();
     await setDoc(
-      doc(db, 'settings', 'global'),
+      doc(db, orgConfigPath('settings', orgId)),
       {
         orgName,
         brandPrimaryColor: primary,

@@ -132,3 +132,12 @@ export function useDoc<T = DocumentData>(path: string | null): DocState<T> {
 export function shortId(): string {
   return Math.random().toString(36).slice(2, 10);
 }
+
+/**
+ * Per-org config doc path. `settings`/`reportConfig` move from a single 'global'
+ * doc to one per tenant (doc id == orgId). Falls back to 'global' when there's
+ * no orgId yet (pre-backfill) — so this is dormant for the single-tenant
+ * deployment and the same doc is read/written exactly as before.
+ */
+export const orgConfigPath = (coll: 'settings' | 'reportConfig', orgId?: string | null): string =>
+  `${coll}/${orgId || 'global'}`;

@@ -7,7 +7,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { addDoc, collection, deleteDoc, doc, limit, orderBy, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
-import { useCollection, useDoc, type WithId } from '../../../lib/firestore';
+import { useCollection, useDoc, orgConfigPath, type WithId } from '../../../lib/firestore';
 import { useAuth } from '../../../auth/AuthContext';
 import type { AcademyDoc, AcademyReportDoc, CurriculumDoc, ReportConfigDoc, RosterMemberDoc, UserDoc } from '../../../types';
 import { FDLE_LE_COURSES } from '../../../types';
@@ -25,14 +25,14 @@ const today = () => {
 };
 
 export function AcademyReports({ academy }: { academy: WithId<AcademyDoc> }) {
-  const { profile } = useAuth();
+  const { profile, orgId } = useAuth();
   const academyId = academy.id;
   const { data: roster } = useCollection<RosterMemberDoc>(`academies/${academyId}/roster`, [orderBy('no')], [academyId]);
   const { data: reports } = useCollection<AcademyReportDoc>(`academies/${academyId}/reports`, [orderBy('createdAt', 'desc')], [academyId]);
   const { data: directors } = useCollection<UserDoc>('users', [where('role', '==', 'director'), limit(1)]);
   const directorName = directors[0]?.displayName ?? 'Academy Director';
   const { data: curriculum } = useDoc<CurriculumDoc>(academy.discipline ? `curricula/${academy.discipline}` : null);
-  const { data: reportConfig } = useDoc<ReportConfigDoc>('reportConfig/global');
+  const { data: reportConfig } = useDoc<ReportConfigDoc>(orgConfigPath('reportConfig', orgId));
 
   const [formType, setFormType] = useState<ReportType | null>(null);
   const [editing, setEditing] = useState<WithId<AcademyReportDoc> | null>(null);

@@ -10,7 +10,7 @@
 import React, { useEffect, useState } from 'react';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { useDoc } from '../../lib/firestore';
+import { useDoc, orgConfigPath } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import type { ReportCategory, ReportConfigDoc } from '../../types';
 import { Button, Field, Input, PageHeader, Select } from '../../components/ui';
@@ -23,8 +23,8 @@ const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(
 interface FormRow { id: string; baseName: string; name: string; category: string }
 
 export function ReportFormsAdminPage() {
-  const { firebaseUser } = useAuth();
-  const { data: config, loading } = useDoc<ReportConfigDoc>('reportConfig/global');
+  const { firebaseUser, orgId } = useAuth();
+  const { data: config, loading } = useDoc<ReportConfigDoc>(orgConfigPath('reportConfig', orgId));
 
   const [cats, setCats] = useState<ReportCategory[]>([]);
   const [rows, setRows] = useState<FormRow[]>([]);
@@ -76,7 +76,7 @@ export function ReportFormsAdminPage() {
       if (r.category && validKeys.has(r.category)) o.categoryKey = r.category;
       if (o.name || o.categoryKey) overrides[r.id] = o;
     }
-    await setDoc(doc(db, 'reportConfig', 'global'), { categories, overrides, updatedAt: serverTimestamp() }, { merge: false });
+    await setDoc(doc(db, orgConfigPath('reportConfig', orgId)), { categories, overrides, updatedAt: serverTimestamp() }, { merge: false });
     if (firebaseUser) await logAudit(firebaseUser.uid, 'reportConfig.save', 'reportConfig', 'global', `${categories.length} categories`);
     setBusy(false);
     setSaved(true);

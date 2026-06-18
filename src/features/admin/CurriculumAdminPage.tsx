@@ -9,7 +9,7 @@ import { deleteDoc, doc, setDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useCollection, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
-import { useDoc } from '../../lib/firestore';
+import { useDoc, orgConfigPath } from '../../lib/firestore';
 import type { CurriculumCourse, CurriculumDoc, QualificationKey, ReportConfigDoc, RosterModuleKey } from '../../types';
 import { QUALIFICATION_LABELS } from '../../types';
 import { Badge, Button, Field, Input, PageHeader, Select } from '../../components/ui';
@@ -116,7 +116,7 @@ function CurriculumEditorModal({
   curriculum: WithId<CurriculumDoc> | null;
   onClose: () => void;
 }) {
-  const { firebaseUser } = useAuth();
+  const { firebaseUser, orgId } = useAuth();
   const [label, setLabel] = useState(curriculum?.label ?? '');
   const [fdleProgram, setFdleProgram] = useState(curriculum?.fdleProgram ?? '');
   const [key, setKey] = useState(curriculum?.id ?? '');
@@ -124,7 +124,7 @@ function CurriculumEditorModal({
   const [estimated, setEstimated] = useState(curriculum?.estimated ?? false);
   // Per-discipline roster config. Pre-fill an unconfigured curriculum with its
   // current effective behavior so a save never silently changes it.
-  const { data: reportConfig } = useDoc<ReportConfigDoc>('reportConfig/global');
+  const { data: reportConfig } = useDoc<ReportConfigDoc>(orgConfigPath('reportConfig', orgId));
   const categories = reportCategoriesOf(reportConfig);
   const [rosterModules, setRosterModules] = useState<RosterModuleKey[]>(curriculum?.rosterModules ?? DEFAULT_ROSTER_MODULES);
   const [reportCategories, setReportCategories] = useState<string[]>(

@@ -6,7 +6,7 @@
 import React from 'react';
 import { doc, setDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { useDoc } from '../../lib/firestore';
+import { useDoc, orgConfigPath } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import { HOLIDAY_DEFS } from '../../lib/holidays';
 import type { GlobalSettings } from '../../types';
@@ -14,8 +14,8 @@ import { PageHeader } from '../../components/ui';
 import { logAudit } from '../sessions/audit';
 
 export function HolidaysAdminPage() {
-  const { firebaseUser } = useAuth();
-  const { data: settings } = useDoc<GlobalSettings>('settings/global');
+  const { firebaseUser, orgId } = useAuth();
+  const { data: settings } = useDoc<GlobalSettings>(orgConfigPath('settings', orgId));
   const disabled = new Set(settings?.disabledHolidays ?? []);
   const observed = new Set(settings?.observedHolidays ?? []);
 
@@ -23,7 +23,7 @@ export function HolidaysAdminPage() {
     const next = new Set(disabled);
     if (enabled) next.delete(key);
     else next.add(key);
-    await setDoc(doc(db, 'settings', 'global'), { disabledHolidays: [...next] }, { merge: true });
+    await setDoc(doc(db, orgConfigPath('settings', orgId)), { disabledHolidays: [...next] }, { merge: true });
     await logAudit(firebaseUser!.uid, 'settings.holidays', 'settings', 'global', `${enabled ? 'Enabled' : 'Disabled'} ${key}`);
   }
 
@@ -31,7 +31,7 @@ export function HolidaysAdminPage() {
     const next = new Set(observed);
     if (isObserved) next.add(key);
     else next.delete(key);
-    await setDoc(doc(db, 'settings', 'global'), { observedHolidays: [...next] }, { merge: true });
+    await setDoc(doc(db, orgConfigPath('settings', orgId)), { observedHolidays: [...next] }, { merge: true });
     await logAudit(firebaseUser!.uid, 'settings.holidays', 'settings', 'global', `${isObserved ? 'Observed' : 'Unobserved'} ${key}`);
   }
 
