@@ -9,13 +9,24 @@ import {
   doc,
   onSnapshot,
   query,
+  where,
   Query,
   QueryConstraint,
   DocumentData,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { useAuth } from '../auth/AuthContext';
 
 export type WithId<T> = T & { id: string };
+
+/**
+ * Top-level collections that are NOT tenant-scoped and must never have an orgId
+ * filter injected: the org registry, per-user notifications (already scoped by
+ * uid), and server-only mail. Everything else top-level is org-owned. (Cross-org
+ * reads for the platform owner, e.g. feedback triage, use dedicated queries, not
+ * this hook.)
+ */
+const NON_ORG_SCOPED = new Set(['orgs', 'notifications', 'mail']);
 
 interface QueryState<T> {
   data: T[];
@@ -34,12 +45,25 @@ export function useCollection<T = DocumentData>(
   deps: unknown[] = []
 ): QueryState<WithId<T>> {
   const [state, setState] = useState<QueryState<WithId<T>>>({ data: [], loading: true, error: null });
+  const { orgId } = useAuth();
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Tenant isolation: top-level org-owned collections are filtered to the
+  // caller's org. DORMANT until users carry an orgId (post-backfill) — a no-op
+  // for the current single-tenant deployment, so PHSC behaves exactly as before.
+  // Subcollections (e.g. academies/{id}/roster) inherit their parent's org and
+  // are not filtered here.
+  const segments = path ? path.split('/').filter(Boolean) : [];
+  const orgScope =
+    orgId && segments.length === 1 && !NON_ORG_SCOPED.has(segments[0]) ? orgId : null;
+
   const q: Query | null = useMemo(
-    () => (path ? query(collection(db, path), ...constraints) : null),
+    () => {
+      if (!path) return null;
+      const all = orgScope ? [where('orgId', '==', orgScope), ...constraints] : constraints;
+      return query(collection(db, path), ...all);
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [path, ...deps]
+    [path, orgScope, ...deps]
   );
 
   useEffect(() => {
