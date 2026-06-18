@@ -286,7 +286,7 @@ export const sendActivationEmail = onCall<{ uid: string; password: string }>(asy
   const displayName = (user.displayName ?? '').trim() || 'there';
   if (!email) throw new HttpsError('failed-precondition', 'That user has no email on file.');
 
-  const settingsSnap = await db.doc('settings/global').get();
+  const settingsSnap = await db.doc(`settings/${(user as { orgId?: string }).orgId || 'global'}`).get();
   const orgName = settingsSnap.exists ? ((settingsSnap.data()!.orgName as string) || 'the Training Academy') : 'the Training Academy';
 
   const creds = detailRows([
@@ -378,7 +378,7 @@ export const setUserSuspension = onCall<{ uid: string; suspended: boolean; reaso
     { merge: true }
   );
 
-  const settingsSnap = await db.doc('settings/global').get();
+  const settingsSnap = await db.doc(`settings/${(user as { orgId?: string }).orgId || 'global'}`).get();
   const orgName = settingsSnap.exists ? ((settingsSnap.data()!.orgName as string) || 'the Training Academy') : 'the Training Academy';
 
   if (suspended) {

@@ -15,6 +15,9 @@ const db = () => getFirestore();
 export interface NotifyOptions {
   uid?: string;             // recipient uid (resolves email + prefs from users/{uid})
   email?: string;           // direct email (for escalationRecipients given as emails)
+  /** Tenant whose settings (email toggles + org name) govern this email. For uid
+   *  recipients it's resolved from the user doc; pass it for raw-email recipients. */
+  orgId?: string;
   type: string;
   title: string;
   body: string;
@@ -48,16 +51,19 @@ async function idempotentCreate(
   }
 }
 
-export async function getSettings(): Promise<GlobalSettings | null> {
-  const snap = await db().doc('settings/global').get();
+export async function getSettings(orgId?: string): Promise<GlobalSettings | null> {
+  // Per-org settings (doc id == orgId); 'global' fallback pre-backfill (dormant).
+  const snap = await db().doc(`settings/${orgId || 'global'}`).get();
   return snap.exists ? (snap.data() as GlobalSettings) : null;
 }
 
 export async function notify(opts: NotifyOptions): Promise<void> {
-  const settings = await getSettings();
   let email = opts.email ?? null;
   let prefsAllowEmail = true;
   let recipientRole: Role | undefined;
+  // Whose org settings (email toggles + org name) govern this email: the
+  // recipient's (from their user doc) or, for raw-email recipients, opts.orgId.
+  let recipientOrgId: string | undefined = opts.orgId;
 
   if (opts.uid) {
     // In-app notification (bell) — deduped on retry when a dedupeKey is given.
@@ -77,6 +83,7 @@ export async function notify(opts: NotifyOptions): Promise<void> {
       const user = userSnap.data() as UserDoc;
       email = email ?? user.email;
       recipientRole = user.role;
+      recipientOrgId = user.orgId ?? opts.orgId;
       // Personal opt-outs apply ONLY to the user's own reminder/digest emails;
       // operational and command emails are governed by the admin toggles.
       if (opts.type === 'reminder') prefsAllowEmail = user.notificationPrefs?.email !== false;
@@ -87,6 +94,9 @@ export async function notify(opts: NotifyOptions): Promise<void> {
 
   if (!email) return;
   if (!prefsAllowEmail && !opts.force) return;
+  // Load the recipient's ORG settings now that we know their org (email toggles
+  // + org-name branding must come from the right tenant).
+  const settings = await getSettings(recipientOrgId);
   // Admin-level controls: master switch + per-automation toggle + per-automation
   // recipient-role filter (Admin → Gjallarhorn & Email). The in-app bell above
   // already fired regardless.
@@ -151,13 +161,16 @@ export async function notifyAdmins(payload: Omit<NotifyOptions, 'uid' | 'email'>
 }
 
 /** Escalate to the configured command recipients (uids or raw emails). */
-export async function escalateToCommand(payload: Omit<NotifyOptions, 'uid' | 'email'>): Promise<void> {
-  const settings = await getSettings();
+export async function escalateToCommand(
+  payload: Omit<NotifyOptions, 'uid' | 'email'>,
+  orgId?: string
+): Promise<void> {
+  const settings = await getSettings(orgId);
   const recipients = settings?.escalationRecipients ?? [];
   await Promise.all(
     recipients.map((r) =>
       r.includes('@')
-        ? notify({ ...payload, email: r, force: true, dedupeKey: keyFor(payload.dedupeKey, r) })
+        ? notify({ ...payload, email: r, orgId, force: true, dedupeKey: keyFor(payload.dedupeKey, r) })
         : notify({ ...payload, uid: r, force: true, dedupeKey: keyFor(payload.dedupeKey, r) })
     )
   );

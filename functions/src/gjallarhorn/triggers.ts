@@ -99,7 +99,7 @@ export const onSignupWritten = onDocumentWritten('sessions/{sessionId}/signups/{
   const { sessionId, uid } = event.params;
   const session = await getSession(sessionId);
   if (!session) return;
-  const settings = await getSettings();
+  const settings = await getSettings(session.orgId);
 
   const becameConfirmed = after.status === 'confirmed' && before?.status !== 'confirmed';
   const becameWithdrawn = after.status === 'withdrawn' && before?.status !== 'withdrawn';
@@ -154,7 +154,7 @@ export const onSignupWritten = onDocumentWritten('sessions/{sessionId}/signups/{
             .toDate()
             .toLocaleString('en-US', { timeZone: 'America/New_York' })}. Verify the lead slot is still covered.`,
           link: `/cadre/staffing`,
-        });
+        }, session.orgId);
       }
     }
   }
@@ -193,7 +193,7 @@ export const onSessionUpdated = onDocumentUpdated('sessions/{sessionId}', async 
     .get();
   if (signups.empty) return;
 
-  const settings = await getSettings();
+  const settings = await getSettings(after.orgId);
   const details = sessionDetails(after);
   const what = cancelled ? 'CANCELLED' : timeChanged ? 'rescheduled' : 'moved rooms';
 
