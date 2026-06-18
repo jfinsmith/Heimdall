@@ -3,8 +3,10 @@
  * with Gjallarhorn bell + user menu + global Create action.
  * Mobile: sidebar collapses behind a hamburger; everything keyboard-reachable.
  */
-import React, { useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { httpsCallable } from 'firebase/functions';
+import { auth, functions } from '../lib/firebase';
 import { useAuth } from '../auth/AuthContext';
 import { can } from '../lib/rbac';
 import { useRoleLabels } from './providers';
@@ -14,6 +16,37 @@ import { WordmarkHorizontal } from '../brand/Logo';
 import { NotificationBell } from '../components/NotificationBell';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Button } from '../components/ui';
+
+const ownerListOrgs = httpsCallable<void, { orgs: { orgId: string; legalName: string }[] }>(functions, 'ownerListOrgs');
+const ownerSwitchOrg = httpsCallable<{ orgId: string }, { ok: boolean }>(functions, 'ownerSwitchOrg');
+
+/** Platform-owner cross-org switching: load every org, switch the active tenant
+ *  (claim+doc swap server-side), then hard-reload so the whole app re-queries. */
+function useOrgSwitch(enabled: boolean) {
+  const { orgId } = useAuth();
+  const [orgs, setOrgs] = useState<{ orgId: string; legalName: string }[]>([]);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!enabled) return;
+    ownerListOrgs().then((r) => setOrgs(r.data.orgs)).catch(() => setOrgs([]));
+  }, [enabled]);
+  const switchTo = useCallback(
+    async (target: string) => {
+      if (!target || target === orgId || busy) return;
+      setBusy(true);
+      try {
+        await ownerSwitchOrg({ orgId: target });
+        await auth.currentUser?.getIdToken(true);
+        window.location.assign('/');
+      } catch (e) {
+        alert((e as Error).message || 'Could not switch organizations.');
+        setBusy(false);
+      }
+    },
+    [orgId, busy]
+  );
+  return { orgs, switchTo, busy };
+}
 
 function NavItem({ to, label, end = false }: { to: string; label: string; end?: boolean }) {
   return (
@@ -90,6 +123,9 @@ export function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const staff = can.buildSchedules(role);
   const admin = can.manageOrg(role);
+  const { orgs: switchOrgs, switchTo, busy: switchBusy } = useOrgSwitch(platformOwner);
+  const impersonating = platformOwner && !!profile?.homeOrgId && profile.orgId !== profile.homeOrgId;
+  const activeOrgName = switchOrgs.find((o) => o.orgId === profile?.orgId)?.legalName ?? profile?.orgId ?? '';
 
   const nav = (
     <nav aria-label="Main navigation" className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3">
@@ -150,6 +186,24 @@ export function AppShell() {
             <WordmarkHorizontal size={26} />
           </NavLink>
         </div>
+        {platformOwner && switchOrgs.length > 0 && (
+          <div className="border-b border-watch-800 px-3 pb-3 pt-1">
+            <label htmlFor="org-switch" className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-watch-500">
+              Viewing organization
+            </label>
+            <select
+              id="org-switch"
+              value={profile?.orgId ?? ''}
+              disabled={switchBusy}
+              onChange={(e) => switchTo(e.target.value)}
+              className="w-full rounded-md border border-watch-700 bg-watch-900 px-2 py-1.5 text-sm text-watch-100 focus:border-bifrost-400 focus:outline-none disabled:opacity-50"
+            >
+              {switchOrgs.map((o) => (
+                <option key={o.orgId} value={o.orgId}>{o.legalName}</option>
+              ))}
+            </select>
+          </div>
+        )}
         {nav}
         <div className="border-t border-watch-800 px-4 py-3 text-xs text-watch-400">
           <div className="font-medium text-watch-200">{profile?.displayName}</div>
@@ -189,6 +243,21 @@ export function AppShell() {
             <UserMenu displayName={profile?.displayName} onSignOut={() => signOut()} />
           </div>
         </header>
+        {impersonating && (
+          <div className="no-print flex flex-wrap items-center justify-between gap-2 border-b border-amber-300 bg-amber-100 px-4 py-2 md:px-8" role="status">
+            <p className="text-sm text-amber-900">
+              <i className="ti ti-eye" aria-hidden="true" /> Platform owner — viewing <strong>{activeOrgName}</strong>. Changes you make affect this organization.
+            </p>
+            <Button
+              variant="ghost"
+              className="text-amber-900 hover:bg-amber-200"
+              disabled={switchBusy}
+              onClick={() => profile?.homeOrgId && switchTo(profile.homeOrgId)}
+            >
+              Return to my organization
+            </Button>
+          </div>
+        )}
         {profile?.status === 'suspended' && (
           <div className="no-print border-b border-red-200 bg-red-50 px-4 py-3 md:px-8" role="alert">
             <p className="text-sm font-semibold text-red-800">Your account is suspended.</p>

@@ -94,10 +94,12 @@ service cloud.firestore {
         // have it minted into a real claim on their first role assignment.
         && !('orgId' in request.resource.data)
         && !('platformOwner' in request.resource.data);
-      // orgId / platformOwner are ONLY written by the Admin SDK (callables +
-      // scripts), which bypass these rules. No client update — not even an admin —
-      // may change them; the role-minting callable trusts the user doc.
-      allow update: if unchanged('orgId') && unchanged('platformOwner') && (
+      // orgId / platformOwner / homeOrgId / homeRole are ONLY written by the Admin
+      // SDK (callables + scripts), which bypass these rules. No client update — not
+      // even an admin — may change them; the role-minting + owner-switch callables
+      // trust the user doc (homeOrgId/homeRole anchor the owner's reversible switch).
+      allow update: if unchanged('orgId') && unchanged('platformOwner')
+        && unchanged('homeOrgId') && unchanged('homeRole') && (
         (isAdmin() && inOrg(resource.data))
         // Staff (coordinator/sergeant) may approve accounts and verify quals on
         // OTHER same-tenant users, but may not change roles, and may NOT

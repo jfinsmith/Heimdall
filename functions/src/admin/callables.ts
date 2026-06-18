@@ -989,6 +989,66 @@ export const deleteUnassignedAccount = onCall<{ uid: string }>(async (request) =
   return { ok: true };
 });
 
+/** Platform-owner: brief list of every org (for the nav org-switcher dropdown). */
+export const ownerListOrgs = onCall(async (request) => {
+  const caller = request.auth;
+  if (!caller) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = getFirestore();
+  const callerDoc = await db.doc(`users/${caller.uid}`).get();
+  if (!callerDoc.exists || callerDoc.data()!.platformOwner !== true) {
+    throw new HttpsError('permission-denied', 'Only the platform owner may list organizations.');
+  }
+  const snap = await db.collection('orgs').get();
+  const orgs = snap.docs
+    .map((o) => ({ orgId: o.id, legalName: (o.data().legalName as string) || o.id }))
+    .sort((a, b) => a.legalName.localeCompare(b.legalName));
+  return { orgs };
+});
+
+/**
+ * Platform-owner: switch the owner's ACTIVE organization (to view/fix any tenant).
+ * Sets the orgId + role on BOTH the claim and the profile doc together, so the
+ * isolation rules and the client agree on the active tenant. The owner's REAL
+ * home org + rank are captured once (homeOrgId/homeRole) and restored when
+ * switching back, so this is always reversible and never loses his identity. In
+ * a non-home org the owner acts as 'director' (full access to fix things);
+ * platformOwner is always preserved so he can switch back.
+ */
+export const ownerSwitchOrg = onCall<{ orgId: string }>(async (request) => {
+  const caller = request.auth;
+  if (!caller) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = getFirestore();
+  const callerRef = db.doc(`users/${caller.uid}`);
+  const me = (await callerRef.get()).data();
+  if (!me || me.platformOwner !== true) {
+    throw new HttpsError('permission-denied', 'Only the platform owner may switch organizations.');
+  }
+  const target = (request.data.orgId ?? '').trim();
+  if (!target) throw new HttpsError('invalid-argument', 'Choose an organization.');
+  if (!(await db.doc(`orgs/${target}`).get()).exists) throw new HttpsError('not-found', 'That organization does not exist.');
+
+  const homeOrgId = (me.homeOrgId as string | undefined) ?? (me.orgId as string | undefined);
+  const homeRole = (me.homeRole as Role | undefined) ?? (me.role as Role | undefined);
+  if (!homeOrgId || !homeRole) {
+    throw new HttpsError('failed-precondition', 'Your home organization and rank are not set; cannot switch safely.');
+  }
+  const goingHome = target === homeOrgId;
+  const role: Role = goingHome ? homeRole : 'director';
+
+  const existing = (await getAuth().getUser(caller.uid).catch(() => null))?.customClaims ?? {};
+  await getAuth().setCustomUserClaims(caller.uid, { ...existing, orgId: target, role, platformOwner: true });
+  await callerRef.set(
+    { orgId: target, role, homeOrgId, homeRole, updatedAt: FieldValue.serverTimestamp() },
+    { merge: true }
+  );
+  await db.collection('auditLog').add({
+    actorUid: caller.uid, action: 'platform.switch_org', targetType: 'org', targetId: target,
+    summary: goingHome ? `Returned to home org ${target}` : `Switched into org ${target} as ${role}`,
+    orgId: target, createdAt: FieldValue.serverTimestamp(),
+  });
+  return { ok: true, orgId: target, role, goingHome };
+});
+
 /** Platform-owner: recent audit entries across ALL organizations (owner oversight). */
 export const listAllAuditLog = onCall<{ limit?: number }>(async (request) => {
   const caller = request.auth;

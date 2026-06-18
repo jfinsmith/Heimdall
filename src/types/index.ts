@@ -132,6 +132,12 @@ export interface UserDoc {
   orgId?: string;
   /** Product owner — manages orgs/billing + cross-org feedback; NOT a tenant role. */
   platformOwner?: boolean;
+  /** Platform owner only: the owner's REAL home org + rank (e.g. phsc / lieutenant),
+   *  preserved across cross-org "switch" so impersonation is always reversible.
+   *  While switched into another org, orgId/role hold the active (impersonated)
+   *  values and these hold the canonical home identity. */
+  homeOrgId?: string;
+  homeRole?: Role;
   /** Set when an org admin DENIES a pending join — the account is bounced back to
    *  the platform owner's queue (orgId cleared); records which org turned them away. */
   deniedFromOrgId?: string;
