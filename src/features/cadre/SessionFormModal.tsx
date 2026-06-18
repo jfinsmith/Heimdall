@@ -17,6 +17,7 @@ import type { AcademyDoc, CurriculumDoc, QualificationKey, RoleSlot, RosterMembe
 import { QUALIFICATION_LABELS, SLOT_ROLE_LABELS, SELECTABLE_SLOT_ROLES } from '../../types';
 import { Button, Field, Input, Select, TextArea } from '../../components/ui';
 import { Modal } from '../../components/Modal';
+import { BlockModeToggle } from './blockMode';
 import { logAudit } from '../sessions/audit';
 
 const CUSTOM = '__custom__';
@@ -84,10 +85,14 @@ interface Props {
   session: WithId<SessionDoc> | null;
   /** Prefill date (yyyy-mm-dd) when adding from a calendar day. */
   defaultDate?: string;
+  /** Prefill start time (HH:MM) when adding from a clicked time slot. */
+  defaultTime?: string;
+  /** Shown only when creating — switch this dialog to the Add-lunch form. */
+  onSwitchToLunch?: () => void;
   onClose: () => void;
 }
 
-export function SessionFormModal({ academy, session, defaultDate, onClose }: Props) {
+export function SessionFormModal({ academy, session, defaultDate, defaultTime, onSwitchToLunch, onClose }: Props) {
   const { firebaseUser } = useAuth();
   // The course picker comes entirely from THIS academy's discipline — its
   // curriculum (Admin → Curriculum & Hours), which carries the hours,
@@ -130,7 +135,7 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
   const [customName, setCustomName] = useState(isCustomSession ? session?.courseName ?? '' : '');
   const [date, setDate] = useState(session ? toDateInputValue(session.start.toDate()) : defaultDate ?? '');
   // New sessions default to a 07:00–18:00 academy day.
-  const [startTime, setStartTime] = useState(session ? toTimeInputValue(session.start.toDate()) : '07:00');
+  const [startTime, setStartTime] = useState(session ? toTimeInputValue(session.start.toDate()) : defaultTime || '07:00');
   const [endTime, setEndTime] = useState(session ? toTimeInputValue(session.end.toDate()) : '18:00');
   const [lunchMinutes, setLunchMinutes] = useState<number>(session?.lunchMinutes ?? 0);
   // Default to noon — use || so a saved empty string (lunch was 0) still defaults to 12:00.
@@ -419,7 +424,8 @@ export function SessionFormModal({ academy, session, defaultDate, onClose }: Pro
   }
 
   return (
-    <Modal open onClose={onClose} title={session ? 'Edit session' : 'Add session'} wide>
+    <Modal open onClose={onClose} title={session ? 'Edit session' : 'Add to schedule'} wide>
+      {!session && onSwitchToLunch && <BlockModeToggle mode="session" onLunch={onSwitchToLunch} />}
       <form onSubmit={submit} className="space-y-4">
         {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
         <div className="grid gap-4 sm:grid-cols-2">

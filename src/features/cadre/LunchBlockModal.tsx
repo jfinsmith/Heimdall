@@ -17,6 +17,7 @@ import { combineDateTime, toDateInputValue, toTimeInputValue, tsFromDate } from 
 import type { AcademyDoc, SessionDoc } from '../../types';
 import { Button, Field, Input } from '../../components/ui';
 import { Modal } from '../../components/Modal';
+import { BlockModeToggle } from './blockMode';
 import { logAudit } from '../sessions/audit';
 
 /** Round a Date's minutes to the nearest 15 (lunch blocks live on 15-min intervals). */
@@ -30,18 +31,23 @@ export function LunchBlockModal({
   academy,
   lunch,
   defaultDate,
+  defaultTime,
+  onSwitchToSession,
   onClose,
 }: {
   academy: WithId<AcademyDoc>;
   lunch?: WithId<SessionDoc> | null;
   defaultDate?: string;
+  defaultTime?: string;
+  /** Shown only when creating — switch this dialog to the Add-session form. */
+  onSwitchToSession?: () => void;
   onClose: () => void;
 }) {
   const { firebaseUser } = useAuth();
   const editing = !!lunch;
 
   const initialDate = lunch ? toDateInputValue(lunch.start.toDate()) : defaultDate || '';
-  const initialTime = lunch ? toTimeInputValue(lunch.start.toDate()) : '12:00';
+  const initialTime = lunch ? toTimeInputValue(lunch.start.toDate()) : defaultTime || '12:00';
   const initialDuration = lunch
     ? Math.max(15, Math.round((lunch.end.toMillis() - lunch.start.toMillis()) / 60000))
     : 60;
@@ -116,8 +122,54 @@ export function LunchBlockModal({
     }
   }
 
+  /** Copy this lunch block to the next day, skipping weekends (Fri → Mon) —
+   *  same logic as duplicating a session. */
+  async function duplicateToNextDay() {
+    if (!firebaseUser || !lunch) return;
+    setBusy(true);
+    setError(null);
+    try {
+      let dayDelta = 0;
+      const probe = lunch.start.toDate();
+      do {
+        probe.setDate(probe.getDate() + 1);
+        dayDelta++;
+      } while (probe.getDay() === 0 || probe.getDay() === 6);
+      const nextStart = lunch.start.toDate();
+      nextStart.setDate(nextStart.getDate() + dayDelta);
+      const nextEnd = lunch.end.toDate();
+      nextEnd.setDate(nextEnd.getDate() + dayDelta);
+      await addDoc(collection(db, 'sessions'), {
+        kind: 'lunch' as const,
+        academyId: academy.id,
+        courseId: 'lunch',
+        courseName: lunch.courseName,
+        highLiability: false,
+        title: '',
+        start: tsFromDate(nextStart),
+        end: tsFromDate(nextEnd),
+        location: '',
+        room: lunch.room ?? '',
+        hours: 0,
+        countsTowardFdle: false,
+        roleSlots: [],
+        notes: '',
+        orgId: academy.orgId,
+        status: academy.status === 'draft' ? 'draft' : 'scheduled',
+        createdBy: firebaseUser.uid,
+        updatedAt: serverTimestamp(),
+      });
+      await logAudit(firebaseUser.uid, 'session.duplicate', 'session', lunch.id, `Duplicated lunch block to ${nextStart.toLocaleDateString()}`);
+      onClose();
+    } catch (e) {
+      setError((e as Error).message || 'Could not duplicate the lunch block.');
+      setBusy(false);
+    }
+  }
+
   return (
-    <Modal open onClose={onClose} title={editing ? 'Edit lunch / break' : 'Add lunch / break'}>
+    <Modal open onClose={onClose} title={editing ? 'Edit lunch / break' : 'Add to schedule'}>
+      {!editing && onSwitchToSession && <BlockModeToggle mode="lunch" onSession={onSwitchToSession} />}
       <p className="mb-3 text-xs text-slate-500">
         A placeholder block shown on the schedule for context. It carries no hours and is never staffed or
         signed up for. (To carve a lunch out of a class instead, use the lunch fields on a session.)
@@ -148,11 +200,16 @@ export function LunchBlockModal({
 
       {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
 
-      <div className="mt-4 flex items-center justify-between">
+      <div className="mt-4 flex items-center justify-between gap-2">
         {editing ? (
-          <Button variant="ghost" onClick={remove} disabled={busy} className="text-red-600 hover:bg-red-50">
-            Delete
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={remove} disabled={busy} className="text-red-600 hover:bg-red-50">
+              Delete
+            </Button>
+            <Button variant="ghost" onClick={duplicateToNextDay} disabled={busy} title="Copy this block to the next day (skips weekends)">
+              Duplicate to next day
+            </Button>
+          </div>
         ) : (
           <span />
         )}

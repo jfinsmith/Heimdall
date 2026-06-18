@@ -75,6 +75,10 @@ export function AcademyBuilderPage() {
   const [detailSession, setDetailSession] = useState<WithId<SessionDoc> | null>(null);
   const [lunchOpen, setLunchOpen] = useState(false);
   const [lunchSession, setLunchSession] = useState<WithId<SessionDoc> | null>(null);
+  // Shared prefill for the add-block dialogs (date + time from a calendar click),
+  // preserved when switching between the Session and Lunch forms.
+  const [addTime, setAddTime] = useState<string | undefined>(undefined);
+  const [weekendDismissed, setWeekendDismissed] = useState(false);
   const [signupModal, setSignupModal] = useState<{
     label: string;
     mode: 'open' | 'announce';
@@ -82,6 +86,12 @@ export function AcademyBuilderPage() {
   } | null>(null);
 
   const liveSessions = useMemo(() => sessions.filter((s) => s.status !== 'cancelled'), [sessions]);
+  // Anything (session OR lunch block) landing on a Saturday/Sunday — surfaced as
+  // a dismissable heads-up (often a clone/recurring artifact), like the holiday alert.
+  const weekendItems = useMemo(
+    () => liveSessions.filter((s) => { const d = s.start.toDate().getDay(); return d === 0 || d === 6; }),
+    [liveSessions]
+  );
 
   // PSO-observed holidays within the academy add 8.5 hrs of holiday pay each.
   const holidayPayBlocks = useMemo(() => {
@@ -391,6 +401,7 @@ export function AcademyBuilderPage() {
               onClick={() => {
                 setLunchSession(null);
                 setFormDate(undefined);
+                setAddTime(undefined);
                 setLunchOpen(true);
               }}
             >
@@ -401,6 +412,7 @@ export function AcademyBuilderPage() {
               onClick={() => {
                 setFormSession(null);
                 setFormDate(undefined);
+                setAddTime(undefined);
                 setFormOpen(true);
               }}
             >
@@ -481,6 +493,44 @@ export function AcademyBuilderPage() {
                     {s.title || s.courseName}
                   </button>{' '}
                   — {fmtDate(s.start)} is <strong>{holiday}</strong>
+                </span>
+                <Button onClick={() => goToSessionOnCalendar(s)}>Show on calendar</Button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* Weekend scheduling — dismissable heads-up (a class/lunch on Sat/Sun is
+          often an unintended clone/recurring artifact). */}
+      {weekendItems.length > 0 && !weekendDismissed && (
+        <section className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-amber-800">
+              {weekendItems.length} item(s) scheduled on a weekend
+            </h2>
+            <button
+              onClick={() => setWeekendDismissed(true)}
+              aria-label="Dismiss weekend alert"
+              className="rounded p-1 text-amber-500 hover:bg-amber-100 hover:text-amber-700"
+            >
+              ✕
+            </button>
+          </div>
+          <ul className="space-y-1.5">
+            {weekendItems.map((s) => (
+              <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 text-sm text-amber-900">
+                <span>
+                  <button
+                    className="font-medium hover:underline"
+                    onClick={() => {
+                      if (s.kind === 'lunch') { setLunchSession(s); setLunchOpen(true); }
+                      else setDetailSession(s);
+                    }}
+                  >
+                    {s.title || s.courseName}
+                  </button>{' '}
+                  — {fmtDate(s.start)} ({s.start.toDate().toLocaleDateString('en-US', { weekday: 'long' })})
                 </span>
                 <Button onClick={() => goToSessionOnCalendar(s)}>Show on calendar</Button>
               </li>
@@ -618,10 +668,16 @@ export function AcademyBuilderPage() {
               setDetailSession(s);
             }
           }}
-          // Click an empty day/slot to add a session prefilled to that date.
+          // Click an empty day/slot to add a block prefilled to that date — and,
+          // in a time-grid view, the clicked time too (e.g. 09:00 on 7/19).
           dateClick={(arg) => {
             setFormSession(null);
             setFormDate(arg.dateStr.slice(0, 10));
+            setAddTime(
+              arg.allDay
+                ? undefined
+                : `${String(arg.date.getHours()).padStart(2, '0')}:${String(arg.date.getMinutes()).padStart(2, '0')}`
+            );
             setFormOpen(true);
           }}
           height="auto"
@@ -646,7 +702,19 @@ export function AcademyBuilderPage() {
       </div>
 
       {formOpen && (
-        <SessionFormModal academy={academy} session={formSession} defaultDate={formDate} onClose={() => setFormOpen(false)} />
+        <SessionFormModal
+          academy={academy}
+          session={formSession}
+          defaultDate={formDate}
+          defaultTime={addTime}
+          // Switch the create dialog to the lunch form, keeping date + time.
+          onSwitchToLunch={() => {
+            setFormOpen(false);
+            setLunchSession(null);
+            setLunchOpen(true);
+          }}
+          onClose={() => setFormOpen(false)}
+        />
       )}
       {recurringOpen && <RecurringGeneratorModal academy={academy} onClose={() => setRecurringOpen(false)} />}
       {lunchOpen && (
@@ -654,6 +722,13 @@ export function AcademyBuilderPage() {
           academy={academy}
           lunch={lunchSession}
           defaultDate={formDate}
+          defaultTime={addTime}
+          // Switch back to the session form, keeping date + time.
+          onSwitchToSession={() => {
+            setLunchOpen(false);
+            setFormSession(null);
+            setFormOpen(true);
+          }}
           onClose={() => {
             setLunchOpen(false);
             setLunchSession(null);
