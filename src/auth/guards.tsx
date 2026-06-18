@@ -15,8 +15,15 @@ export function RequireAuth() {
 
   if (loading) return <FullPageSpinner />;
   if (!firebaseUser) return <Navigate to="/signin" state={{ from: location }} replace />;
-  if (profile && profile.status === 'pending') return <Navigate to="/pending" replace />;
   if (profile && profile.status === 'inactive') return <Navigate to="/signin" replace />;
+  // No tenant yet (self-registered, domain didn't match an org). A graceful
+  // holding screen — not a hard lockout — that auto-resolves once an org is
+  // assigned. Checked before 'pending' so an orgless account sees "setting up"
+  // rather than "awaiting role approval" (there's no org to approve within yet).
+  if (profile && !profile.orgId && location.pathname !== '/awaiting-org') {
+    return <Navigate to="/awaiting-org" replace />;
+  }
+  if (profile && profile.status === 'pending') return <Navigate to="/pending" replace />;
   // Force a password change for admin-created accounts on first sign-in.
   if (profile && profile.mustChangePassword && location.pathname !== '/change-password') {
     return <Navigate to="/change-password" replace />;

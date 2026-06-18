@@ -13,6 +13,7 @@ import { Spinner } from '../components/ui';
 // Auth/entry pages stay eager — they're small and needed immediately on load.
 import { SignInPage } from '../auth/SignInPage';
 import { PendingApprovalPage } from '../auth/PendingApprovalPage';
+import { AwaitingOrgPage } from '../auth/AwaitingOrgPage';
 import { CompleteProfilePage } from '../auth/CompleteProfilePage';
 import { ChangePasswordPage } from '../auth/ChangePasswordPage';
 
@@ -58,6 +59,7 @@ export function AppRouter() {
         <Routes>
           <Route path="/signin" element={<SignInPage />} />
           <Route path="/pending" element={<PendingApprovalPage />} />
+          <Route path="/awaiting-org" element={<AwaitingOrgPage />} />
 
           <Route element={<RequireAuth />}>
             <Route path="/change-password" element={<ChangePasswordPage />} />

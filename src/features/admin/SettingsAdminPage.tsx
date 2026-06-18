@@ -76,8 +76,8 @@ export function SettingsAdminPage() {
           <Input value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} />
         </Field>
         <Field
-          label="Allowed registration email domains"
-          hint="Comma-separated, e.g. sheriff.example.gov, statecollege.edu — blank allows any domain"
+          label="Auto-join email domains"
+          hint="Comma-separated, e.g. sheriff.example.gov, statecollege.edu — new sign-ups from these domains are routed to this organization (still pending your approval). Blank = no auto-join (add members manually)."
         >
           <Input value={domains} onChange={(e) => setDomains(e.target.value)} />
         </Field>

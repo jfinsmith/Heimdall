@@ -15,6 +15,7 @@ import {
   onDocumentWritten,
 } from 'firebase-functions/v2/firestore';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { getAuth } from 'firebase-admin/auth';
 import {
   escalateToCommand,
   getSettings,
@@ -240,19 +241,86 @@ export const onSessionUpdated = onDocumentUpdated('sessions/{sessionId}', async 
   );
 });
 
-// ── New self-registered account → notify command for approval ──────────────
+/**
+ * Find the tenant that claims an email's domain via its per-org
+ * allowedEmailDomains (settings/{orgId}). Returns the orgId only on an
+ * UNAMBIGUOUS single match — 0 matches (or 2+, a misconfiguration) leave the
+ * user unassigned (→ the awaiting-org screen). A blank domain list means the
+ * org opts out of domain auto-join (admin-add only), preserving prior behavior.
+ */
+async function findOrgIdByEmailDomain(email: string): Promise<string | null> {
+  const domain = (email.split('@')[1] ?? '').toLowerCase().trim();
+  if (!domain) return null;
+  const snap = await db().collection('settings').get();
+  const matches = snap.docs.filter((d) => {
+    if (d.id === 'global') return false; // legacy singleton, not a tenant
+    const domains = d.data().allowedEmailDomains;
+    return Array.isArray(domains) && domains.map((x: string) => String(x).toLowerCase().trim()).includes(domain);
+  });
+  return matches.length === 1 ? matches[0].id : null;
+}
+
+// ── New self-registered account → auto-assign tenant by domain, notify command ─
 export const onUserCreated = onDocumentCreated('users/{uid}', async (event) => {
   const data = event.data?.data() as UserDoc | undefined;
   // Admin-created accounts come in as 'active' (and email their own credentials);
   // only self-registrations land as 'pending' and need command's attention.
   if (!data || data.status !== 'pending') return;
-  await notifyAdmins({
-    dedupeKey: `${event.id}_newacct`,
-    type: 'new_account_pending',
-    title: 'New account request',
-    body: `${data.displayName || data.email} requested a HEIMDALL account and is awaiting approval.`,
-    link: '/admin/users',
-  }, data.orgId);
+  const uid = event.params.uid;
+
+  // Phase 6 — multi-tenant sign-in: route the new account to its org by email
+  // domain. A match stamps the orgId claim + doc (no role yet — admin approval
+  // sets that); the AuthContext force-refresh then moves them off the
+  // awaiting-org screen into their org's pending queue.
+  //
+  // Auto-join is gated on a VERIFIED email: Google SSO is always verified, but
+  // email/password sign-ups are NOT — so a spoofed someone@tenant.edu can't drop
+  // a forged identity into a real org's approval queue. Unverified addresses fall
+  // through to the owner-notify path (manual assignment). Wrapped so an assign
+  // failure can never swallow the notification below.
+  let orgId = data.orgId;
+  if (!orgId && data.email) {
+    try {
+      const userRecord = await getAuth().getUser(uid).catch(() => null);
+      if (userRecord?.emailVerified) {
+        const matched = await findOrgIdByEmailDomain(data.email);
+        if (matched) {
+          await getAuth().setCustomUserClaims(uid, { ...(userRecord.customClaims ?? {}), orgId: matched });
+          await db().doc(`users/${uid}`).set({ orgId: matched, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+          orgId = matched;
+        }
+      }
+    } catch (e) {
+      console.error('onUserCreated: domain auto-assign failed; falling back to owner notify', e);
+    }
+  }
+
+  if (orgId) {
+    // Matched a tenant → its command reviews the pending account.
+    await notifyAdmins({
+      dedupeKey: `${event.id}_newacct`,
+      type: 'new_account_pending',
+      title: 'New account request',
+      body: `${data.displayName || data.email} requested a HEIMDALL account and is awaiting approval.`,
+      link: '/admin/users',
+    }, orgId);
+  } else {
+    // No tenant matched — alert the PLATFORM OWNER(s) only (not every org's
+    // command), who can assign the account to an org.
+    const owners = await db().collection('users').where('platformOwner', '==', true).get();
+    await Promise.all(
+      owners.docs.map((o) =>
+        notify({
+          uid: o.id,
+          dedupeKey: `${event.id}_unassigned_${o.id}`,
+          type: 'new_account_pending',
+          title: 'Unassigned account request',
+          body: `${data.displayName || data.email} (${data.email}) registered but matched no organization. Assign them to a tenant to continue.`,
+          link: '/admin/users',
+        })
+      )
+    );
+  }
 });
 
 // ── User account / qualification approvals ─────────────────────────────────
