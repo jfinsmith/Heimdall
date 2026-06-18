@@ -3,7 +3,7 @@
   "description": "HEIMDALL Cloud Functions — Gjallarhorn notification engine + admin callables",
   "private": true,
   "engines": {
-    "node": "20"
+    "node": "22"
   },
   "main": "lib/index.js",
   "scripts": {
@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "firebase-admin": "^12.5.0",
-    "firebase-functions": "^5.1.0"
+    "firebase-functions": "^6.0.0"
   },
   "devDependencies": {
     "typescript": "^5.5.4"
