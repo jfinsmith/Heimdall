@@ -55,7 +55,6 @@ export function PermissionsPage() {
   return (
     <div>
       <PageHeader
-        back
         kicker="Admin"
         title="Roles & Permissions"
         actions={<span className="text-xs text-slate-400">Capabilities are enforced by security rules</span>}

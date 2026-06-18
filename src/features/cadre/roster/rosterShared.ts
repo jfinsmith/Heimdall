@@ -10,7 +10,7 @@ export function agencyLabel(m: Pick<RosterMemberDoc, 'agency' | 'agencyOther'>):
   return ROSTER_AGENCIES.find((a) => a.key === m.agency)?.label ?? m.agency;
 }
 
-/** Warning count + weighted demerit points (A=1,B=2,C=3,D=4) for a member. */
+/** Warning count + weighted demerit points (A=1,B=3,C=6,D=12) for a member. */
 export function disciplineTally(violations: ViolationEntry[] = []) {
   let warnings = 0;
   const counts = { A: 0, B: 0, C: 0, D: 0 };
@@ -33,15 +33,20 @@ export function gradedCourses(courses: CurriculumCourse[] = []): CurriculumCours
 }
 
 /**
- * Effective numeric score for averaging (best of primary / reexam), or null.
- * The class-standing average is the mean of recorded scores; a failing score is
- * intentionally included (it lowers the average) — pass/fail and exit/dismissal
- * status is surfaced separately via memberStanding().warnings.
+ * Effective numeric score recorded for a course, or null. A passing primary
+ * stands as-is. If the primary FAILED (< 80), a re-examination can only restore
+ * the score up to the pass mark — the recorded score is CAPPED at 80 no matter
+ * what the cadet scores on the re-exam (a re-exam that still fails keeps its
+ * actual sub-80 score). The class-standing average is the mean of these.
  */
 export function effectiveScore(cell?: GradeCell): number | null {
   if (!cell) return null;
-  const nums = [cell.score, cell.reexamScore].filter((n): n is number => typeof n === 'number' && Number.isFinite(n));
-  return nums.length ? Math.max(...nums) : null;
+  const primary = typeof cell.score === 'number' && Number.isFinite(cell.score) ? cell.score : null;
+  if (primary != null && primary >= PASS_MARK) return primary;
+  if (typeof cell.reexamScore === 'number' && Number.isFinite(cell.reexamScore)) {
+    return Math.min(cell.reexamScore, PASS_MARK); // re-exam caps at the pass mark
+  }
+  return primary;
 }
 
 /**

@@ -145,17 +145,12 @@ export function AppShell() {
       {staff && <NavItem to="/cadre/academies" label="Academies & Builder" />}
       {staff && <NavItem to="/cadre/staffing" label="Staffing Board" />}
       {staff && <NavItem to="/cadet-reports" label="Cadet Reports" />}
+      {staff && <NavItem to="/reports" label="Exports" />}
       <SectionLabel title="Instructor tools">Instructor</SectionLabel>
       <NavItem to="/open-sessions" label="Browse Open Sessions" />
       <NavItem to="/my-schedule" label="My Schedule" />
       <NavItem to="/profile" label="Profile & Qualifications" />
       <NavItem to="/feedback" label="Report a Problem" />
-      {staff && (
-        <>
-          <SectionLabel title="Reporting">Reports</SectionLabel>
-          <NavItem to="/reports" label="Reports & Export" />
-        </>
-      )}
       {admin && (
         <>
           <SectionLabel title="Administration">Admin</SectionLabel>
@@ -173,7 +168,7 @@ export function AppShell() {
       {platformOwner && (
         <>
           <SectionLabel title="HEIMDALL platform operator">Platform</SectionLabel>
-          <NavItem to="/owner" label="Owner Console" />
+          <NavItem to="/owner" label="Owner Console" end />
           <NavItem to="/owner/curricula" label="Default Curricula" />
           <NavItem to="/owner/feedback" label="Bug & Feature Reports" />
           <NavItem to="/owner/audit" label="Audit Log (all orgs)" />

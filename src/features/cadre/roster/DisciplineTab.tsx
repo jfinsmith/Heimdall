@@ -1,13 +1,15 @@
 /**
  * Discipline tracker — per-member warning + demerit tally. Each noted violation
- * carries a type, a level (warning, or demerit A/B/C/D worth 1/2/3/4 points),
- * a date and notes. Warnings tally separately; demerit points sum by weight.
+ * carries a type, a level (warning, or demerit A/B/C/D worth 1/3/6/12 points —
+ * a D is an automatic dismissal), a date and notes. Warnings tally separately;
+ * demerit points sum by weight.
  */
 import React, { useState } from 'react';
 import { doc, serverTimestamp, Timestamp, updateDoc } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { shortId, type WithId } from '../../../lib/firestore';
 import type { DemeritLevel, RosterMemberDoc, ViolationEntry, ViolationType } from '../../../types';
+import { AUTO_DISMISSAL_POINTS } from '../../../types';
 import { Badge, Button, Field, Input, Select, TextArea } from '../../../components/ui';
 import { Modal } from '../../../components/Modal';
 import { agencyLabel, disciplineTally } from './rosterShared';
@@ -16,9 +18,9 @@ const TYPES: ViolationType[] = ['Tardy', 'Uniform', 'Grooming', 'Other'];
 const LEVELS: { key: DemeritLevel; label: string }[] = [
   { key: 'warning', label: 'Warning (no points)' },
   { key: 'A', label: 'Demerit A (1 pt)' },
-  { key: 'B', label: 'Demerit B (2 pts)' },
-  { key: 'C', label: 'Demerit C (3 pts)' },
-  { key: 'D', label: 'Demerit D (4 pts)' },
+  { key: 'B', label: 'Demerit B (3 pts)' },
+  { key: 'C', label: 'Demerit C (6 pts)' },
+  { key: 'D', label: 'Demerit D (12 pts — automatic dismissal)' },
 ];
 const levelLabel = (l: DemeritLevel) => (l === 'warning' ? 'Warning' : `Demerit ${l}`);
 
@@ -57,12 +59,17 @@ export function DisciplineTab({ academyId, members }: { academyId: string; membe
                   </td>
                   <td className="px-3 py-3 text-center">
                     {t.points > 0 ? (
-                      <Badge tone={t.points >= 6 ? 'red' : 'navy'}>
-                        {t.points}
-                        <span className="ml-1 text-[10px] opacity-70">
-                          ({(['A', 'B', 'C', 'D'] as const).filter((k) => t.counts[k]).map((k) => `${t.counts[k]}×${k}`).join(' ') || '—'})
-                        </span>
-                      </Badge>
+                      <div className="flex flex-col items-center gap-1">
+                        <Badge tone={t.points >= AUTO_DISMISSAL_POINTS ? 'red' : 'navy'}>
+                          {t.points}
+                          <span className="ml-1 text-[10px] opacity-70">
+                            ({(['A', 'B', 'C', 'D'] as const).filter((k) => t.counts[k]).map((k) => `${t.counts[k]}×${k}`).join(' ') || '—'})
+                          </span>
+                        </Badge>
+                        {t.points >= AUTO_DISMISSAL_POINTS && (
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-red-700">Automatic dismissal</span>
+                        )}
+                      </div>
                     ) : (
                       <span className="text-slate-300">0</span>
                     )}

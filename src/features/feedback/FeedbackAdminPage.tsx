@@ -108,7 +108,7 @@ export function FeedbackAdminPage() {
 
   return (
     <div>
-      <PageHeader back kicker="Platform Owner" title="Bug & Feature Reports" />
+      <PageHeader kicker="Platform Owner" title="Bug & Feature Reports" />
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <Badge tone={openCount ? 'amber' : 'green'}>{openCount} open</Badge>
         <Field label="Status" className="w-44">

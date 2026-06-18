@@ -141,7 +141,7 @@ export function UsersAdminPage() {
 
   return (
     <div>
-      <PageHeader back kicker="Admin" title="Users & Roles" />
+      <PageHeader kicker="Admin" title="Users & Roles" />
       <div className="-mt-2 mb-4 flex justify-end">
         <Button variant="primary" onClick={() => setAddOpen(true)}>
           + Add user

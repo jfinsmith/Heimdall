@@ -219,6 +219,8 @@ export interface GlobalSettings {
   disabledHolidays?: string[];
   /** Holiday keys the agency observes as paid (grant holiday-pay hours). */
   observedHolidays?: string[];
+  /** Hours of holiday pay credited for an observed holiday (paid day off). Default 8.5. */
+  holidayPayHours?: number;
   /** Required hours per bi-weekly pay period before overtime (PSO default 85). */
   payPeriodTargetHours?: number;
   /** Master kill-switch for ALL outbound email (in-app notifications still fire). */
@@ -370,11 +372,13 @@ export const ROSTER_AGENCIES: { key: RosterAgency; label: string }[] = [
 ];
 
 /** A noted disciplinary violation. Warnings count only toward the warning tally;
- *  demerits A/B/C/D carry 1/2/3/4 points. The level is chosen by staff (it
- *  typically escalates on repeat offenses of the same type). */
+ *  demerits A/B/C/D carry 1/3/6/12 points. A Demerit D (12) is an AUTOMATIC
+ *  DISMISSAL. The level is chosen by staff (typically escalating on repeats). */
 export type ViolationType = 'Tardy' | 'Uniform' | 'Grooming' | 'Other';
 export type DemeritLevel = 'warning' | 'A' | 'B' | 'C' | 'D';
-export const DEMERIT_POINTS: Record<DemeritLevel, number> = { warning: 0, A: 1, B: 2, C: 3, D: 4 };
+export const DEMERIT_POINTS: Record<DemeritLevel, number> = { warning: 0, A: 1, B: 3, C: 6, D: 12 };
+/** A single Demerit D — or this many total points — is an automatic dismissal. */
+export const AUTO_DISMISSAL_POINTS = 12;
 export interface ViolationEntry {
   id: string;
   date: Timestamp;

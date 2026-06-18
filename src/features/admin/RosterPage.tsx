@@ -119,7 +119,7 @@ export function RosterPage() {
 
   return (
     <div>
-      <PageHeader back kicker="Admin" title="Roster & Certifications" />
+      <PageHeader kicker="Admin" title="Roster & Certifications" />
       <p className="-mt-2 mb-4 max-w-3xl text-sm text-slate-500">
         Every member with their profile and qualifications. Instructor certs share one FDLE expiration
         (3/31 of the cert year, renewed every four years). Filter to who’s expiring, then roll the selected

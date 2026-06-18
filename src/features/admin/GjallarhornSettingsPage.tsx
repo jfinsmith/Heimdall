@@ -117,7 +117,7 @@ export function GjallarhornSettingsPage() {
 
   return (
     <form onSubmit={save} className="max-w-3xl pb-24">
-      <PageHeader back kicker="Admin" title="Gjallarhorn & Email" />
+      <PageHeader kicker="Admin" title="Gjallarhorn & Email" />
       <div className="mb-4 flex items-center gap-3 rounded-lg border border-watch-100 bg-watch-900 p-4 text-watch-100">
         <GjallarhornGlyph size={36} className="text-bifrost-400" />
         <p className="text-sm">

@@ -86,7 +86,7 @@ export function ReportFormsAdminPage() {
 
   return (
     <div>
-      <PageHeader back kicker="Admin" title="Report Forms" />
+      <PageHeader kicker="Admin" title="Report Forms" />
       <p className="mb-4 max-w-2xl text-sm text-slate-500">
         Rename the report forms and sort them into categories. The form fields and the official letter text
         are built in code — adding a brand-new form happens in development, after which it appears below to be

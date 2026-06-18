@@ -18,7 +18,7 @@ export function CadetReportsPage() {
 
   return (
     <div>
-      <PageHeader back kicker="CADRE" title="Cadet Reports" />
+      <PageHeader kicker="CADRE" title="Cadet Reports" />
       <p className="-mt-2 mb-4 max-w-3xl text-sm text-slate-500">
         File academic-action reports against a class and print the official memorandum. Pick the academy,
         choose a report, fill it out, and save it to that class. (Also available from each class's Roster.)

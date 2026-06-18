@@ -92,7 +92,6 @@ export function OwnerConsolePage() {
   return (
     <div>
       <PageHeader
-        back
         kicker="Platform Owner"
         title="Owner Console"
         actions={

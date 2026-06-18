@@ -81,7 +81,7 @@ export function SettingsAdminPage() {
 
   return (
     <div className="max-w-xl">
-      <PageHeader back kicker="Admin" title="Org Settings & Branding" />
+      <PageHeader kicker="Admin" title="Org Settings & Branding" />
       <p className="mb-4 max-w-xl text-sm text-slate-500">
         These control how HEIMDALL identifies your agency outside the app itself: the organization name
         appears in email footers and printed schedule headers, the colors re-tint the interface accent,

@@ -52,7 +52,6 @@ export function CurriculumAdminPage({ scope = 'org' }: { scope?: 'org' | 'defaul
   return (
     <div>
       <PageHeader
-        back
         kicker={isDefaults ? 'Platform Owner' : 'Admin'}
         title={isDefaults ? 'Default Curricula (new organizations)' : 'Curriculum & Hours'}
         actions={

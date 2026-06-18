@@ -112,7 +112,6 @@ export function NotificationsPage() {
   return (
     <div>
       <PageHeader
-        back
         kicker="Gjallarhorn"
         title="Notifications"
         actions={

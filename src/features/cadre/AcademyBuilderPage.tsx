@@ -93,13 +93,14 @@ export function AcademyBuilderPage() {
     [liveSessions]
   );
 
-  // PSO-observed holidays within the academy add 8.5 hrs of holiday pay each.
+  // Observed holidays within the academy add the org's holiday-pay hours each.
+  const holidayPayHours = settings?.holidayPayHours ?? HOLIDAY_PAY_HOURS;
   const holidayPayBlocks = useMemo(() => {
     if (!academy || observedHolidays.size === 0) return [];
     return observedHolidayDatesInRange(academy.startDate.toDate(), academy.endDate.toDate(), observedHolidays).map(
-      (date) => ({ date, hours: HOLIDAY_PAY_HOURS })
+      (date) => ({ date, hours: holidayPayHours })
     );
-  }, [academy, observedHolidays]);
+  }, [academy, observedHolidays, holidayPayHours]);
 
   // Pay periods: ALL paid time (FDLE + agency + observed-holiday pay), grouped bi-weekly vs the target.
   const payPeriods = useMemo(() => groupPayPeriods(liveSessions, holidayPayBlocks), [liveSessions, holidayPayBlocks]);
@@ -115,7 +116,7 @@ export function AcademyBuilderPage() {
       })
       .reduce((a, s) => a + (s.hours || 0), 0);
     // Add observed-holiday pay for any observed holidays in the visible range.
-    const holidayHours = observedHolidayDatesInRange(viewRange.start, viewRange.end, observedHolidays).length * HOLIDAY_PAY_HOURS;
+    const holidayHours = observedHolidayDatesInRange(viewRange.start, viewRange.end, observedHolidays).length * holidayPayHours;
     const total = q(sessionHours + holidayHours);
     if (viewRange.type === 'twoWeek') {
       const onTarget = Math.abs(total - payTarget) < 0.01;
@@ -125,7 +126,7 @@ export function AcademyBuilderPage() {
       return { text: `Week: ${total} hrs`, color: '#16203a', bold: true };
     }
     return { text: `${total} hrs in view`, color: '#64748b', bold: false };
-  }, [viewRange, liveSessions, payTarget, observedHolidays]);
+  }, [viewRange, liveSessions, payTarget, observedHolidays, holidayPayHours]);
 
   // Paint the custom toolbar label imperatively (reliable across FC re-renders).
   React.useEffect(() => {
@@ -477,7 +478,7 @@ export function AcademyBuilderPage() {
       {!academy.isTemplate && <ApprovalPanel academy={academy} />}
 
       {/* Pay periods — bi-weekly 85-hr targets (manage overtime) */}
-      {payPeriods.length > 0 && <PayPeriodPanel payPeriods={payPeriods} target={payTarget} onView={viewPayPeriod} />}
+      {payPeriods.length > 0 && <PayPeriodPanel payPeriods={payPeriods} target={payTarget} onView={viewPayPeriod} holidayPayHours={holidayPayHours} />}
 
       {/* Holiday conflicts — the post-clone trap */}
       {holidayConflicts.length > 0 && (
@@ -914,10 +915,12 @@ function PayPeriodPanel({
   payPeriods,
   target,
   onView,
+  holidayPayHours,
 }: {
   payPeriods: ReturnType<typeof groupPayPeriods>;
   target: number;
   onView: (start: Date) => void;
+  holidayPayHours: number;
 }) {
   const [open, setOpen] = useState(false);
   const fmtRange = (start: Date, end: Date) => {
@@ -983,7 +986,7 @@ function PayPeriodPanel({
             </tbody>
           </table>
           <p className="px-3 pt-2 text-xs text-slate-500">
-            Counts all paid time (courses, PT, formation, PSO) plus {HOLIDAY_PAY_HOURS} hrs for each
+            Counts all paid time (courses, PT, formation, agency time) plus {holidayPayHours} hrs for each
             PSO-observed holiday. Lunch is excluded. Sworn members owe {target} hours per pay period; short
             periods are typically topped up with a Friday PSO assignment.
           </p>

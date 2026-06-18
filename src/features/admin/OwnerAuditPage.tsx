@@ -38,7 +38,7 @@ export function OwnerAuditPage() {
 
   return (
     <div>
-      <PageHeader back kicker="Platform Owner" title="Audit Log (all organizations)" actions={<Button onClick={load}>Refresh</Button>} />
+      <PageHeader kicker="Platform Owner" title="Audit Log (all organizations)" actions={<Button onClick={load}>Refresh</Button>} />
       {error && <p className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
       <div className="overflow-x-auto rounded-lg border border-watch-100 bg-white shadow-sm">
         <table className="w-full text-left text-sm">
