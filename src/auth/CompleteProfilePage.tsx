@@ -3,10 +3,11 @@
  * qualifications (which start unverified — a supervisor must verify before
  * they unlock restricted slots).
  */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { useOrg } from '../lib/useOrg';
 import { useAuth } from './AuthContext';
 import { WordmarkHorizontal } from '../brand/Logo';
 import type { Qualification, QualificationKey } from '../types';
@@ -21,6 +22,12 @@ export function CompleteProfilePage() {
   const [rank, setRank] = useState(profile?.rank ?? '');
   const [agency, setAgency] = useState(profile?.agency ?? '');
   const [phone, setPhone] = useState(profile?.phone ?? '');
+  // Default the agency to the user's organization (overridable — an instructor
+  // from a different employing agency can change it). Only fills an empty field.
+  const { data: org } = useOrg();
+  useEffect(() => {
+    if (org?.legalName && !profile?.agency) setAgency((a) => a || org.legalName);
+  }, [org?.legalName, profile?.agency]);
   const [claimed, setClaimed] = useState<Record<string, boolean>>(
     () => Object.fromEntries((profile?.qualifications ?? []).map((q) => [q.key, true]))
   );
@@ -80,7 +87,7 @@ export function CompleteProfilePage() {
             <Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
           </Field>
         </div>
-        <Field label="Agency" hint='e.g. "Example County Sheriff’s Office"'>
+        <Field label="Agency" hint="Defaults to your organization — change it if your employing agency differs">
           <Input value={agency} onChange={(e) => setAgency(e.target.value)} required />
         </Field>
 

@@ -559,3 +559,61 @@ export const academyApproval = onCall<{
 
   throw new HttpsError('invalid-argument', 'Unknown action.');
 });
+
+/**
+ * Cross-org feedback for the PLATFORM OWNER (the universal "report a problem"
+ * view). Returns every org's bug/feature reports — but STRIPS screenshotUrls for
+ * orgs OTHER than the owner's own, because those images can carry roster PII
+ * (SSNs, etc.). That redaction happens HERE, server-side, so the owner's client
+ * never even receives a cross-tenant screenshot URL (the storage rules would
+ * block direct access too — defense in depth). The owner's own org's reports
+ * come back whole (they already see those via the normal admin view). Read-only:
+ * triage of another org's report stays with that org's admins.
+ */
+export const listAllFeedback = onCall(async (request) => {
+  const caller = request.auth;
+  if (!caller) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = getFirestore();
+  const callerDoc = await db.doc(`users/${caller.uid}`).get();
+  if (!callerDoc.exists || callerDoc.data()!.platformOwner !== true) {
+    throw new HttpsError('permission-denied', 'Only the platform owner may view cross-org feedback.');
+  }
+  const callerOrgId = callerDoc.data()?.orgId as string | undefined;
+
+  const [reportsSnap, orgsSnap] = await Promise.all([
+    db.collection('feedbackReports').orderBy('createdAt', 'desc').limit(1000).get(),
+    db.collection('orgs').get(),
+  ]);
+  const orgName = new Map<string, string>();
+  orgsSnap.docs.forEach((o) => orgName.set(o.id, (o.data().legalName as string) || o.id));
+
+  // Explicit projection (don't over-return); Timestamps → millis so they survive
+  // the callable wire intact.
+  const reports = reportsSnap.docs.map((d) => {
+    const r = d.data() as Record<string, unknown>;
+    const sameOrg = !!callerOrgId && r.orgId === callerOrgId;
+    const shots = Array.isArray(r.screenshotUrls) ? (r.screenshotUrls as string[]) : [];
+    return {
+      id: d.id,
+      orgId: (r.orgId as string) ?? null,
+      orgName: orgName.get(r.orgId as string) ?? ((r.orgId as string) || 'Unassigned'),
+      kind: r.kind ?? 'bug',
+      title: r.title ?? '',
+      description: r.description ?? '',
+      severity: r.severity ?? 'low',
+      area: r.area ?? '',
+      stepsToReproduce: r.stepsToReproduce ?? '',
+      expected: r.expected ?? '',
+      actual: r.actual ?? '',
+      status: r.status ?? 'new',
+      submittedByName: r.submittedByName ?? '',
+      submittedByRole: r.submittedByRole ?? '',
+      submittedByEmail: r.submittedByEmail ?? '',
+      createdAtMs: (r.createdAt as { toMillis?: () => number })?.toMillis?.() ?? null,
+      // PII posture: only the owner's OWN org's screenshots are returned; others
+      // are withheld (count only).
+      ...(sameOrg ? { screenshotUrls: shots } : { screenshotsWithheld: shots.length }),
+    };
+  });
+  return { reports };
+});

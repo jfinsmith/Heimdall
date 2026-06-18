@@ -5,10 +5,11 @@
  * actually unlocks restricted slots).
  */
 // (ChangePasswordCard is defined at the bottom of this file.)
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../../lib/firebase';
 import { useAuth } from '../../auth/AuthContext';
+import { useOrg } from '../../lib/useOrg';
 import type { Qualification, QualificationKey } from '../../types';
 import { QUALIFICATION_LABELS, isInstructorQual } from '../../types';
 import { certYearOf, march31, tsFromDate } from '../../lib/time';
@@ -19,6 +20,11 @@ export function ProfilePage() {
   const [phone, setPhone] = useState(profile?.phone ?? '');
   const [rank, setRank] = useState(profile?.rank ?? '');
   const [agency, setAgency] = useState(profile?.agency ?? '');
+  // Default an empty agency to the user's organization (overridable).
+  const { data: org } = useOrg();
+  useEffect(() => {
+    if (org?.legalName && !profile?.agency) setAgency((a) => a || org.legalName);
+  }, [org?.legalName, profile?.agency]);
   const [emailOn, setEmailOn] = useState(profile?.notificationPrefs.email ?? true);
   const [leadHours, setLeadHours] = useState(profile?.notificationPrefs.reminderLeadHours ?? 48);
   const [digest, setDigest] = useState(profile?.notificationPrefs.digest ?? true);
