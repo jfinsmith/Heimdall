@@ -22,3 +22,5 @@ export { gjallarhornDailySweep, gjallarhornWeeklyDigest } from './gjallarhorn/sw
 export { setUserRole, bootstrapFirstDirector, createUserAccount, createOrg, academyApproval, sendActivationEmail, setUserSuspension, listAllFeedback, joinOrgByCode, assignUserToOrg, denyUser, listOwnerQueue, getOrgDetail, createOrgAdmin, deleteUnassignedAccount, listAllAuditLog, ownerListOrgs, ownerSwitchOrg, importDefaultCurricula } from './admin/callables';
 // Academy roster — member creation (no SSN stored; college holds SSNs locally)
 export { rosterCreateMember } from './admin/roster';
+// Billing (Phase 14) — Stripe subscriptions (checkout, portal, webhook)
+export { createCheckoutSession, createBillingPortalSession, stripeWebhook } from './billing/stripe';

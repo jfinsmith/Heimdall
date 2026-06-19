@@ -6,9 +6,10 @@
  * they navigate to it.
  */
 import React, { Suspense, lazy } from 'react';
-import { BrowserRouter, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AppShell } from './AppShell';
 import { RequireAdmin, RequireAuth, RequireStaff, RequirePlatformOwner } from '../auth/guards';
+import { useAuth } from '../auth/AuthContext';
 import { Spinner } from '../components/ui';
 // Auth/entry pages stay eager — they're small and needed immediately on load.
 import { SignInPage } from '../auth/SignInPage';
@@ -45,6 +46,8 @@ const FeedbackAdminPage = lazy(() => import('../features/feedback/FeedbackAdminP
 const ReportFormsAdminPage = lazy(() => import('../features/admin/ReportFormsAdminPage').then((m) => ({ default: m.ReportFormsAdminPage })));
 const OwnerConsolePage = lazy(() => import('../features/admin/OwnerConsolePage').then((m) => ({ default: m.OwnerConsolePage })));
 const OwnerAuditPage = lazy(() => import('../features/admin/OwnerAuditPage').then((m) => ({ default: m.OwnerAuditPage })));
+const BillingPage = lazy(() => import('../features/admin/BillingPage').then((m) => ({ default: m.BillingPage })));
+const MarketingPage = lazy(() => import('../features/marketing/MarketingPage').then((m) => ({ default: m.MarketingPage })));
 
 function RouteFallback() {
   return (
@@ -54,11 +57,25 @@ function RouteFallback() {
   );
 }
 
+/**
+ * The bare path "/" — the public marketing landing for visitors, the app for
+ * members. Signed-in users go to their dashboard (/overview), where RequireAuth
+ * applies the usual pending/awaiting-org/profile gating.
+ */
+function RootGate() {
+  const { firebaseUser, loading } = useAuth();
+  if (loading) return <RouteFallback />;
+  if (firebaseUser) return <Navigate to="/overview" replace />;
+  return <MarketingPage />;
+}
+
 export function AppRouter() {
   return (
     <BrowserRouter>
       <Suspense fallback={<RouteFallback />}>
         <Routes>
+          <Route path="/" element={<RootGate />} />
+          <Route path="/pricing" element={<MarketingPage />} />
           <Route path="/signin" element={<SignInPage />} />
           <Route path="/pending" element={<PendingApprovalPage />} />
           <Route path="/awaiting-org" element={<AwaitingOrgPage />} />
@@ -73,7 +90,9 @@ export function AppRouter() {
             </Route>
 
             <Route element={<AppShell />}>
-              <Route index element={<OverviewPage />} />
+              {/* The app dashboard lives at /overview; the bare "/" is the public
+                  marketing landing (RootGate) that redirects members here. */}
+              <Route path="/overview" element={<OverviewPage />} />
               <Route path="/notifications" element={<NotificationsPage />} />
               <Route path="/cadre/calendar" element={<CalendarPage />} />
               <Route path="/open-sessions" element={<BrowseOpenSessionsPage />} />
@@ -98,6 +117,7 @@ export function AppRouter() {
                 <Route path="/admin/holidays" element={<HolidaysAdminPage />} />
                 <Route path="/admin/settings" element={<SettingsAdminPage />} />
                 <Route path="/admin/gjallarhorn" element={<GjallarhornSettingsPage />} />
+                <Route path="/admin/billing" element={<BillingPage />} />
                 <Route path="/admin/audit" element={<AuditLogPage />} />
               </Route>
 

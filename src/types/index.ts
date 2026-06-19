@@ -181,9 +181,32 @@ export interface OrgDoc {
   shortCode: string;      // human prefix, e.g. 'phsc'
   legalName: string;      // e.g. 'Pasco-Hernando State College'
   status: 'active' | 'suspended';
-  /** Billing (Phase 14) — present once Stripe is wired. */
+  /**
+   * Billing (Phase 14). All fields are SERVER-managed (Stripe webhook via the
+   * Admin SDK; orgs are `allow write: if false` for clients) so a tenant can
+   * never forge its own subscription state.
+   *
+   * `billingEnabled` is the gate switch: when false/absent the org is treated as
+   * UNRESTRICTED (the founding PHSC tenant + any org created before we turned on
+   * commercialization). Only when it's true does `subscriptionStatus` actually
+   * gate the org. This keeps every existing tenant non-regressing.
+   */
+  billingEnabled?: boolean;
   plan?: string;
-  subscriptionStatus?: 'trialing' | 'active' | 'past_due' | 'canceled';
+  /** Mirrors Stripe's Subscription.Status verbatim (written by the webhook). */
+  subscriptionStatus?:
+    | 'trialing'
+    | 'active'
+    | 'past_due'
+    | 'canceled'
+    | 'incomplete'
+    | 'incomplete_expired'
+    | 'paused'
+    | 'unpaid';
+  stripeCustomerId?: string;
+  stripeSubscriptionId?: string;
+  /** Current paid period end (epoch ms) — used for a grace window on past_due. */
+  currentPeriodEnd?: number;
   createdAt: Timestamp;
   createdBy?: string;
 }

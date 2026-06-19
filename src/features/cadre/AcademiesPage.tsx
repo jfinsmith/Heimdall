@@ -19,6 +19,8 @@ import {
 import { db } from '../../lib/firebase';
 import { useCollection, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
+import { useOrg } from '../../lib/useOrg';
+import { billingActive } from '../../lib/subscription';
 import { fmtDate, tsFromDate, addDays, toDateInputValue } from '../../lib/time';
 import type { AcademyDoc, CurriculumDoc, SessionDoc, UserDoc } from '../../types';
 import { Badge, Button, Field, Input, PageHeader, Select } from '../../components/ui';
@@ -36,14 +38,20 @@ export function AcademiesPage() {
   const [cloneSource, setCloneSource] = useState<WithId<AcademyDoc> | null>(null);
   const [deleteSource, setDeleteSource] = useState<WithId<AcademyDoc> | null>(null);
 
+  // Subscription gating (Phase 14): when an org's plan has lapsed, creating new
+  // academies is paused (existing records stay editable). Safe-by-default — true
+  // for the founding/complimentary tenants and while the org doc is loading.
+  const { data: org } = useOrg();
+  const canCreate = billingActive(org);
+
   // Global "+ Create" action deep-links here with ?create=1
   useEffect(() => {
     if (params.get('create') === '1') {
-      setCreateOpen(true);
+      if (canCreate) setCreateOpen(true);
       params.delete('create');
       setParams(params, { replace: true });
     }
-  }, [params, setParams]);
+  }, [params, setParams, canCreate]);
 
   const { data: allAcademies, loading } = useCollection<AcademyDoc>('academies', [orderBy('startDate', 'desc')]);
   const { data: curricula } = useCollection<CurriculumDoc>('curricula');
@@ -83,7 +91,12 @@ export function AcademiesPage() {
               Show archived
             </label>
             <Button onClick={() => setTemplateCreateOpen(true)}>New template</Button>
-            <Button variant="primary" onClick={() => setCreateOpen(true)}>
+            <Button
+              variant="primary"
+              onClick={() => setCreateOpen(true)}
+              disabled={!canCreate}
+              title={canCreate ? undefined : 'Your subscription is inactive — renew under Admin → Billing to create academies.'}
+            >
               New academy
             </Button>
           </>
@@ -122,7 +135,12 @@ export function AcademiesPage() {
                 </td>
                 <td className="px-4 py-3">{a.targetTotalHours}</td>
                 <td className="px-4 py-3 text-right">
-                  <Button variant="ghost" onClick={() => setCloneSource(a)}>
+                  <Button
+                    variant="ghost"
+                    onClick={() => setCloneSource(a)}
+                    disabled={!canCreate}
+                    title={canCreate ? undefined : 'Your subscription is inactive — renew under Admin → Billing.'}
+                  >
                     Clone
                   </Button>
                   {a.status === 'archived' ? (
@@ -185,7 +203,12 @@ export function AcademiesPage() {
                           {fmtDate(t.startDate)} → {fmtDate(t.endDate)}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <Button variant="primary" onClick={() => setCloneSource(t)}>
+                          <Button
+                            variant="primary"
+                            onClick={() => setCloneSource(t)}
+                            disabled={!canCreate}
+                            title={canCreate ? undefined : 'Your subscription is inactive — renew under Admin → Billing.'}
+                          >
                             Use template
                           </Button>
                           <Button variant="ghost" className="text-red-700" onClick={() => setDeleteSource(t)}>

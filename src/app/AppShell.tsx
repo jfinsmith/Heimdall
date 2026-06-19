@@ -4,10 +4,12 @@
  * Mobile: sidebar collapses behind a hamburger; everything keyboard-reachable.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
 import { auth, functions } from '../lib/firebase';
 import { useAuth } from '../auth/AuthContext';
+import { useOrg } from '../lib/useOrg';
+import { billingState } from '../lib/subscription';
 import { can } from '../lib/rbac';
 import { useRoleLabels } from './providers';
 import { useClickOutside } from '../lib/useClickOutside';
@@ -135,10 +137,15 @@ export function AppShell() {
   const { orgs: switchOrgs, switchTo, busy: switchBusy } = useOrgSwitch(platformOwner);
   const impersonating = platformOwner && !!profile?.homeOrgId && profile.orgId !== profile.homeOrgId;
   const activeOrgName = switchOrgs.find((o) => o.orgId === profile?.orgId)?.legalName ?? profile?.orgId ?? '';
+  // Subscription gating (Phase 14): only shows when commercialization is on for
+  // this org AND it's lapsed — never for the founding/complimentary tenants.
+  const { data: org } = useOrg();
+  const billing = billingState(org);
+  const showBillingBanner = billing.gated && (!billing.active || billing.inGrace);
 
   const nav = (
     <nav aria-label="Main navigation" className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3">
-      <NavItem to="/" label="Overview" end />
+      <NavItem to="/overview" label="Overview" end />
       {/* CADRE — Coordinated Academy Duty & Roster Engine */}
       <SectionLabel title="CADRE — Coordinated Academy Duty & Roster Engine">CADRE</SectionLabel>
       <NavItem to="/cadre/calendar" label="Calendar" />
@@ -161,6 +168,7 @@ export function AppShell() {
           <NavItem to="/admin/holidays" label="Holidays" />
           <NavItem to="/admin/settings" label="Org Settings" />
           <NavItem to="/admin/gjallarhorn" label="Gjallarhorn & Email" />
+          <NavItem to="/admin/billing" label="Billing" />
           <NavItem to="/admin/audit" label="Audit Log" />
         </>
       )}
@@ -186,7 +194,7 @@ export function AppShell() {
         }`}
       >
         <div className="flex h-14 items-center px-4">
-          <NavLink to="/" className="text-watch-50 [&_svg]:text-bifrost-400">
+          <NavLink to="/overview" className="text-watch-50 [&_svg]:text-bifrost-400">
             {/* HEIMDALL platform branding in the app UI (org branding is for printed documents). */}
             <WordmarkHorizontal size={26} />
           </NavLink>
@@ -270,6 +278,30 @@ export function AppShell() {
               Please contact Academy Leadership to resolve this and restore your access.
               {profile.suspensionReason ? <span className="block">Reason: {profile.suspensionReason}</span> : null}
             </p>
+          </div>
+        )}
+        {showBillingBanner && (
+          <div
+            className={`no-print flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2 md:px-8 ${
+              billing.inGrace ? 'border-amber-300 bg-amber-100 text-amber-900' : 'border-red-200 bg-red-50 text-red-800'
+            }`}
+            role="status"
+          >
+            <p className="text-sm">
+              {billing.inGrace
+                ? 'A subscription payment is past due — please update billing to avoid interruption.'
+                : 'Your subscription is inactive. Creating and publishing new academies is paused; existing records stay available.'}
+            </p>
+            {admin && (
+              <Link
+                to="/admin/billing"
+                className={`rounded-md px-3 py-1.5 text-sm font-semibold ${
+                  billing.inGrace ? 'text-amber-900 hover:bg-amber-200' : 'text-red-800 hover:bg-red-100'
+                }`}
+              >
+                Manage billing →
+              </Link>
+            )}
           </div>
         )}
         <main className="flex-1 px-4 py-6 md:px-8">
