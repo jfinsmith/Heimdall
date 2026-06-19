@@ -13,7 +13,7 @@ const BRAND_AMBER = '#d99320';
  * inline SVG; a hosted image renders reliably and degrades to alt text).
  * TODO(setup): update the host when moving to a custom domain.
  */
-const MARK_IMG = `<img src="https://heimdall.tgcmd-portal.com/brand/heimdall-mark.png" width="42" height="30" alt="" style="display:block;border:0;" />`;
+const MARK_IMG = `<img src="https://heimdallscheduling.com/brand/heimdall-mark.png" width="42" height="30" alt="" style="display:block;border:0;" />`;
 
 export interface EmailContent {
   subject: string;

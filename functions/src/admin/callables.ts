@@ -15,7 +15,7 @@ import type { AcademyDoc, Role } from '../types';
 import { ADMIN_ROLES, STAFF_ROLES } from '../types';
 
 /** Production sign-in URL used in account emails. */
-const SITE_URL = 'https://heimdall.tgcmd-portal.com';
+const SITE_URL = 'https://heimdallscheduling.com';
 
 const VALID_ROLES: Role[] = ['director', 'lieutenant', 'sergeant', 'coordinator', 'instructor', 'guest'];
 

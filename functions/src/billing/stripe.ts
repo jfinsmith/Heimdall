@@ -37,7 +37,7 @@ const STRIPE_WEBHOOK_SECRET = defineSecret('STRIPE_WEBHOOK_SECRET');
 const STRIPE_PRICE_ID = defineSecret('STRIPE_PRICE_ID');
 
 /** Where Stripe sends the user back to (the app domain that hosts /admin/billing). */
-const APP_URL = 'https://heimdall.tgcmd-portal.com';
+const APP_URL = 'https://heimdallscheduling.com';
 
 function makeStripe(): Stripe {
   const key = STRIPE_SECRET_KEY.value();

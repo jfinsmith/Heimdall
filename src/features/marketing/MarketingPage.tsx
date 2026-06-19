@@ -53,6 +53,25 @@ const AUDIENCE = [
   'In-service & specialized training units',
 ];
 
+// General market estimates for comparison — NOT named-competitor quotes (those
+// are typically custom). Keep these honest + clearly illustrative.
+const COMPARISON: { option: string; cost: string; gets: string; highlight?: boolean }[] = [
+  { option: 'HEIMDALL', cost: '$199 / mo flat', gets: 'Unlimited staff & cadets — scheduling, roster, gradebook, FDLE curricula, documents & notifications', highlight: true },
+  { option: 'Per-seat scheduling apps', cost: '~$3–6 / user / mo', gets: 'A 30-person academy ≈ $90–180/mo — and that’s scheduling only' },
+  { option: 'Enterprise training / records suites', cost: 'Custom quote — often thousands / yr', gets: 'Powerful, but priced and contracted for large agencies' },
+  { option: 'Spreadsheets & paper', cost: '“Free”', gets: 'No approvals, audit trail, notifications, or printable rosters — all manual' },
+];
+
+const TRUST = ['Hosted in the United States', 'Each agency’s data isolated', 'No SSNs stored', 'Your branding on documents'];
+
+const FAQS: { q: string; a: string }[] = [
+  { q: 'What is HEIMDALL?', a: 'Scheduling, roster, gradebook, and records software for law-enforcement and corrections training academies, built around the Florida CMS basic-recruit program. It replaces the spreadsheets used to build schedules, track cadets and grades, and generate documents.' },
+  { q: 'Who is it for?', a: 'Law-enforcement and corrections basic-recruit academies, New Member Training (NMT) programs, and in-service or specialized training units.' },
+  { q: 'How much does it cost?', a: 'A flat $199/month per organization — unlimited staff and cadets, no per-seat fees. Pricing is finalized during beta.' },
+  { q: 'Can I sign up now?', a: 'Not yet. HEIMDALL is in beta with a founding academy and isn’t accepting new subscriptions. Sign-ups open here once testing is complete.' },
+  { q: 'Where is my data stored and is it secure?', a: 'Data is hosted in the United States, each organization’s records are isolated so one academy can never see another’s, and HEIMDALL does not store Social Security Numbers.' },
+];
+
 function BetaBanner() {
   return (
     <div className="bg-bifrost-500 px-4 py-2 text-center text-sm font-semibold text-watch-950">
@@ -213,8 +232,44 @@ export function MarketingPage() {
         </div>
       </section>
 
+      {/* Comparison */}
+      <section className="bg-watch-50 px-5 py-16 md:px-10">
+        <div className="mx-auto max-w-4xl">
+          <h2 className="text-center font-display text-2xl font-bold md:text-3xl">Priced for academies, not enterprises</h2>
+          <p className="mx-auto mt-2 max-w-2xl text-center text-sm text-slate-500">
+            One flat fee covers your whole academy — here’s how that stacks up against the alternatives.
+          </p>
+          <div className="mt-8 overflow-x-auto rounded-xl border border-watch-100 bg-white shadow-sm">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-watch-50 text-xs uppercase tracking-wider text-watch-600">
+                <tr>
+                  <th className="px-4 py-3">Option</th>
+                  <th className="px-4 py-3">Typical cost</th>
+                  <th className="px-4 py-3">What you get</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-watch-100">
+                {COMPARISON.map((c) => (
+                  <tr key={c.option} className={c.highlight ? 'bg-bifrost-50/70' : ''}>
+                    <td className="px-4 py-3 font-semibold text-watch-900">
+                      {c.option}
+                      {c.highlight && <span className="ml-2 rounded-full bg-bifrost-500 px-2 py-0.5 text-[10px] font-bold uppercase text-watch-950">You</span>}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 font-medium text-watch-800">{c.cost}</td>
+                    <td className="px-4 py-3 text-slate-600">{c.gets}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-3 text-center text-xs text-slate-400">
+            Figures are general market estimates for illustration; most academy/records platforms are custom-quoted.
+          </p>
+        </div>
+      </section>
+
       {/* Pricing */}
-      <section id="pricing" className="bg-watch-50 px-5 py-16 md:px-10">
+      <section id="pricing" className="px-5 py-16 md:px-10">
         <div className="mx-auto max-w-xl text-center">
           <h2 className="font-display text-2xl font-bold md:text-3xl">Simple, flat pricing</h2>
           <p className="mt-3 text-sm text-slate-600">
@@ -246,6 +301,30 @@ export function MarketingPage() {
           <p className="mt-4 text-xs text-slate-400">
             When billing opens, payments will be processed securely by Stripe — HEIMDALL never sees your card details.
           </p>
+        </div>
+      </section>
+
+      {/* Trust strip */}
+      <section className="border-y border-watch-100 bg-watch-50 px-5 py-6 md:px-10">
+        <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm font-medium text-watch-700">
+          {TRUST.map((t) => (
+            <span key={t} className="flex items-center gap-1.5"><span aria-hidden className="text-bifrost-600">✓</span>{t}</span>
+          ))}
+        </div>
+      </section>
+
+      {/* FAQ */}
+      <section id="faq" className="px-5 py-16 md:px-10">
+        <div className="mx-auto max-w-3xl">
+          <h2 className="text-center font-display text-2xl font-bold md:text-3xl">Frequently asked questions</h2>
+          <dl className="mt-8 space-y-4">
+            {FAQS.map((f) => (
+              <div key={f.q} className="rounded-xl border border-watch-100 bg-white p-5 shadow-sm">
+                <dt className="font-semibold text-watch-900">{f.q}</dt>
+                <dd className="mt-2 text-sm leading-relaxed text-slate-600">{f.a}</dd>
+              </div>
+            ))}
+          </dl>
         </div>
       </section>
 
