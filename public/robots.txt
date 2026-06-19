@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+# Auth-gated app areas hold no crawlable content (they redirect to sign-in).
+Disallow: /admin/
+Disallow: /owner/
+Disallow: /cadre/
+Disallow: /roster/
+Disallow: /cadet-reports/
+
+Sitemap: https://heimdall.tgcmd-portal.com/sitemap.xml

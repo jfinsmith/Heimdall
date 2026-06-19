@@ -4,20 +4,88 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="./favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="HEIMDALL — academy training schedule and instructor staffing. Watch staffing, sound the alert." />
-    <meta property="og:title" content="HEIMDALL" />
-    <meta property="og:description" content="Academy training schedules, instructor sign-up, and Gjallarhorn staffing alerts." />
-    <meta property="og:image" content="./brand/heimdall-full.png" />
+    <meta name="theme-color" content="#0d1426" />
+
+    <title>HEIMDALL — Training Academy Scheduling, Roster &amp; Records Software</title>
+    <meta
+      name="description"
+      content="HEIMDALL is scheduling, roster, gradebook, and records software for law-enforcement and corrections training academies — built around the Florida CMS basic-recruit program. Replace the spreadsheets: build schedules, track cadets and grades, and generate documents in one place."
+    />
+    <meta
+      name="keywords"
+      content="law enforcement training academy software, police academy scheduling, corrections academy management, FDLE basic recruit, cadet roster software, academy gradebook, public safety training records, recruit class scheduling, criminal justice academy management"
+    />
+    <meta name="robots" content="index,follow" />
+    <link rel="canonical" href="https://heimdall.tgcmd-portal.com/" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="HEIMDALL Scheduling" />
+    <meta property="og:url" content="https://heimdall.tgcmd-portal.com/" />
+    <meta property="og:title" content="HEIMDALL — Training Academy Scheduling, Roster &amp; Records" />
+    <meta
+      property="og:description"
+      content="Scheduling, roster, gradebook, and document software for law-enforcement and corrections training academies. Built around the Florida CMS basic-recruit program."
+    />
+    <meta property="og:image" content="https://heimdall.tgcmd-portal.com/brand/heimdall-full.png" />
+    <meta property="og:image:alt" content="HEIMDALL Scheduling" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="HEIMDALL — Training Academy Scheduling, Roster &amp; Records" />
+    <meta
+      name="twitter:description"
+      content="Scheduling, roster, gradebook, and document software for law-enforcement and corrections training academies."
+    />
+    <meta name="twitter:image" content="https://heimdall.tgcmd-portal.com/brand/heimdall-full.png" />
+
+    <!-- Structured data: software product + planned offer (beta) -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "HEIMDALL",
+        "applicationCategory": "BusinessApplication",
+        "applicationSubCategory": "Training Academy Management",
+        "operatingSystem": "Web",
+        "url": "https://heimdall.tgcmd-portal.com/",
+        "description": "Scheduling, roster, gradebook, and records software for law-enforcement and corrections training academies, built around the Florida CMS basic-recruit program.",
+        "offers": {
+          "@type": "Offer",
+          "price": "199",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/PreOrder",
+          "description": "Flat monthly subscription per organization — unlimited staff and cadets. Currently in beta; subscriptions open after testing."
+        },
+        "publisher": {
+          "@type": "Organization",
+          "name": "HEIMDALL Scheduling",
+          "logo": "https://heimdall.tgcmd-portal.com/brand/heimdall-full.png"
+        }
+      }
+    </script>
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Archivo+Narrow:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <title>HEIMDALL</title>
   </head>
   <body>
     <div id="root"></div>
+    <!-- Crawler / no-JS fallback so the marketing copy is indexable without running the SPA. -->
+    <noscript>
+      <h1>HEIMDALL — Training Academy Scheduling, Roster &amp; Records</h1>
+      <p>
+        HEIMDALL is scheduling, roster, gradebook, and records software for law-enforcement and corrections
+        training academies, built around the Florida CMS basic-recruit program. Build class schedules with
+        chain-of-command approval, track cadet attendance, demerits, and end-of-course grades, start from
+        FDLE-aligned curricula, generate counseling and academic-action documents, and keep every
+        organization's records isolated. Planned pricing: $199/month flat per organization, unlimited staff and
+        cadets. Currently in beta — new subscriptions open after testing.
+      </p>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
