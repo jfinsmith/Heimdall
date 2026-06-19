@@ -60,6 +60,17 @@ body {
   color: #166534;
   font-weight: 700;
 }
+/* Holiday name drawn on the timed wash in the builder's time-grid body (which has
+   no all-day lane). Pinned near the top of the shaded band, centered & legible. */
+.hd-holiday-grid-label {
+  color: #000;
+  font-weight: 700;
+  font-size: 0.7rem;
+  line-height: 1.2;
+  padding: 2px 4px;
+  text-align: center;
+  white-space: normal;
+}
 /* Don't let the holiday chip collapse — give it room for the name */
 .fc-daygrid-event.hd-holiday {
   white-space: normal;

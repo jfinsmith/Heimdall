@@ -126,7 +126,11 @@ export function observedHolidayDatesInRange(start: Date, end: Date, observed: Se
 export function holidayBackgroundEvents(
   disabled: Set<string> = new Set(),
   observed: Set<string> = new Set(),
-  range?: { fromYear: number; toYear: number }
+  range?: { fromYear: number; toYear: number },
+  // labelInBody: for calendars that HIDE the all-day lane (the builder), draw a
+  // timed wash over the work hours (08:00–16:30) that carries the holiday name in
+  // the grid body — otherwise the name (an all-day event) would be invisible.
+  opts: { labelInBody?: boolean } = {}
 ): EventInput[] {
   // Holidays are computed, not hardcoded, so any year is derivable. Render the
   // span the calendar actually shows (data-driven) — clamped to at least
@@ -142,14 +146,32 @@ export function holidayBackgroundEvents(
       // Local-date key (toISOString would shift a local-midnight date a day in +UTC zones).
       const key = dateKey(h.date);
       const isObserved = observed.has(h.key);
-      events.push({
-        id: `holiday-bg-${key}`,
-        start: h.date,
-        allDay: true,
-        display: 'background',
-        backgroundColor: '#b91c1c',
-        extendedProps: { holiday: true },
-      });
+      if (opts.labelInBody) {
+        // Timed wash over the work hours, carrying the name in the grid body.
+        const ws = new Date(h.date.getFullYear(), h.date.getMonth(), h.date.getDate(), 8, 0);
+        const we = new Date(h.date.getFullYear(), h.date.getMonth(), h.date.getDate(), 16, 30);
+        events.push({
+          id: `holiday-body-${key}`,
+          title: h.name,
+          start: ws,
+          end: we,
+          display: 'background',
+          backgroundColor: isObserved ? '#bbf7d0' : '#fecaca',
+          extendedProps: { holiday: true, holidayBodyLabel: true, observedPay: isObserved ? HOLIDAY_PAY_HOURS : 0 },
+        });
+      } else {
+        events.push({
+          id: `holiday-bg-${key}`,
+          start: h.date,
+          allDay: true,
+          display: 'background',
+          backgroundColor: '#b91c1c',
+          extendedProps: { holiday: true },
+        });
+      }
+      // All-day name label — month banner + list view (+ the all-day lane on
+      // calendars that show it). Hidden in the builder's time-grid (no lane), where
+      // the timed wash above carries the name instead.
       events.push({
         id: `holiday-label-${key}`,
         title: h.name,

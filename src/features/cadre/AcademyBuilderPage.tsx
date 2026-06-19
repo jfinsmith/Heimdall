@@ -193,7 +193,7 @@ export function AcademyBuilderPage() {
   }, [sessions, search]);
 
   const events = useMemo(
-    () => [...matchedSessions.map((s) => sessionToEvent(s, { editable: true })), ...holidayBackgroundEvents(disabledHolidays, observedHolidays, holidayRange)],
+    () => [...matchedSessions.map((s) => sessionToEvent(s, { editable: true })), ...holidayBackgroundEvents(disabledHolidays, observedHolidays, holidayRange, { labelInBody: true })],
     [matchedSessions, disabledHolidays, observedHolidays, holidayRange]
   );
 

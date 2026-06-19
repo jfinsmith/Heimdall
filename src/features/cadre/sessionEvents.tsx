@@ -89,8 +89,19 @@ export function renderEventContent(arg: EventContentArg): React.ReactNode | unde
   // an EMPTY event when eventContent returns undefined — it does not fall back
   // to default — which previously collapsed the label to an invisible line.
   if (arg.event.extendedProps.holiday) {
-    if (arg.event.display === 'background') return undefined; // the red wash, no text
     const pay = arg.event.extendedProps.observedPay as number | undefined;
+    if (arg.event.display === 'background') {
+      // Plain wash unless this is the builder's timed body-label, and only in a
+      // time-grid view (in month/list the all-day label carries the name).
+      const isTimeGrid = arg.view.type.startsWith('timeGrid') || arg.view.type === 'twoWeek';
+      if (!arg.event.extendedProps.holidayBodyLabel || !isTimeGrid) return undefined;
+      return (
+        <div className="hd-holiday-grid-label">
+          {arg.event.title}
+          {pay ? <span className="hd-holiday-pay"> · +{pay} hr pay</span> : null}
+        </div>
+      );
+    }
     return (
       <div className="hd-holiday-label">
         {arg.event.title}
