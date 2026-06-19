@@ -58,7 +58,6 @@ export const FDLE_DEFAULT_CURRICULA: DefaultCurriculum[] = [
     active: true,
     estimated: true,
     rosterModules: ['le_attendance', 'discipline', 'grades', 'reports'],
-    reportCategories: ['le', 'general'],
   },
   shell('co_brt', 'Corrections (Basic Recruit)', 'Florida Basic Recruit Training Program — Corrections'),
   shell('eot', 'Equivalency of Training (EOT)', 'FDLE Equivalency of Training'),

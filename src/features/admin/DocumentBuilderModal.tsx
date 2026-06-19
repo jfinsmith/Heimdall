@@ -1,14 +1,13 @@
 /**
- * Phase 12 — in-app document builder. Lets the platform owner compose an
- * org-scoped document (fields + paragraph/locked-clause blocks) that renders
- * through the same MemoDocument engine as the code-defined documents. Saved to
- * the `documentForms` collection, stamped with the current org.
+ * Owner document builder. Composes a library form (fields + paragraph/locked-clause
+ * blocks) that renders through the same MemoDocument engine as the code-defined
+ * documents. Saved to the owner-managed `documentLibrary` collection as either a
+ * GENERAL (all orgs) or SPECIALIZED (assigned to orgs) form. Platform-owner only.
  *
  * Tokens available in header/signer/distribution templates and in block text:
  *   {cadetName} {fromName} {directorName} {memoDate} {reSubject} + each field key.
- * A `clause` block is rendered as LOCKED policy/liability text; a `paragraph` is
- * ordinary prose. Wording authored here is the org's own — surface for legal
- * review; never fabricate statutory citations (use [bracketed placeholders]).
+ * A `clause` block renders as LOCKED policy/liability text. Keep statutory/policy
+ * citations as [bracketed placeholders] — never fabricate rule numbers.
  */
 import React, { useState } from 'react';
 import { addDoc, collection, deleteField, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
@@ -16,9 +15,8 @@ import { db } from '../../lib/firebase';
 import type { WithId } from '../../lib/firestore';
 import { Button, Field, Input, Select, TextArea } from '../../components/ui';
 import { Modal } from '../../components/Modal';
-import type { ReportCategory } from '../../types';
 import type { ReportField, DocBlock } from '../cadre/reports/reportTypes';
-import type { DocumentFormDoc } from '../cadre/reports/documentForms';
+import type { LibraryFormDoc } from '../cadre/reports/documentLibrary';
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 
@@ -30,7 +28,7 @@ type BlockRow = DocBlock & { _id: string };
 let _rowSeq = 0;
 const rowId = () => `r${_rowSeq++}`;
 
-function defaultHeader(appliesTo: DocumentFormDoc['appliesTo']) {
+function defaultHeader(appliesTo: LibraryFormDoc['appliesTo']) {
   const rows: { label: string; value: string }[] = [];
   if (appliesTo === 'cadet') rows.push({ label: 'To:', value: '{cadetName}' });
   rows.push({ label: 'From:', value: '{fromName}' });
@@ -42,22 +40,21 @@ function defaultHeader(appliesTo: DocumentFormDoc['appliesTo']) {
 
 export function DocumentBuilderModal({
   editing,
-  categories,
-  orgId,
+  availability,
   createdBy,
   onClose,
 }: {
-  editing: WithId<DocumentFormDoc> | null;
-  categories: ReportCategory[];
-  orgId: string;
+  /** Existing library form to edit, or null for a new one. */
+  editing: WithId<LibraryFormDoc> | null;
+  /** For a NEW form: which library section it goes in. Ignored when editing. */
+  availability: 'general' | 'specialized';
   createdBy: string;
   onClose: () => void;
 }) {
   const [name, setName] = useState(editing?.name ?? '');
   const [purpose, setPurpose] = useState(editing?.purpose ?? '');
   const [reSubject, setReSubject] = useState(editing?.reSubject ?? '');
-  const [category, setCategory] = useState(editing?.category ?? categories[0]?.key ?? 'general');
-  const [appliesTo, setAppliesTo] = useState<DocumentFormDoc['appliesTo']>(editing?.appliesTo ?? 'cadet');
+  const [appliesTo, setAppliesTo] = useState<LibraryFormDoc['appliesTo']>(editing?.appliesTo ?? 'cadet');
   const [fields, setFields] = useState<FieldRow[]>(() => (editing?.fields ?? []).map((f) => ({ ...f, _id: rowId() })));
   const [header, setHeader] = useState(() => editing?.headerFields ?? defaultHeader(editing?.appliesTo ?? 'cadet'));
   const [blocks, setBlocks] = useState<BlockRow[]>(() =>
@@ -79,12 +76,13 @@ export function DocumentBuilderModal({
     setHeader((p) => p.map((h, j) => (j === i ? { ...h, ...patch } : h)));
 
   const missing = !name.trim() || !reSubject.trim() || blocks.every((b) => !b.text.trim());
+  const sectionLabel = (editing?.availability ?? availability) === 'specialized' ? 'Specialized' : 'General';
 
   async function save() {
     setBusy(true);
     setError(null);
     try {
-      // Assign stable keys: keep an existing field's key; derive a fresh one from
+      // Stable field keys: keep an existing field's key; derive a fresh one from
       // the label (deduped) for any new field — keys are how filed values are stored.
       const used = new Set<string>();
       const outFields: ReportField[] = fields
@@ -108,7 +106,6 @@ export function DocumentBuilderModal({
         name: name.trim(),
         purpose: purpose.trim(),
         reSubject: reSubject.trim(),
-        category,
         appliesTo,
         fields: outFields,
         headerFields: header.filter((h) => h.label.trim() || h.value.trim()),
@@ -122,16 +119,18 @@ export function DocumentBuilderModal({
       };
 
       if (editing) {
-        // On edit, a cleared optional field must be removed (it was omitted above).
-        await updateDoc(doc(db, 'documentForms', editing.id), {
+        // Preserve availability/orgIds (managed on the list row); clear emptied opt fields.
+        await updateDoc(doc(db, 'documentLibrary', editing.id), {
           ...payload,
           ...(ack ? {} : { acknowledgment: deleteField() }),
           ...(ackLabel ? {} : { ackSignerLabel: deleteField() }),
         });
       } else {
-        await addDoc(collection(db, 'documentForms'), {
+        await addDoc(collection(db, 'documentLibrary'), {
           ...payload,
-          orgId,
+          kind: 'letter',
+          availability,
+          ...(availability === 'specialized' ? { orgIds: [] } : {}),
           createdBy,
           createdAt: serverTimestamp(),
         });
@@ -146,30 +145,27 @@ export function DocumentBuilderModal({
   const fieldKeyList = fields.map((f) => f.key?.trim() || slug(f.label)).filter(Boolean);
 
   return (
-    <Modal open onClose={onClose} title={`${editing ? 'Edit' : 'New'} document`} wide>
+    <Modal open onClose={onClose} title={`${editing ? 'Edit' : 'New'} ${sectionLabel.toLowerCase()} document`} wide>
       <div className="space-y-5">
         {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          Wording you author here is your organization’s own. Keep statutory/policy citations as
-          {' '}<code>[bracketed placeholders]</code> for your legal pass — don’t invent rule numbers.
+          {sectionLabel === 'General'
+            ? 'General documents are available to every organization. '
+            : 'Specialized documents are assigned to specific organizations (set assignments on the list). '}
+          Keep statutory/policy citations as <code>[bracketed placeholders]</code> for a legal pass — don’t invent rule numbers.
         </div>
 
         {/* Identity */}
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Document name" hint="Shown on the card and in the filed-reports list">
+          <Field label="Document name" hint="Shown on the form card and the filed-reports list">
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Range Safety Briefing" />
           </Field>
           <Field label="Re: subject line">
             <Input value={reSubject} onChange={(e) => setReSubject(e.target.value)} placeholder="e.g. Firearms Range Safety Acknowledgment" />
           </Field>
-          <Field label="Category">
-            <Select value={category} onChange={(e) => setCategory(e.target.value)}>
-              {categories.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
-            </Select>
-          </Field>
           <Field label="Addresses" hint="Cadet = To-the-cadet letter; File/General = subject in fields">
             <Select value={appliesTo} onChange={(e) => {
-              const v = e.target.value as DocumentFormDoc['appliesTo'];
+              const v = e.target.value as LibraryFormDoc['appliesTo'];
               setAppliesTo(v);
               if (!editing) setHeader(defaultHeader(v));
             }}>
@@ -178,7 +174,7 @@ export function DocumentBuilderModal({
               <option value="general">General</option>
             </Select>
           </Field>
-          <Field label="Purpose" className="sm:col-span-2" hint="One line describing when to use it">
+          <Field label="Purpose" hint="One line describing when to use it">
             <Input value={purpose} onChange={(e) => setPurpose(e.target.value)} />
           </Field>
         </div>
@@ -284,7 +280,7 @@ export function DocumentBuilderModal({
 
         <label className="flex items-center gap-2 text-sm text-slate-700">
           <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
-          Active (available on the Reports tab)
+          Active (available to file)
         </label>
 
         <div className="flex justify-end gap-2">

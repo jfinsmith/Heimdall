@@ -9,7 +9,7 @@ import { db, storage } from '../../lib/firebase';
 import { useDoc, orgConfigPath } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import type { GlobalSettings } from '../../types';
-import { Button, Field, Input, PageHeader, Select } from '../../components/ui';
+import { Button, Field, Input, PageHeader, Select, TextArea } from '../../components/ui';
 import { logAudit } from '../sessions/audit';
 
 export function SettingsAdminPage() {
@@ -23,6 +23,7 @@ export function SettingsAdminPage() {
   const [payTarget, setPayTarget] = useState(85);
   const [jurisdiction, setJurisdiction] = useState<'FL' | 'neutral'>('neutral');
   const [tagline, setTagline] = useState('');
+  const [addressLines, setAddressLines] = useState('');
   const [siteCode, setSiteCode] = useState('');
   const [saved, setSaved] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -54,6 +55,7 @@ export function SettingsAdminPage() {
     setPayTarget(settings.payPeriodTargetHours ?? 85);
     setJurisdiction(settings.jurisdiction ?? (orgId === 'phsc' ? 'FL' : 'neutral'));
     setTagline(settings.letterheadTagline ?? '');
+    setAddressLines((settings.letterheadAddressLines ?? []).join('\n'));
     setSiteCode(settings.siteCode ?? '');
   }, [settings, orgId]);
 
@@ -70,6 +72,7 @@ export function SettingsAdminPage() {
         payPeriodTargetHours: payTarget,
         jurisdiction,
         letterheadTagline: tagline,
+        letterheadAddressLines: addressLines.split('\n').map((l) => l.trim()).filter(Boolean),
         siteCode: siteCode.trim(),
       },
       { merge: true }
@@ -142,6 +145,9 @@ export function SettingsAdminPage() {
         </Field>
         <Field label="Letterhead tagline (optional)" hint="Shown under your organization name on printed letters">
           <Input value={tagline} onChange={(e) => setTagline(e.target.value)} />
+        </Field>
+        <Field label="Address / contact lines (optional)" hint="One per line — printed under the document header (e.g. campus addresses)">
+          <TextArea value={addressLines} onChange={(e) => setAddressLines(e.target.value)} rows={3} />
         </Field>
         <Field
           label="Site join code (optional)"

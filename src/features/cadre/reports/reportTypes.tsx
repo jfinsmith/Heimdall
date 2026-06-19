@@ -136,8 +136,8 @@ const ACADEMIC_REPORT_TYPES: ReportType[] = [
     body: (d) => (
       <>
         <p>On <U>{label(d.proficiencyDate)}</U>, you failed to pass the required proficiencies, after being given ample time to prepare and remediation for CJK <U>{label(d.course)}</U>. Per rule 11B-35.0024(1) F.A.C., "Students enrolled in a Commission-Approved Basic Recruit Training Program, Instructor Training Courses, or Specialized or Advanced Training Course shall qualify through demonstration of proficiency skill(s) in the applicable course(s) and pass a written end-of-course examination."</p>
-        <p>You must complete a course retake of CJK <U>{code(d.course)}</U> at a future date. Per Rule 11B-35.0024 (1) F.A.C., you must successfully complete and achieve a passing grade in all courses required by the Florida CMS Law Enforcement Recruit Training Program in order to receive a Certificate of Completion and a voucher for the State Officer Certification Exam from Pasco-Hernando State College.</p>
-        <p>You will be able to continue in PHSC Academy, however, if you receive a failing grade in any future courses, you will be dismissed from the Academy. You may be allowed to enroll in a future Academy upon receiving authorization from the Academy Director.</p>
+        <p>You must complete a course retake of CJK <U>{code(d.course)}</U> at a future date. Per Rule 11B-35.0024 (1) F.A.C., you must successfully complete and achieve a passing grade in all courses required by the Florida CMS Law Enforcement Recruit Training Program in order to receive a Certificate of Completion and a voucher for the State Officer Certification Exam from the academy.</p>
+        <p>You will be able to continue in the Academy, however, if you receive a failing grade in any future courses, you will be dismissed from the Academy. You may be allowed to enroll in a future Academy upon receiving authorization from the Academy Director.</p>
         <p>Please contact the Academy office if you have any questions or require further clarification.</p>
       </>
     ),
@@ -167,7 +167,7 @@ const ACADEMIC_REPORT_TYPES: ReportType[] = [
         <p>Pursuant to Rule 11B-35.001(10), F.A.C., Florida Administrative Code "a student enrolled in a Commission-Approved Basic Recruit Training Program shall achieve a score of no less than 80% on each of the written end-of-course examinations."</p>
         <p>In accordance with Florida Administrative Code, you were already provided the opportunity to retake the required written end-of-course examination for CJK <U>{code(d.course)}</U>.</p>
         <p>Therefore, you are no longer eligible to retake the end-of-course examination for CJK <U>{code(d.course)}</U>. You must complete a course retake of CJK <U>{code(d.course)}</U> at a future date. Per Rule 11B-35.002(4) F.A.C. you must successfully complete and achieve a passing grade in all courses required by the Basic Recruit Training Program in order to receive a Certification of Completion and be eligible to take the State Officer Certification Exam.</p>
-        <p>You will be able to continue in PHSC Academy <U>{label(d.className)}</U>, however, if you receive a failing grade in any future courses, you will be dismissed from the Academy. You may be allowed to enroll in a future Academy upon receiving authorization from the Academy Director.</p>
+        <p>You will be able to continue in the Academy <U>{label(d.className)}</U>, however, if you receive a failing grade in any future courses, you will be dismissed from the Academy. You may be allowed to enroll in a future Academy upon receiving authorization from the Academy Director.</p>
         <p>Please contact the Academy office if you have any questions or require further clarification.</p>
       </>
     ),
@@ -217,12 +217,11 @@ const ACADEMIC_REPORT_TYPES: ReportType[] = [
   },
 ];
 
-/** The full registry: academic-action letters + Phase-11 general & conduct documents.
- *  The four academic letters are PHSC-specific (built from PHSC's official forms),
- *  so they're scoped to 'phsc'; the general & conduct documents are global. */
-export const REPORT_TYPES: ReportType[] = [
-  ...ACADEMIC_REPORT_TYPES.map((t) => ({ ...t, orgScope: 'phsc' })),
-  ...DOCUMENT_TYPES,
-];
+/** The built-in GENERAL forms: the four academic-action letters + the Phase-11
+ *  general & conduct documents. All are available to every org (the FDLE letters
+ *  are standard academy paperwork); orgs further tailor via the owner document
+ *  library + per-curriculum overrides. These remain the legal source of the
+ *  verbatim FDLE/CJSTC letter bodies. */
+export const REPORT_TYPES: ReportType[] = [...ACADEMIC_REPORT_TYPES, ...DOCUMENT_TYPES];
 
 export const getReportType = (id: string): ReportType | undefined => REPORT_TYPES.find((r) => r.id === id);

@@ -168,6 +168,16 @@ service cloud.firestore {
       allow read, write: if isPlatformOwner();
     }
 
+    // ── documentLibrary (owner-managed forms library) ─────────────────────
+    // General forms are readable by any org's staff; specialized forms only by an
+    // assigned org. NOT tenant-scoped — only the platform owner may write.
+    match /documentLibrary/{id} {
+      allow read: if isPlatformOwner()
+        || (isStaff() && (resource.data.get('availability', '') == 'general'
+            || (resource.data.orgIds is list && tokenOrgId() in resource.data.orgIds)));
+      allow write: if isPlatformOwner();
+    }
+
     // ── documentForms (in-app document builder, Phase 12) ──────────────────
     // Org-scoped admin/owner-authored documents; staff read them to file reports.
     // Writers must be command (or the platform owner) AND in the doc's org — so an

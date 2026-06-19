@@ -9,6 +9,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import type { AcademyDoc, CurriculumDoc, RosterMemberDoc } from '../../../types';
 import type { WithId } from '../../../lib/firestore';
 import { fmtDate } from '../../../lib/time';
+import { useGlobalSettings } from '../../../app/providers';
+import { DocumentHeader } from '../reports/DocumentHeader';
 import { Button, Field, Input, Select, TextArea } from '../../../components/ui';
 
 const todayStr = () => {
@@ -38,6 +40,7 @@ export function AttendanceTab({
   members: WithId<RosterMemberDoc>[];
   curriculum: WithId<CurriculumDoc> | null;
 }) {
+  const settings = useGlobalSettings();
   const courses = curriculum?.courses ?? [];
   const [courseName, setCourseName] = useState(courses[0]?.name ?? '');
   const course = courses.find((c) => c.name === courseName);
@@ -96,11 +99,12 @@ export function AttendanceTab({
 
       {/* Printable sheet */}
       <div className="mx-auto max-w-[8.5in] bg-white p-4 text-black">
-        <div className="text-center">
-          <div className="text-lg font-bold uppercase">Pasco-Hernando State College</div>
-          <div className="text-sm font-semibold">{academy.fdleProgram?.replace(/^FDLE\s*/, '') || academy.discipline}</div>
-          <div className="text-sm font-semibold uppercase tracking-wide">Attendance Roster</div>
-        </div>
+        <DocumentHeader
+          curriculum={curriculum}
+          settings={settings}
+          documentTitle="Attendance Roster"
+          classLine={[academy.shortName, academy.sequenceNo].filter(Boolean).join(' · ')}
+        />
 
         <table className="mt-3 w-full border-collapse text-xs">
           <tbody>

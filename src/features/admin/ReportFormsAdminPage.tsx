@@ -1,213 +1,141 @@
 /**
- * Platform owner — Report Forms (the document library). Each form is either
- * GLOBAL (offered to every org) or scoped to ONE org (e.g. PHSC's academic
- * letters). The form fields + letter text live in code (reportTypes.tsx /
- * documentTypes.tsx), built from uploads in development; the display name +
- * category are editable here for the org you're currently viewing. Switch orgs
- * (top of the sidebar) to manage another org's report config.
+ * Platform owner — Document Library. One owner-managed library for every org's
+ * documents:
+ *   - GENERAL forms (built-in FDLE letters + conduct docs, plus owner-created
+ *     general documents) are available to every organization.
+ *   - SPECIALIZED forms are assigned to specific orgs and swapped in per
+ *     discipline under each org's Curriculum & Hours.
+ * Forms are stored in the owner-only `documentLibrary` collection.
  */
 import React, { useEffect, useState } from 'react';
-import { deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
-import { useCollection, useDoc, orgConfigPath, type WithId } from '../../lib/firestore';
+import { deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions } from '../../lib/firebase';
 import { useAuth } from '../../auth/AuthContext';
-import type { ReportCategory, ReportConfigDoc } from '../../types';
-import { Badge, Button, Field, Input, PageHeader, Select } from '../../components/ui';
+import type { WithId } from '../../lib/firestore';
+import { Badge, Button, PageHeader } from '../../components/ui';
 import { logAudit } from '../sessions/audit';
 import { REPORT_TYPES } from '../cadre/reports/reportTypes';
-import { reportCategoriesOf, effectiveReportTypes } from '../cadre/reports/reportConfig';
-import type { DocumentFormDoc } from '../cadre/reports/documentForms';
+import { useOwnerLibrary, type LibraryFormDoc } from '../cadre/reports/documentLibrary';
 import { DocumentBuilderModal } from './DocumentBuilderModal';
 
-const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
-
-interface FormRow { id: string; baseName: string; name: string; category: string; scope: string }
+const ownerListOrgs = httpsCallable<void, { orgs: { orgId: string; legalName: string }[] }>(functions, 'ownerListOrgs');
 
 export function ReportFormsAdminPage() {
-  const { firebaseUser, orgId } = useAuth();
-  const { data: config, loading } = useDoc<ReportConfigDoc>(orgConfigPath('reportConfig', orgId));
+  const { firebaseUser } = useAuth();
+  const { forms } = useOwnerLibrary();
+  const [orgs, setOrgs] = useState<{ orgId: string; legalName: string }[]>([]);
+  const [builder, setBuilder] = useState<{ editing: WithId<LibraryFormDoc> | null; availability: 'general' | 'specialized' } | null>(null);
+  const [manageOrgsFor, setManageOrgsFor] = useState<string | null>(null);
 
-  const [cats, setCats] = useState<ReportCategory[]>([]);
-  const [rows, setRows] = useState<FormRow[]>([]);
-  const [seeded, setSeeded] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [saved, setSaved] = useState(false);
-
-  // In-app builder documents for the org being viewed (auto org-scoped).
-  const { data: customDocs } = useCollection<DocumentFormDoc>('documentForms');
-  const [builder, setBuilder] = useState<{ editing: WithId<DocumentFormDoc> | null } | null>(null);
-
-  async function removeCustom(d: WithId<DocumentFormDoc>) {
-    if (!window.confirm(`Delete the custom document “${d.name}”? Filed reports that used it stay, but it can no longer be selected.`)) return;
-    await deleteDoc(doc(db, 'documentForms', d.id));
-    if (firebaseUser) await logAudit(firebaseUser.uid, 'documentForm.delete', 'documentForms', d.id, d.name);
-  }
-
-  // Seed the editable state once the config doc resolves (exists or not).
   useEffect(() => {
-    if (seeded || loading) return;
-    setCats(reportCategoriesOf(config));
-    // Only forms available to the org being viewed: global + this-org-scoped.
-    const eff = effectiveReportTypes(config).filter((t) => !t.orgScope || t.orgScope === orgId);
-    const byId = (id: string) => REPORT_TYPES.find((b) => b.id === id);
-    setRows(eff.map((t) => ({
-      id: t.id,
-      baseName: byId(t.id)?.name ?? t.id,
-      name: t.name,
-      category: t.category,
-      scope: byId(t.id)?.orgScope ?? 'global',
-    })));
-    setSeeded(true);
-  }, [config, loading, seeded, orgId]);
+    ownerListOrgs().then((r) => setOrgs(r.data.orgs)).catch(() => {});
+  }, []);
 
-  const setRow = (id: string, patch: Partial<FormRow>) =>
-    setRows((p) => p.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  const generalLib = forms.filter((f) => f.availability === 'general');
+  const specialized = forms.filter((f) => f.availability === 'specialized');
+  const orgName = (id: string) => orgs.find((o) => o.orgId === id)?.legalName ?? id;
 
-  function addCategory() {
-    const keys = new Set(cats.map((c) => c.key));
-    let n = cats.length + 1;
-    let key = `cat_${n}`;
-    while (keys.has(key)) key = `cat_${++n}`;
-    setCats((p) => [...p, { key, label: '' }]);
-  }
-  function renameCategory(key: string, label: string) {
-    setCats((p) => p.map((c) => (c.key === key ? { ...c, label } : c)));
-  }
-  function removeCategory(key: string) {
-    const fallback = cats.find((c) => c.key !== key)?.key ?? '';
-    setCats((p) => p.filter((c) => c.key !== key));
-    setRows((p) => p.map((r) => (r.category === key ? { ...r, category: fallback } : r)));
+  async function removeForm(f: WithId<LibraryFormDoc>) {
+    if (!window.confirm(`Delete the document “${f.name}”? Filed reports that used it stay, but it can no longer be selected.`)) return;
+    await deleteDoc(doc(db, 'documentLibrary', f.id));
+    if (firebaseUser) await logAudit(firebaseUser.uid, 'documentLibrary.delete', 'documentLibrary', f.id, f.name);
   }
 
-  async function save() {
-    setBusy(true);
-    setSaved(false);
-    // Drop blank categories; ensure each has a usable key.
-    const categories: ReportCategory[] = cats
-      .filter((c) => c.label.trim())
-      .map((c) => ({ key: c.key || slug(c.label), label: c.label.trim() }));
-    const validKeys = new Set(categories.map((c) => c.key));
-    const overrides: Record<string, { name?: string; categoryKey?: string }> = {};
-    for (const r of rows) {
-      const o: { name?: string; categoryKey?: string } = {};
-      if (r.name.trim() && r.name.trim() !== r.baseName) o.name = r.name.trim();
-      if (r.category && validKeys.has(r.category)) o.categoryKey = r.category;
-      if (o.name || o.categoryKey) overrides[r.id] = o;
-    }
-    await setDoc(doc(db, orgConfigPath('reportConfig', orgId)), { categories, overrides, updatedAt: serverTimestamp() }, { merge: false });
-    if (firebaseUser) await logAudit(firebaseUser.uid, 'reportConfig.save', 'reportConfig', 'global', `${categories.length} categories`);
-    setBusy(false);
-    setSaved(true);
+  async function toggleOrg(f: WithId<LibraryFormDoc>, orgId: string) {
+    const current = f.orgIds ?? [];
+    const next = current.includes(orgId) ? current.filter((o) => o !== orgId) : [...current, orgId];
+    await updateDoc(doc(db, 'documentLibrary', f.id), { orgIds: next });
   }
-
-  if (loading || !seeded) return null;
 
   return (
-    <div>
-      <PageHeader kicker="Platform Owner" title="Report Forms" />
-      <p className="mb-4 max-w-2xl text-sm text-slate-500">
-        The document library for the organization you’re currently viewing. Each form is either
-        {' '}<strong>Global</strong> (offered to every org) or scoped to one org (badged below — e.g. PHSC’s
-        academic letters). Form fields and the official letter text are built in code from uploads; the
-        display name + category are editable here. Disciplines choose which <strong>categories</strong> they
-        offer under <strong>Curriculum &amp; Hours</strong>. Switch orgs from the top of the sidebar to manage
-        another org’s forms.
+    <div className="max-w-4xl">
+      <PageHeader kicker="Platform Owner" title="Document Library" />
+      <p className="mb-6 max-w-2xl text-sm text-slate-500">
+        One library for every organization’s documents. <strong>General</strong> forms are available to all orgs;
+        {' '}<strong>Specialized</strong> forms are assigned to specific orgs and can be swapped in per discipline under
+        each org’s <strong>Curriculum &amp; Hours</strong>. The official FDLE letters + conduct documents are built in.
       </p>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        {/* Categories */}
-        <section className="rounded-lg border border-watch-100 bg-white p-4 shadow-sm">
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-watch-600">Categories</h2>
-          <div className="space-y-2">
-            {cats.map((c) => (
-              <div key={c.key} className="flex items-center gap-2">
-                <Input value={c.label} placeholder="Category name (e.g. Corrections)" onChange={(e) => renameCategory(c.key, e.target.value)} />
-                <button
-                  type="button"
-                  aria-label={`Remove ${c.label || c.key}`}
-                  className="shrink-0 text-slate-400 hover:text-red-600"
-                  onClick={() => removeCategory(c.key)}
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
-            {cats.length === 0 && <p className="text-sm text-slate-400">No categories yet.</p>}
-          </div>
-          <Button type="button" variant="ghost" className="mt-2" onClick={addCategory}>+ Add category</Button>
-        </section>
-
-        {/* Forms */}
-        <section className="rounded-lg border border-watch-100 bg-white p-4 shadow-sm">
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-watch-600">Forms ({rows.length})</h2>
-          <div className="space-y-3">
-            {rows.map((r) => (
-              <div key={r.id} className="rounded-md border border-watch-100 p-2">
-                <div className="mb-1 flex justify-end">
-                  {r.scope === 'global'
-                    ? <Badge tone="green">Global</Badge>
-                    : <Badge tone="amber">{r.scope} only</Badge>}
-                </div>
-                <Field label="Display name" hint={`Built-in: ${r.baseName}`}>
-                  <Input value={r.name} onChange={(e) => setRow(r.id, { name: e.target.value })} />
-                </Field>
-                <Field label="Category" className="mt-2">
-                  <Select value={r.category} onChange={(e) => setRow(r.id, { category: e.target.value })}>
-                    <option value="">— unassigned —</option>
-                    {cats.filter((c) => c.label.trim()).map((c) => (
-                      <option key={c.key} value={c.key}>{c.label}</option>
-                    ))}
-                  </Select>
-                </Field>
-              </div>
-            ))}
-          </div>
-        </section>
-      </div>
-
-      <div className="mt-4 flex items-center gap-3">
-        <Button variant="primary" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save changes'}</Button>
-        {saved && <span className="text-sm text-green-700">Saved.</span>}
-      </div>
-
-      {/* Custom documents — the in-app builder (Phase 12). */}
-      <section className="mt-8 rounded-lg border border-watch-100 bg-white p-4 shadow-sm">
-        <div className="mb-1 flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-watch-600">Custom documents ({customDocs.length})</h2>
-          <Button variant="primary" onClick={() => setBuilder({ editing: null })}>+ New document</Button>
+      {/* General */}
+      <section className="mb-8 rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-watch-600">General forms · available to all orgs</h2>
+          <Button variant="primary" onClick={() => setBuilder({ editing: null, availability: 'general' })}>+ New general document</Button>
         </div>
-        <p className="mb-3 max-w-2xl text-sm text-slate-500">
-          Build a document for <strong>this org only</strong> — fields, header, and paragraph/locked-clause body
-          — that staff can file and print like the built-in letters. Save the categories above first if you add a
-          new one. (The built-in PHSC academic letters were created this way during development.)
-        </p>
-        {customDocs.length === 0 ? (
-          <p className="text-sm text-slate-400">No custom documents yet.</p>
+        <div className="divide-y divide-watch-50">
+          {REPORT_TYPES.map((t) => (
+            <div key={t.id} className="py-2">
+              <div className="font-medium text-watch-900">{t.name} <Badge tone="slate">Built-in</Badge></div>
+              <div className="text-xs text-slate-500">{t.purpose}</div>
+            </div>
+          ))}
+          {generalLib.map((f) => (
+            <div key={f.id} className="flex items-center justify-between py-2">
+              <div>
+                <div className="font-medium text-watch-900">{f.name} {f.active === false && <Badge tone="amber">Inactive</Badge>}</div>
+                <div className="text-xs text-slate-500">{f.purpose || '—'}</div>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <Button variant="ghost" onClick={() => setBuilder({ editing: f, availability: 'general' })}>Edit</Button>
+                <Button variant="ghost" className="text-red-700" onClick={() => removeForm(f)}>Delete</Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Specialized */}
+      <section className="rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-watch-600">Specialized forms · assigned to specific orgs</h2>
+          <Button variant="primary" onClick={() => setBuilder({ editing: null, availability: 'specialized' })}>+ New specialized document</Button>
+        </div>
+        {specialized.length === 0 ? (
+          <p className="text-sm text-slate-400">No specialized documents yet.</p>
         ) : (
           <div className="divide-y divide-watch-50">
-            {customDocs.map((d) => (
-              <div key={d.id} className="flex items-center justify-between py-2">
-                <div>
-                  <div className="font-medium text-watch-900">
-                    {d.name} {d.active === false && <Badge tone="amber">Inactive</Badge>}
+            {specialized.map((f) => (
+              <div key={f.id} className="py-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-medium text-watch-900">{f.name} {f.active === false && <Badge tone="amber">Inactive</Badge>}</div>
+                    <div className="text-xs text-slate-500">{f.purpose || '—'}</div>
                   </div>
-                  <div className="text-xs text-slate-500">{d.purpose || '—'}</div>
+                  <div className="flex shrink-0 gap-2">
+                    <Button variant="ghost" onClick={() => setManageOrgsFor(manageOrgsFor === f.id ? null : f.id)}>
+                      Assign orgs ({(f.orgIds ?? []).length})
+                    </Button>
+                    <Button variant="ghost" onClick={() => setBuilder({ editing: f, availability: 'specialized' })}>Edit</Button>
+                    <Button variant="ghost" className="text-red-700" onClick={() => removeForm(f)}>Delete</Button>
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  <Button variant="ghost" onClick={() => setBuilder({ editing: d })}>Edit</Button>
-                  <Button variant="ghost" className="text-red-700" onClick={() => removeCustom(d)}>Delete</Button>
-                </div>
+                {(f.orgIds ?? []).length > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {(f.orgIds ?? []).map((id) => <Badge key={id} tone="navy">{orgName(id)}</Badge>)}
+                  </div>
+                )}
+                {manageOrgsFor === f.id && (
+                  <div className="mt-2 grid gap-1 rounded-md border border-watch-100 bg-watch-50 p-3 sm:grid-cols-2">
+                    {orgs.map((o) => (
+                      <label key={o.orgId} className="flex items-center gap-2 text-sm text-slate-700">
+                        <input type="checkbox" checked={(f.orgIds ?? []).includes(o.orgId)} onChange={() => toggleOrg(f, o.orgId)} />
+                        {o.legalName}
+                      </label>
+                    ))}
+                    {orgs.length === 0 && <p className="text-sm text-slate-400">No organizations found.</p>}
+                  </div>
+                )}
               </div>
             ))}
           </div>
         )}
       </section>
 
-      {builder && orgId && firebaseUser && (
+      {builder && firebaseUser && (
         <DocumentBuilderModal
           editing={builder.editing}
-          categories={cats.filter((c) => c.label.trim())}
-          orgId={orgId}
+          availability={builder.availability}
           createdBy={firebaseUser.uid}
           onClose={() => setBuilder(null)}
         />

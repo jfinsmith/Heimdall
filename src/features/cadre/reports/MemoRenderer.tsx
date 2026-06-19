@@ -1,28 +1,19 @@
 /**
  * The ONE generic memorandum renderer for HEIMDALL. Renders a MemoDocument with
- * per-org letterhead, a To/From/CC/Date/Re header, body blocks (paragraph /
- * locked clause / legacy jsx), an authority signature, an optional recipient
+ * the unified DocumentHeader, a To/From/CC/Date/Re header, body blocks (paragraph
+ * / locked clause / legacy jsx), an authority signature, an optional recipient
  * acknowledgment, and an optional distribution footer.
  *
- * Letterhead is per-tenant: the founding PHSC org keeps its official multi-campus
- * header verbatim; every other org uses its uploaded logo + name + tagline.
- *
- * Academic-action letters render through this (via ReportLetter), and so will
- * every document type added in Phase 11 and composed in the builder in Phase 12.
+ * The header (logo + org/discipline/program) comes from DocumentHeader, which
+ * resolves branding from the curriculum override → org settings — so every
+ * document across the app shares one consistent header.
  */
 import React from 'react';
-import { useAuth } from '../../../auth/AuthContext';
 import { useGlobalSettings } from '../../../app/providers';
+import type { CurriculumDoc } from '../../../types';
+import type { WithId } from '../../../lib/firestore';
+import { DocumentHeader } from './DocumentHeader';
 import type { MemoBlock, MemoDocument, MemoSpan } from './memoTypes';
-
-const CAMPUSES = [
-  ['EAST CAMPUS', '36727 Blanton Rd., Dade City, FL 33523', '352.567.6701'],
-  ['INSTRUCTIONAL PERFORMING ARTS CENTER', '8657 Old Pasco Rd., Wesley Chapel, FL 33544', '813.536.2816'],
-  ['NORTH CAMPUS', '11415 Ponce de Leon Blvd., Brooksville, FL 34601', '352.796.6726'],
-  ['PORTER CAMPUS AT WIREGRASS RANCH', '2727 Mansfield Blvd., Wesley Chapel, FL 33543', '813.527.6615'],
-  ['SPRING HILL CAMPUS', '450 Beverly Ct., Spring Hill, FL 34606', '352.688.8798'],
-  ['WEST CAMPUS / DISTRICT OFFICE', '10230 Ridge Rd., New Port Richey, FL 34654', '727.847.2727'],
-];
 
 function HeaderRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -59,44 +50,19 @@ function Block({ block, data }: { block: MemoBlock; data: Record<string, string>
   );
 }
 
-export function MemoRenderer({ document: memo }: { document: MemoDocument }) {
+export function MemoRenderer({
+  document: memo,
+  curriculum,
+}: {
+  document: MemoDocument;
+  curriculum?: WithId<CurriculumDoc> | null;
+}) {
   const settings = useGlobalSettings();
-  const { orgId } = useAuth();
-  const isFoundingPhsc = orgId === 'phsc';
-  const orgTitle = (settings?.orgName || 'Training Academy').toUpperCase();
   const data = memo.data ?? {};
 
   return (
     <div className="mx-auto max-w-[8.5in] bg-white p-8 text-[11px] leading-snug text-black">
-      {/* Letterhead — founding PHSC keeps its official multi-campus header; other
-          tenants get their own logo + name + tagline. */}
-      {isFoundingPhsc ? (
-        <>
-          <div className="border-b-2 border-black pb-2 text-center">
-            <div className="text-xl font-bold tracking-wide">PASCO-HERNANDO STATE COLLEGE</div>
-            <div className="text-[9px] font-semibold tracking-[0.2em]">EXCELLENCE • INTEGRITY • SUCCESS • EQUITY • COMMUNITY</div>
-          </div>
-          <div className="mt-1 grid grid-cols-3 gap-x-3 gap-y-0.5 text-[7px] leading-tight text-black/80">
-            {CAMPUSES.map(([n, addr, tel]) => (
-              <div key={n}>
-                <div className="font-bold">{n}</div>
-                <div>{addr}</div>
-                <div>{tel}</div>
-              </div>
-            ))}
-          </div>
-        </>
-      ) : (
-        <div className="flex flex-col items-center border-b-2 border-black pb-2 text-center">
-          {settings?.logoUrl && (
-            <img src={settings.logoUrl} alt="" style={{ height: 56, width: 'auto', objectFit: 'contain', marginBottom: 6 }} />
-          )}
-          <div className="text-xl font-bold tracking-wide">{orgTitle}</div>
-          {settings?.letterheadTagline && (
-            <div className="text-[9px] font-semibold tracking-[0.2em]">{settings.letterheadTagline.toUpperCase()}</div>
-          )}
-        </div>
-      )}
+      <DocumentHeader curriculum={curriculum} settings={settings} />
 
       {/* Memo header */}
       <div className="mt-5 space-y-1">

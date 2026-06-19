@@ -7,20 +7,14 @@ import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { addDoc, collection, deleteDoc, doc, limit, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
-import { useCollection, useDoc, orgConfigPath, type WithId } from '../../../lib/firestore';
+import { useCollection, useDoc, type WithId } from '../../../lib/firestore';
 import { useAuth } from '../../../auth/AuthContext';
-import type { AcademyDoc, AcademyReportDoc, CurriculumDoc, ReportConfigDoc, RosterMemberDoc, UserDoc } from '../../../types';
+import type { AcademyDoc, AcademyReportDoc, CurriculumDoc, RosterMemberDoc, UserDoc } from '../../../types';
 import { FDLE_LE_COURSES } from '../../../types';
 import { Button, Field, Input, Select, TextArea } from '../../../components/ui';
 import { Modal } from '../../../components/Modal';
-import { type ReportType } from './reportTypes';
-import { effectiveReportTypes, GENERAL_CATEGORY } from './reportConfig';
-import { useCustomReportTypes } from './documentForms';
-
-export const isLawEnforcement = (a?: WithId<AcademyDoc>) =>
-  // discipline is the curriculum DOC id, which may be org-namespaced ({orgId}__le_brt);
-  // compare on the base key after the namespace prefix.
-  !!a && (a.discipline?.split('__').pop() === 'le_brt' || /law enforcement/i.test(a.fdleProgram || ''));
+import { getReportType, REPORT_TYPES, type ReportType } from './reportTypes';
+import { offeredLetterForms, libraryFormToReportType, useOrgLibraryForms } from './documentLibrary';
 
 const today = () => {
   const d = new Date();
@@ -28,7 +22,7 @@ const today = () => {
 };
 
 export function AcademyReports({ academy }: { academy: WithId<AcademyDoc> }) {
-  const { profile, orgId } = useAuth();
+  const { profile } = useAuth();
   const academyId = academy.id;
   // Org-scoped in useCollection; sorted client-side (no orderBy → single-field index).
   const { data: rosterRaw } = useCollection<RosterMemberDoc>(`academies/${academyId}/roster`, [], [academyId]);
@@ -41,72 +35,53 @@ export function AcademyReports({ academy }: { academy: WithId<AcademyDoc> }) {
   const { data: directors } = useCollection<UserDoc>('users', [where('role', '==', 'director'), limit(1)]);
   const directorName = directors[0]?.displayName ?? 'Academy Director';
   const { data: curriculum } = useDoc<CurriculumDoc>(academy.discipline ? `curricula/${academy.discipline}` : null);
-  const { data: reportConfig } = useDoc<ReportConfigDoc>(orgConfigPath('reportConfig', orgId));
 
   const [formType, setFormType] = useState<ReportType | null>(null);
   const [editing, setEditing] = useState<WithId<AcademyReportDoc> | null>(null);
 
-  // Report forms = code registry (+ admin name/category overrides) plus this org's
-  // in-app builder documents (Phase 12), then filtered by org-scope: global forms
-  // (no orgScope) plus any scoped to THIS org only. Custom docs are already
-  // org-scoped by useCollection, so they always pass the filter.
-  const { types: customTypes } = useCustomReportTypes();
-  const effective = [...effectiveReportTypes(reportConfig), ...customTypes].filter(
-    (t) => !t.orgScope || t.orgScope === orgId
+  // Forms offered to this class = built-in GENERAL code forms + the owner library's
+  // general forms, with this discipline's overrides applied (disable / swap with a
+  // specialized form / add a specialized form). Categories are gone.
+  const { forms: libraryForms } = useOrgLibraryForms();
+  const availableTypes = useMemo(
+    () => offeredLetterForms(curriculum, REPORT_TYPES, libraryForms),
+    [curriculum, libraryForms]
   );
-  const typeFor = (id: string) => effective.find((t) => t.id === id);
-  // Discipline-specific forms: by the curriculum's chosen categories when set,
-  // else legacy fallbacks (older per-form list, else all LE forms).
-  const disciplineTypes = curriculum?.reportCategories
-    ? effective.filter((t) => t.category !== GENERAL_CATEGORY && curriculum.reportCategories!.includes(t.category))
-    : curriculum?.reportTypeIds
-      ? effective.filter((t) => curriculum.reportTypeIds!.includes(t.id))
-      : isLawEnforcement(academy)
-        ? effective.filter((t) => t.category === 'le')
-        : [];
-  // General & conduct documents (memo, counseling, injury, incident, use-of-force,
-  // disciplinary, dismissal, acknowledgment) are universal — offered to EVERY class.
-  const generalTypes = effective.filter((t) => t.category === GENERAL_CATEGORY);
-  const availableTypes = [...disciplineTypes, ...generalTypes];
+  const libById = useMemo(() => new Map(libraryForms.map((f) => [f.id, f])), [libraryForms]);
+  // Resolve a filed report's type by id (offered set → code registry → library).
+  const typeFor = (id: string): ReportType | undefined => {
+    const offered = availableTypes.find((t) => t.id === id);
+    if (offered) return offered;
+    const code = getReportType(id);
+    if (code) return code;
+    const lib = libById.get(id);
+    return lib ? libraryFormToReportType(lib) : undefined;
+  };
 
   async function remove(r: WithId<AcademyReportDoc>) {
     if (!window.confirm(`Delete this ${typeFor(r.type)?.name ?? 'report'} report for ${r.cadetName}?`)) return;
     await deleteDoc(doc(db, 'academies', academyId, 'reports', r.id));
   }
 
-  if (availableTypes.length === 0) {
-    return (
-      <p className="rounded-md bg-watch-50 px-3 py-2 text-sm text-slate-600">
-        No report forms are enabled for this discipline. Pick report categories under
-        {' '}<strong>Admin → Curriculum &amp; Hours</strong> (and manage forms/categories under <strong>Admin → Report Forms</strong>).
-      </p>
-    );
-  }
-
   return (
     <div>
-      {disciplineTypes.length > 0 && (
+      {availableTypes.length > 0 ? (
         <>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-watch-600">New report</h2>
-          <div className="mb-6 grid gap-3 md:grid-cols-2">
-            {disciplineTypes.map((t) => (
-              <ReportTypeCard key={t.id} type={t} onPick={() => { setEditing(null); setFormType(t); }} />
-            ))}
-          </div>
-        </>
-      )}
-      {generalTypes.length > 0 && (
-        <>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-watch-600">General &amp; conduct documents</h2>
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-watch-600">New document</h2>
           <p className="mb-2 -mt-1 text-xs text-slate-500">
-            Available to every class. <span className="font-medium text-amber-700">Draft wording — pending your legal review.</span>
+            Forms available to this class. <span className="font-medium text-amber-700">Some wording is draft — pending your legal review.</span>
           </p>
           <div className="mb-6 grid gap-3 md:grid-cols-2">
-            {generalTypes.map((t) => (
+            {availableTypes.map((t) => (
               <ReportTypeCard key={t.id} type={t} onPick={() => { setEditing(null); setFormType(t); }} />
             ))}
           </div>
         </>
+      ) : (
+        <p className="mb-6 rounded-md bg-watch-50 px-3 py-2 text-sm text-slate-600">
+          No forms are enabled for this discipline. Manage the document library under <strong>Owner → Report Forms</strong>,
+          or adjust this discipline's forms under <strong>Admin → Curriculum &amp; Hours</strong>.
+        </p>
       )}
 
       <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-watch-600">Filed reports ({reports.length})</h2>

@@ -54,6 +54,15 @@ async function gatherOrgData(orgId: string) {
       return null;
     }
   };
+  // The org's assigned specialized library forms (documentLibrary isn't orgId-scoped).
+  const libraryForms = async () => {
+    try {
+      return (await getDocs(query(collection(db, 'documentLibrary'), where('orgIds', 'array-contains', orgId)))).docs.map((d) => ({ id: d.id, ...d.data() }));
+    } catch {
+      warnings.push('documentLibrary');
+      return [];
+    }
+  };
 
   const academies = await list('academies');
   const roster: Record<string, unknown[]> = {};
@@ -67,13 +76,12 @@ async function gatherOrgData(orgId: string) {
     orgId,
     org: await one(`orgs/${orgId}`),
     settings: await one(`settings/${orgId}`),
-    reportConfig: await one(`reportConfig/${orgId}`),
     users: await list('users'),
     academies,
     roster,
     reports,
     curricula: await list('curricula'),
-    documentForms: await list('documentForms'),
+    documentLibrary: await libraryForms(),
     sessions: await list('sessions'),
     assignments: await list('assignments'),
     feedbackReports: await list('feedbackReports'),

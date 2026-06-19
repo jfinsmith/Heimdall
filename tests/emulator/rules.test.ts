@@ -6,14 +6,14 @@
  * real firestore.rules file.
  */
 import { readFileSync } from 'fs';
-import { beforeAll, afterAll, beforeEach, describe, it } from 'vitest';
+import { beforeAll, afterAll, beforeEach, describe, it, expect } from 'vitest';
 import {
   initializeTestEnvironment,
   assertFails,
   assertSucceeds,
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc, addDoc, deleteDoc, collection } from 'firebase/firestore';
+import { doc, getDoc, getDocs, query, where, setDoc, updateDoc, addDoc, deleteDoc, collection } from 'firebase/firestore';
 
 let testEnv: RulesTestEnvironment;
 
@@ -66,6 +66,10 @@ beforeEach(async () => {
     await setDoc(doc(db, 'curricula/' + BETA + '__le_brt'), { orgId: BETA, key: 'le_brt', label: 'LE' });
     await setDoc(doc(db, 'reportConfig/' + ORG), { categories: [] });
     await setDoc(doc(db, 'reportConfig/' + BETA), { categories: [] });
+    // documentLibrary: a general form + one specialized per tenant.
+    await setDoc(doc(db, 'documentLibrary/genA'), { name: 'General A', availability: 'general', kind: 'letter', active: true });
+    await setDoc(doc(db, 'documentLibrary/specOrg'), { name: 'Spec ORG', availability: 'specialized', kind: 'letter', orgIds: [ORG], active: true });
+    await setDoc(doc(db, 'documentLibrary/specBeta'), { name: 'Spec BETA', availability: 'specialized', kind: 'letter', orgIds: [BETA], active: true });
   });
 });
 
@@ -330,5 +334,40 @@ describe('curricula + reportConfig — org isolation', () => {
     await assertFails(getDoc(doc(as('dave', 'director'), 'reportConfig/' + BETA)));
     await assertSucceeds(setDoc(doc(as('dave', 'director'), 'reportConfig/' + ORG), { categories: [] }, { merge: true }));
     await assertFails(setDoc(doc(as('dave', 'director'), 'reportConfig/' + BETA), { categories: [] }, { merge: true }));
+  });
+});
+
+// ── Owner-managed document library: availability-gated, owner-only writes. ──
+describe('documentLibrary — availability gating', () => {
+  it('staff read GENERAL + own-org SPECIALIZED, NOT another org\'s', async () => {
+    await assertSucceeds(getDoc(doc(as('carol', 'coordinator'), 'documentLibrary/genA')));
+    await assertSucceeds(getDoc(doc(as('carol', 'coordinator'), 'documentLibrary/specOrg')));
+    await assertFails(getDoc(doc(as('carol', 'coordinator'), 'documentLibrary/specBeta')));
+  });
+  it('constrained lists return ONLY this org\'s forms (general + own specialized)', async () => {
+    const gen = await assertSucceeds(getDocs(query(collection(as('dave', 'director'), 'documentLibrary'), where('availability', '==', 'general'))));
+    expect((gen as { docs: { id: string }[] }).docs.map((d) => d.id).sort()).toEqual(['genA']);
+    const mine = await assertSucceeds(getDocs(query(collection(as('dave', 'director'), 'documentLibrary'), where('orgIds', 'array-contains', ORG))));
+    expect((mine as { docs: { id: string }[] }).docs.map((d) => d.id).sort()).toEqual(['specOrg']);
+  });
+  it('an UNCONSTRAINED list by staff is denied (another org\'s specialized sibling fails the rule)', async () => {
+    await assertFails(getDocs(collection(as('dave', 'director'), 'documentLibrary')));
+  });
+  it('orgless staff (stale token) read GENERAL only — never a specialized form', async () => {
+    await assertSucceeds(getDoc(doc(as('dave', 'director', null), 'documentLibrary/genA')));
+    await assertSucceeds(getDocs(query(collection(as('dave', 'director', null), 'documentLibrary'), where('availability', '==', 'general'))));
+    await assertFails(getDoc(doc(as('dave', 'director', null), 'documentLibrary/specOrg')));
+  });
+  it('a client — even an admin — cannot write the library', async () => {
+    await assertFails(setDoc(doc(as('dave', 'director'), 'documentLibrary/x'), { name: 'x', availability: 'general', kind: 'letter', active: true }));
+    await assertFails(updateDoc(doc(as('dave', 'director'), 'documentLibrary/genA'), { name: 'hijack' }));
+    await assertFails(deleteDoc(doc(as('dave', 'director'), 'documentLibrary/genA')));
+  });
+  it('platform owner reads ALL + writes', async () => {
+    const owner = testEnv.authenticatedContext('owner', { role: 'director', orgId: ORG, platformOwner: true }).firestore();
+    await assertSucceeds(getDoc(doc(owner, 'documentLibrary/specBeta')));
+    await assertSucceeds(getDocs(collection(owner, 'documentLibrary')));
+    await assertSucceeds(setDoc(doc(owner, 'documentLibrary/ownNew'), { name: 'o', availability: 'general', kind: 'letter', active: true }));
+    await assertSucceeds(updateDoc(doc(owner, 'documentLibrary/specBeta'), { orgIds: [ORG, BETA] }));
   });
 });

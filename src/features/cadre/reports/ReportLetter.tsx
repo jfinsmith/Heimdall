@@ -10,7 +10,7 @@
  *    Here we resolve the templates and tokenize the block text into fill-in spans.
  */
 import React from 'react';
-import type { AcademyReportDoc } from '../../../types';
+import type { AcademyReportDoc, CurriculumDoc } from '../../../types';
 import type { WithId } from '../../../lib/firestore';
 import { useAuth } from '../../../auth/AuthContext';
 import { useGlobalSettings } from '../../../app/providers';
@@ -38,13 +38,16 @@ export function ReportLetter({
   directorName,
   fromName,
   reportType,
+  curriculum,
 }: {
   report: Pick<AcademyReportDoc, 'type' | 'cadetName' | 'data'> & Partial<WithId<AcademyReportDoc>>;
   directorName: string;
   fromName: string;
-  /** Resolved type for in-app builder documents (Phase 12), whose id isn't in the
-   *  code registry. When omitted, the type is looked up by report.type. */
+  /** Resolved type for library / builder documents whose id isn't in the code
+   *  registry. When omitted, the type is looked up by report.type. */
   reportType?: ReportType;
+  /** The class's curriculum — drives the unified header's branding + program. */
+  curriculum?: WithId<CurriculumDoc> | null;
 }) {
   const type = reportType ?? getReportType(report.type);
   const settings = useGlobalSettings();
@@ -95,7 +98,7 @@ export function ReportLetter({
       distribution: doc.distribution?.map(resolve),
       data: ctx,
     };
-    return <MemoRenderer document={memo} />;
+    return <MemoRenderer document={memo} curriculum={curriculum} />;
   }
 
   // ── Legacy academic-action letter (verbatim jsx body) ────────────────────
@@ -121,5 +124,5 @@ export function ReportLetter({
     data: display,
   };
 
-  return <MemoRenderer document={memo} />;
+  return <MemoRenderer document={memo} curriculum={curriculum} />;
 }

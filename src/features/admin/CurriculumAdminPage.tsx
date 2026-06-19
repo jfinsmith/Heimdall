@@ -4,26 +4,22 @@
  * is always the sum of its course hours; academies pick a discipline at
  * creation and the builder tracks per-course coverage against these minimums.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { deleteDoc, doc, setDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
-import { db, functions } from '../../lib/firebase';
+import { db, functions, storage } from '../../lib/firebase';
 import { useCollection, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
-import { useDoc, orgConfigPath } from '../../lib/firestore';
-import type { CurriculumCourse, CurriculumDoc, QualificationKey, ReportConfigDoc, RosterModuleKey } from '../../types';
+import type { CurriculumCourse, CurriculumDoc, QualificationKey, RosterModuleKey } from '../../types';
 import { QUALIFICATION_LABELS } from '../../types';
-import { Badge, Button, Field, Input, PageHeader, Select } from '../../components/ui';
+import { Badge, Button, Field, Input, PageHeader, Select, TextArea } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import { logAudit } from '../sessions/audit';
 import { ROSTER_MODULES, DEFAULT_ROSTER_MODULES } from '../cadre/roster/rosterModules';
-import { reportCategoriesOf } from '../cadre/reports/reportConfig';
+import { REPORT_TYPES } from '../cadre/reports/reportTypes';
+import { useOrgLibraryForms } from '../cadre/reports/documentLibrary';
 import { FDLE_DEFAULT_CURRICULA } from './fdleCurricula';
-
-/** Default report category for a not-yet-configured curriculum so a save preserves
- *  its current effective behavior (the four built-in forms are Law Enforcement). */
-const looksLikeLE = (c: { key?: string; fdleProgram?: string }) =>
-  c.key === 'le_brt' || /law enforcement/i.test(c.fdleProgram || '');
 
 const ownerListOrgs = httpsCallable<void, { orgs: { orgId: string; legalName: string }[] }>(functions, 'ownerListOrgs');
 const importDefaultCurricula = httpsCallable<{ sourceOrgId: string }, { ok: boolean; count: number }>(functions, 'importDefaultCurricula');
@@ -198,16 +194,33 @@ function CurriculumEditorModal({
   const [key, setKey] = useState(curriculum?.key ?? curriculum?.id ?? '');
   const [courses, setCourses] = useState<CurriculumCourse[]>(curriculum?.courses ?? [{ name: '', minHours: 0 }]);
   const [estimated, setEstimated] = useState(curriculum?.estimated ?? false);
-  // Per-discipline roster config. Pre-fill an unconfigured curriculum with its
-  // current effective behavior so a save never silently changes it. Defaults
-  // scope has no org reportConfig — fall back to the built-in categories.
-  const { data: reportConfig } = useDoc<ReportConfigDoc>(isDefaults ? null : orgConfigPath('reportConfig', orgId));
-  const categories = reportCategoriesOf(reportConfig);
   const [rosterModules, setRosterModules] = useState<RosterModuleKey[]>(curriculum?.rosterModules ?? DEFAULT_ROSTER_MODULES);
-  const [reportCategories, setReportCategories] = useState<string[]>(
-    curriculum?.reportCategories ?? (curriculum && looksLikeLE(curriculum) ? ['le'] : [])
-  );
+  // Branding overrides (org scope only) — each falls back to org settings if blank.
+  const [brandLogoUrl, setBrandLogoUrl] = useState(curriculum?.brandLogoUrl ?? '');
+  const [brandOrgName, setBrandOrgName] = useState(curriculum?.brandOrgName ?? '');
+  const [brandTagline, setBrandTagline] = useState(curriculum?.brandTagline ?? '');
+  const [brandAddress, setBrandAddress] = useState((curriculum?.brandAddressLines ?? []).join('\n'));
+  const [uploading, setUploading] = useState(false);
+  // Per-discipline document overrides.
+  const [disabledForms, setDisabledForms] = useState<string[]>(curriculum?.disabledForms ?? []);
+  const [formOverrides, setFormOverrides] = useState<Record<string, string>>(curriculum?.formOverrides ?? {});
+  const [addedForms, setAddedForms] = useState<string[]>(curriculum?.addedForms ?? []);
+  const { forms: libraryForms } = useOrgLibraryForms();
   const [busy, setBusy] = useState(false);
+
+  // Base general forms (built-ins + library general letters) and the org's
+  // assigned specialized letters available as overrides/additions for this discipline.
+  const baseGeneral = useMemo(
+    () => [
+      ...REPORT_TYPES.map((t) => ({ id: t.id, name: t.name })),
+      ...libraryForms.filter((f) => f.availability === 'general' && (f.kind ?? 'letter') === 'letter').map((f) => ({ id: f.id, name: f.name })),
+    ],
+    [libraryForms]
+  );
+  const specializedForms = useMemo(
+    () => libraryForms.filter((f) => f.availability === 'specialized' && (f.kind ?? 'letter') === 'letter').map((f) => ({ id: f.id, name: f.name })),
+    [libraryForms]
+  );
 
   const total = courses.reduce((sum, c) => sum + (Number(c.minHours) || 0), 0);
 
@@ -216,8 +229,32 @@ function CurriculumEditorModal({
   }
   const toggleModule = (k: RosterModuleKey) =>
     setRosterModules((p) => (p.includes(k) ? p.filter((x) => x !== k) : [...p, k]));
-  const toggleCategory = (k: string) =>
-    setReportCategories((p) => (p.includes(k) ? p.filter((x) => x !== k) : [...p, k]));
+  const toggleDisabled = (id: string) =>
+    setDisabledForms((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+  const setOverride = (baseId: string, specId: string) =>
+    setFormOverrides((p) => {
+      const n = { ...p };
+      if (specId) n[baseId] = specId;
+      else delete n[baseId];
+      return n;
+    });
+  const toggleAdded = (id: string) =>
+    setAddedForms((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+
+  async function uploadLogo(file: File) {
+    if (!orgId) return;
+    setUploading(true);
+    try {
+      const ext = (file.name.split('.').pop() || 'png').replace(/[^a-z0-9]/gi, '').toLowerCase();
+      const r = ref(storage, `branding/${orgId}/curriculum-${Date.now()}.${ext}`);
+      await uploadBytes(r, file, { contentType: file.type });
+      setBrandLogoUrl(await getDownloadURL(r));
+    } catch {
+      /* admin can paste a URL instead */
+    } finally {
+      setUploading(false);
+    }
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -252,7 +289,13 @@ function CurriculumEditorModal({
       active: curriculum?.active ?? true,
       estimated,
       rosterModules,
-      reportCategories,
+      ...(brandLogoUrl.trim() ? { brandLogoUrl: brandLogoUrl.trim() } : {}),
+      ...(brandOrgName.trim() ? { brandOrgName: brandOrgName.trim() } : {}),
+      ...(brandTagline.trim() ? { brandTagline: brandTagline.trim() } : {}),
+      ...(brandAddress.trim() ? { brandAddressLines: brandAddress.split('\n').map((l) => l.trim()).filter(Boolean) } : {}),
+      ...(disabledForms.length ? { disabledForms } : {}),
+      ...(Object.keys(formOverrides).length ? { formOverrides } : {}),
+      ...(addedForms.length ? { addedForms } : {}),
     } satisfies CurriculumDoc);
     if (!isDefaults) await logAudit(firebaseUser!.uid, 'curriculum.save', 'curriculum', id, `${label} (${total} hrs)`);
     setBusy(false);
@@ -415,21 +458,80 @@ function CurriculumEditorModal({
           </div>
         </fieldset>
 
-        <fieldset className="rounded-md border border-watch-100 p-3">
-          <legend className="px-1 text-sm font-medium text-watch-800">Report categories</legend>
-          <p className="mb-2 text-xs text-slate-500">
-            Which report-form categories this discipline offers on the roster's <strong>Reports</strong> tab (only
-            applies when that module is enabled). Manage categories and assign forms under <strong>Admin → Report Forms</strong>.
-          </p>
-          <div className="grid gap-1.5 sm:grid-cols-2">
-            {categories.map((c) => (
-              <label key={c.key} className="flex items-center gap-2 text-sm text-watch-800">
-                <input type="checkbox" checked={reportCategories.includes(c.key)} onChange={() => toggleCategory(c.key)} />
-                {c.label}
-              </label>
-            ))}
-          </div>
-        </fieldset>
+        {!isDefaults && (
+          <>
+            {/* Per-discipline branding overrides */}
+            <fieldset className="rounded-md border border-watch-100 p-3">
+              <legend className="px-1 text-sm font-medium text-watch-800">Document branding (override)</legend>
+              <p className="mb-2 text-xs text-slate-500">
+                Optional — used on THIS discipline's printed documents instead of the org's. Blank fields fall back
+                to <strong>Org Settings</strong>. Lets one org run a program under a different identity (e.g. a
+                Sheriff's Office NMT program).
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Logo">
+                  <div className="flex items-center gap-2">
+                    {brandLogoUrl && <img src={brandLogoUrl} alt="" className="h-9 w-auto rounded border border-watch-100 object-contain" />}
+                    <label className="cursor-pointer rounded-md border border-watch-200 px-2 py-1 text-xs font-medium text-watch-700 hover:bg-watch-50">
+                      {uploading ? 'Uploading…' : brandLogoUrl ? 'Replace' : 'Upload'}
+                      <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && uploadLogo(e.target.files[0])} />
+                    </label>
+                    {brandLogoUrl && <button type="button" className="text-xs text-slate-400 hover:text-red-600" onClick={() => setBrandLogoUrl('')}>Remove</button>}
+                  </div>
+                </Field>
+                <Field label="Organization name override">
+                  <Input value={brandOrgName} onChange={(e) => setBrandOrgName(e.target.value)} placeholder="e.g. Pasco Sheriff's Office" />
+                </Field>
+                <Field label="Tagline override">
+                  <Input value={brandTagline} onChange={(e) => setBrandTagline(e.target.value)} placeholder="e.g. We Fight as One" />
+                </Field>
+                <Field label="Address / contact lines (one per line)">
+                  <TextArea value={brandAddress} onChange={(e) => setBrandAddress(e.target.value)} rows={2} />
+                </Field>
+              </div>
+            </fieldset>
+
+            {/* Per-discipline forms */}
+            <fieldset className="rounded-md border border-watch-100 p-3">
+              <legend className="px-1 text-sm font-medium text-watch-800">Forms for this discipline</legend>
+              <p className="mb-2 text-xs text-slate-500">
+                Every general document is offered by default. Uncheck to hide one here, or swap it for a specialized
+                version assigned to your org. Manage the library under <strong>Owner → Report Forms</strong>.
+              </p>
+              <div className="max-h-56 space-y-1 overflow-y-auto pr-1">
+                {baseGeneral.map((f) => (
+                  <div key={f.id} className="grid grid-cols-[1fr_auto] items-center gap-2">
+                    <label className="flex items-center gap-2 text-sm text-watch-800">
+                      <input type="checkbox" checked={!disabledForms.includes(f.id)} onChange={() => toggleDisabled(f.id)} />
+                      <span className={disabledForms.includes(f.id) ? 'text-slate-400 line-through' : ''}>{f.name}</span>
+                    </label>
+                    {specializedForms.length > 0 && !disabledForms.includes(f.id) && (
+                      <Select className="!w-48 text-xs" value={formOverrides[f.id] ?? ''} onChange={(e) => setOverride(f.id, e.target.value)}>
+                        <option value="">Use default</option>
+                        {specializedForms.map((s) => <option key={s.id} value={s.id}>↳ {s.name}</option>)}
+                      </Select>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {specializedForms.length > 0 && (
+                <div className="mt-3 border-t border-watch-50 pt-2">
+                  <p className="mb-1 text-xs font-medium text-watch-700">Add specialized forms</p>
+                  <div className="grid gap-1 sm:grid-cols-2">
+                    {specializedForms
+                      .filter((s) => !Object.values(formOverrides).includes(s.id))
+                      .map((s) => (
+                        <label key={s.id} className="flex items-center gap-2 text-sm text-watch-800">
+                          <input type="checkbox" checked={addedForms.includes(s.id)} onChange={() => toggleAdded(s.id)} />
+                          {s.name}
+                        </label>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </fieldset>
+          </>
+        )}
 
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose}>

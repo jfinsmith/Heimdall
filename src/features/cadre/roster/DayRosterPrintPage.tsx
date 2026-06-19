@@ -13,7 +13,8 @@ import { useParams, Link } from 'react-router-dom';
 import { where } from 'firebase/firestore';
 import { useCollection, useDoc } from '../../../lib/firestore';
 import { useGlobalSettings } from '../../../app/providers';
-import type { AcademyDoc, RosterMemberDoc, SessionDoc, UserDoc } from '../../../types';
+import type { AcademyDoc, CurriculumDoc, RosterMemberDoc, SessionDoc, UserDoc } from '../../../types';
+import { DocumentHeader } from '../reports/DocumentHeader';
 import { Button, Spinner } from '../../../components/ui';
 
 /** A session is "on" the given yyyy-mm-dd if its local start date matches. */
@@ -36,6 +37,7 @@ export function DayRosterPrintPage() {
   );
   const coordId = academy?.coordinatorIds?.[0];
   const { data: coordinator } = useDoc<UserDoc>(coordId ? `users/${coordId}` : null);
+  const { data: curriculum } = useDoc<CurriculumDoc>(academy?.discipline ? `curricula/${academy.discipline}` : null);
   const settings = useGlobalSettings();
 
   if (aLoading || rLoading) return <div className="flex h-screen items-center justify-center"><Spinner className="text-bifrost-400" /></div>;
@@ -52,7 +54,6 @@ export function DayRosterPrintPage() {
     .sort((a, b) => (a.no ?? 0) - (b.no ?? 0));
 
   const prettyDate = date ? new Date(`${date}T00:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : '';
-  const program = academy.fdleProgram?.replace(/^FDLE\s*/, '') || academy.discipline;
   const classLine = [academy.shortName, academy.sequenceNo].filter(Boolean).join(' · ');
   const coordName = coordinator ? `${coordinator.rank ? `${coordinator.rank} ` : ''}${coordinator.displayName}` : '';
 
@@ -65,15 +66,7 @@ export function DayRosterPrintPage() {
       </div>
 
       <div className="mx-auto max-w-[8.5in] bg-white p-6 text-black">
-        {/* Org-branded header */}
-        <div className="text-center">
-          {settings?.logoUrl && <img src={settings.logoUrl} alt="" className="mx-auto mb-2 h-16 object-contain" />}
-          <div className="text-lg font-bold uppercase">{settings?.orgName || academy.location || 'Training Division'}</div>
-          {settings?.letterheadTagline && <div className="text-xs uppercase tracking-[0.2em] text-black/70">{settings.letterheadTagline}</div>}
-          <div className="mt-1 text-sm font-semibold">{program}</div>
-          <div className="text-sm font-semibold uppercase tracking-wide">Training Roster</div>
-          {classLine && <div className="text-xs font-medium">{classLine}</div>}
-        </div>
+        <DocumentHeader curriculum={curriculum} settings={settings} documentTitle="Training Roster" classLine={classLine} />
 
         <div className="mt-3 flex items-end justify-between text-xs">
           <div><span className="font-bold uppercase text-black/70">Date: </span>{prettyDate}</div>

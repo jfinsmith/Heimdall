@@ -236,6 +236,9 @@ export interface GlobalSettings {
   jurisdiction?: 'FL' | 'neutral';
   /** Optional tagline under the org name in the letterhead (non-PHSC orgs). */
   letterheadTagline?: string;
+  /** Optional address / contact lines printed under the document header (e.g.
+   *  campus addresses). One entry per line. Overridable per curriculum. */
+  letterheadAddressLines?: string[];
   /**
    * Per-org join code (a shared "site password"). A signed-up user who enters it
    * on the awaiting-org screen is routed into THIS org's pending queue (still
@@ -623,11 +626,31 @@ export interface CurriculumDoc {
   // ── Per-discipline roster configuration (extensible; see RosterModuleKey) ──
   /** Roster tabs enabled for this discipline (Members always shows). Unset = default set. */
   rosterModules?: RosterModuleKey[];
-  /** Report categories (see ReportConfigDoc) whose forms this discipline's Reports tab offers. */
+  /** @deprecated category model removed; superseded by the document library + the
+   *  form-override fields below. Kept for back-compat read only. */
   reportCategories?: string[];
-  /** @deprecated superseded by reportCategories — kept for back-compat read only. */
+  /** @deprecated superseded by the form-override fields below — back-compat read only. */
   reportTypeIds?: string[];
+
+  // ── Per-discipline document overrides (unified-documents redesign) ──
+  /** Branding overrides for THIS discipline's printed documents; each falls back
+   *  to the org's settings when unset. Lets one org run multiple programs under
+   *  different identities (e.g. an NMT program under the Sheriff's Office brand). */
+  brandLogoUrl?: string;
+  brandOrgName?: string;
+  brandTagline?: string;
+  brandAddressLines?: string[];
+  /** Swap a general/base form for a specialized library form on this discipline
+   *  (base form id → documentLibrary form id). */
+  formOverrides?: Record<string, string>;
+  /** General/base form ids hidden from this discipline's Reports tab. */
+  disabledForms?: string[];
+  /** Org-assigned specialized library form ids ADDED to this discipline. */
+  addedForms?: string[];
 }
+// Note: the owner document library type (LibraryFormDoc) lives in
+// src/features/cadre/reports/documentLibrary.ts so it can reference ReportField/
+// DocBlock from the reports feature without a circular import.
 
 // ── Sessions & staffing slots ──────────────────────────────────────────────
 /**

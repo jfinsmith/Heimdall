@@ -26,7 +26,11 @@ export type WithId<T> = T & { id: string };
  * reads for the platform owner, e.g. feedback triage, use dedicated queries, not
  * this hook.)
  */
-const NON_ORG_SCOPED = new Set(['orgs', 'notifications', 'mail', 'defaultCurricula']);
+// `documentLibrary` is the owner-managed forms library — NOT tenant-scoped (forms
+// are general-to-all or assigned to N orgs), so it must NOT get an injected
+// orgId filter; access is gated by availability/orgIds in firestore.rules and the
+// staff hook queries it explicitly (by availability / array-contains orgId).
+const NON_ORG_SCOPED = new Set(['orgs', 'notifications', 'mail', 'defaultCurricula', 'documentLibrary']);
 // Org-owned SUBCOLLECTIONS (academies/{id}/roster, etc.). Their list reads must
 // also be filtered by orgId — a subcollection list query with no orgId filter is
 // denied ENTIRELY by Firestore if any sibling doc fails the per-doc inOrg rule
