@@ -43,17 +43,19 @@ export interface SessionEventOpts {
 }
 
 /**
- * Notes-driven highlight on calendar blocks: TEST → red, SCENARIO → green,
- * PT (e.g. "PT Assessment") → yellow. Precedence when more than one word appears:
- * test (red) > scenario (green) > PT (yellow), since a graded test is the most
- * critical to flag. Returns the flag type, or null for an ordinary block.
+ * Highlight on calendar blocks: TEST → red, SCENARIO → green, PT (e.g.
+ * "PT Assessment") → yellow. Matches the block's course/assignment NAME, its
+ * title override, AND its notes — so the flag fires whether the word is the
+ * block name (e.g. a custom "PT Assessment" block) or typed into the notes.
+ * Precedence when more than one appears: test (red) > scenario (green) > PT
+ * (yellow), since a graded test is the most critical to flag.
  */
 export type SessionFlag = 'test' | 'scenario' | 'pt';
 export function sessionFlag(s: SessionDoc): SessionFlag | null {
-  const notes = s.notes ?? '';
-  if (/\btest/i.test(notes)) return 'test';
-  if (/\bscenario/i.test(notes)) return 'scenario';
-  if (/\bPT\b/i.test(notes)) return 'pt';
+  const hay = `${s.courseName ?? ''} ${s.title ?? ''} ${s.notes ?? ''}`;
+  if (/\btest/i.test(hay)) return 'test';
+  if (/\bscenario/i.test(hay)) return 'scenario';
+  if (/\bPT\b/i.test(hay)) return 'pt';
   return null;
 }
 
