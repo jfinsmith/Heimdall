@@ -165,8 +165,10 @@ function MembersTab({
             </tr>
           </thead>
           <tbody className="divide-y divide-watch-50">
-            {full.map((m) => (
-              <MemberRow key={m.id} m={m}
+            {/* # is the LIVE position in the roster, not a stored id — so removing a
+                member collapses the numbers below them (e.g. pull #23 → #24 becomes #23). */}
+            {full.map((m, i) => (
+              <MemberRow key={m.id} m={m} displayNo={i + 1}
                 onWithdraw={() => setWithdrawTarget(m)} onReinstate={() => reinstate(m)} onRemove={() => remove(m)} />
             ))}
             {full.length === 0 && (
@@ -176,8 +178,8 @@ function MembersTab({
           {blockTakers.length > 0 && (
             <tbody className="divide-y divide-watch-50">
               <tr className="bg-watch-100/60"><td colSpan={6} className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-watch-600">Additional block takers</td></tr>
-              {blockTakers.map((m) => (
-                <MemberRow key={m.id} m={m}
+              {blockTakers.map((m, i) => (
+                <MemberRow key={m.id} m={m} displayNo={i + 1}
                   onWithdraw={() => setWithdrawTarget(m)} onReinstate={() => reinstate(m)} onRemove={() => remove(m)} />
               ))}
             </tbody>
@@ -194,15 +196,16 @@ function MembersTab({
 }
 
 function MemberRow({
-  m, onWithdraw, onReinstate, onRemove,
+  m, displayNo, onWithdraw, onReinstate, onRemove,
 }: {
   m: WithId<RosterMemberDoc>;
+  displayNo: number;
   onWithdraw: () => void; onReinstate: () => void; onRemove: () => void;
 }) {
   const withdrawn = m.status === 'withdrawn';
   return (
     <tr className={withdrawn ? 'bg-slate-50 text-slate-400' : ''}>
-      <td className="px-3 py-3 tabular-nums">{m.no}</td>
+      <td className="px-3 py-3 tabular-nums">{displayNo}</td>
       <td className="px-3 py-3 font-medium text-watch-900">
         <span className={withdrawn ? 'line-through' : ''}>{m.fullName}</span>
       </td>

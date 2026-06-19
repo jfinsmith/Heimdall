@@ -129,7 +129,7 @@ export function AttendanceTab({
           action, up to and including, Dismissal from the Academy and/or termination of employment.****
         </p>
 
-        <RosterTable title={null} rows={cadets} />
+        <RosterTable title={null} rows={cadets} renumber />
         {additionalSection.length > 0 && <RosterTable title="Additional Course Takers" rows={additionalSection} renumber />}
 
         <div className="mt-8 flex items-end gap-8 text-xs">
