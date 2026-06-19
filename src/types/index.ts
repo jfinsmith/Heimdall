@@ -373,6 +373,9 @@ export interface AcademyDoc {
    *  as {orgId}__{key} for non-founding orgs; legacy PHSC curricula are bare keys). */
   discipline: string;
   fdleProgram: string;     // e.g. "FDLE Basic Recruit Training Program — Law Enforcement"
+  /** Class/course sequence number (e.g. FDLE CSN "65-2026-2010-2"). Set at
+   *  creation or in the builder; prefills the attendance roster's Seq # field. */
+  sequenceNo?: string;
   startDate: Timestamp;
   endDate: Timestamp;
   location: string;

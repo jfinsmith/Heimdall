@@ -45,15 +45,17 @@ export function AttendanceTab({
   const [classHours, setClassHours] = useState('');
   const [lead, setLead] = useState('');
   const [additional, setAdditional] = useState('');
-  const [seqNo, setSeqNo] = useState('');
+  const [seqNo, setSeqNo] = useState(academy.sequenceNo ?? '');
   const [lunch, setLunch] = useState('1200 - 1300');
   const [totalHours, setTotalHours] = useState(String(curriculum?.totalHours ?? academy.targetTotalHours));
   // Ad-hoc people taking this course who are NOT on the roster (one name per line).
   const [additionalTakers, setAdditionalTakers] = useState('');
 
-  // Reset per-course defaults when the course changes.
+  // Reset per-course defaults when the course changes. Seq # prefers the
+  // academy-level Sequence No. (set in the builder); a per-course courseSeqNo is
+  // the fallback. Either can be overridden on the sheet before printing.
   useEffect(() => {
-    setSeqNo(course?.courseSeqNo ?? '');
+    setSeqNo(academy.sequenceNo || course?.courseSeqNo || '');
     setClassHours(course?.minHours ? String(course.minHours) : '');
   }, [courseName]); // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -1006,6 +1006,7 @@ function EditAcademyModal({ academy, onClose }: { academy: WithId<AcademyDoc>; o
   const [discipline, setDiscipline] = useState(academy.discipline ?? '');
   const [color, setColor] = useState(academy.color ?? ACADEMY_COLORS[0].value);
   const [defaultRoom, setDefaultRoom] = useState(academy.defaultRoom ?? '');
+  const [sequenceNo, setSequenceNo] = useState(academy.sequenceNo ?? '');
   const [targetHours, setTargetHours] = useState(academy.targetTotalHours);
   const [primary, setPrimary] = useState(academy.coordinatorIds[0] ?? '');
   const [secondary, setSecondary] = useState(academy.coordinatorIds[1] ?? '');
@@ -1030,6 +1031,7 @@ function EditAcademyModal({ academy, onClose }: { academy: WithId<AcademyDoc>; o
       color,
       fdleProgram: curriculum?.fdleProgram ?? academy.fdleProgram,
       defaultRoom,
+      sequenceNo: sequenceNo.trim(),
       targetTotalHours: targetHours,
       // [0] = primary, [1] = secondary; drop empties and de-dup.
       coordinatorIds: [...new Set([primary, secondary].filter(Boolean))],
@@ -1084,6 +1086,11 @@ function EditAcademyModal({ academy, onClose }: { academy: WithId<AcademyDoc>; o
           </Field>
           <Field label="Target total hours">
             <Input type="number" min={1} step="any" value={targetHours} onChange={(e) => setTargetHours(Number(e.target.value))} />
+          </Field>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Sequence No." hint="FDLE class/course sequence — flows to the attendance roster">
+            <Input value={sequenceNo} onChange={(e) => setSequenceNo(e.target.value)} placeholder="65-2026-2010-2" />
           </Field>
         </div>
         <div className="grid grid-cols-2 gap-4">

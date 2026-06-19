@@ -340,6 +340,7 @@ function CreateAcademyModal({
   const [endDate, setEndDate] = useState('');
   const [location, setLocation] = useState(DEFAULT_LOCATION);
   const [defaultRoom, setDefaultRoom] = useState('');
+  const [sequenceNo, setSequenceNo] = useState('');
   const [targetHours, setTargetHours] = useState(0);
   const [primary, setPrimary] = useState('');
   const [secondary, setSecondary] = useState('');
@@ -380,6 +381,7 @@ function CreateAcademyModal({
       endDate: tsFromDate(new Date(`${endDate}T23:59:59`)),
       location,
       defaultRoom,
+      ...(sequenceNo.trim() ? { sequenceNo: sequenceNo.trim() } : {}),
       status: 'draft',
       isTemplate,
       coordinatorIds: [...new Set([primary, secondary].filter(Boolean))],
@@ -448,6 +450,13 @@ function CreateAcademyModal({
             <Input value={defaultRoom} onChange={(e) => setDefaultRoom(e.target.value)} placeholder="E-120" />
           </Field>
         </div>
+        {!isTemplate && (
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Sequence No." hint="FDLE class/course sequence — flows to the attendance roster">
+              <Input value={sequenceNo} onChange={(e) => setSequenceNo(e.target.value)} placeholder="65-2026-2010-2" />
+            </Field>
+          </div>
+        )}
         <Field label="Calendar color" hint="Distinguishes this academy on shared calendars">
           <div className="flex items-center gap-2">
             <Select value={defaultColor} onChange={(e) => setColor(e.target.value)} className="flex-1">
