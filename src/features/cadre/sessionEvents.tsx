@@ -42,9 +42,19 @@ export interface SessionEventOpts {
   academyColor?: string;
 }
 
-/** Tests / scenarios get a bold colored border to stand out from normal days. */
-export function isFlaggedSession(s: SessionDoc): boolean {
-  return /\b(test|scenario)/i.test(s.notes ?? '');
+/**
+ * Notes-driven highlight on calendar blocks: TEST → red, SCENARIO → green,
+ * PT (e.g. "PT Assessment") → yellow. Precedence when more than one word appears:
+ * test (red) > scenario (green) > PT (yellow), since a graded test is the most
+ * critical to flag. Returns the flag type, or null for an ordinary block.
+ */
+export type SessionFlag = 'test' | 'scenario' | 'pt';
+export function sessionFlag(s: SessionDoc): SessionFlag | null {
+  const notes = s.notes ?? '';
+  if (/\btest/i.test(notes)) return 'test';
+  if (/\bscenario/i.test(notes)) return 'scenario';
+  if (/\bPT\b/i.test(notes)) return 'pt';
+  return null;
 }
 
 export function sessionToEvent(s: WithId<SessionDoc>, opts: SessionEventOpts = {}): EventInput {
@@ -57,7 +67,10 @@ export function sessionToEvent(s: WithId<SessionDoc>, opts: SessionEventOpts = {
     end: s.end.toDate(),
     backgroundColor: bg,
     borderColor: opts.academyColor ? status : bg,
-    classNames: isFlaggedSession(s) ? ['hd-flagged'] : [],
+    classNames: (() => {
+      const flag = sessionFlag(s);
+      return flag ? ['hd-flagged', `hd-flagged--${flag}`] : [];
+    })(),
     editable: opts.editable ?? false,
     extendedProps: { session: s, academyPrefix: opts.academyPrefix },
   };

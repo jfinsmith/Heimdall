@@ -82,15 +82,19 @@ body {
   cursor: pointer;
 }
 
-/* Tests & scenarios (the word "test" or "scenario" in notes): bold amber border */
+/* Notes-driven highlight: TEST → red, SCENARIO → green, PT → yellow. The base
+   rule draws the bold inset border from a per-flag --flag color set below. */
 .fc-event.hd-flagged {
-  box-shadow: inset 0 0 0 3px #f59e0b;
-  border-color: #f59e0b !important;
+  box-shadow: inset 0 0 0 3px var(--flag);
+  border-color: var(--flag) !important;
 }
-.fc-event.hd-flagged .hd-event-notes {
-  color: #fde68a;
-  opacity: 1;
-}
+.fc-event.hd-flagged--test { --flag: #dc2626; }      /* red-600 */
+.fc-event.hd-flagged--scenario { --flag: #16a34a; }  /* green-600 */
+.fc-event.hd-flagged--pt { --flag: #eab308; }        /* yellow-500 */
+.fc-event.hd-flagged .hd-event-notes { opacity: 1; }
+.fc-event.hd-flagged--test .hd-event-notes { color: #fecaca; }      /* red-200 */
+.fc-event.hd-flagged--scenario .hd-event-notes { color: #bbf7d0; }  /* green-200 */
+.fc-event.hd-flagged--pt .hd-event-notes { color: #fef08a; }        /* yellow-200 */
 .hd-event {
   position: relative;
   height: 100%;
