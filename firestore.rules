@@ -168,6 +168,17 @@ service cloud.firestore {
       allow read, write: if isPlatformOwner();
     }
 
+    // ── documentForms (in-app document builder, Phase 12) ──────────────────
+    // Org-scoped admin/owner-authored documents; staff read them to file reports.
+    // Writers must be command (or the platform owner) AND in the doc's org — so an
+    // owner can only author for the org they're currently switched into.
+    match /documentForms/{id} {
+      allow read: if (isStaff() || isPlatformOwner()) && inOrg(resource.data);
+      allow create: if (isAdmin() || isPlatformOwner()) && inOrg(request.resource.data);
+      allow update: if (isAdmin() || isPlatformOwner()) && inOrg(resource.data) && unchanged('orgId');
+      allow delete: if (isAdmin() || isPlatformOwner()) && inOrg(resource.data);
+    }
+
     // ── coursePublishEvents ────────────────────────────────────────────────
     match /coursePublishEvents/{id} {
       allow read: if isStaff() && inOrg(resource.data);

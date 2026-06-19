@@ -15,6 +15,7 @@ import { Button, Field, Input, Select, TextArea } from '../../../components/ui';
 import { Modal } from '../../../components/Modal';
 import { type ReportType } from './reportTypes';
 import { effectiveReportTypes, GENERAL_CATEGORY } from './reportConfig';
+import { useCustomReportTypes } from './documentForms';
 
 export const isLawEnforcement = (a?: WithId<AcademyDoc>) =>
   // discipline is the curriculum DOC id, which may be org-namespaced ({orgId}__le_brt);
@@ -45,11 +46,14 @@ export function AcademyReports({ academy }: { academy: WithId<AcademyDoc> }) {
   const [formType, setFormType] = useState<ReportType | null>(null);
   const [editing, setEditing] = useState<WithId<AcademyReportDoc> | null>(null);
 
-  // Report forms (code registry + admin name/category overrides), then the set
-  // this discipline offers: by the curriculum's chosen categories when set,
-  // else legacy fallbacks (older per-form list, else all LE forms).
-  // Org-scope: global forms (no orgScope) plus any scoped to THIS org only.
-  const effective = effectiveReportTypes(reportConfig).filter((t) => !t.orgScope || t.orgScope === orgId);
+  // Report forms = code registry (+ admin name/category overrides) plus this org's
+  // in-app builder documents (Phase 12), then filtered by org-scope: global forms
+  // (no orgScope) plus any scoped to THIS org only. Custom docs are already
+  // org-scoped by useCollection, so they always pass the filter.
+  const { types: customTypes } = useCustomReportTypes();
+  const effective = [...effectiveReportTypes(reportConfig), ...customTypes].filter(
+    (t) => !t.orgScope || t.orgScope === orgId
+  );
   const typeFor = (id: string) => effective.find((t) => t.id === id);
   // Discipline-specific forms: by the curriculum's chosen categories when set,
   // else legacy fallbacks (older per-form list, else all LE forms).

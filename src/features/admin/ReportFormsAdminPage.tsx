@@ -7,15 +7,17 @@
  * (top of the sidebar) to manage another org's report config.
  */
 import React, { useEffect, useState } from 'react';
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { useDoc, orgConfigPath } from '../../lib/firestore';
+import { useCollection, useDoc, orgConfigPath, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import type { ReportCategory, ReportConfigDoc } from '../../types';
 import { Badge, Button, Field, Input, PageHeader, Select } from '../../components/ui';
 import { logAudit } from '../sessions/audit';
 import { REPORT_TYPES } from '../cadre/reports/reportTypes';
 import { reportCategoriesOf, effectiveReportTypes } from '../cadre/reports/reportConfig';
+import type { DocumentFormDoc } from '../cadre/reports/documentForms';
+import { DocumentBuilderModal } from './DocumentBuilderModal';
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 
@@ -30,6 +32,16 @@ export function ReportFormsAdminPage() {
   const [seeded, setSeeded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  // In-app builder documents for the org being viewed (auto org-scoped).
+  const { data: customDocs } = useCollection<DocumentFormDoc>('documentForms');
+  const [builder, setBuilder] = useState<{ editing: WithId<DocumentFormDoc> | null } | null>(null);
+
+  async function removeCustom(d: WithId<DocumentFormDoc>) {
+    if (!window.confirm(`Delete the custom document “${d.name}”? Filed reports that used it stay, but it can no longer be selected.`)) return;
+    await deleteDoc(doc(db, 'documentForms', d.id));
+    if (firebaseUser) await logAudit(firebaseUser.uid, 'documentForm.delete', 'documentForms', d.id, d.name);
+  }
 
   // Seed the editable state once the config doc resolves (exists or not).
   useEffect(() => {
@@ -157,6 +169,49 @@ export function ReportFormsAdminPage() {
         <Button variant="primary" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save changes'}</Button>
         {saved && <span className="text-sm text-green-700">Saved.</span>}
       </div>
+
+      {/* Custom documents — the in-app builder (Phase 12). */}
+      <section className="mt-8 rounded-lg border border-watch-100 bg-white p-4 shadow-sm">
+        <div className="mb-1 flex items-center justify-between">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-watch-600">Custom documents ({customDocs.length})</h2>
+          <Button variant="primary" onClick={() => setBuilder({ editing: null })}>+ New document</Button>
+        </div>
+        <p className="mb-3 max-w-2xl text-sm text-slate-500">
+          Build a document for <strong>this org only</strong> — fields, header, and paragraph/locked-clause body
+          — that staff can file and print like the built-in letters. Save the categories above first if you add a
+          new one. (The built-in PHSC academic letters were created this way during development.)
+        </p>
+        {customDocs.length === 0 ? (
+          <p className="text-sm text-slate-400">No custom documents yet.</p>
+        ) : (
+          <div className="divide-y divide-watch-50">
+            {customDocs.map((d) => (
+              <div key={d.id} className="flex items-center justify-between py-2">
+                <div>
+                  <div className="font-medium text-watch-900">
+                    {d.name} {d.active === false && <Badge tone="amber">Inactive</Badge>}
+                  </div>
+                  <div className="text-xs text-slate-500">{d.purpose || '—'}</div>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="ghost" onClick={() => setBuilder({ editing: d })}>Edit</Button>
+                  <Button variant="ghost" className="text-red-700" onClick={() => removeCustom(d)}>Delete</Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {builder && orgId && firebaseUser && (
+        <DocumentBuilderModal
+          editing={builder.editing}
+          categories={cats.filter((c) => c.label.trim())}
+          orgId={orgId}
+          createdBy={firebaseUser.uid}
+          onClose={() => setBuilder(null)}
+        />
+      )}
     </div>
   );
 }

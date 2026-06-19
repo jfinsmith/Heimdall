@@ -58,7 +58,9 @@ export interface DocumentSpec {
 }
 
 export interface ReportType {
-  id: ReportTypeId;
+  /** Built-in code ids are ReportTypeId; in-app builder docs (Phase 12) use their
+   *  Firestore doc id — so this is a plain string. */
+  id: ReportTypeId | string;
   name: string;
   purpose: string;
   reSubject: string; // "Re:" line + distribution footer subject
@@ -223,4 +225,4 @@ export const REPORT_TYPES: ReportType[] = [
   ...DOCUMENT_TYPES,
 ];
 
-export const getReportType = (id: ReportTypeId): ReportType | undefined => REPORT_TYPES.find((r) => r.id === id);
+export const getReportType = (id: string): ReportType | undefined => REPORT_TYPES.find((r) => r.id === id);

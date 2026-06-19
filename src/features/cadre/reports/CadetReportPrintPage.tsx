@@ -10,6 +10,7 @@ import { useCollection, useDoc } from '../../../lib/firestore';
 import type { AcademyDoc, AcademyReportDoc, UserDoc } from '../../../types';
 import { Button, Spinner } from '../../../components/ui';
 import { ReportLetter } from './ReportLetter';
+import { useCustomReportTypes } from './documentForms';
 
 export function CadetReportPrintPage() {
   const { academyId = '', reportId = '' } = useParams();
@@ -19,9 +20,13 @@ export function CadetReportPrintPage() {
   );
   const { data: directors } = useCollection<UserDoc>('users', [where('role', '==', 'director'), limit(1)]);
   const directorName = directors[0]?.displayName ?? 'Academy Director';
+  // In-app builder documents (Phase 12) aren't in the code registry — resolve by id.
+  const { types: customTypes } = useCustomReportTypes();
 
   if (aLoading || rLoading) return <div className="flex h-screen items-center justify-center"><Spinner className="text-bifrost-400" /></div>;
   if (!academy || !report) return <p className="p-8 text-sm text-slate-500">Report not found.</p>;
+
+  const customType = customTypes.find((t) => t.id === report.type);
 
   return (
     <div>
@@ -29,7 +34,7 @@ export function CadetReportPrintPage() {
         <Link to={`/cadet-reports`} className="text-sm text-bifrost-700 hover:underline">← Back to Cadet Reports</Link>
         <Button variant="primary" onClick={() => window.print()}>Print</Button>
       </div>
-      <ReportLetter report={report} directorName={directorName} fromName={report.createdByName ?? ''} />
+      <ReportLetter report={report} directorName={directorName} fromName={report.createdByName ?? ''} reportType={customType} />
     </div>
   );
 }

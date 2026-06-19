@@ -14,7 +14,7 @@ import type { AcademyReportDoc } from '../../../types';
 import type { WithId } from '../../../lib/firestore';
 import { useAuth } from '../../../auth/AuthContext';
 import { useGlobalSettings } from '../../../app/providers';
-import { getReportType } from './reportTypes';
+import { getReportType, type ReportType } from './reportTypes';
 import { MemoRenderer } from './MemoRenderer';
 import type { MemoBlock, MemoDocument, MemoSpan } from './memoTypes';
 
@@ -37,12 +37,16 @@ export function ReportLetter({
   report,
   directorName,
   fromName,
+  reportType,
 }: {
   report: Pick<AcademyReportDoc, 'type' | 'cadetName' | 'data'> & Partial<WithId<AcademyReportDoc>>;
   directorName: string;
   fromName: string;
+  /** Resolved type for in-app builder documents (Phase 12), whose id isn't in the
+   *  code registry. When omitted, the type is looked up by report.type. */
+  reportType?: ReportType;
 }) {
-  const type = getReportType(report.type);
+  const type = reportType ?? getReportType(report.type);
   const settings = useGlobalSettings();
   const { orgId } = useAuth();
   if (!type) return null;

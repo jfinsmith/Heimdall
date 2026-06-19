@@ -477,7 +477,8 @@ export interface ReportConfigDoc {
 
 /** A filed academic-action report (e.g., exam-failure letter) for one cadet. */
 export interface AcademyReportDoc {
-  type: ReportTypeId;
+  /** Built-in report id (ReportTypeId) or an in-app builder doc's id (string). */
+  type: ReportTypeId | string;
   /** Roster member id, if filed against a roster cadet. */
   cadetId?: string;
   cadetName: string;
