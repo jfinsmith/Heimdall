@@ -21,7 +21,7 @@ interface QueueAccount { uid: string; email: string; displayName: string; status
 interface OrgSummary { orgId: string; legalName: string; userCount: number }
 interface Member { uid: string; displayName: string; email: string; role: string; status: string; rank: string }
 interface OrgDetail {
-  org: { orgId: string; legalName: string; status: string; shortCode: string };
+  org: { orgId: string; legalName: string; status: string; shortCode: string; dataRegion: string; dpaAcceptedAt: number | null; dpaAcceptedByName: string; dpaVersion: string };
   settings: { orgName: string; allowedEmailDomains: string[]; siteCode: string; jurisdiction: string };
   members: Member[];
   memberCount: number;
@@ -230,6 +230,15 @@ function OrgDetailPanel({ detail, loading, onBack, onAddAdmin }: {
             <dl className="mt-3 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
               <Info label="Status" value={detail.org.status} />
               <Info label="Jurisdiction" value={detail.settings.jurisdiction || '—'} />
+              <Info label="Data region" value={detail.org.dataRegion || '—'} />
+              <Info
+                label="DPA accepted"
+                value={
+                  detail.org.dpaAcceptedAt
+                    ? `v${detail.org.dpaVersion} · ${new Date(detail.org.dpaAcceptedAt).toLocaleDateString()}${detail.org.dpaAcceptedByName ? ` · ${detail.org.dpaAcceptedByName}` : ''}`
+                    : 'Not yet'
+                }
+              />
               <Info label="Site join code" value={detail.settings.siteCode || '(none set)'} />
               <Info label="Auto-join domains" value={detail.settings.allowedEmailDomains.length ? detail.settings.allowedEmailDomains.join(', ') : '(none)'} />
             </dl>

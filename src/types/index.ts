@@ -207,6 +207,17 @@ export interface OrgDoc {
   stripeSubscriptionId?: string;
   /** Current paid period end (epoch ms) — used for a grace window on past_due. */
   currentPeriodEnd?: number;
+  /**
+   * Compliance (Phase 13). All SERVER-managed (orgs is `allow write: if false`).
+   * `dataRegion` records where the tenant's data physically lives (US for CJIS);
+   * the DPA fields record the org admin's acceptance of the Data Processing
+   * Agreement — the per-org compliance gate before onboarding an outside tenant.
+   */
+  dataRegion?: string;
+  dpaAcceptedAt?: Timestamp;
+  dpaAcceptedBy?: string;
+  dpaAcceptedByName?: string;
+  dpaVersion?: string;
   createdAt: Timestamp;
   createdBy?: string;
 }

@@ -58,6 +58,14 @@ beforeEach(async () => {
     await setDoc(doc(db, 'auditLog/lB'), { actorUid: 'erin', action: 'x', summary: 's', orgId: BETA });
     await setDoc(doc(db, 'orgs/' + ORG), { orgId: ORG, legalName: 'PHSC' });
     await setDoc(doc(db, 'orgs/' + BETA), { orgId: BETA, legalName: 'Beta College' });
+    // documentForms (Phase 12) — one per tenant, for the isolation suite.
+    await setDoc(doc(db, 'documentForms/dfA'), { orgId: ORG, name: 'A doc', active: true });
+    await setDoc(doc(db, 'documentForms/dfB'), { orgId: BETA, name: 'B doc', active: true });
+    // curricula are org-namespaced ({orgId}__{key}); same base key across tenants.
+    await setDoc(doc(db, 'curricula/' + ORG + '__le_brt'), { orgId: ORG, key: 'le_brt', label: 'LE' });
+    await setDoc(doc(db, 'curricula/' + BETA + '__le_brt'), { orgId: BETA, key: 'le_brt', label: 'LE' });
+    await setDoc(doc(db, 'reportConfig/' + ORG), { categories: [] });
+    await setDoc(doc(db, 'reportConfig/' + BETA), { categories: [] });
   });
 });
 
@@ -234,6 +242,13 @@ describe('tenant isolation (orgId)', () => {
     await assertFails(setDoc(doc(as('dave', 'director'), 'orgs/' + ORG), { orgId: ORG, legalName: 'x' }));
   });
 
+  it('orgs: client (even own-org admin) cannot write compliance/billing fields', async () => {
+    // orgs is write:false — DPA + Stripe state is Admin-SDK-only. Guards a future
+    // rule loosening from silently letting a tenant forge acceptance / dodge billing.
+    await assertFails(updateDoc(doc(as('dave', 'director'), 'orgs/' + ORG), { dpaVersion: 'forged', dpaAcceptedAt: new Date() }));
+    await assertFails(updateDoc(doc(as('dave', 'director'), 'orgs/' + ORG), { subscriptionStatus: 'active', currentPeriodEnd: 9999999999999 }));
+  });
+
   it('orgId is IMMUTABLE — cannot move an own-tenant doc into another tenant', async () => {
     await assertFails(updateDoc(doc(as('dave', 'director'), 'academies/aA'), { orgId: BETA, title: 'x' }));
     await assertFails(updateDoc(doc(as('dave', 'director'), 'sessions/s1'), { orgId: BETA }));
@@ -259,5 +274,61 @@ describe('tenant isolation (orgId)', () => {
   });
   it('a same-tenant director CAN read a same-tenant user (positive control)', async () => {
     await assertSucceeds(getDoc(doc(as('dave', 'director'), 'users/bob')));
+  });
+});
+
+// ── Phase 12/13: in-app document builder collection isolation. Staff read their
+// own org's documents; only command (admin) may author; orgId is immutable. ──
+describe('documentForms — org isolation', () => {
+  it('staff reads OWN-tenant document, NOT another tenant\'s', async () => {
+    await assertSucceeds(getDoc(doc(as('carol', 'coordinator'), 'documentForms/dfA')));
+    await assertFails(getDoc(doc(as('carol', 'coordinator'), 'documentForms/dfB')));
+  });
+  it('a non-staff instructor cannot read documentForms', async () => {
+    await assertFails(getDoc(doc(as('alice', 'instructor'), 'documentForms/dfA')));
+  });
+  it('admin creates in OWN org; not a foreign org; not orgless', async () => {
+    await assertSucceeds(setDoc(doc(as('dave', 'director'), 'documentForms/n1'), { orgId: ORG, name: 'x', active: true }));
+    await assertFails(setDoc(doc(as('dave', 'director'), 'documentForms/n2'), { orgId: BETA, name: 'x', active: true }));
+    await assertFails(setDoc(doc(as('dave', 'director'), 'documentForms/n3'), { name: 'x', active: true }));
+  });
+  it('a coordinator (staff, non-admin) cannot create a documentForm', async () => {
+    await assertFails(setDoc(doc(as('carol', 'coordinator'), 'documentForms/n4'), { orgId: ORG, name: 'x', active: true }));
+  });
+  it('cannot update another tenant\'s doc; orgId is immutable; own-tenant edit OK', async () => {
+    await assertFails(updateDoc(doc(as('dave', 'director'), 'documentForms/dfB'), { name: 'hijack' }));
+    await assertFails(updateDoc(doc(as('dave', 'director'), 'documentForms/dfA'), { orgId: BETA, name: 'x' }));
+    await assertSucceeds(updateDoc(doc(as('dave', 'director'), 'documentForms/dfA'), { name: 'ok' }));
+  });
+  it('admin deletes own-tenant doc, not another tenant\'s', async () => {
+    await assertFails(deleteDoc(doc(as('dave', 'director'), 'documentForms/dfB')));
+    await assertSucceeds(deleteDoc(doc(as('dave', 'director'), 'documentForms/dfA')));
+  });
+  it('platform owner acts ONLY within the org their claim points to (no isolation bypass)', async () => {
+    const owner = testEnv.authenticatedContext('owner', { role: 'director', orgId: ORG, platformOwner: true }).firestore();
+    await assertSucceeds(getDoc(doc(owner, 'documentForms/dfA')));
+    await assertSucceeds(setDoc(doc(owner, 'documentForms/ownNew'), { orgId: ORG, name: 'o', active: true }));
+    await assertFails(getDoc(doc(owner, 'documentForms/dfB')));
+    await assertFails(deleteDoc(doc(owner, 'documentForms/dfB')));
+  });
+});
+
+// ── Phase 13 hardening: isolation coverage for the multi-tenant-reworked
+// curricula (org-namespaced doc ids) and per-org reportConfig. ──
+describe('curricula + reportConfig — org isolation', () => {
+  it('reads OWN-tenant curriculum, NOT another tenant\'s (same base key)', async () => {
+    await assertSucceeds(getDoc(doc(as('carol', 'coordinator'), 'curricula/' + ORG + '__le_brt')));
+    await assertFails(getDoc(doc(as('carol', 'coordinator'), 'curricula/' + BETA + '__le_brt')));
+  });
+  it('admin creates curricula in OWN org only; orgId immutable', async () => {
+    await assertSucceeds(setDoc(doc(as('dave', 'director'), 'curricula/' + ORG + '__co_brt'), { orgId: ORG, key: 'co_brt' }));
+    await assertFails(setDoc(doc(as('dave', 'director'), 'curricula/' + BETA + '__x'), { orgId: BETA, key: 'x' }));
+    await assertFails(updateDoc(doc(as('dave', 'director'), 'curricula/' + ORG + '__le_brt'), { orgId: BETA }));
+  });
+  it('reportConfig: read + write only the OWN-org doc', async () => {
+    await assertSucceeds(getDoc(doc(as('dave', 'director'), 'reportConfig/' + ORG)));
+    await assertFails(getDoc(doc(as('dave', 'director'), 'reportConfig/' + BETA)));
+    await assertSucceeds(setDoc(doc(as('dave', 'director'), 'reportConfig/' + ORG), { categories: [] }, { merge: true }));
+    await assertFails(setDoc(doc(as('dave', 'director'), 'reportConfig/' + BETA), { categories: [] }, { merge: true }));
   });
 });

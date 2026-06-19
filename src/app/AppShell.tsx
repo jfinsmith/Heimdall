@@ -169,6 +169,7 @@ export function AppShell() {
           <NavItem to="/admin/settings" label="Org Settings" />
           <NavItem to="/admin/gjallarhorn" label="Gjallarhorn & Email" />
           <NavItem to="/admin/billing" label="Billing" />
+          <NavItem to="/admin/compliance" label="Compliance & Data" />
           <NavItem to="/admin/audit" label="Audit Log" />
         </>
       )}

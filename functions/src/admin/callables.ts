@@ -281,6 +281,9 @@ export const createOrg = onCall<{
         shortCode: slug,
         legalName,
         status: 'active',
+        // Compliance (Phase 13): US data residency for CJIS; DPA starts unaccepted
+        // so the new tenant is prompted to accept it on the Compliance page.
+        dataRegion: 'us-east1',
         createdAt: FieldValue.serverTimestamp(),
         createdBy: caller.uid,
       });
@@ -900,7 +903,17 @@ export const getOrgDetail = onCall<{ orgId: string }>(async (request) => {
   const s = settingsSnap.data() ?? {};
   const o = orgSnap.data()!;
   return {
-    org: { orgId, legalName: (o.legalName as string) || orgId, status: (o.status as string) ?? 'active', shortCode: (o.shortCode as string) ?? '' },
+    org: {
+      orgId,
+      legalName: (o.legalName as string) || orgId,
+      status: (o.status as string) ?? 'active',
+      shortCode: (o.shortCode as string) ?? '',
+      // Compliance (Phase 13) — owner oversight of each org's DPA acceptance.
+      dataRegion: (o.dataRegion as string) ?? '',
+      dpaAcceptedAt: (o.dpaAcceptedAt as Timestamp | undefined)?.toMillis?.() ?? null,
+      dpaAcceptedByName: (o.dpaAcceptedByName as string) ?? '',
+      dpaVersion: (o.dpaVersion as string) ?? '',
+    },
     settings: {
       orgName: (s.orgName as string) ?? '',
       allowedEmailDomains: (s.allowedEmailDomains as string[]) ?? [],
@@ -911,6 +924,52 @@ export const getOrgDetail = onCall<{ orgId: string }>(async (request) => {
     memberCount: members.length,
     pendingCount: members.filter((m) => m.status === 'pending').length,
   };
+});
+
+/**
+ * Compliance (Phase 13): an org admin accepts the Data Processing Agreement for
+ * THEIR OWN org. Records who/when/version on the org doc via the Admin SDK (orgs
+ * are client-unwritable). This is the per-org compliance gate surfaced to the
+ * platform owner before onboarding an outside tenant.
+ */
+export const acceptOrgDpa = onCall<{ version: string }>(async (request) => {
+  const caller = request.auth;
+  if (!caller) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = getFirestore();
+  const callerDoc = await db.doc(`users/${caller.uid}`).get();
+  const data = callerDoc.exists ? callerDoc.data()! : null;
+  const role = data?.role as Role | undefined;
+  const orgId = data?.orgId as string | undefined;
+  if (!role || !ADMIN_ROLES.includes(role) || !orgId) {
+    throw new HttpsError('permission-denied', 'Only an organization admin may accept the agreement.');
+  }
+  const version = (request.data.version ?? '').trim();
+  // Only a server-known version can be recorded, so a client can't stamp a forged
+  // or never-presented attestation. Keep in sync with DPA_VERSION in
+  // src/lib/compliance.ts (functions can't import from the web src tree).
+  const KNOWN_DPA_VERSIONS = ['2026-06-19'];
+  if (!KNOWN_DPA_VERSIONS.includes(version)) {
+    throw new HttpsError('invalid-argument', 'Unknown agreement version.');
+  }
+  await db.doc(`orgs/${orgId}`).set(
+    {
+      dpaAcceptedAt: FieldValue.serverTimestamp(),
+      dpaAcceptedBy: caller.uid,
+      dpaAcceptedByName: (data?.displayName as string) || '',
+      dpaVersion: version,
+    },
+    { merge: true }
+  );
+  await db.collection('auditLog').add({
+    actorUid: caller.uid,
+    action: 'compliance.accept_dpa',
+    targetType: 'org',
+    targetId: orgId,
+    summary: `Accepted Data Processing Agreement ${version}`,
+    orgId,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+  return { ok: true };
 });
 
 /**

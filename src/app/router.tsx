@@ -47,6 +47,7 @@ const ReportFormsAdminPage = lazy(() => import('../features/admin/ReportFormsAdm
 const OwnerConsolePage = lazy(() => import('../features/admin/OwnerConsolePage').then((m) => ({ default: m.OwnerConsolePage })));
 const OwnerAuditPage = lazy(() => import('../features/admin/OwnerAuditPage').then((m) => ({ default: m.OwnerAuditPage })));
 const BillingPage = lazy(() => import('../features/admin/BillingPage').then((m) => ({ default: m.BillingPage })));
+const CompliancePage = lazy(() => import('../features/admin/CompliancePage').then((m) => ({ default: m.CompliancePage })));
 const MarketingPage = lazy(() => import('../features/marketing/MarketingPage').then((m) => ({ default: m.MarketingPage })));
 
 function RouteFallback() {
@@ -118,6 +119,7 @@ export function AppRouter() {
                 <Route path="/admin/settings" element={<SettingsAdminPage />} />
                 <Route path="/admin/gjallarhorn" element={<GjallarhornSettingsPage />} />
                 <Route path="/admin/billing" element={<BillingPage />} />
+                <Route path="/admin/compliance" element={<CompliancePage />} />
                 <Route path="/admin/audit" element={<AuditLogPage />} />
               </Route>
 
