@@ -173,7 +173,7 @@ service cloud.firestore {
     // assigned org. NOT tenant-scoped — only the platform owner may write.
     match /documentLibrary/{id} {
       allow read: if isPlatformOwner()
-        || (isStaff() && (resource.data.get('availability', '') == 'general'
+        || (isStaff() && (resource.data.availability == 'general'
             || (resource.data.orgIds is list && tokenOrgId() in resource.data.orgIds)));
       allow write: if isPlatformOwner();
     }
