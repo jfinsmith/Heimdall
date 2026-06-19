@@ -71,7 +71,10 @@ export function AcademiesPage() {
     .sort((a, b) => a.label.localeCompare(b.label));
   const academies = allAcademies
     .filter((a) => !a.isTemplate)
-    .filter((a) => showArchived || a.status !== 'archived');
+    .filter((a) => showArchived || a.status !== 'archived')
+    // List in start-date order (earliest first), matching the Dates column. Sorted
+    // client-side so it's independent of the query's index direction.
+    .sort((a, b) => a.startDate.toMillis() - b.startDate.toMillis());
 
   async function setArchived(a: WithId<AcademyDoc>, archived: boolean) {
     if (archived && !window.confirm(`Archive "${a.name}"? It disappears from instructor views; you can unarchive any time.`)) return;
