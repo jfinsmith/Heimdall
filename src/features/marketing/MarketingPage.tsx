@@ -12,9 +12,38 @@
  * live in index.html so crawlers see them without running the SPA; robots.txt +
  * sitemap.xml are in public/.
  */
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { WordmarkStacked, WordmarkHorizontal } from '../../brand/Logo';
+
+/** Subtle scroll-reveal: fades + rises into view once, honoring reduced-motion.
+ *  `immediate` plays on mount (for above-the-fold hero content). */
+function Reveal({ children, className = '', delay = 0, immediate = false }: {
+  children: React.ReactNode; className?: string; delay?: number; immediate?: boolean;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    if (immediate) { const t = setTimeout(() => setShown(true), 60); return () => clearTimeout(t); }
+    const el = ref.current;
+    if (!el) return;
+    if (typeof IntersectionObserver === 'undefined' || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      setShown(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      ([e]) => { if (e.isIntersecting) { setShown(true); io.disconnect(); } },
+      { threshold: 0.15, rootMargin: '0px 0px -8% 0px' }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [immediate]);
+  return (
+    <div ref={ref} className={`hd-reveal ${shown ? 'hd-reveal--in' : ''} ${className}`} style={delay ? { transitionDelay: `${delay}ms` } : undefined}>
+      {children}
+    </div>
+  );
+}
 
 const PRICE = '$199';
 const PRICE_PERIOD = '/mo';
@@ -170,53 +199,63 @@ export function MarketingPage() {
 
       {/* Hero */}
       <section className="bg-watch-950 px-5 pb-20 pt-12 text-center text-watch-50 md:px-10">
-        <WordmarkStacked size={116} className="mx-auto" />
-        <h1 className="mx-auto mt-8 max-w-3xl font-display text-3xl font-bold leading-tight md:text-5xl">
-          Run your training academy without the spreadsheets.
-        </h1>
-        <p className="mx-auto mt-4 max-w-2xl text-base text-watch-300 md:text-lg">
-          HEIMDALL is the scheduling, roster, and records platform for law-enforcement and corrections training
-          academies — purpose-built around the Florida CMS basic-recruit program.
-        </p>
-        <div className="mt-8 flex flex-wrap justify-center gap-3">
-          <Link to="/signin" className="rounded-md bg-bifrost-500 px-5 py-2.5 text-sm font-semibold text-watch-950 shadow-sm transition-colors hover:bg-bifrost-400">
-            Sign in
-          </Link>
-          <a href="#features" className="rounded-md border border-watch-700 px-5 py-2.5 text-sm font-semibold text-watch-100 transition-colors hover:bg-watch-800">
-            See what it does
-          </a>
-        </div>
-        <p className="mt-4 text-xs text-watch-400">In beta — new subscriptions aren’t open yet.</p>
+        <Reveal immediate>
+          <WordmarkStacked size={116} className="mx-auto" />
+          <h1 className="mx-auto mt-8 max-w-3xl font-display text-3xl font-bold leading-tight md:text-5xl">
+            Run your training academy without the spreadsheets.
+          </h1>
+          <p className="mx-auto mt-4 max-w-2xl text-base text-watch-300 md:text-lg">
+            HEIMDALL is the scheduling, roster, and records platform for law-enforcement and corrections training
+            academies — purpose-built around the Florida CMS basic-recruit program.
+          </p>
+          <div className="mt-8 flex flex-wrap justify-center gap-3">
+            <Link to="/signin" className="rounded-md bg-bifrost-500 px-5 py-2.5 text-sm font-semibold text-watch-950 shadow-sm transition-colors hover:bg-bifrost-400">
+              Sign in
+            </Link>
+            <a href="#features" className="rounded-md border border-watch-700 px-5 py-2.5 text-sm font-semibold text-watch-100 transition-colors hover:bg-watch-800">
+              See what it does
+            </a>
+          </div>
+          <p className="mt-4 text-xs text-watch-400">In beta — new subscriptions aren’t open yet.</p>
+        </Reveal>
       </section>
 
       {/* Product preview */}
       <section className="mx-auto max-w-5xl px-5 py-16 md:px-10">
-        <h2 className="text-center font-display text-2xl font-bold md:text-3xl">A look inside</h2>
-        <p className="mx-auto mt-2 max-w-2xl text-center text-sm text-slate-500">
-          Build the schedule, track every cadet, and print what you need — one place for the whole academy.
-        </p>
+        <Reveal>
+          <h2 className="text-center font-display text-2xl font-bold md:text-3xl">A look inside</h2>
+          <p className="mx-auto mt-2 max-w-2xl text-center text-sm text-slate-500">
+            Build the schedule, track every cadet, and print what you need — one place for the whole academy.
+          </p>
+        </Reveal>
         <div className="mt-8 grid gap-6 md:grid-cols-2">
-          <figure>
-            <SchedulePreview />
-            <figcaption className="mt-2 text-center text-xs text-slate-500">Schedule builder — color-coded tests, scenarios, and PT; live hour totals.</figcaption>
-          </figure>
-          <figure>
-            <RosterPreview />
-            <figcaption className="mt-2 text-center text-xs text-slate-500">Cadet roster & gradebook — attendance, demerits, and pass/fail grades.</figcaption>
-          </figure>
+          <Reveal>
+            <figure>
+              <SchedulePreview />
+              <figcaption className="mt-2 text-center text-xs text-slate-500">Schedule builder — color-coded tests, scenarios, and PT; live hour totals.</figcaption>
+            </figure>
+          </Reveal>
+          <Reveal delay={120}>
+            <figure>
+              <RosterPreview />
+              <figcaption className="mt-2 text-center text-xs text-slate-500">Cadet roster & gradebook — attendance, demerits, and pass/fail grades.</figcaption>
+            </figure>
+          </Reveal>
         </div>
       </section>
 
       {/* Features */}
       <section id="features" className="bg-watch-50 px-5 py-16 md:px-10">
         <div className="mx-auto max-w-5xl">
-          <h2 className="text-center font-display text-2xl font-bold md:text-3xl">Everything an academy office needs</h2>
+          <Reveal><h2 className="text-center font-display text-2xl font-bold md:text-3xl">Everything an academy office needs</h2></Reveal>
           <div className="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {FEATURES.map((f) => (
-              <div key={f.title} className="rounded-xl border border-watch-100 bg-white p-5 shadow-sm">
-                <h3 className="font-semibold text-watch-900">{f.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-slate-600">{f.body}</p>
-              </div>
+            {FEATURES.map((f, i) => (
+              <Reveal key={f.title} delay={(i % 3) * 90}>
+                <div className="h-full rounded-xl border border-watch-100 bg-white p-5 shadow-sm">
+                  <h3 className="font-semibold text-watch-900">{f.title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-slate-600">{f.body}</p>
+                </div>
+              </Reveal>
             ))}
           </div>
         </div>
@@ -224,17 +263,19 @@ export function MarketingPage() {
 
       {/* Who it's for */}
       <section className="mx-auto max-w-4xl px-5 py-16 text-center md:px-10">
-        <h2 className="font-display text-2xl font-bold md:text-3xl">Built for public-safety training</h2>
-        <div className="mt-8 flex flex-wrap justify-center gap-3">
-          {AUDIENCE.map((a) => (
-            <span key={a} className="rounded-full border border-watch-200 bg-watch-50 px-4 py-2 text-sm font-medium text-watch-800">{a}</span>
-          ))}
-        </div>
+        <Reveal>
+          <h2 className="font-display text-2xl font-bold md:text-3xl">Built for public-safety training</h2>
+          <div className="mt-8 flex flex-wrap justify-center gap-3">
+            {AUDIENCE.map((a) => (
+              <span key={a} className="rounded-full border border-watch-200 bg-watch-50 px-4 py-2 text-sm font-medium text-watch-800">{a}</span>
+            ))}
+          </div>
+        </Reveal>
       </section>
 
       {/* Comparison */}
       <section className="bg-watch-50 px-5 py-16 md:px-10">
-        <div className="mx-auto max-w-4xl">
+        <Reveal className="mx-auto max-w-4xl">
           <h2 className="text-center font-display text-2xl font-bold md:text-3xl">Priced for academies, not enterprises</h2>
           <p className="mx-auto mt-2 max-w-2xl text-center text-sm text-slate-500">
             One flat fee covers your whole academy — here’s how that stacks up against the alternatives.
@@ -265,12 +306,12 @@ export function MarketingPage() {
           <p className="mt-3 text-center text-xs text-slate-400">
             Figures are general market estimates for illustration; most academy/records platforms are custom-quoted.
           </p>
-        </div>
+        </Reveal>
       </section>
 
       {/* Pricing */}
       <section id="pricing" className="px-5 py-16 md:px-10">
-        <div className="mx-auto max-w-xl text-center">
+        <Reveal className="mx-auto max-w-xl text-center">
           <h2 className="font-display text-2xl font-bold md:text-3xl">Simple, flat pricing</h2>
           <p className="mt-3 text-sm text-slate-600">
             One subscription per organization — every coordinator, instructor, and cadet record included. No
@@ -301,28 +342,30 @@ export function MarketingPage() {
           <p className="mt-4 text-xs text-slate-400">
             When billing opens, payments will be processed securely by Stripe — HEIMDALL never sees your card details.
           </p>
-        </div>
+        </Reveal>
       </section>
 
       {/* Trust strip */}
       <section className="border-y border-watch-100 bg-watch-50 px-5 py-6 md:px-10">
-        <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm font-medium text-watch-700">
+        <Reveal className="mx-auto flex max-w-4xl flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm font-medium text-watch-700">
           {TRUST.map((t) => (
             <span key={t} className="flex items-center gap-1.5"><span aria-hidden className="text-bifrost-600">✓</span>{t}</span>
           ))}
-        </div>
+        </Reveal>
       </section>
 
       {/* FAQ */}
       <section id="faq" className="px-5 py-16 md:px-10">
         <div className="mx-auto max-w-3xl">
-          <h2 className="text-center font-display text-2xl font-bold md:text-3xl">Frequently asked questions</h2>
+          <Reveal><h2 className="text-center font-display text-2xl font-bold md:text-3xl">Frequently asked questions</h2></Reveal>
           <dl className="mt-8 space-y-4">
-            {FAQS.map((f) => (
-              <div key={f.q} className="rounded-xl border border-watch-100 bg-white p-5 shadow-sm">
-                <dt className="font-semibold text-watch-900">{f.q}</dt>
-                <dd className="mt-2 text-sm leading-relaxed text-slate-600">{f.a}</dd>
-              </div>
+            {FAQS.map((f, i) => (
+              <Reveal key={f.q} delay={(i % 3) * 80}>
+                <div className="rounded-xl border border-watch-100 bg-white p-5 shadow-sm">
+                  <dt className="font-semibold text-watch-900">{f.q}</dt>
+                  <dd className="mt-2 text-sm leading-relaxed text-slate-600">{f.a}</dd>
+                </div>
+              </Reveal>
             ))}
           </dl>
         </div>

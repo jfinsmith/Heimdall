@@ -2,6 +2,27 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Marketing scroll-reveal: subtle fade + rise into view (one-time). Honors
+   reduced-motion so it never animates for users who opt out. */
+.hd-reveal {
+  opacity: 0;
+  transform: translateY(26px);
+  transition: opacity 0.7s ease, transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+.hd-reveal.hd-reveal--in {
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hd-reveal,
+  .hd-reveal.hd-reveal--in {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+}
+
 /*
  * HEIMDALL global styles.
  * Brand colors are also exposed as CSS custom properties so values from

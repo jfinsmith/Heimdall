@@ -59,15 +59,26 @@ function RouteFallback() {
   );
 }
 
+/** The public marketing site lives on the public domain (+ localhost for dev).
+ *  Any other host — e.g. the agency-internal domain — is treated as app-only and
+ *  skips straight to sign-in, so internal users land on the app, not the pitch. */
+function isMarketingHost(): boolean {
+  if (typeof window === 'undefined') return true;
+  const h = window.location.hostname;
+  return h.endsWith('heimdallscheduling.com') || h === 'localhost' || h === '127.0.0.1';
+}
+
 /**
- * The bare path "/" — the public marketing landing for visitors, the app for
- * members. Signed-in users go to their dashboard (/overview), where RequireAuth
- * applies the usual pending/awaiting-org/profile gating.
+ * The bare path "/". Signed-in users go to their dashboard (/overview), where
+ * RequireAuth applies the usual pending/awaiting-org/profile gating. Signed-out
+ * visitors see the marketing landing on the public domain, or go straight to
+ * sign-in on app-only (internal) hosts.
  */
 function RootGate() {
   const { firebaseUser, loading } = useAuth();
   if (loading) return <RouteFallback />;
   if (firebaseUser) return <Navigate to="/overview" replace />;
+  if (!isMarketingHost()) return <Navigate to="/signin" replace />;
   return <MarketingPage />;
 }
 
