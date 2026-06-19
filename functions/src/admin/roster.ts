@@ -72,18 +72,22 @@ export const rosterCreateMember = onCall<{ academyId: string; member: MemberInpu
     updatedAt: FieldValue.serverTimestamp(),
   };
 
-  // Roster number from an atomic per-academy counter (no full-collection scan).
-  // Seeds the counter once from existing members for pre-counter rosters.
+  // Roster number = one past the HIGHEST current member's number, computed from
+  // the live roster inside the transaction. This way a REMOVED (hard-deleted)
+  // member no longer inflates the next number — fixing the "deleted the only
+  // member, next add still became #2" report — while WITHDRAWN members keep their
+  // doc and number. (A class roster is small, so this scan is cheap.) The academy
+  // doc is read + touched as the serialization point, so two simultaneous adds
+  // conflict there and retry with a fresh max instead of colliding on a number.
   const ref = db.collection(`academies/${academyId}/roster`).doc();
   const no = await db.runTransaction(async (tx) => {
     const aref = db.doc(`academies/${academyId}`);
-    const asnap = await tx.get(aref);
-    let next = asnap.data()?.nextRosterNo as number | undefined;
-    if (next === undefined) {
-      const existing = await tx.get(db.collection(`academies/${academyId}/roster`));
-      next = existing.docs.reduce((m, d) => Math.max(m, Number(d.data().no) || 0), 0) + 1;
-    }
+    await tx.get(aref);
+    const existing = await tx.get(db.collection(`academies/${academyId}/roster`));
+    const next = existing.docs.reduce((m, d) => Math.max(m, Number(d.data().no) || 0), 0) + 1;
     tx.set(ref, { no: next, ...fields });
+    // Advisory only now (the live max above is authoritative); also serves as the
+    // contention write so concurrent adds serialize on the academy doc.
     tx.update(aref, { nextRosterNo: next + 1 });
     return next;
   });
