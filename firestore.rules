@@ -172,9 +172,12 @@ service cloud.firestore {
     // General forms are readable by any org's staff; specialized forms only by an
     // assigned org. NOT tenant-scoped — only the platform owner may write.
     match /documentLibrary/{id} {
+      // The specialized branch uses the canonical array-membership form
+      // (`<authValue> in resource.data.field`) directly — not via tokenOrgId() or an
+      // `is list` guard — so Firestore can prove the array-contains LIST query safe.
       allow read: if isPlatformOwner()
         || (isStaff() && (resource.data.availability == 'general'
-            || (resource.data.orgIds is list && tokenOrgId() in resource.data.orgIds)));
+            || request.auth.token.orgId in resource.data.orgIds));
       allow write: if isPlatformOwner();
     }
 
