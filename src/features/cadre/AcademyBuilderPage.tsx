@@ -71,6 +71,12 @@ export function AcademyBuilderPage() {
   const [recurringOpen, setRecurringOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [showWeekends, setShowWeekends] = useState(false);
+  // Daily sign-in roster: pick a date, print that day's course load for students
+  // to sign (replaces FullCalendar's unused all-day lane). Defaults to today.
+  const [rosterDate, setRosterDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
   const [search, setSearch] = useState('');
   const [detailSession, setDetailSession] = useState<WithId<SessionDoc> | null>(null);
   const [lunchOpen, setLunchOpen] = useState(false);
@@ -625,6 +631,26 @@ export function AcademyBuilderPage() {
               {matchedSessions.length} match{matchedSessions.length === 1 ? '' : 'es'}
             </span>
           )}
+          {!academy.isTemplate && (
+            <div className="flex shrink-0 items-center gap-2">
+              <label htmlFor="day-roster-date" className="text-xs font-medium text-watch-700">Day sign-in roster</label>
+              <Input
+                id="day-roster-date"
+                type="date"
+                value={rosterDate}
+                onChange={(e) => setRosterDate(e.target.value)}
+                aria-label="Roster date"
+                className="w-auto"
+              />
+              <Button
+                onClick={() => rosterDate && window.open(`/roster/day/print/${academyId}/${rosterDate}`, '_blank', 'noopener')}
+                disabled={!rosterDate}
+                title="Print this day's course load as a sign-in roster"
+              >
+                Print
+              </Button>
+            </div>
+          )}
         </div>
         <FullCalendar
           ref={calRef}
@@ -682,6 +708,9 @@ export function AcademyBuilderPage() {
             setFormOpen(true);
           }}
           height="auto"
+          // We never use all-day events; the daily sign-in roster (print control
+          // above) replaces that lane, freeing vertical space.
+          allDaySlot={false}
           slotMinTime="05:00:00"
           slotMaxTime="23:00:00"
           snapDuration="00:15:00"
