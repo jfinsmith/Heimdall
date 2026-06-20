@@ -17,6 +17,7 @@ import { certYearOf, march31, tsFromDate } from '../../lib/time';
 import { Badge, Button, Field, Input, PageHeader, Select, TextArea } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import { logAudit } from '../sessions/audit';
+import { formatPhone } from '../../lib/format';
 
 const setUserSuspension = httpsCallable<{ uid: string; suspended: boolean; reason?: string }, { ok: boolean }>(
   functions,
@@ -199,7 +200,7 @@ export function RosterPage() {
                   <td className="px-3 py-3 text-slate-600">{roleLabels[u.role]}</td>
                   <td className="px-3 py-3 text-xs text-slate-500">
                     <div>{u.email}</div>
-                    {u.phone && <div>{u.phone}</div>}
+                    {u.phone && <div>{formatPhone(u.phone)}</div>}
                   </td>
                   <td className="px-3 py-3">
                     <div className="flex flex-wrap gap-1">

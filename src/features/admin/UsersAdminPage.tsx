@@ -17,6 +17,7 @@ import { certYearOf, march31, tsFromDate } from '../../lib/time';
 import { Badge, Button, Field, Input, PageHeader, Select, TextArea } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import { logAudit } from '../sessions/audit';
+import { formatPhone } from '../../lib/format';
 
 const setUserRole = httpsCallable<{ uid: string; role: Role }, { ok: boolean }>(functions, 'setUserRole');
 const createUserAccount = httpsCallable<
@@ -385,7 +386,7 @@ function AddUserModal({ onClose }: { onClose: () => void }) {
     setError(null);
     setBusy(true);
     try {
-      const res = await createUserAccount({ email, displayName, role, rank, agency, phone, password });
+      const res = await createUserAccount({ email, displayName, role, rank, agency, phone: formatPhone(phone), password });
       setCreated({ uid: res.data.uid, email: email.trim().toLowerCase(), password: password.trim() || '123456', displayName: displayName.trim() });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not create the account.');
@@ -479,7 +480,7 @@ function AddUserModal({ onClose }: { onClose: () => void }) {
               <Input value={agency} onChange={(e) => setAgency(e.target.value)} />
             </Field>
             <Field label="Phone">
-              <Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+              <Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} onBlur={() => setPhone(formatPhone(phone))} />
             </Field>
           </div>
           <Field label="Temporary password" hint="At least 6 characters — they’ll change it on first sign-in. Default is 123456; Generate makes a memorable random one.">

@@ -13,6 +13,7 @@ import { WordmarkHorizontal } from '../brand/Logo';
 import type { Qualification, QualificationKey } from '../types';
 import { QUALIFICATION_LABELS, isInstructorQual } from '../types';
 import { march31, tsFromDate } from '../lib/time';
+import { formatPhone } from '../lib/format';
 import { Button, Field, Input } from '../components/ui';
 
 export function CompleteProfilePage() {
@@ -55,7 +56,7 @@ export function CompleteProfilePage() {
         displayName,
         rank,
         agency,
-        phone,
+        phone: formatPhone(phone),
         qualifications,
         ...certExpires,
         updatedAt: serverTimestamp(),
@@ -84,7 +85,7 @@ export function CompleteProfilePage() {
             <Input value={rank} onChange={(e) => setRank(e.target.value)} required />
           </Field>
           <Field label="Phone">
-            <Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            <Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} onBlur={() => setPhone(formatPhone(phone))} />
           </Field>
         </div>
         <Field label="Agency" hint="Defaults to your organization — change it if your employing agency differs">

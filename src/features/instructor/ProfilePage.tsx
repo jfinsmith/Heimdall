@@ -13,6 +13,7 @@ import { useOrg } from '../../lib/useOrg';
 import type { Qualification, QualificationKey } from '../../types';
 import { QUALIFICATION_LABELS, isInstructorQual } from '../../types';
 import { certYearOf, march31, tsFromDate } from '../../lib/time';
+import { formatPhone } from '../../lib/format';
 import { Badge, Button, Field, Input, PageHeader } from '../../components/ui';
 
 export function ProfilePage() {
@@ -45,7 +46,7 @@ export function ProfilePage() {
     // sweep does arithmetic on this value.
     const safeLead = Number.isFinite(leadHours) ? Math.min(168, Math.max(1, leadHours)) : 48;
     await updateDoc(doc(db, 'users', firebaseUser!.uid), {
-      phone,
+      phone: formatPhone(phone),
       rank,
       agency,
       notificationPrefs: { email: emailOn, reminderLeadHours: safeLead, digest },
@@ -95,7 +96,7 @@ export function ProfilePage() {
             <Input value={rank} onChange={(e) => setRank(e.target.value)} />
           </Field>
           <Field label="Phone">
-            <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
+            <Input value={phone} onChange={(e) => setPhone(e.target.value)} onBlur={() => setPhone(formatPhone(phone))} />
           </Field>
         </div>
         <Field label="Agency">

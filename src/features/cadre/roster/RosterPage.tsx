@@ -20,6 +20,7 @@ import { DisciplineTab } from './DisciplineTab';
 import { GradesTab } from './GradesTab';
 import { AcademyReports } from '../reports/AcademyReports';
 import { enabledRosterModules, ROSTER_MODULE_BY_KEY } from './rosterModules';
+import { formatPhone } from '../../../lib/format';
 import type { RosterModuleKey } from '../../../types';
 
 const rosterCreateMember = httpsCallable<
@@ -212,7 +213,7 @@ function MemberRow({
       <td className="px-3 py-3">{agencyLabel(m)}</td>
       <td className="px-3 py-3 text-xs text-slate-500">
         {m.email && <div>{m.email}</div>}
-        {m.phone && <div>{m.phone}</div>}
+        {m.phone && <div>{formatPhone(m.phone)}</div>}
       </td>
       <td className="px-3 py-3">
         {withdrawn ? <Badge tone="slate">withdrawn</Badge> : <Badge tone="green">active</Badge>}
@@ -312,10 +313,10 @@ function IntakeWizard({ academyId, onClose }: { academyId: string; onClose: () =
     },
     { label: 'CJIS number', hint: 'Optional', valid: () => true, render: () => <Input autoFocus value={draft.cjis} onChange={(e) => set({ cjis: e.target.value })} /> },
     { label: 'Student ID', hint: 'Optional', valid: () => true, render: () => <Input autoFocus value={draft.studentId} onChange={(e) => set({ studentId: e.target.value })} placeholder="P00000000" /> },
-    { label: 'Phone number', hint: 'Optional', valid: () => true, render: () => <Input autoFocus type="tel" value={draft.phone} onChange={(e) => set({ phone: e.target.value })} /> },
+    { label: 'Phone number', hint: 'Optional', valid: () => true, render: () => <Input autoFocus type="tel" value={draft.phone} onChange={(e) => set({ phone: e.target.value })} onBlur={() => set({ phone: formatPhone(draft.phone) })} /> },
     { label: 'Email address', hint: 'Optional', valid: () => true, render: () => <Input autoFocus type="email" value={draft.email} onChange={(e) => set({ email: e.target.value })} /> },
     { label: 'Emergency contact — name', hint: 'Optional', valid: () => true, render: () => <Input autoFocus value={draft.emergencyName} onChange={(e) => set({ emergencyName: e.target.value })} /> },
-    { label: 'Emergency contact — phone', hint: 'Optional', valid: () => true, render: () => <Input autoFocus type="tel" value={draft.emergencyPhone} onChange={(e) => set({ emergencyPhone: e.target.value })} /> },
+    { label: 'Emergency contact — phone', hint: 'Optional', valid: () => true, render: () => <Input autoFocus type="tel" value={draft.emergencyPhone} onChange={(e) => set({ emergencyPhone: e.target.value })} onBlur={() => set({ emergencyPhone: formatPhone(draft.emergencyPhone) })} /> },
   ];
 
   const isLast = step === steps.length - 1;
@@ -329,8 +330,8 @@ function IntakeWizard({ academyId, onClose }: { academyId: string; onClose: () =
         academyId,
         member: {
           fullName: draft.fullName, agency: draft.agency, agencyOther: draft.agencyOther,
-          cjis: draft.cjis, studentId: draft.studentId, phone: draft.phone, email: draft.email,
-          emergencyName: draft.emergencyName, emergencyPhone: draft.emergencyPhone,
+          cjis: draft.cjis, studentId: draft.studentId, phone: formatPhone(draft.phone), email: draft.email,
+          emergencyName: draft.emergencyName, emergencyPhone: formatPhone(draft.emergencyPhone),
         },
       });
       onClose();
