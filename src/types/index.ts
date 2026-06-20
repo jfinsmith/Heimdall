@@ -482,10 +482,7 @@ export function letterFor(pct: number): string {
 
 // ── Academic action reports (per-academy: academies/{id}/reports/{id}) ──────
 /** FDLE Law Enforcement CJK course list (from the official forms' dropdown). */
-// Official CJSTC Law Enforcement Basic Recruit course titles (verified 2026-06-19
-// against current academy curricula + FDLE curriculum hub). 0096 uses the LE
-// variant; confirm against FDLE's "Active Commission Courses" master list for
-// formal/legal use.
+// Official CJSTC Law Enforcement Basic Recruit course titles.
 export const FDLE_LE_COURSES: { code: string; name: string }[] = [
   ['0096', 'Law Enforcement Officer Physical Fitness Training'], ['0002', 'Introduction to Law Enforcement'], ['0031', 'First Aid for Criminal Justice Officers'],
   ['0051', 'Criminal Justice Defensive Tactics'], ['0040', 'Criminal Justice Firearms'], ['0020', 'Law Enforcement Vehicle Operations'],

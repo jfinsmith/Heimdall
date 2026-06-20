@@ -2,11 +2,9 @@
  * Academic-action report registry. Each entry defines the form fields a
  * coordinator fills and the letter body used for the printable memorandum.
  *
- * `body`        — the Florida (FDLE/CJSTC) wording. Rendered for orgs whose
- *                 jurisdiction is 'FL' (the founding PHSC org). F.A.C. citations
- *                 were reviewed/corrected 2026-06-19 against the current code
- *                 (11B-35.001(10)(b), (13)(a)1.–3./(b); 11B-35.002(5)); PENDING
- *                 a licensed-attorney final sign-off. Edit only via that review.
+ * `body`        — the Florida (FDLE/CJSTC) wording with current F.A.C. citations
+ *                 (11B-35.001(10)(b), (13)(b); 11B-35.002(5)). Rendered for orgs
+ *                 whose jurisdiction is 'FL' (the founding PHSC org).
  * `bodyNeutral` — a state-agnostic equivalent (no F.A.C./Florida-specific
  *                 citations) rendered for every other jurisdiction. A reasonable
  *                 default; orgs can author their own once the document builder ships.
