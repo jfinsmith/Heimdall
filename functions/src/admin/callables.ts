@@ -528,7 +528,7 @@ export const setUserSuspension = onCall<{ uid: string; suspended: boolean; reaso
  */
 export const academyApproval = onCall<{
   academyId: string;
-  action: 'submit' | 'approve' | 'request_changes';
+  action: 'submit' | 'approve' | 'request_changes' | 'force';
   sergeantId?: string;
   note?: string;
 }>(async (request) => {
@@ -625,6 +625,33 @@ export const academyApproval = onCall<{
       );
     }
     throw new HttpsError('failed-precondition', `Nothing to approve at this stage (${cur}).`);
+  }
+
+  if (action === 'force') {
+    // Fast-track: a higher rank pushes the workflow up to the rank above THEM,
+    // skipping the rank below — to speed things up when waiting isn't needed.
+    if (cur !== 'pending_sergeant' && cur !== 'pending_lieutenant') {
+      throw new HttpsError('failed-precondition', `Nothing to fast-track at this stage (${cur}).`);
+    }
+    if (callerRole === 'lieutenant') {
+      // Lieutenant → captain, bypassing the sergeant step if still pending.
+      const cap = await single('director');
+      return commit(
+        { ...academy.approval!, state: 'pending_captain', history: [...prevHistory, step('forced')] },
+        () => notify({ uid: cap.uid, type: 'approval_request', title: `Approval needed: ${label}`, body: `Lt. ${callerName} fast-tracked "${label}" past the sergeant step. It now needs your (captain) final sign-off.`, link })
+      );
+    }
+    if (callerRole === 'sergeant') {
+      // A sergeant pushes their own step to the lieutenant without waiting on the
+      // specifically-assigned sergeant.
+      if (cur !== 'pending_sergeant') throw new HttpsError('failed-precondition', 'This class is already past the sergeant step.');
+      const lt = await single('lieutenant');
+      return commit(
+        { ...academy.approval!, state: 'pending_lieutenant', history: [...prevHistory, step('forced')] },
+        () => notify({ uid: lt.uid, type: 'approval_request', title: `Approval needed: ${label}`, body: `Sergeant ${callerName} fast-tracked "${label}". It now needs your (lieutenant) sign-off.`, link })
+      );
+    }
+    throw new HttpsError('permission-denied', 'Only a sergeant or lieutenant may fast-track approval.');
   }
 
   if (action === 'request_changes') {

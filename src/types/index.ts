@@ -350,7 +350,7 @@ export interface ApprovalStep {
   uid: string;
   name: string;
   role: Role;
-  decision: 'submitted' | 'approved' | 'changes_requested';
+  decision: 'submitted' | 'approved' | 'changes_requested' | 'forced';
   note?: string;
   at: Timestamp;
 }
@@ -626,6 +626,10 @@ export interface CurriculumDoc {
   // ── Per-discipline roster configuration (extensible; see RosterModuleKey) ──
   /** Roster tabs enabled for this discipline (Members always shows). Unset = default set. */
   rosterModules?: RosterModuleKey[];
+  /** Printed attendance-roster layout for this discipline: 'grid' = the standard
+   *  per-course sign-in/out grid; 'signin' = a NO./CJIS & Name/Signature sign-in
+   *  sheet (e.g. NMT/ARGUS). Default 'grid'. Extend as new formats ship. */
+  attendanceLayout?: 'grid' | 'signin';
   /** @deprecated category model removed; superseded by the document library + the
    *  form-override fields below. Kept for back-compat read only. */
   reportCategories?: string[];

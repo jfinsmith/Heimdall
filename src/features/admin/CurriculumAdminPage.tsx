@@ -195,6 +195,7 @@ function CurriculumEditorModal({
   const [courses, setCourses] = useState<CurriculumCourse[]>(curriculum?.courses ?? [{ name: '', minHours: 0 }]);
   const [estimated, setEstimated] = useState(curriculum?.estimated ?? false);
   const [rosterModules, setRosterModules] = useState<RosterModuleKey[]>(curriculum?.rosterModules ?? DEFAULT_ROSTER_MODULES);
+  const [attendanceLayout, setAttendanceLayout] = useState<'grid' | 'signin'>(curriculum?.attendanceLayout ?? 'grid');
   // Branding overrides (org scope only) — each falls back to org settings if blank.
   const [brandLogoUrl, setBrandLogoUrl] = useState(curriculum?.brandLogoUrl ?? '');
   const [brandOrgName, setBrandOrgName] = useState(curriculum?.brandOrgName ?? '');
@@ -289,6 +290,7 @@ function CurriculumEditorModal({
       active: curriculum?.active ?? true,
       estimated,
       rosterModules,
+      attendanceLayout,
       ...(brandLogoUrl.trim() ? { brandLogoUrl: brandLogoUrl.trim() } : {}),
       ...(brandOrgName.trim() ? { brandOrgName: brandOrgName.trim() } : {}),
       ...(brandTagline.trim() ? { brandTagline: brandTagline.trim() } : {}),
@@ -455,6 +457,14 @@ function CurriculumEditorModal({
                 {m.comingSoon && <span className="text-xs">(coming soon)</span>}
               </label>
             ))}
+          </div>
+          <div className="mt-3 border-t border-watch-50 pt-3">
+            <Field label="Attendance roster layout" hint="How this discipline's printed attendance roster looks" className="max-w-xs">
+              <Select value={attendanceLayout} onChange={(e) => setAttendanceLayout(e.target.value as 'grid' | 'signin')}>
+                <option value="grid">Standard grid (sign-in/out + staff actions)</option>
+                <option value="signin">Sign-in sheet (No. / CJIS &amp; Name / Signature — NMT/ARGUS)</option>
+              </Select>
+            </Field>
           </div>
         </fieldset>
 

@@ -37,7 +37,7 @@ import { useGlobalSettings } from '../../app/providers';
 import { logAudit } from '../sessions/audit';
 
 const academyApproval = httpsCallable<
-  { academyId: string; action: 'submit' | 'approve' | 'request_changes'; sergeantId?: string; note?: string },
+  { academyId: string; action: 'submit' | 'approve' | 'request_changes' | 'force'; sergeantId?: string; note?: string },
   { ok: boolean; state: string }
 >(functions, 'academyApproval');
 
@@ -1182,12 +1182,19 @@ function ApprovalPanel({ academy }: { academy: WithId<AcademyDoc> }) {
     (state === 'pending_sergeant' && uid === ap?.sergeantId) ||
     (state === 'pending_lieutenant' && role === 'lieutenant') ||
     (state === 'pending_captain' && role === 'director');
+  // Fast-track: command can push the workflow up to the rank above them, skipping
+  // the sergeant step, to speed things up. A lieutenant jumps to the captain; a
+  // (non-assigned) sergeant pushes their step to the lieutenant.
+  const canFastTrack =
+    (role === 'lieutenant' && state === 'pending_sergeant') ||
+    (role === 'sergeant' && state === 'pending_sergeant' && uid !== ap?.sergeantId);
+  const fastTrackTarget = role === 'lieutenant' ? 'captain' : 'lieutenant';
 
   const order = APPROVAL_STEPS.map((s) => s.state);
   const curIdx = state === 'approved' ? order.length : order.indexOf(state);
   const sergeantName = sergeants.find((s) => s.id === ap?.sergeantId)?.displayName ?? 'sergeant';
 
-  async function run(action: 'submit' | 'approve' | 'request_changes', extra?: { sergeantId?: string; note?: string }) {
+  async function run(action: 'submit' | 'approve' | 'request_changes' | 'force', extra?: { sergeantId?: string; note?: string }) {
     setBusy(true);
     setErr(null);
     try {
@@ -1267,6 +1274,16 @@ function ApprovalPanel({ academy }: { academy: WithId<AcademyDoc> }) {
               Request changes
             </Button>
           </>
+        )}
+        {canFastTrack && !noteOpen && (
+          <Button
+            variant="secondary"
+            disabled={busy}
+            title={`Skip the sergeant step and send straight to the ${fastTrackTarget}`}
+            onClick={() => { if (window.confirm(`Fast-track "${academy.shortName || academy.name}" past the sergeant step, straight to the ${fastTrackTarget}?`)) run('force'); }}
+          >
+            Fast-track to {fastTrackTarget}
+          </Button>
         )}
         {isActiveApprover && noteOpen && (
           <div className="flex w-full flex-wrap items-center gap-2">

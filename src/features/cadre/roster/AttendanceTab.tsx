@@ -41,6 +41,9 @@ export function AttendanceTab({
   curriculum: WithId<CurriculumDoc> | null;
 }) {
   const settings = useGlobalSettings();
+  // Per-discipline attendance layout: the standard sign-in/out grid, or a
+  // NO./CJIS & Name/Signature sign-in sheet (NMT/ARGUS-style).
+  const layout = curriculum?.attendanceLayout ?? 'grid';
   const courses = curriculum?.courses ?? [];
   const [courseName, setCourseName] = useState(courses[0]?.name ?? '');
   const course = courses.find((c) => c.name === courseName);
@@ -127,23 +130,65 @@ export function AttendanceTab({
           </tbody>
         </table>
 
-        <p className="mt-2 text-[8px] leading-tight">
-          Cadets who do not sign in at the required course time must fill out an Excused Absence Form by the next
-          class session, submitted to the Director via the Coordinator. Failure to sign in/out could result in a
-          course failure and disciplinary action up to and including dismissal from the academy. ****This is an
-          official document. Any attempt to falsify the information on this roster will result in disciplinary
-          action, up to and including, Dismissal from the Academy and/or termination of employment.****
-        </p>
-
-        <RosterTable title={null} rows={cadets} renumber />
-        {additionalSection.length > 0 && <RosterTable title="Additional Course Takers" rows={additionalSection} renumber />}
+        {layout === 'signin' ? (
+          <>
+            <SignInTable rows={cadets} />
+            <p className="mt-3 text-[10px] leading-tight">
+              By signing this roster, I acknowledge I attended the above listed training and, if applicable, have
+              been provided or shown where to access the agency policy on the above listed topic.
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="mt-2 text-[8px] leading-tight">
+              Cadets who do not sign in at the required course time must fill out an Excused Absence Form by the next
+              class session, submitted to the Director via the Coordinator. Failure to sign in/out could result in a
+              course failure and disciplinary action up to and including dismissal from the academy. ****This is an
+              official document. Any attempt to falsify the information on this roster will result in disciplinary
+              action, up to and including, Dismissal from the Academy and/or termination of employment.****
+            </p>
+            <RosterTable title={null} rows={cadets} renumber />
+            {additionalSection.length > 0 && <RosterTable title="Additional Course Takers" rows={additionalSection} renumber />}
+          </>
+        )}
 
         <div className="mt-8 flex items-end gap-8 text-xs">
-          <div className="flex-1 border-t border-black pt-1">Instructor's Signature</div>
+          <div className="flex-1 border-t border-black pt-1">{layout === 'signin' ? 'Coordinator / Instructor Signature' : "Instructor's Signature"}</div>
           <div className="w-40 border-t border-black pt-1">Date</div>
         </div>
       </div>
     </div>
+  );
+}
+
+/** Sign-in sheet layout (NMT/ARGUS): NO. / CJIS & Name / Signature, active cadets
+ *  only, positionally numbered. */
+function SignInTable({ rows }: { rows: WithId<RosterMemberDoc>[] }) {
+  const active = rows.filter((m) => m.status !== 'withdrawn');
+  return (
+    <table className="mt-3 w-full border-collapse text-[11px]">
+      <thead>
+        <tr className="bg-watch-100/60">
+          <th className="w-8 border border-black px-1 py-0.5">No.</th>
+          <th className="w-[44%] border border-black px-1 py-0.5 text-left">CJIS &amp; Name</th>
+          <th className="border border-black px-1 py-0.5 text-left">Signature</th>
+        </tr>
+      </thead>
+      <tbody>
+        {active.map((m, i) => (
+          <tr key={m.id}>
+            <td className="border border-black px-1 py-2 text-center tabular-nums">{i + 1}</td>
+            <td className="border border-black px-1 py-2">
+              {m.cjis ? <span className="mr-2 font-semibold tabular-nums">{m.cjis}</span> : null}{m.fullName}
+            </td>
+            <td className="border border-black" />
+          </tr>
+        ))}
+        {active.length === 0 && (
+          <tr><td colSpan={3} className="border border-black px-1 py-3 text-center text-slate-500">No active cadets.</td></tr>
+        )}
+      </tbody>
+    </table>
   );
 }
 
