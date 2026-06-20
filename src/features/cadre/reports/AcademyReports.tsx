@@ -273,7 +273,7 @@ function ReportFormModal({
                 <Select value={values[f.key] ?? ''} onChange={(e) => set(f.key, e.target.value)}>
                   <option value="">— select course —</option>
                   {FDLE_LE_COURSES.map((c) => (
-                    <option key={c.code} value={`${c.code} ${c.name}`}>{c.code} {c.name}</option>
+                    <option key={c.code} value={`CJK ${c.code} — ${c.name}`}>CJK {c.code} — {c.name}</option>
                   ))}
                 </Select>
               ) : f.type === 'cadet' ? (
