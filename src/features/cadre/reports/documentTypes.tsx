@@ -49,6 +49,10 @@ export const DOCUMENT_LEGAL_NOTES: Record<string, { placeholders: string[]; note
     placeholders: ['[Academy Cadet Manual §___]', '[cite applicable academy due-process / appeal policy]'],
     note: 'The "statement" field pre-fills with a generic attestation; tailor per subject. The dismissal/discipline clause is broad — trim for purely informational acknowledgments.',
   },
+  crossover_transfer: {
+    placeholders: [],
+    note: 'Factual certification of training completion (hours + passing written-exam score) for crossover / blackbird transfer of credit. From line is the issuing academy\'s Sequence No.; the body references the class\'s own Sequence No. Pronoun-neutral ("The cadet") by default — adjust wording if a specific pronoun is preferred. No statutory citations are asserted; confirm the signer title (defaults to Training Coordinator) and whether the cadet/receiving program should also be on distribution.',
+  },
 };
 
 export const DOCUMENT_TYPES: ReportType[] = [
@@ -348,6 +352,37 @@ export const DOCUMENT_TYPES: ReportType[] = [
       acknowledgment: 'I, {cadetName}, acknowledge that I have received and/or been briefed on {subject}, that I have read and understand it, that I have had the opportunity to ask questions about it, and that I agree to comply with its terms and with any subject-specific terms recorded above. I sign this acknowledgment freely on {dateAcknowledged}.',
       ackSignerLabel: 'Cadet',
       distribution: ['Cadet', 'Student File', '{directorName}, Academy Director'],
+    },
+  },
+  {
+    id: 'crossover_transfer',
+    name: 'Crossover / Blackbird Transfer Memo',
+    purpose: 'Certifies that a cadet completed a specific course of training (hours + passing written-exam score) in one class, so the credit can transfer (crossover / blackbird) to the cadet\'s file or another program.',
+    reSubject: 'Crossover / Blackbird Transfer — {cadetName}',
+    fields: [
+      { key: 'fromSequence', label: 'From (Sequence No.)', type: 'text', required: true, hint: "The issuing academy's Sequence No. (the From line)" },
+      { key: 'course', label: 'Course (CJK)', type: 'course', required: true, hint: 'CJK number + course name as it appears with CJSTC' },
+      { key: 'className', label: 'Class completed in', type: 'text', required: true, defaultFrom: 'className', hint: 'e.g. LE 131' },
+      { key: 'classSequence', label: 'Class Sequence No.', type: 'text', required: true, hint: 'Sequence No. of the class where the training was completed' },
+      { key: 'hours', label: 'Hours of training completed', type: 'number', required: true },
+      { key: 'score', label: 'Written exam score (%)', type: 'number', required: true },
+    ],
+    document: {
+      appliesTo: 'cadet',
+      headerFields: [
+        { label: 'To:', value: '{directorName}, Director' },
+        { label: 'CC:', value: 'Personnel File' },
+        { label: 'From:', value: '{fromSequence}' },
+        { label: 'Date:', value: '{memoDate}' },
+        { label: 'Re:', value: '{cadetName}' },
+        { label: 'Course:', value: '{course}' },
+      ],
+      blocks: [
+        { kind: 'paragraph', text: `{cadetName} has completed the listed training with {className} (Sequence No. {classSequence}). The cadet completed {hours} hours of training and passed the written examination with a score of {score}%.` },
+        { kind: 'clause', text: `This memorandum certifies the training completion described above based on the academy's official training and grade records as of {memoDate}, and is recorded as a permanent part of the cadet's training file for crossover / transfer-of-training purposes. The statements set forth above are true and accurate to the best of the issuing authority's knowledge.` },
+      ],
+      signerLine: '{fromName}, Training Coordinator',
+      distribution: ['{directorName}, Academy Director', 'Personnel File', 'Training File'],
     },
   },
 ];

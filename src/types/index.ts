@@ -497,7 +497,8 @@ export type ReportTypeId =
   | 'exam_failure' | 'proficiency_fail' | 'exam_course_fail' | 'academy_dismissal'
   // Phase 11 general & conduct documents (block-model; DRAFT wording pending legal pass)
   | 'general_memo' | 'counseling' | 'injury_illness' | 'incident'
-  | 'use_of_force' | 'disciplinary' | 'dismissal_conduct' | 'cadet_acknowledgment';
+  | 'use_of_force' | 'disciplinary' | 'dismissal_conduct' | 'cadet_acknowledgment'
+  | 'crossover_transfer';
 
 /**
  * Admin-managed report configuration (doc `reportConfig/global`): the custom
