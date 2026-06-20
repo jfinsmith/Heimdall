@@ -1186,8 +1186,8 @@ function ApprovalPanel({ academy }: { academy: WithId<AcademyDoc> }) {
   // the sergeant step, to speed things up. A lieutenant jumps to the captain; a
   // (non-assigned) sergeant pushes their step to the lieutenant.
   const canFastTrack =
-    (role === 'lieutenant' && state === 'pending_sergeant') ||
-    (role === 'sergeant' && state === 'pending_sergeant' && uid !== ap?.sergeantId);
+    (role === 'lieutenant' && (state === 'pending_sergeant' || state === 'changes_requested')) ||
+    (role === 'sergeant' && (state === 'changes_requested' || (state === 'pending_sergeant' && uid !== ap?.sergeantId)));
   const fastTrackTarget = role === 'lieutenant' ? 'captain' : 'lieutenant';
 
   const order = APPROVAL_STEPS.map((s) => s.state);

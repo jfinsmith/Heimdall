@@ -629,25 +629,30 @@ export const academyApproval = onCall<{
 
   if (action === 'force') {
     // Fast-track: a higher rank pushes the workflow up to the rank above THEM,
-    // skipping the rank below — to speed things up when waiting isn't needed.
-    if (cur !== 'pending_sergeant' && cur !== 'pending_lieutenant') {
+    // skipping the rank below — to speed things up. Also allowed after a class was
+    // sent back ('changes_requested'), so command can re-advance it without a full
+    // resubmit + re-route through the sergeant.
+    if (cur !== 'pending_sergeant' && cur !== 'pending_lieutenant' && cur !== 'changes_requested') {
       throw new HttpsError('failed-precondition', `Nothing to fast-track at this stage (${cur}).`);
     }
+    const approvalBase = { ...(academy.approval ?? {}), submittedBy: academy.approval?.submittedBy ?? callerUid };
     if (callerRole === 'lieutenant') {
-      // Lieutenant → captain, bypassing the sergeant step if still pending.
+      // Lieutenant → captain, bypassing the sergeant step.
       const cap = await single('director');
       return commit(
-        { ...academy.approval!, state: 'pending_captain', history: [...prevHistory, step('forced')] },
+        { ...approvalBase, state: 'pending_captain', history: [...prevHistory, step('forced')] },
         () => notify({ uid: cap.uid, type: 'approval_request', title: `Approval needed: ${label}`, body: `Lt. ${callerName} fast-tracked "${label}" past the sergeant step. It now needs your (captain) final sign-off.`, link })
       );
     }
     if (callerRole === 'sergeant') {
-      // A sergeant pushes their own step to the lieutenant without waiting on the
-      // specifically-assigned sergeant.
-      if (cur !== 'pending_sergeant') throw new HttpsError('failed-precondition', 'This class is already past the sergeant step.');
+      // A sergeant pushes the sergeant step to the lieutenant (any sergeant; also
+      // from changes_requested) without waiting on the assigned sergeant.
+      if (cur !== 'pending_sergeant' && cur !== 'changes_requested') {
+        throw new HttpsError('failed-precondition', 'This class is already past the sergeant step.');
+      }
       const lt = await single('lieutenant');
       return commit(
-        { ...academy.approval!, state: 'pending_lieutenant', history: [...prevHistory, step('forced')] },
+        { ...approvalBase, state: 'pending_lieutenant', history: [...prevHistory, step('forced')] },
         () => notify({ uid: lt.uid, type: 'approval_request', title: `Approval needed: ${label}`, body: `Sergeant ${callerName} fast-tracked "${label}". It now needs your (lieutenant) sign-off.`, link })
       );
     }
