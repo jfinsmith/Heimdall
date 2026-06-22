@@ -20,7 +20,7 @@ import { useParams } from 'react-router-dom';
 import { orderBy, where } from 'firebase/firestore';
 import { useCollection, useDoc, type WithId } from '../../lib/firestore';
 import { useGlobalSettings } from '../../app/providers';
-import type { AcademyDoc, SessionDoc, UserDoc } from '../../types';
+import type { AcademyDoc, CurriculumDoc, SessionDoc, UserDoc } from '../../types';
 import { SLOT_ROLE_LABELS } from '../../types';
 import { WordmarkHorizontal } from '../../brand/Logo';
 import { OrgLogo } from '../../brand/OrgLogo';
@@ -57,6 +57,9 @@ export function PrintableSchedulePage() {
   const { academyId } = useParams<{ academyId: string }>();
   const settings = useGlobalSettings();
   const { data: academy } = useDoc<AcademyDoc>(academyId ? `academies/${academyId}` : null);
+  // The class's curriculum drives branding overrides (logo + org name) on the
+  // printed cover/footer, falling back to org settings — same as DocumentHeader.
+  const { data: curriculum } = useDoc<CurriculumDoc>(academy?.discipline ? `curricula/${academy.discipline}` : null);
   const { data: sessions } = useCollection<SessionDoc>(
     academyId ? 'sessions' : null,
     [where('academyId', '==', academyId ?? ''), orderBy('start')],
@@ -106,7 +109,7 @@ export function PrintableSchedulePage() {
 
   if (!academy) return null;
   const docType = mode === 'cadet' ? 'Cadet Training Schedule' : 'Staffing Schedule';
-  const orgName = settings?.orgName ?? 'Training Academy';
+  const orgName = curriculum?.brandOrgName || settings?.orgName || 'Training Academy';
   const coordinators = (academy.coordinatorIds ?? []).map(nameFor).filter((n) => n !== 'Unassigned');
   const fmtShort = (d: Date) => d.toLocaleDateString('en-US', { timeZone: TZ, month: 'short', day: 'numeric' });
   const fmtMed = (d: Date) => d.toLocaleDateString('en-US', { timeZone: TZ, dateStyle: 'medium' });
@@ -149,7 +152,11 @@ export function PrintableSchedulePage() {
           <section className="page-break flex flex-col items-center justify-center text-center" style={{ minHeight: '9in' }}>
             <div className="h-1.5 w-24" style={{ backgroundColor: amber }} />
             <div className="my-8">
-              <OrgLogo size={150} fallback="stacked" />
+              {curriculum?.brandLogoUrl ? (
+                <img src={curriculum.brandLogoUrl} alt="" style={{ height: 150, width: 'auto', maxWidth: 280, objectFit: 'contain' }} />
+              ) : (
+                <OrgLogo size={150} fallback="stacked" />
+              )}
             </div>
             <div className="text-sm uppercase tracking-[0.3em] text-slate-500">{orgName}</div>
             <div className="mt-10 text-base font-semibold uppercase tracking-[0.35em]" style={{ color: amber }}>
