@@ -41,6 +41,7 @@ export function RoomsPage() {
   const [resModal, setResModal] = useState<{ reservation?: WithId<RoomReservationDoc> } | null>(null);
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [roomFilter, setRoomFilter] = useState('all');
+  const [roomsOpen, setRoomsOpen] = useState(false); // top management section — collapsed by default
 
   const sortedCats = useMemo(
     () => [...categories].sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name)),
@@ -137,15 +138,27 @@ export function RoomsPage() {
 
       {/* ── Categories & rooms ─────────────────────────────────────────────── */}
       <section className="mb-6 rounded-lg border border-watch-100 bg-white p-4 shadow-sm">
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-watch-600">Locations &amp; rooms</h2>
-          <div className="flex items-end gap-2">
-            <Field label="New location / category" hint="e.g. College, Range, Off-site">
-              <Input value={newCat} onChange={(e) => setNewCat(e.target.value)} placeholder="Range" onKeyDown={(e) => { if (e.key === 'Enter') addCategory(); }} />
-            </Field>
-            <Button variant="primary" disabled={busy || !newCat.trim()} onClick={addCategory}>Add</Button>
-          </div>
-        </div>
+        <button
+          type="button"
+          onClick={() => setRoomsOpen((o) => !o)}
+          aria-expanded={roomsOpen}
+          className="flex w-full items-center justify-between gap-2 text-left"
+        >
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-watch-600">
+            Locations &amp; rooms{' '}
+            <span className="ml-1 font-normal normal-case tracking-normal text-slate-400">({sortedCats.length} location{sortedCats.length === 1 ? '' : 's'}, {rooms.length} room{rooms.length === 1 ? '' : 's'})</span>
+          </h2>
+          <span className="text-xs font-medium text-bifrost-700">{roomsOpen ? '▾ Hide' : '▸ Manage'}</span>
+        </button>
+
+        {roomsOpen && (
+          <div className="mt-3 space-y-3">
+            <div className="flex flex-wrap items-end gap-2">
+              <Field label="New location / category" hint="e.g. College, Range, Off-site">
+                <Input value={newCat} onChange={(e) => setNewCat(e.target.value)} placeholder="Range" onKeyDown={(e) => { if (e.key === 'Enter') addCategory(); }} />
+              </Field>
+              <Button variant="primary" disabled={busy || !newCat.trim()} onClick={addCategory}>Add</Button>
+            </div>
 
         {sortedCats.length === 0 && <p className="text-sm text-slate-500">No locations yet — add one above (e.g. “College”, “Range”), then add rooms within it.</p>}
 
@@ -179,7 +192,8 @@ export function RoomsPage() {
             </div>
           ))}
         </div>
-        <p className="mt-3 text-xs text-slate-400">Diagrams (floor plans showing where each room is) are planned for a later update.</p>
+          </div>
+        )}
       </section>
 
       {/* ── Booking calendar ───────────────────────────────────────────────── */}
