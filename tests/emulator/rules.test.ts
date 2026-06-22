@@ -376,12 +376,12 @@ describe('rooms + roomCategories — org isolation (staff-managed)', () => {
     await assertFails(setDoc(doc(as('alice', 'instructor'), 'rooms/nope'), { orgId: ORG, categoryId: 'catA', name: 'X', active: true }));
     await assertFails(setDoc(doc(as('alice', 'instructor'), 'roomCategories/nope'), { orgId: ORG, name: 'X' }));
   });
-  it('roomReservations: read/write OWN org only; orgId immutable; instructor blocked', async () => {
+  it('roomReservations: clients read OWN org only; ALL client writes denied (server-owned)', async () => {
     await assertSucceeds(getDoc(doc(as('carol', 'coordinator'), 'roomReservations/resA')));
     await assertFails(getDoc(doc(as('carol', 'coordinator'), 'roomReservations/resB')));
-    await assertSucceeds(setDoc(doc(as('carol', 'coordinator'), 'roomReservations/newA'), { orgId: ORG, roomId: 'roomA', title: 'X', start: new Date(), end: new Date() }));
-    await assertFails(setDoc(doc(as('carol', 'coordinator'), 'roomReservations/newB'), { orgId: BETA, roomId: 'roomB', title: 'X', start: new Date(), end: new Date() }));
-    await assertFails(updateDoc(doc(as('carol', 'coordinator'), 'roomReservations/resA'), { orgId: BETA }));
+    // Writes go through the saveRoomReservation/deleteRoomReservation callables — even staff can't write directly.
+    await assertFails(setDoc(doc(as('carol', 'coordinator'), 'roomReservations/newA'), { orgId: ORG, roomId: 'roomA', title: 'X', start: new Date(), end: new Date() }));
+    await assertFails(updateDoc(doc(as('carol', 'coordinator'), 'roomReservations/resA'), { title: 'Z' }));
     await assertFails(setDoc(doc(as('alice', 'instructor'), 'roomReservations/nope'), { orgId: ORG, roomId: 'roomA', title: 'X', start: new Date(), end: new Date() }));
   });
 });

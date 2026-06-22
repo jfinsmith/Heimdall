@@ -185,9 +185,10 @@ service cloud.firestore {
     }
     match /roomReservations/{id} {
       allow read: if signedIn() && inOrg(resource.data);
-      allow create: if isStaff() && inOrg(request.resource.data);
-      allow update: if isStaff() && inOrg(resource.data) && unchanged('orgId');
-      allow delete: if isStaff() && inOrg(resource.data);
+      // Writes are SERVER-owned (saveRoomReservation / deleteRoomReservation
+      // callables, Admin SDK) so the transactional conflict check can't be
+      // bypassed by a direct client write.
+      allow write: if false;
     }
 
     // ── defaultCurricula (platform-level templates new orgs seed from) ─────

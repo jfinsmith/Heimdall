@@ -14,15 +14,20 @@ import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import { addDoc, collection, deleteDoc, deleteField, doc, orderBy, serverTimestamp, Timestamp, updateDoc, where } from 'firebase/firestore';
 import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
-import { db, storage } from '../../../lib/firebase';
+import { httpsCallable } from 'firebase/functions';
+import { db, storage, functions } from '../../../lib/firebase';
 import { useAuth } from '../../../auth/AuthContext';
 import { useCollection, type WithId } from '../../../lib/firestore';
-import { combineDateTime, toDateInputValue, toTimeInputValue, tsFromDate } from '../../../lib/time';
+import { combineDateTime, toDateInputValue, toTimeInputValue } from '../../../lib/time';
 import type { AcademyDoc, RoomCategoryDoc, RoomDoc, RoomReservationDoc, SessionDoc } from '../../../types';
 import { Button, Field, Input, PageHeader, Select, TextArea } from '../../../components/ui';
 import { Modal } from '../../../components/Modal';
 import { RoomSelect } from './RoomSelect';
-import { findRoomConflict } from './roomBooking';
+
+// Ad-hoc reservations are SERVER-owned (transactional conflict check); the rules
+// forbid client writes to roomReservations.
+const saveRoomReservationFn = httpsCallable<{ reservationId?: string; roomId: string; title: string; startMs: number; endMs: number; notes?: string }, { id: string }>(functions, 'saveRoomReservation');
+const deleteRoomReservationFn = httpsCallable<{ reservationId: string }, { ok: boolean }>(functions, 'deleteRoomReservation');
 
 const PALETTE = ['#2563eb', '#16a34a', '#d97706', '#7c3aed', '#dc2626', '#0891b2', '#db2777', '#65a30d'];
 
@@ -249,9 +254,7 @@ export function RoomsPage() {
       )}
       {resModal && (
         <ReservationModal
-          orgId={orgId}
           rooms={rooms.filter((r) => r.active !== false)}
-          academies={academies}
           reservation={resModal.reservation}
           onClose={() => setResModal(null)}
         />
@@ -261,19 +264,14 @@ export function RoomsPage() {
 }
 
 function ReservationModal({
-  orgId,
   rooms,
-  academies,
   reservation,
   onClose,
 }: {
-  orgId: string | null | undefined;
   rooms: WithId<RoomDoc>[];
-  academies: WithId<AcademyDoc>[];
   reservation?: WithId<RoomReservationDoc>;
   onClose: () => void;
 }) {
-  const { firebaseUser } = useAuth();
   const roomName = reservation ? rooms.find((r) => r.id === reservation.roomId)?.name ?? '' : '';
   const [room, setRoom] = useState(roomName);
   const [roomId, setRoomId] = useState<string | undefined>(reservation?.roomId);
@@ -288,7 +286,6 @@ function ReservationModal({
   async function save(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!orgId || !firebaseUser) return;
     if (!roomId) { setError('Pick a managed room to reserve.'); return; }
     if (!title.trim()) { setError('Give the reservation a title.'); return; }
     if (!date) { setError('Pick a date.'); return; }
@@ -296,31 +293,26 @@ function ReservationModal({
     const end = combineDateTime(date, endTime);
     if (end <= start) { setError('End time must be after the start time.'); return; }
     setBusy(true);
-    const templateIds = new Set(academies.filter((a) => a.isTemplate).map((a) => a.id));
-    const acadName = (id: string) => academies.find((a) => a.id === id)?.shortName || 'another class';
-    const conflict = await findRoomConflict({
-      orgId, roomId, start, end,
-      excludeReservationId: reservation?.id,
-      isTemplate: (id) => templateIds.has(id),
-      labelFor: (s) => `${acadName(s.academyId)} — ${s.title || s.courseName}`,
-    });
-    if (conflict) {
+    try {
+      // Server callable does the conflict check + write in one transaction.
+      await saveRoomReservationFn({ reservationId: reservation?.id, roomId, title: title.trim(), startMs: start.getTime(), endMs: end.getTime(), notes: notes.trim() });
+      onClose();
+    } catch (err) {
       setBusy(false);
-      setError(`${room} is already booked ${toTimeInputValue(conflict.start)}–${toTimeInputValue(conflict.end)} by ${conflict.label}. Choose another room or time.`);
-      return;
+      setError(err instanceof Error ? err.message.replace(/^FirebaseError:\s*/, '') : 'Could not save the reservation.');
     }
-    const payload = { orgId, roomId, title: title.trim(), start: tsFromDate(start), end: tsFromDate(end), ...(notes.trim() ? { notes: notes.trim() } : {}) };
-    // On edit, clearing notes must remove the stored field (omitting keeps it stale).
-    if (reservation) await updateDoc(doc(db, 'roomReservations', reservation.id), { ...payload, notes: notes.trim() || deleteField() });
-    else await addDoc(collection(db, 'roomReservations'), { ...payload, createdBy: firebaseUser.uid, createdAt: serverTimestamp() });
-    setBusy(false);
-    onClose();
   }
 
   async function remove() {
     if (!reservation || !window.confirm('Delete this reservation?')) return;
-    await deleteDoc(doc(db, 'roomReservations', reservation.id));
-    onClose();
+    setBusy(true);
+    try {
+      await deleteRoomReservationFn({ reservationId: reservation.id });
+      onClose();
+    } catch (err) {
+      setBusy(false);
+      setError(err instanceof Error ? err.message.replace(/^FirebaseError:\s*/, '') : 'Could not delete the reservation.');
+    }
   }
 
   return (
