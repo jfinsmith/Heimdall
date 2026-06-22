@@ -162,6 +162,22 @@ service cloud.firestore {
       allow delete: if isAdmin() && inOrg(resource.data);
     }
 
+    // ── room reservation: categories + rooms (org-scoped) ─────────────────
+    // Schedule-building staff manage them; any signed-in member of the org may
+    // read (room pickers + the reservation calendar). orgId is immutable.
+    match /roomCategories/{id} {
+      allow read: if signedIn() && inOrg(resource.data);
+      allow create: if isStaff() && inOrg(request.resource.data);
+      allow update: if isStaff() && inOrg(resource.data) && unchanged('orgId');
+      allow delete: if isStaff() && inOrg(resource.data);
+    }
+    match /rooms/{id} {
+      allow read: if signedIn() && inOrg(resource.data);
+      allow create: if isStaff() && inOrg(request.resource.data);
+      allow update: if isStaff() && inOrg(resource.data) && unchanged('orgId');
+      allow delete: if isStaff() && inOrg(resource.data);
+    }
+
     // ── defaultCurricula (platform-level templates new orgs seed from) ─────
     // No orgId — these belong to the platform, not a tenant. Owner-only.
     match /defaultCurricula/{key} {

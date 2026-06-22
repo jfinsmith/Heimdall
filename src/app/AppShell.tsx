@@ -151,6 +151,7 @@ export function AppShell() {
       <NavItem to="/cadre/calendar" label="Calendar" />
       {staff && <NavItem to="/cadre/academies" label="Academies & Builder" />}
       {staff && <NavItem to="/cadre/staffing" label="Staffing Board" />}
+      {staff && <NavItem to="/cadre/rooms" label="Room Reservations" />}
       {staff && <NavItem to="/cadet-reports" label="Cadet Reports" />}
       {staff && <NavItem to="/reports" label="Exports" />}
       <SectionLabel title="Instructor tools">Instructor</SectionLabel>

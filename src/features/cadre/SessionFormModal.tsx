@@ -7,7 +7,7 @@
  * needed for those blocks.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { addDoc, collection, deleteDoc, doc, serverTimestamp, setDoc, Timestamp, updateDoc, where } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, deleteField, doc, serverTimestamp, setDoc, Timestamp, updateDoc, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { shortId, useCollection, useDoc, type WithId } from '../../lib/firestore';
 import { useClickOutside } from '../../lib/useClickOutside';
@@ -19,6 +19,8 @@ import { Button, Field, Input, Select, TextArea } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import { BlockModeToggle } from './blockMode';
 import { logAudit } from '../sessions/audit';
+import { RoomSelect } from './rooms/RoomSelect';
+import { findRoomConflict } from './rooms/roomBooking';
 
 const CUSTOM = '__custom__';
 
@@ -142,7 +144,10 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
   const [lunchStart, setLunchStart] = useState<string>(session?.lunchStart || '12:00');
   const [lunchCounts, setLunchCounts] = useState<boolean>(session?.lunchCountsTowardHours ?? false);
   const [room, setRoom] = useState(session?.room ?? academy.defaultRoom ?? '');
+  const [roomId, setRoomId] = useState<string | undefined>(session?.roomId);
   const [location, setLocation] = useState(session?.location ?? academy.location);
+  // All org academies — for room-conflict template exclusion + holder labels.
+  const { data: academies } = useCollection<AcademyDoc>('academies');
   const [notes, setNotes] = useState(session?.notes ?? '');
   const [slots, setSlots] = useState<RoleSlot[]>(session?.roleSlots ?? []);
   const [countsTowardFdle, setCountsTowardFdle] = useState(session?.countsTowardFdle !== false);
@@ -271,6 +276,28 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
     const end = combineDateTime(date, endTime);
     const courseName = resolvedName;
 
+    // Hard block: a managed room can't be double-booked over an overlapping time.
+    // (Custom/free-text rooms carry no roomId and are not reserved.)
+    if (roomId && academy.orgId) {
+      const templateIds = new Set(academies.filter((a) => a.isTemplate).map((a) => a.id));
+      const acadName = (id: string) => academies.find((a) => a.id === id)?.shortName || 'another class';
+      const fmt = (s: SessionDoc) => `${toTimeInputValue(s.start.toDate())}–${toTimeInputValue(s.end.toDate())}`;
+      const conflict = await findRoomConflict({
+        orgId: academy.orgId,
+        roomId,
+        start,
+        end,
+        excludeSessionId: session?.id,
+        isTemplate: (id) => templateIds.has(id),
+        labelFor: (s) => `${acadName(s.academyId)} — ${s.title || s.courseName}`,
+      });
+      if (conflict) {
+        setBusy(false);
+        setError(`${room} is already booked ${fmt(conflict.session)} by ${conflict.label}. Choose another room or time.`);
+        return;
+      }
+    }
+
     // Sanitize slots: Firestore rejects `undefined`, so drop the optional
     // qualification key when it isn't set (rather than writing undefined).
     const cleanSlots = slots.map((s) => {
@@ -309,11 +336,12 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
     try {
       let sessionId = session?.id;
       if (session) {
-        await updateDoc(doc(db, 'sessions', session.id), payload);
+        await updateDoc(doc(db, 'sessions', session.id), { ...payload, roomId: roomId ?? deleteField() });
         await logAudit(firebaseUser.uid, 'session.update', 'session', session.id, `Updated ${courseName} on ${date}`);
       } else {
         const ref = await addDoc(collection(db, 'sessions'), {
           ...payload,
+          ...(roomId ? { roomId } : {}),
           orgId: academy.orgId,
           // Visible on the calendar once the academy is published, but sign-ups
           // stay closed until the coordinator opens the course.
@@ -489,8 +517,8 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
           {lunchMinutes > 0 && (lunchCounts ? ` (incl. a ${lunchMinutes}-min lunch)` : ` (after a ${lunchMinutes}-min lunch)`)}
         </p>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Room (optional)" hint="Prefilled from the academy default">
-            <Input value={room} onChange={(e) => setRoom(e.target.value)} placeholder="E-120 / Range A" />
+          <Field label="Room (optional)" hint="Pick a managed room or Custom — booked rooms are blocked">
+            <RoomSelect value={room} roomId={roomId} onChange={(name, id) => { setRoom(name); setRoomId(id); }} />
           </Field>
           <Field label="Location" hint="This day only — e.g. an off-site range">
             <Input value={location} onChange={(e) => setLocation(e.target.value)} required />

@@ -67,6 +67,10 @@ beforeEach(async () => {
     await setDoc(doc(db, 'reportConfig/' + ORG), { categories: [] });
     await setDoc(doc(db, 'reportConfig/' + BETA), { categories: [] });
     // documentLibrary: a general form + one specialized per tenant.
+    await setDoc(doc(db, 'roomCategories/catA'), { orgId: ORG, name: 'College' });
+    await setDoc(doc(db, 'roomCategories/catB'), { orgId: BETA, name: 'College' });
+    await setDoc(doc(db, 'rooms/roomA'), { orgId: ORG, categoryId: 'catA', name: 'E-120', active: true });
+    await setDoc(doc(db, 'rooms/roomB'), { orgId: BETA, categoryId: 'catB', name: 'E-120', active: true });
     await setDoc(doc(db, 'documentLibrary/genA'), { name: 'General A', availability: 'general', kind: 'letter', active: true });
     await setDoc(doc(db, 'documentLibrary/specOrg'), { name: 'Spec ORG', availability: 'specialized', kind: 'letter', orgIds: [ORG], active: true });
     await setDoc(doc(db, 'documentLibrary/specBeta'), { name: 'Spec BETA', availability: 'specialized', kind: 'letter', orgIds: [BETA], active: true });
@@ -334,6 +338,31 @@ describe('curricula + reportConfig — org isolation', () => {
     await assertFails(getDoc(doc(as('dave', 'director'), 'reportConfig/' + BETA)));
     await assertSucceeds(setDoc(doc(as('dave', 'director'), 'reportConfig/' + ORG), { categories: [] }, { merge: true }));
     await assertFails(setDoc(doc(as('dave', 'director'), 'reportConfig/' + BETA), { categories: [] }, { merge: true }));
+  });
+});
+
+// ── Room reservation: org-scoped categories + rooms, staff-managed. ──────────
+describe('rooms + roomCategories — org isolation (staff-managed)', () => {
+  it('reads OWN-org rooms/categories, NOT another tenant\'s', async () => {
+    await assertSucceeds(getDoc(doc(as('carol', 'coordinator'), 'rooms/roomA')));
+    await assertFails(getDoc(doc(as('carol', 'coordinator'), 'rooms/roomB')));
+    await assertSucceeds(getDoc(doc(as('carol', 'coordinator'), 'roomCategories/catA')));
+    await assertFails(getDoc(doc(as('carol', 'coordinator'), 'roomCategories/catB')));
+  });
+  it('constrained list returns ONLY this org\'s rooms', async () => {
+    const mine = await assertSucceeds(getDocs(query(collection(as('carol', 'coordinator'), 'rooms'), where('orgId', '==', ORG))));
+    expect((mine as { docs: { id: string }[] }).docs.map((d) => d.id).sort()).toEqual(['roomA']);
+  });
+  it('staff create/update/delete in OWN org; orgId immutable; not cross-org', async () => {
+    await assertSucceeds(setDoc(doc(as('carol', 'coordinator'), 'rooms/newA'), { orgId: ORG, categoryId: 'catA', name: 'Range A', active: true }));
+    await assertFails(setDoc(doc(as('carol', 'coordinator'), 'rooms/newB'), { orgId: BETA, categoryId: 'catB', name: 'X', active: true }));
+    await assertFails(updateDoc(doc(as('carol', 'coordinator'), 'rooms/roomA'), { orgId: BETA }));
+    await assertSucceeds(deleteDoc(doc(as('carol', 'coordinator'), 'rooms/roomA')));
+    await assertSucceeds(setDoc(doc(as('carol', 'coordinator'), 'roomCategories/catNew'), { orgId: ORG, name: 'Range' }));
+  });
+  it('instructor CANNOT create rooms or categories', async () => {
+    await assertFails(setDoc(doc(as('alice', 'instructor'), 'rooms/nope'), { orgId: ORG, categoryId: 'catA', name: 'X', active: true }));
+    await assertFails(setDoc(doc(as('alice', 'instructor'), 'roomCategories/nope'), { orgId: ORG, name: 'X' }));
   });
 });
 

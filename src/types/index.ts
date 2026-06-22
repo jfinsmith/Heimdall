@@ -696,6 +696,10 @@ export interface SessionDoc {
   end: Timestamp;
   location: string;
   room: string;
+  /** Managed room reference (rooms/{id}) when a room from the reservation system
+   *  is chosen; absent for legacy or custom (free-text) rooms. `room` always holds
+   *  the display name. Conflict-checking keys off roomId (falls back to name). */
+  roomId?: string;
   /** Instructional hours = wall-clock span minus the lunch break (unless lunch counts — see below). */
   hours: number;
   /** Minutes of lunch carved out of the middle of the block (not instructional). */
@@ -720,6 +724,39 @@ export interface SessionDoc {
   notes?: string;
   createdBy: string;
   updatedAt: Timestamp;
+}
+
+/**
+ * Room-reservation system (org-scoped; the program is universal, the data is
+ * per-tenant). A **category** is a location (College, Range, off-site venue…);
+ * a **room** lives in a category. Bookings are sessions that reference a room
+ * via `SessionDoc.roomId` — there is no separate booking doc in P1.
+ */
+export interface RoomCategoryDoc {
+  /** Tenant (orgs/{orgId}). */
+  orgId?: string;
+  name: string;
+  /** Manual sort order (lower first); falls back to name. */
+  order?: number;
+  createdAt?: Timestamp;
+}
+
+export interface RoomDoc {
+  /** Tenant (orgs/{orgId}). */
+  orgId?: string;
+  /** Parent category (roomCategories/{id}). */
+  categoryId: string;
+  name: string;
+  /** Optional seat count — used to warn when a class exceeds capacity. */
+  capacity?: number;
+  notes?: string;
+  /** Calendar color (hex); falls back to a category/default color. */
+  color?: string;
+  /** Future: an uploaded floor-plan/diagram (Storage URL). */
+  diagramUrl?: string;
+  /** Soft-delete: inactive rooms drop out of pickers but keep historical bookings. */
+  active?: boolean;
+  createdAt?: Timestamp;
 }
 
 export type SignupStatus = 'confirmed' | 'waitlist' | 'withdrawn';
