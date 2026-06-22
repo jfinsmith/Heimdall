@@ -386,6 +386,15 @@ describe('rooms + roomCategories — org isolation (staff-managed)', () => {
   });
 });
 
+// ── activeStatus: a suspended/inactive token loses staff authority in rules. ──
+describe('activeStatus — suspended token blocked', () => {
+  it('a staff token carrying status=suspended cannot do staff writes; a normal one can', async () => {
+    const suspended = testEnv.authenticatedContext('zz', { role: 'coordinator', orgId: ORG, status: 'suspended' }).firestore();
+    await assertFails(setDoc(doc(suspended, 'rooms/zzblocked'), { orgId: ORG, categoryId: 'catA', name: 'X', active: true }));
+    await assertSucceeds(setDoc(doc(as('carol', 'coordinator'), 'rooms/zzok'), { orgId: ORG, categoryId: 'catA', name: 'OK', active: true }));
+  });
+});
+
 // ── Academy publish gate: no client self-approval / forged approval. ─────────
 describe('academies — publish gate', () => {
   it('staff CANNOT publish an un-approved draft', async () => {

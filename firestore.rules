@@ -31,13 +31,19 @@ service cloud.firestore {
     function role() {
       return signedIn() && 'role' in request.auth.token ? request.auth.token.role : 'instructor';
     }
+    // Defense-in-depth: a suspended/deactivated user's FUTURE tokens carry a
+    // status claim (minted by setUserSuspension/setUserActive, which also strip
+    // the role claim + revoke refresh tokens). Absent claim = active.
+    function activeStatus() {
+      return !(request.auth.token.get('status', 'active') in ['suspended', 'inactive']);
+    }
     // Coordinator and above: may build schedules, approve sign-ups, verify quals.
     function isStaff() {
-      return signedIn() && role() in ['director', 'lieutenant', 'sergeant', 'coordinator'];
+      return signedIn() && activeStatus() && role() in ['director', 'lieutenant', 'sergeant', 'coordinator'];
     }
     // Command: may manage users, roles, and org settings.
     function isAdmin() {
-      return signedIn() && role() in ['director', 'lieutenant'];
+      return signedIn() && activeStatus() && role() in ['director', 'lieutenant'];
     }
     function isOwner(uid) {
       return signedIn() && request.auth.uid == uid;

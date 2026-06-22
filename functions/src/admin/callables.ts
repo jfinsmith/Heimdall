@@ -496,10 +496,12 @@ export const setUserActive = onCall<{ uid: string; active: boolean }>(async (req
   await db.doc(`users/${uid}`).set({ status: active ? 'active' : 'inactive', updatedAt: FieldValue.serverTimestamp() }, { merge: true });
   const claims = { ...((await getAuth().getUser(uid).catch(() => null))?.customClaims ?? {}) } as Record<string, unknown>;
   if (active) {
+    delete claims.status;
     const restoredRole = target.role as Role | undefined;
     await getAuth().setCustomUserClaims(uid, { ...claims, ...(restoredRole ? { role: restoredRole } : {}) });
   } else {
     delete claims.role;
+    claims.status = 'inactive'; // rules' activeStatus() blocks future tokens
     await getAuth().setCustomUserClaims(uid, claims);
     await getAuth().revokeRefreshTokens(uid);
   }
@@ -565,9 +567,11 @@ export const setUserSuspension = onCall<{ uid: string; suspended: boolean; reaso
   const claims = { ...((await getAuth().getUser(uid).catch(() => null))?.customClaims ?? {}) } as Record<string, unknown>;
   if (suspended) {
     delete claims.role;
+    claims.status = 'suspended'; // rules' activeStatus() blocks future tokens
     await getAuth().setCustomUserClaims(uid, claims);
     await getAuth().revokeRefreshTokens(uid);
   } else {
+    delete claims.status;
     const restoredRole = userSnap.data()!.role as Role | undefined;
     await getAuth().setCustomUserClaims(uid, { ...claims, ...(restoredRole ? { role: restoredRole } : {}) });
   }
