@@ -16,6 +16,14 @@ export function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date): bo
   return aStart < bEnd && bStart < aEnd;
 }
 
+/** All sessions in the org that reference `roomId` (any status — caller filters). */
+export async function loadRoomBookings(orgId: string, roomId: string): Promise<(SessionDoc & { id: string })[]> {
+  const snap = await getDocs(
+    query(collection(db, 'sessions'), where('orgId', '==', orgId), where('roomId', '==', roomId))
+  );
+  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as SessionDoc) }));
+}
+
 export interface RoomConflict {
   session: SessionDoc & { id: string };
   /** Human-readable holder, e.g. "LE 133 — Firearms". */

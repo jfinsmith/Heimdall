@@ -384,6 +384,8 @@ export interface AcademyDoc {
   location: string;
   /** Default room prefilled on new sessions (individual days can differ). */
   defaultRoom?: string;
+  /** Managed-room id behind `defaultRoom` (rooms/{id}); absent for custom text. */
+  defaultRoomId?: string;
   /** Calendar color for this cohort (hex from the fixed palette). */
   color?: string;
   status: AcademyStatus;

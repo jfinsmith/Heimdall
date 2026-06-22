@@ -27,6 +27,7 @@ import { Badge, Button, Field, Input, PageHeader, Select } from '../../component
 import { Modal } from '../../components/Modal';
 import { ACADEMY_COLORS, nextAcademyColor } from '../../lib/academyColors';
 import { logAudit } from '../sessions/audit';
+import { RoomSelect } from './rooms/RoomSelect';
 
 const DEFAULT_LOCATION = 'PHSC — Dade City, FL';
 
@@ -343,6 +344,7 @@ function CreateAcademyModal({
   const [endDate, setEndDate] = useState('');
   const [location, setLocation] = useState(DEFAULT_LOCATION);
   const [defaultRoom, setDefaultRoom] = useState('');
+  const [defaultRoomId, setDefaultRoomId] = useState<string | undefined>(undefined);
   const [sequenceNo, setSequenceNo] = useState('');
   const [targetHours, setTargetHours] = useState(0);
   const [primary, setPrimary] = useState('');
@@ -384,6 +386,7 @@ function CreateAcademyModal({
       endDate: tsFromDate(new Date(`${endDate}T23:59:59`)),
       location,
       defaultRoom,
+      ...(defaultRoomId ? { defaultRoomId } : {}),
       ...(sequenceNo.trim() ? { sequenceNo: sequenceNo.trim() } : {}),
       status: 'draft',
       isTemplate,
@@ -450,7 +453,7 @@ function CreateAcademyModal({
             <Input value={location} onChange={(e) => setLocation(e.target.value)} required />
           </Field>
           <Field label="Default room" hint="Prefilled on new sessions; individual days can differ">
-            <Input value={defaultRoom} onChange={(e) => setDefaultRoom(e.target.value)} placeholder="E-120" />
+            <RoomSelect value={defaultRoom} roomId={defaultRoomId} onChange={(name, id) => { setDefaultRoom(name); setDefaultRoomId(id); }} />
           </Field>
         </div>
         {!isTemplate && (

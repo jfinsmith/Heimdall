@@ -14,7 +14,7 @@ import listPlugin from '@fullcalendar/list';
 import interactionPlugin from '@fullcalendar/interaction';
 import type { EventDropArg } from '@fullcalendar/core';
 import type { EventResizeDoneArg } from '@fullcalendar/interaction';
-import { addDoc, collection, doc, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
+import { addDoc, collection, deleteField, doc, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../../lib/firebase';
 import { useCollection, useDoc, type WithId } from '../../lib/firestore';
@@ -29,6 +29,7 @@ import { Modal } from '../../components/Modal';
 import { SessionFormModal } from './SessionFormModal';
 import { LunchBlockModal } from './LunchBlockModal';
 import { RecurringGeneratorModal } from './RecurringGeneratorModal';
+import { RoomSelect } from './rooms/RoomSelect';
 import { SessionDetailModal } from '../sessions/SessionDetailModal';
 import { sessionToEvent, renderEventContent } from './sessionEvents';
 import { ACADEMY_COLORS } from '../../lib/academyColors';
@@ -1035,6 +1036,7 @@ function EditAcademyModal({ academy, onClose }: { academy: WithId<AcademyDoc>; o
   const [discipline, setDiscipline] = useState(academy.discipline ?? '');
   const [color, setColor] = useState(academy.color ?? ACADEMY_COLORS[0].value);
   const [defaultRoom, setDefaultRoom] = useState(academy.defaultRoom ?? '');
+  const [defaultRoomId, setDefaultRoomId] = useState<string | undefined>(academy.defaultRoomId);
   const [sequenceNo, setSequenceNo] = useState(academy.sequenceNo ?? '');
   const [targetHours, setTargetHours] = useState(academy.targetTotalHours);
   const [primary, setPrimary] = useState(academy.coordinatorIds[0] ?? '');
@@ -1060,6 +1062,7 @@ function EditAcademyModal({ academy, onClose }: { academy: WithId<AcademyDoc>; o
       color,
       fdleProgram: curriculum?.fdleProgram ?? academy.fdleProgram,
       defaultRoom,
+      defaultRoomId: defaultRoomId ?? deleteField(),
       sequenceNo: sequenceNo.trim(),
       targetTotalHours: targetHours,
       // [0] = primary, [1] = secondary; drop empties and de-dup.
@@ -1111,7 +1114,7 @@ function EditAcademyModal({ academy, onClose }: { academy: WithId<AcademyDoc>; o
         </div>
         <div className="grid grid-cols-2 gap-4">
           <Field label="Default room" hint="Prefilled on new sessions">
-            <Input value={defaultRoom} onChange={(e) => setDefaultRoom(e.target.value)} />
+            <RoomSelect value={defaultRoom} roomId={defaultRoomId} onChange={(name, id) => { setDefaultRoom(name); setDefaultRoomId(id); }} />
           </Field>
           <Field label="Target total hours">
             <Input type="number" min={1} step="any" value={targetHours} onChange={(e) => setTargetHours(Number(e.target.value))} />

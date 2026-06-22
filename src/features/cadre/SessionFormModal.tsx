@@ -144,7 +144,7 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
   const [lunchStart, setLunchStart] = useState<string>(session?.lunchStart || '12:00');
   const [lunchCounts, setLunchCounts] = useState<boolean>(session?.lunchCountsTowardHours ?? false);
   const [room, setRoom] = useState(session?.room ?? academy.defaultRoom ?? '');
-  const [roomId, setRoomId] = useState<string | undefined>(session?.roomId);
+  const [roomId, setRoomId] = useState<string | undefined>(session?.roomId ?? academy.defaultRoomId);
   const [location, setLocation] = useState(session?.location ?? academy.location);
   // All org academies — for room-conflict template exclusion + holder labels.
   const { data: academies } = useCollection<AcademyDoc>('academies');

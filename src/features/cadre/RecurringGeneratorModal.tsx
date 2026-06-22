@@ -16,6 +16,8 @@ import type { AcademyDoc, CurriculumDoc, RoleSlot, UserDoc } from '../../types';
 import { Button, Field, Input, Select } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import { logAudit } from '../sessions/audit';
+import { RoomSelect } from './rooms/RoomSelect';
+import { loadRoomBookings, overlaps } from './rooms/roomBooking';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const CUSTOM = '__custom__';
@@ -23,6 +25,7 @@ const CUSTOM = '__custom__';
 export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<AcademyDoc>; onClose: () => void }) {
   const { firebaseUser } = useAuth();
   const { data: coordinatorUsers } = useCollection<UserDoc>('users', [where('role', '==', 'coordinator')]);
+  const { data: academies } = useCollection<AcademyDoc>('academies');
   // Courses come entirely from THIS academy's discipline (its curriculum blocks)
   // — hours, high-liability, lead qualification, and default slots all live on
   // the block (Admin → Curriculum & Hours). Alphabetical.
@@ -55,6 +58,7 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
   const [lunchStart, setLunchStart] = useState('12:00');
   const [lunchCounts, setLunchCounts] = useState(false);
   const [room, setRoom] = useState(academy.defaultRoom ?? '');
+  const [roomId, setRoomId] = useState<string | undefined>(academy.defaultRoomId);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -126,6 +130,27 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
     }
     setBusy(true);
 
+    // Hard block: a managed room can't be double-booked. Check every generated
+    // day against existing (non-cancelled, non-template) bookings for the room.
+    if (roomId && academy.orgId) {
+      const templateIds = new Set(academies.filter((a) => a.isTemplate).map((a) => a.id));
+      const acadName = (id: string) => academies.find((a) => a.id === id)?.shortName || 'another class';
+      const live = (await loadRoomBookings(academy.orgId, roomId)).filter(
+        (b) => b.status !== 'cancelled' && !templateIds.has(b.academyId)
+      );
+      const hits: string[] = [];
+      for (const date of matchingDates) {
+        const ds = toDateInputValue(date);
+        const conflict = live.find((b) => overlaps(combineDateTime(ds, startTime), combineDateTime(ds, endTime), b.start.toDate(), b.end.toDate()));
+        if (conflict) hits.push(`${ds}: ${acadName(conflict.academyId)} — ${conflict.title || conflict.courseName}`);
+      }
+      if (hits.length) {
+        setBusy(false);
+        setError(`${room} is already booked on ${hits.length} of these day(s): ${hits.slice(0, 5).join('; ')}${hits.length > 5 ? `; +${hits.length - 5} more` : ''}. Choose another room or adjust the dates/times.`);
+        return;
+      }
+    }
+
     const courseName = isCustom ? customName.trim() : selectedOption?.name ?? '';
     const defaultCoord = academy.coordinatorIds[0];
 
@@ -165,6 +190,7 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
           end: tsFromDate(end),
           location: academy.location,
           room,
+          ...(roomId ? { roomId } : {}),
           hours: Math.max(0, hoursBetween(start, end) - (lunchCounts ? 0 : lunchMinutes / 60)),
           lunchMinutes,
           lunchStart: lunchMinutes > 0 ? lunchStart : '',
@@ -291,7 +317,7 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
             <Input type="number" min={0} step={15} value={lunchMinutes} onChange={(e) => setLunchMinutes(Number(e.target.value))} />
           </Field>
           <Field label="Room (optional)">
-            <Input value={room} onChange={(e) => setRoom(e.target.value)} />
+            <RoomSelect value={room} roomId={roomId} onChange={(name, id) => { setRoom(name); setRoomId(id); }} />
           </Field>
         </div>
         {lunchMinutes > 0 && (
