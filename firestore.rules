@@ -177,6 +177,12 @@ service cloud.firestore {
       allow update: if isStaff() && inOrg(resource.data) && unchanged('orgId');
       allow delete: if isStaff() && inOrg(resource.data);
     }
+    match /roomReservations/{id} {
+      allow read: if signedIn() && inOrg(resource.data);
+      allow create: if isStaff() && inOrg(request.resource.data);
+      allow update: if isStaff() && inOrg(resource.data) && unchanged('orgId');
+      allow delete: if isStaff() && inOrg(resource.data);
+    }
 
     // ── defaultCurricula (platform-level templates new orgs seed from) ─────
     // No orgId — these belong to the platform, not a tenant. Owner-only.

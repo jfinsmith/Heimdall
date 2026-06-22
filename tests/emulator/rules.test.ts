@@ -71,6 +71,8 @@ beforeEach(async () => {
     await setDoc(doc(db, 'roomCategories/catB'), { orgId: BETA, name: 'College' });
     await setDoc(doc(db, 'rooms/roomA'), { orgId: ORG, categoryId: 'catA', name: 'E-120', active: true });
     await setDoc(doc(db, 'rooms/roomB'), { orgId: BETA, categoryId: 'catB', name: 'E-120', active: true });
+    await setDoc(doc(db, 'roomReservations/resA'), { orgId: ORG, roomId: 'roomA', title: 'Maintenance', start: new Date(), end: new Date() });
+    await setDoc(doc(db, 'roomReservations/resB'), { orgId: BETA, roomId: 'roomB', title: 'Maintenance', start: new Date(), end: new Date() });
     await setDoc(doc(db, 'documentLibrary/genA'), { name: 'General A', availability: 'general', kind: 'letter', active: true });
     await setDoc(doc(db, 'documentLibrary/specOrg'), { name: 'Spec ORG', availability: 'specialized', kind: 'letter', orgIds: [ORG], active: true });
     await setDoc(doc(db, 'documentLibrary/specBeta'), { name: 'Spec BETA', availability: 'specialized', kind: 'letter', orgIds: [BETA], active: true });
@@ -363,6 +365,14 @@ describe('rooms + roomCategories — org isolation (staff-managed)', () => {
   it('instructor CANNOT create rooms or categories', async () => {
     await assertFails(setDoc(doc(as('alice', 'instructor'), 'rooms/nope'), { orgId: ORG, categoryId: 'catA', name: 'X', active: true }));
     await assertFails(setDoc(doc(as('alice', 'instructor'), 'roomCategories/nope'), { orgId: ORG, name: 'X' }));
+  });
+  it('roomReservations: read/write OWN org only; orgId immutable; instructor blocked', async () => {
+    await assertSucceeds(getDoc(doc(as('carol', 'coordinator'), 'roomReservations/resA')));
+    await assertFails(getDoc(doc(as('carol', 'coordinator'), 'roomReservations/resB')));
+    await assertSucceeds(setDoc(doc(as('carol', 'coordinator'), 'roomReservations/newA'), { orgId: ORG, roomId: 'roomA', title: 'X', start: new Date(), end: new Date() }));
+    await assertFails(setDoc(doc(as('carol', 'coordinator'), 'roomReservations/newB'), { orgId: BETA, roomId: 'roomB', title: 'X', start: new Date(), end: new Date() }));
+    await assertFails(updateDoc(doc(as('carol', 'coordinator'), 'roomReservations/resA'), { orgId: BETA }));
+    await assertFails(setDoc(doc(as('alice', 'instructor'), 'roomReservations/nope'), { orgId: ORG, roomId: 'roomA', title: 'X', start: new Date(), end: new Date() }));
   });
 });
 

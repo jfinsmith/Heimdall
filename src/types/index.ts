@@ -761,6 +761,23 @@ export interface RoomDoc {
   createdAt?: Timestamp;
 }
 
+/**
+ * Ad-hoc room hold not tied to a class session (meeting, maintenance, outside
+ * group). Blocks the booking calendar and participates in conflict checks exactly
+ * like a session booking. Org-scoped, staff-managed.
+ */
+export interface RoomReservationDoc {
+  /** Tenant (orgs/{orgId}). */
+  orgId?: string;
+  roomId: string;
+  title: string;
+  start: Timestamp;
+  end: Timestamp;
+  notes?: string;
+  createdBy: string;
+  createdAt?: Timestamp;
+}
+
 export type SignupStatus = 'confirmed' | 'waitlist' | 'withdrawn';
 
 export interface SignupDoc {

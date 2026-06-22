@@ -12,13 +12,17 @@ import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
-import { addDoc, collection, deleteDoc, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
-import { db } from '../../../lib/firebase';
+import { addDoc, collection, deleteDoc, deleteField, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
+import { db, storage } from '../../../lib/firebase';
 import { useAuth } from '../../../auth/AuthContext';
 import { useCollection, type WithId } from '../../../lib/firestore';
-import type { AcademyDoc, RoomCategoryDoc, RoomDoc, SessionDoc } from '../../../types';
+import { combineDateTime, toDateInputValue, toTimeInputValue, tsFromDate } from '../../../lib/time';
+import type { AcademyDoc, RoomCategoryDoc, RoomDoc, RoomReservationDoc, SessionDoc } from '../../../types';
 import { Button, Field, Input, PageHeader, Select, TextArea } from '../../../components/ui';
 import { Modal } from '../../../components/Modal';
+import { RoomSelect } from './RoomSelect';
+import { findRoomConflict } from './roomBooking';
 
 const PALETTE = ['#2563eb', '#16a34a', '#d97706', '#7c3aed', '#dc2626', '#0891b2', '#db2777', '#65a30d'];
 
@@ -29,10 +33,12 @@ export function RoomsPage() {
   const { data: rooms } = useCollection<RoomDoc>('rooms');
   const { data: sessions } = useCollection<SessionDoc>('sessions');
   const { data: academies } = useCollection<AcademyDoc>('academies');
+  const { data: reservations } = useCollection<RoomReservationDoc>('roomReservations');
 
   const [newCat, setNewCat] = useState('');
   const [busy, setBusy] = useState(false);
   const [roomModal, setRoomModal] = useState<{ categoryId: string; room?: WithId<RoomDoc> } | null>(null);
+  const [resModal, setResModal] = useState<{ reservation?: WithId<RoomReservationDoc> } | null>(null);
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [roomFilter, setRoomFilter] = useState('all');
 
@@ -82,6 +88,24 @@ export function RoomsPage() {
         };
       });
   }, [sessions, roomById, templateIds, roomFilter, categoryFilter, academyById, catColor]);
+
+  // Ad-hoc reservations → calendar events (distinct slate style + lock icon).
+  const resEvents = useMemo(() => {
+    return reservations
+      .filter((r) => roomById.has(r.roomId))
+      .filter((r) => roomFilter === 'all' || r.roomId === roomFilter)
+      .filter((r) => categoryFilter === 'all' || roomById.get(r.roomId)?.categoryId === categoryFilter)
+      .map((r) => ({
+        id: `res-${r.id}`,
+        title: `🔒 ${roomById.get(r.roomId)!.name} · ${r.title}`,
+        start: r.start.toDate(),
+        end: r.end.toDate(),
+        backgroundColor: '#475569',
+        borderColor: '#475569',
+        extendedProps: { reservationId: r.id },
+      }));
+  }, [reservations, roomById, roomFilter, categoryFilter]);
+  const reservationById = useMemo(() => new Map(reservations.map((r) => [r.id, r])), [reservations]);
 
   async function addCategory() {
     const name = newCat.trim();
@@ -139,6 +163,7 @@ export function RoomsPage() {
                 {(roomsByCat.get(c.id) ?? []).map((r) => (
                   <li key={r.id} className="flex items-center justify-between gap-2 text-sm">
                     <span className={r.active === false ? 'text-slate-400 line-through' : 'text-slate-700'}>
+                      {r.diagramUrl && <a href={r.diagramUrl} target="_blank" rel="noopener" title="View diagram" className="mr-1">📐</a>}
                       {r.name}{r.capacity ? <span className="text-xs text-slate-400"> · {r.capacity} seats</span> : null}
                     </span>
                     <span className="flex items-center gap-2 text-xs">
@@ -161,6 +186,7 @@ export function RoomsPage() {
       <section className="rounded-lg border border-watch-100 bg-white p-4 shadow-sm">
         <div className="mb-3 flex flex-wrap items-end gap-3">
           <h2 className="mr-auto text-sm font-semibold uppercase tracking-wider text-watch-600">Booking calendar</h2>
+          <Button variant="ghost" disabled={rooms.length === 0} onClick={() => setResModal({})}>+ Reservation</Button>
           <Field label="Location">
             <Select value={categoryFilter} onChange={(e) => { setCategoryFilter(e.target.value); setRoomFilter('all'); }}>
               <option value="all">All locations</option>
@@ -179,12 +205,17 @@ export function RoomsPage() {
           initialView="dayGridMonth"
           firstDay={1}
           headerToolbar={{ left: 'prev,next today', center: 'title', right: '' }}
-          events={events}
-          eventClick={(arg) => { const aid = arg.event.extendedProps.academyId as string; if (aid) navigate(`/cadre/academies/${aid}`); }}
+          events={[...events, ...resEvents]}
+          eventClick={(arg) => {
+            const resId = arg.event.extendedProps.reservationId as string | undefined;
+            if (resId) { const r = reservationById.get(resId); if (r) setResModal({ reservation: r }); return; }
+            const aid = arg.event.extendedProps.academyId as string | undefined;
+            if (aid) navigate(`/cadre/academies/${aid}`);
+          }}
           dayMaxEvents={4}
           height="auto"
         />
-        <p className="mt-3 text-xs text-slate-400">Each block shows <strong>room · class · course</strong>. Filter by location or room to check availability. Click a booking to open its class.</p>
+        <p className="mt-3 text-xs text-slate-400">Each block shows <strong>room · class · course</strong> (🔒 = an ad-hoc reservation). Filter by location or room to check availability. Click a booking to open its class, or a 🔒 to edit the reservation.</p>
       </section>
 
       {roomModal && (
@@ -195,7 +226,106 @@ export function RoomsPage() {
           onClose={() => setRoomModal(null)}
         />
       )}
+      {resModal && (
+        <ReservationModal
+          orgId={orgId}
+          rooms={rooms.filter((r) => r.active !== false)}
+          academies={academies}
+          reservation={resModal.reservation}
+          onClose={() => setResModal(null)}
+        />
+      )}
     </div>
+  );
+}
+
+function ReservationModal({
+  orgId,
+  rooms,
+  academies,
+  reservation,
+  onClose,
+}: {
+  orgId: string | null | undefined;
+  rooms: WithId<RoomDoc>[];
+  academies: WithId<AcademyDoc>[];
+  reservation?: WithId<RoomReservationDoc>;
+  onClose: () => void;
+}) {
+  const { firebaseUser } = useAuth();
+  const roomName = reservation ? rooms.find((r) => r.id === reservation.roomId)?.name ?? '' : '';
+  const [room, setRoom] = useState(roomName);
+  const [roomId, setRoomId] = useState<string | undefined>(reservation?.roomId);
+  const [title, setTitle] = useState(reservation?.title ?? '');
+  const [date, setDate] = useState(reservation ? toDateInputValue(reservation.start.toDate()) : '');
+  const [startTime, setStartTime] = useState(reservation ? toTimeInputValue(reservation.start.toDate()) : '08:00');
+  const [endTime, setEndTime] = useState(reservation ? toTimeInputValue(reservation.end.toDate()) : '17:00');
+  const [notes, setNotes] = useState(reservation?.notes ?? '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (!orgId || !firebaseUser) return;
+    if (!roomId) { setError('Pick a managed room to reserve.'); return; }
+    if (!title.trim()) { setError('Give the reservation a title.'); return; }
+    if (!date) { setError('Pick a date.'); return; }
+    const start = combineDateTime(date, startTime);
+    const end = combineDateTime(date, endTime);
+    if (end <= start) { setError('End time must be after the start time.'); return; }
+    setBusy(true);
+    const templateIds = new Set(academies.filter((a) => a.isTemplate).map((a) => a.id));
+    const acadName = (id: string) => academies.find((a) => a.id === id)?.shortName || 'another class';
+    const conflict = await findRoomConflict({
+      orgId, roomId, start, end,
+      excludeReservationId: reservation?.id,
+      isTemplate: (id) => templateIds.has(id),
+      labelFor: (s) => `${acadName(s.academyId)} — ${s.title || s.courseName}`,
+    });
+    if (conflict) {
+      setBusy(false);
+      setError(`${room} is already booked ${toTimeInputValue(conflict.start)}–${toTimeInputValue(conflict.end)} by ${conflict.label}. Choose another room or time.`);
+      return;
+    }
+    const payload = { orgId, roomId, title: title.trim(), start: tsFromDate(start), end: tsFromDate(end), ...(notes.trim() ? { notes: notes.trim() } : {}) };
+    if (reservation) await updateDoc(doc(db, 'roomReservations', reservation.id), payload);
+    else await addDoc(collection(db, 'roomReservations'), { ...payload, createdBy: firebaseUser.uid, createdAt: serverTimestamp() });
+    setBusy(false);
+    onClose();
+  }
+
+  async function remove() {
+    if (!reservation || !window.confirm('Delete this reservation?')) return;
+    await deleteDoc(doc(db, 'roomReservations', reservation.id));
+    onClose();
+  }
+
+  return (
+    <Modal open onClose={onClose} title={reservation ? 'Edit reservation' : 'New reservation'}>
+      <form onSubmit={save} className="space-y-4">
+        {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
+        <Field label="Room">
+          <RoomSelect value={room} roomId={roomId} includeNone={false} onChange={(name, id) => { setRoom(name); setRoomId(id); }} />
+        </Field>
+        <Field label="Title" hint="e.g. Staff meeting, Maintenance, Outside agency">
+          <Input value={title} onChange={(e) => setTitle(e.target.value)} required placeholder="Maintenance" />
+        </Field>
+        <div className="grid grid-cols-3 gap-4">
+          <Field label="Date"><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} required /></Field>
+          <Field label="Start"><Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} required /></Field>
+          <Field label="End"><Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} required /></Field>
+        </div>
+        <Field label="Notes (optional)"><TextArea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
+        <div className="flex items-center justify-between gap-2">
+          {reservation ? <Button type="button" variant="ghost" className="text-red-600 hover:bg-red-50" onClick={remove}>Delete</Button> : <span />}
+          <div className="flex gap-2">
+            <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+            <Button type="submit" variant="primary" disabled={busy}>{reservation ? 'Save' : 'Reserve'}</Button>
+          </div>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -213,7 +343,22 @@ function RoomModal({
   const [name, setName] = useState(room?.name ?? '');
   const [capacity, setCapacity] = useState(room?.capacity ? String(room.capacity) : '');
   const [notes, setNotes] = useState(room?.notes ?? '');
+  const [diagramUrl, setDiagramUrl] = useState(room?.diagramUrl ?? '');
+  const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  async function uploadDiagram(file: File) {
+    if (!orgId) return;
+    setUploading(true);
+    try {
+      const ext = file.name.split('.').pop() || 'png';
+      const r = storageRef(storage, `rooms/${orgId}/${Date.now()}.${ext}`);
+      await uploadBytes(r, file);
+      setDiagramUrl(await getDownloadURL(r));
+    } finally {
+      setUploading(false);
+    }
+  }
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -228,8 +373,8 @@ function RoomModal({
       ...(Number.isFinite(cap) && cap > 0 ? { capacity: cap } : {}),
       ...(notes.trim() ? { notes: notes.trim() } : {}),
     };
-    if (room) await updateDoc(doc(db, 'rooms', room.id), payload);
-    else await addDoc(collection(db, 'rooms'), { ...payload, createdAt: serverTimestamp() });
+    if (room) await updateDoc(doc(db, 'rooms', room.id), { ...payload, diagramUrl: diagramUrl.trim() || deleteField() });
+    else await addDoc(collection(db, 'rooms'), { ...payload, ...(diagramUrl.trim() ? { diagramUrl: diagramUrl.trim() } : {}), createdAt: serverTimestamp() });
     setBusy(false);
     onClose();
   }
@@ -246,9 +391,19 @@ function RoomModal({
         <Field label="Notes (optional)">
           <TextArea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </Field>
+        <Field label="Diagram / floor plan (optional)" hint="An image showing where this room is">
+          <div className="flex items-center gap-3">
+            {diagramUrl && <img src={diagramUrl} alt="" className="h-12 w-12 rounded border border-watch-100 object-cover" />}
+            <label className="cursor-pointer text-sm font-medium text-bifrost-700 hover:underline">
+              {uploading ? 'Uploading…' : diagramUrl ? 'Replace' : 'Upload'}
+              <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && uploadDiagram(e.target.files[0])} />
+            </label>
+            {diagramUrl && <button type="button" className="text-xs text-slate-400 hover:text-red-600" onClick={() => setDiagramUrl('')}>Remove</button>}
+          </div>
+        </Field>
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button type="submit" variant="primary" disabled={busy || !name.trim()}>{room ? 'Save' : 'Add room'}</Button>
+          <Button type="submit" variant="primary" disabled={busy || uploading || !name.trim()}>{room ? 'Save' : 'Add room'}</Button>
         </div>
       </form>
     </Modal>

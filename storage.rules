@@ -9,6 +9,9 @@ service firebase.storage {
     function isAdmin() {
       return signedIn() && request.auth.token.role in ['director', 'lieutenant'];
     }
+    function isStaff() {
+      return signedIn() && request.auth.token.role in ['director', 'lieutenant', 'sergeant', 'coordinator'];
+    }
 
     // Bug / feature report screenshots, partitioned by tenant: feedback/{orgId}/{uid}/…
     // The uploader writes under their own uid; reads are scoped to a SAME-TENANT
@@ -36,6 +39,18 @@ service firebase.storage {
         && orgId == request.auth.token.get('orgId', null)
         && request.resource.size < 5 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
+    }
+
+    // Room diagrams / floor plans, partitioned by tenant: rooms/{orgId}/…
+    // Schedule-building staff (who manage rooms) may upload; read is limited to
+    // signed-in members (a floor plan is org-internal, unlike a public logo).
+    match /rooms/{orgId}/{allPaths=**} {
+      allow read: if signedIn();
+      allow write: if isStaff()
+        && orgId == request.auth.token.get('orgId', null)
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      allow delete: if isStaff() && orgId == request.auth.token.get('orgId', null);
     }
 
     // Everything else: locked down by default.

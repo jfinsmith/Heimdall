@@ -281,7 +281,6 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
     if (roomId && academy.orgId) {
       const templateIds = new Set(academies.filter((a) => a.isTemplate).map((a) => a.id));
       const acadName = (id: string) => academies.find((a) => a.id === id)?.shortName || 'another class';
-      const fmt = (s: SessionDoc) => `${toTimeInputValue(s.start.toDate())}–${toTimeInputValue(s.end.toDate())}`;
       const conflict = await findRoomConflict({
         orgId: academy.orgId,
         roomId,
@@ -293,7 +292,7 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
       });
       if (conflict) {
         setBusy(false);
-        setError(`${room} is already booked ${fmt(conflict.session)} by ${conflict.label}. Choose another room or time.`);
+        setError(`${room} is already booked ${toTimeInputValue(conflict.start)}–${toTimeInputValue(conflict.end)} by ${conflict.label}. Choose another room or time.`);
         return;
       }
     }
@@ -518,7 +517,7 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
         </p>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Room (optional)" hint="Pick a managed room or Custom — booked rooms are blocked">
-            <RoomSelect value={room} roomId={roomId} onChange={(name, id) => { setRoom(name); setRoomId(id); }} />
+            <RoomSelect value={room} roomId={roomId} headcount={classSize} onChange={(name, id) => { setRoom(name); setRoomId(id); }} />
           </Field>
           <Field label="Location" hint="This day only — e.g. an off-site range">
             <Input value={location} onChange={(e) => setLocation(e.target.value)} required />

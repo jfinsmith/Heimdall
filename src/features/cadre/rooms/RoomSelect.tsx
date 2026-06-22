@@ -17,12 +17,15 @@ export function RoomSelect({
   onChange,
   placeholder = 'E-120 / Range A',
   includeNone = true,
+  headcount,
 }: {
   value: string;
   roomId?: string;
   onChange: (room: string, roomId: string | undefined) => void;
   placeholder?: string;
   includeNone?: boolean;
+  /** Class headcount — when set and the picked room has a smaller capacity, warns. */
+  headcount?: number;
 }) {
   const { data: rooms } = useCollection<RoomDoc>('rooms');
   const { data: cats } = useCollection<RoomCategoryDoc>('roomCategories');
@@ -70,6 +73,9 @@ export function RoomSelect({
       </Select>
       {showCustomInput && (
         <Input value={value} onChange={(e) => onChange(e.target.value, undefined)} placeholder={placeholder} autoFocus />
+      )}
+      {matched?.capacity != null && headcount != null && headcount > matched.capacity && (
+        <p className="text-xs text-amber-700">⚠ {headcount} cadets exceed {matched.name}’s capacity of {matched.capacity}.</p>
       )}
     </div>
   );

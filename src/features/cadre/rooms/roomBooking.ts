@@ -1,15 +1,14 @@
 /**
- * Room-reservation conflict detection. A booking is a non-cancelled session that
- * references a managed room (`roomId`) over a time block; two such sessions
- * conflict when they share a room and their [start,end) intervals overlap.
- * Template academies' sessions are NOT real bookings and are excluded.
+ * Room-reservation conflict detection. A room is "booked" over a time block by
+ * either (a) a non-cancelled session that references it (`roomId`), or (b) an
+ * ad-hoc room reservation. Two holds conflict when their [start,end) intervals
+ * overlap. Template academies' sessions are NOT real bookings and are excluded.
  *
- * Custom (free-text) rooms have no roomId and are never conflict-checked — by
- * design they're not reserved entities.
+ * Custom (free-text) rooms have no roomId and are never conflict-checked.
  */
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
-import type { SessionDoc } from '../../../types';
+import type { RoomReservationDoc, SessionDoc } from '../../../types';
 
 /** [aStart,aEnd) overlaps [bStart,bEnd). */
 export function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date): boolean {
@@ -24,16 +23,25 @@ export async function loadRoomBookings(orgId: string, roomId: string): Promise<(
   return snap.docs.map((d) => ({ id: d.id, ...(d.data() as SessionDoc) }));
 }
 
+/** All ad-hoc reservations in the org for `roomId`. */
+export async function loadRoomReservations(orgId: string, roomId: string): Promise<(RoomReservationDoc & { id: string })[]> {
+  const snap = await getDocs(
+    query(collection(db, 'roomReservations'), where('orgId', '==', orgId), where('roomId', '==', roomId))
+  );
+  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as RoomReservationDoc) }));
+}
+
 export interface RoomConflict {
-  session: SessionDoc & { id: string };
-  /** Human-readable holder, e.g. "LE 133 — Firearms". */
+  /** Human-readable holder, e.g. "LE 133 — Firearms" or "🔒 Maintenance". */
   label: string;
+  start: Date;
+  end: Date;
 }
 
 /**
- * Returns the first conflicting booking for `roomId` over [start,end), or null.
- * Reads every session in the org that references this room (typically few), then
- * filters by overlap client-side (Firestore can't range-overlap two fields).
+ * Returns the first conflicting hold (session OR reservation) for `roomId` over
+ * [start,end), or null. Used by every room-booking save path so a managed room
+ * can't be double-booked.
  */
 export async function findRoomConflict(opts: {
   orgId: string;
@@ -41,21 +49,24 @@ export async function findRoomConflict(opts: {
   start: Date;
   end: Date;
   excludeSessionId?: string;
+  excludeReservationId?: string;
   /** True if the session's academy is a template (excluded from conflicts). */
   isTemplate: (academyId: string) => boolean;
   /** Builds the holder label for a conflicting session. */
   labelFor: (s: SessionDoc & { id: string }) => string;
 }): Promise<RoomConflict | null> {
-  const snap = await getDocs(
-    query(collection(db, 'sessions'), where('orgId', '==', opts.orgId), where('roomId', '==', opts.roomId))
-  );
-  for (const d of snap.docs) {
-    if (d.id === opts.excludeSessionId) continue;
-    const s = { id: d.id, ...(d.data() as SessionDoc) };
+  for (const s of await loadRoomBookings(opts.orgId, opts.roomId)) {
+    if (s.id === opts.excludeSessionId) continue;
     if (s.status === 'cancelled') continue;
     if (opts.isTemplate(s.academyId)) continue;
     if (overlaps(opts.start, opts.end, s.start.toDate(), s.end.toDate())) {
-      return { session: s, label: opts.labelFor(s) };
+      return { label: opts.labelFor(s), start: s.start.toDate(), end: s.end.toDate() };
+    }
+  }
+  for (const r of await loadRoomReservations(opts.orgId, opts.roomId)) {
+    if (r.id === opts.excludeReservationId) continue;
+    if (overlaps(opts.start, opts.end, r.start.toDate(), r.end.toDate())) {
+      return { label: `🔒 ${r.title || 'Reservation'}`, start: r.start.toDate(), end: r.end.toDate() };
     }
   }
   return null;
