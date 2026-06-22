@@ -183,7 +183,7 @@ export function PrintableSchedulePage() {
               </div>
             )}
             <div className="mt-12 flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-slate-400">
-              <span style={{ color: amber }}>◆</span> Sounded by Gjallarhorn · HEIMDALL <span style={{ color: amber }}>◆</span>
+              <span style={{ color: amber }}>◆</span> HEIMDALL <span style={{ color: amber }}>◆</span>
             </div>
           </section>
         )}
@@ -324,7 +324,7 @@ export function PrintableSchedulePage() {
           {academy.shortName ? `${academy.shortName} · ` : ''}
           {academy.name} — {docType}
         </span>
-        <span>{orgName} · Sounded by Gjallarhorn · HEIMDALL</span>
+        <span>{orgName} · HEIMDALL</span>
       </div>
     </div>
   );
