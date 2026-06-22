@@ -11,15 +11,20 @@ import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import type { Role } from '../types';
 import { STAFF_ROLES } from '../types';
 
-async function requireStaff(uid: string | undefined): Promise<{ uid: string; name: string; orgId?: string }> {
+async function requireStaff(uid: string | undefined): Promise<{ uid: string; name: string; orgId?: string; platformOwner: boolean }> {
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
   const snap = await getFirestore().doc(`users/${uid}`).get();
-  const role = snap.exists ? (snap.data()!.role as Role) : null;
+  const data = snap.data();
+  const role = snap.exists ? (data!.role as Role) : null;
   if (!role || !STAFF_ROLES.includes(role)) throw new HttpsError('permission-denied', 'Staff only.');
+  if (data?.status === 'suspended' || data?.status === 'inactive') {
+    throw new HttpsError('permission-denied', 'Your account is not active.');
+  }
   return {
     uid,
-    name: (snap.data()?.displayName as string) || 'A staff member',
-    orgId: snap.data()?.orgId as string | undefined,
+    name: (data?.displayName as string) || 'A staff member',
+    orgId: data?.orgId as string | undefined,
+    platformOwner: data?.platformOwner === true,
   };
 }
 
@@ -46,8 +51,14 @@ export const rosterCreateMember = onCall<{ academyId: string; member: MemberInpu
   const academy = await db.doc(`academies/${academyId}`).get();
   if (!academy.exists) throw new HttpsError('not-found', 'Academy not found.');
   if (academy.data()!.isTemplate) throw new HttpsError('failed-precondition', 'Templates do not have rosters.');
+  // Cross-tenant guard: staff may only add to academies in their OWN org (the
+  // platform owner may act anywhere).
+  const academyOrg = academy.data()!.orgId as string | undefined;
+  if (!caller.platformOwner && academyOrg && academyOrg !== caller.orgId) {
+    throw new HttpsError('permission-denied', 'This academy belongs to another organization.');
+  }
   // The member's tenant = its academy's, falling back to the staff caller's org.
-  const orgId = (academy.data()!.orgId as string | undefined) ?? caller.orgId;
+  const orgId = academyOrg ?? caller.orgId;
   // Hard requirement: NEVER write an org-less member. An org-less doc fails the
   // inOrg read rule and — because the roster is a subcollection LIST query —
   // denies the ENTIRE roster read, so the whole roster silently vanishes from

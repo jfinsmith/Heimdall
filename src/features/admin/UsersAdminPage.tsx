@@ -26,6 +26,7 @@ const createUserAccount = httpsCallable<
 >(functions, 'createUserAccount');
 const sendActivationEmail = httpsCallable<{ uid: string; password: string }, { ok: boolean }>(functions, 'sendActivationEmail');
 const setUserSuspension = httpsCallable<{ uid: string; suspended: boolean; reason?: string }, { ok: boolean }>(functions, 'setUserSuspension');
+const setUserActive = httpsCallable<{ uid: string; active: boolean }, { ok: boolean }>(functions, 'setUserActive');
 const denyUser = httpsCallable<{ uid: string }, { ok: boolean }>(functions, 'denyUser');
 
 // Memorable temp passwords in the style "Forest-Tango-Beacon-656": three distinct
@@ -122,9 +123,19 @@ export function UsersAdminPage() {
   }
 
   async function deactivate(u: WithId<UserDoc>) {
-    if (!window.confirm(`Deactivate ${u.displayName}? They will lose access.`)) return;
-    await updateDoc(doc(db, 'users', u.id), { status: 'inactive', updatedAt: serverTimestamp() });
-    await logAudit(firebaseUser!.uid, 'user.deactivate', 'user', u.id, `Deactivated ${u.displayName}`);
+    if (!window.confirm(`Deactivate ${u.displayName}? They will lose access immediately (their session is revoked).`)) return;
+    setBusy(u.id);
+    setError(null);
+    try {
+      // Server callable strips the role claim + revokes tokens — a client status
+      // write alone would leave their live token with full authority.
+      await setUserActive({ uid: u.id, active: false });
+      await logAudit(firebaseUser!.uid, 'user.deactivate', 'user', u.id, `Deactivated ${u.displayName}`);
+    } catch (err) {
+      setError(`Deactivating ${u.displayName} failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function liftSuspension(u: WithId<UserDoc>) {

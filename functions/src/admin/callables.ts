@@ -14,6 +14,18 @@ import { renderEmail, detailRows, escapeHtml } from '../gjallarhorn/templates';
 import type { AcademyDoc, Role } from '../types';
 import { ADMIN_ROLES, STAFF_ROLES } from '../types';
 
+/**
+ * Reject a caller whose account is suspended/deactivated. These callables
+ * authorize from the caller's Firestore role, which PERSISTS through suspension
+ * (only `status` changes) — so a role check alone would still let a suspended
+ * admin act until their token expires. Call right after loading the caller doc.
+ */
+function assertActiveCaller(data: { status?: unknown } | undefined): void {
+  if (data?.status === 'suspended' || data?.status === 'inactive') {
+    throw new HttpsError('permission-denied', 'Your account is not active. Contact Academy Leadership.');
+  }
+}
+
 /** Production sign-in URL used in account emails. */
 const SITE_URL = 'https://heimdallscheduling.com';
 
@@ -59,6 +71,7 @@ export const setUserRole = onCall<{ uid: string; role: Role }>(async (request) =
   if (!callerRole || !ADMIN_ROLES.includes(callerRole)) {
     throw new HttpsError('permission-denied', 'Only directors and lieutenants may assign roles.');
   }
+  assertActiveCaller(callerDoc.data());
 
   const { uid, role } = request.data;
   if (!uid || !VALID_ROLES.includes(role)) {
@@ -77,6 +90,13 @@ export const setUserRole = onCall<{ uid: string; role: Role }>(async (request) =
   const targetSnap = await getFirestore().doc(`users/${uid}`).get();
   const tdata = targetSnap.data() ?? {};
   const callerOrgId = callerDoc.data()?.orgId as string | undefined;
+  // Cross-tenant guard: an admin may only change roles for users in their own org
+  // (the platform owner may act anywhere). An org-less target is still allowed —
+  // that's the onboarding inherit path below.
+  const callerIsPlatformOwner = callerDoc.data()?.platformOwner === true;
+  if (!callerIsPlatformOwner && tdata.orgId && tdata.orgId !== callerOrgId) {
+    throw new HttpsError('permission-denied', 'That user belongs to another organization.');
+  }
   const effectiveOrgId = (tdata.orgId as string | undefined) ?? callerOrgId;
   const claims: Record<string, unknown> = { role };
   if (effectiveOrgId) claims.orgId = effectiveOrgId;
@@ -134,6 +154,7 @@ export const createUserAccount = onCall<{
   if (!callerRole || !ADMIN_ROLES.includes(callerRole)) {
     throw new HttpsError('permission-denied', 'Only directors and lieutenants may add users.');
   }
+  assertActiveCaller(callerDoc.data());
   // New users inherit the creating admin's tenant (undefined pre-backfill — no change then).
   const callerOrgId = callerDoc.data()?.orgId as string | undefined;
 
@@ -374,6 +395,7 @@ export const sendActivationEmail = onCall<{ uid: string; password: string }>(asy
   if (!callerRole || !ADMIN_ROLES.includes(callerRole)) {
     throw new HttpsError('permission-denied', 'Only directors and lieutenants may send activation emails.');
   }
+  assertActiveCaller(callerDoc.data());
 
   const uid = (request.data.uid ?? '').trim();
   const password = (request.data.password ?? '').trim();
@@ -441,6 +463,59 @@ export const sendActivationEmail = onCall<{ uid: string; password: string }>(asy
  * stored on the profile and shown to them and to admins. Emails + in-app
  * notifies the member either way. Admin-only.
  */
+/**
+ * Activate / deactivate a member. Like suspension, deactivation must strip the
+ * role claim + revoke refresh tokens server-side — a client status write alone
+ * leaves the live token with full rule authority. Same-org (or platform owner).
+ */
+export const setUserActive = onCall<{ uid: string; active: boolean }>(async (request) => {
+  const caller = request.auth;
+  if (!caller) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = getFirestore();
+  const callerDoc = await db.doc(`users/${caller.uid}`).get();
+  const callerRole = callerDoc.exists ? (callerDoc.data()!.role as Role) : null;
+  if (!callerRole || !ADMIN_ROLES.includes(callerRole)) {
+    throw new HttpsError('permission-denied', 'Only directors and lieutenants may activate or deactivate members.');
+  }
+  assertActiveCaller(callerDoc.data());
+
+  const uid = (request.data.uid ?? '').trim();
+  const active = !!request.data.active;
+  if (!uid) throw new HttpsError('invalid-argument', 'Missing user.');
+  if (uid === caller.uid) throw new HttpsError('failed-precondition', 'You cannot change your own account status.');
+
+  const targetSnap = await db.doc(`users/${uid}`).get();
+  if (!targetSnap.exists) throw new HttpsError('not-found', 'User not found.');
+  const target = targetSnap.data()!;
+  const callerOrgId = callerDoc.data()?.orgId as string | undefined;
+  const callerIsOwner = callerDoc.data()?.platformOwner === true;
+  if (!callerIsOwner && target.orgId && target.orgId !== callerOrgId) {
+    throw new HttpsError('permission-denied', 'That user belongs to another organization.');
+  }
+
+  await db.doc(`users/${uid}`).set({ status: active ? 'active' : 'inactive', updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  const claims = { ...((await getAuth().getUser(uid).catch(() => null))?.customClaims ?? {}) } as Record<string, unknown>;
+  if (active) {
+    const restoredRole = target.role as Role | undefined;
+    await getAuth().setCustomUserClaims(uid, { ...claims, ...(restoredRole ? { role: restoredRole } : {}) });
+  } else {
+    delete claims.role;
+    await getAuth().setCustomUserClaims(uid, claims);
+    await getAuth().revokeRefreshTokens(uid);
+  }
+
+  await db.collection('auditLog').add({
+    actorUid: caller.uid,
+    action: active ? 'admin.activate_user' : 'admin.deactivate_user',
+    targetType: 'user',
+    targetId: uid,
+    summary: active ? `Activated ${target.displayName ?? uid}` : `Deactivated ${target.displayName ?? uid}`,
+    ...(target.orgId ? { orgId: target.orgId } : {}),
+    createdAt: FieldValue.serverTimestamp(),
+  });
+  return { ok: true };
+});
+
 export const setUserSuspension = onCall<{ uid: string; suspended: boolean; reason?: string }>(async (request) => {
   const caller = request.auth;
   if (!caller) throw new HttpsError('unauthenticated', 'Sign in required.');
@@ -450,6 +525,7 @@ export const setUserSuspension = onCall<{ uid: string; suspended: boolean; reaso
   if (!callerRole || !ADMIN_ROLES.includes(callerRole)) {
     throw new HttpsError('permission-denied', 'Only directors and lieutenants may suspend members.');
   }
+  assertActiveCaller(callerDoc.data());
 
   const uid = (request.data.uid ?? '').trim();
   const suspended = !!request.data.suspended;
@@ -481,6 +557,20 @@ export const setUserSuspension = onCall<{ uid: string; suspended: boolean; reaso
         },
     { merge: true }
   );
+
+  // Enforce on the LIVE session: stripping the role claim removes staff/admin
+  // authority from the rules (which trust the claim), and revoking refresh tokens
+  // forces re-auth; restore the role claim on reinstate. Without this a suspended
+  // member's existing token keeps full DB write access until it expires.
+  const claims = { ...((await getAuth().getUser(uid).catch(() => null))?.customClaims ?? {}) } as Record<string, unknown>;
+  if (suspended) {
+    delete claims.role;
+    await getAuth().setCustomUserClaims(uid, claims);
+    await getAuth().revokeRefreshTokens(uid);
+  } else {
+    const restoredRole = userSnap.data()!.role as Role | undefined;
+    await getAuth().setCustomUserClaims(uid, { ...claims, ...(restoredRole ? { role: restoredRole } : {}) });
+  }
 
   const settingsSnap = await db.doc(`settings/${(user as { orgId?: string }).orgId || 'global'}`).get();
   const orgName = settingsSnap.exists ? ((settingsSnap.data()!.orgName as string) || 'the Training Academy') : 'the Training Academy';
@@ -539,6 +629,7 @@ export const academyApproval = onCall<{
   const callerRole = callerSnap.exists ? (callerSnap.data()!.role as Role) : null;
   const callerName = callerSnap.exists ? ((callerSnap.data()!.displayName as string) || 'A member') : 'A member';
   if (!callerRole) throw new HttpsError('permission-denied', 'No profile found.');
+  assertActiveCaller(callerSnap.data());
   const callerUid = caller.uid;
 
   const { academyId, action, note } = request.data;
@@ -548,6 +639,15 @@ export const academyApproval = onCall<{
   if (!snap.exists) throw new HttpsError('not-found', 'Academy not found.');
   const academy = snap.data() as AcademyDoc;
   if (academy.isTemplate) throw new HttpsError('failed-precondition', 'Templates do not go through approval.');
+  // Cross-tenant guard: only command within the academy's OWN org may drive its
+  // approval (the platform owner may act anywhere).
+  {
+    const callerOrgId = callerSnap.data()?.orgId as string | undefined;
+    const callerIsOwner = callerSnap.data()?.platformOwner === true;
+    if (!callerIsOwner && (!academy.orgId || academy.orgId !== callerOrgId)) {
+      throw new HttpsError('permission-denied', 'This academy belongs to another organization.');
+    }
+  }
 
   const cur = academy.approval?.state ?? 'not_submitted';
   const label = academy.shortName || academy.name;
@@ -830,6 +930,7 @@ export const denyUser = onCall<{ uid: string }>(async (request) => {
   if (!caller) throw new HttpsError('unauthenticated', 'Sign in required.');
   const db = getFirestore();
   const callerData = (await db.doc(`users/${caller.uid}`).get()).data() ?? {};
+  assertActiveCaller(callerData);
   const { uid } = request.data;
   if (!uid) throw new HttpsError('invalid-argument', 'Missing user.');
   if (uid === caller.uid) throw new HttpsError('failed-precondition', 'You cannot deny your own account.');

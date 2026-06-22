@@ -15,7 +15,7 @@ export function RequireAuth() {
 
   if (loading) return <FullPageSpinner />;
   if (!firebaseUser) return <Navigate to="/signin" state={{ from: location }} replace />;
-  if (profile && profile.status === 'inactive') return <Navigate to="/signin" replace />;
+  if (profile && (profile.status === 'inactive' || profile.status === 'suspended')) return <Navigate to="/signin" replace />;
   // No tenant yet (self-registered, domain didn't match an org). A graceful
   // holding screen — not a hard lockout — that auto-resolves once an org is
   // assigned. Checked before 'pending' so an orgless account sees "setting up"
