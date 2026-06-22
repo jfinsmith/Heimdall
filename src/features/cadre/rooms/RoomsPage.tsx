@@ -12,7 +12,7 @@ import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
-import { addDoc, collection, deleteDoc, deleteField, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, deleteField, doc, orderBy, serverTimestamp, Timestamp, updateDoc, where } from 'firebase/firestore';
 import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
 import { db, storage } from '../../../lib/firebase';
 import { useAuth } from '../../../auth/AuthContext';
@@ -31,7 +31,10 @@ export function RoomsPage() {
   const navigate = useNavigate();
   const { data: categories } = useCollection<RoomCategoryDoc>('roomCategories');
   const { data: rooms } = useCollection<RoomDoc>('rooms');
-  const { data: sessions } = useCollection<SessionDoc>('sessions');
+  // Bound the live subscription to ~1 year of bookings (the calendar is per-month)
+  // instead of the whole, ever-growing sessions collection.
+  const sessionWindowStart = useMemo(() => Timestamp.fromMillis(Date.now() - 365 * 864e5), []);
+  const { data: sessions } = useCollection<SessionDoc>('sessions', [where('start', '>=', sessionWindowStart), orderBy('start')], [sessionWindowStart]);
   const { data: academies } = useCollection<AcademyDoc>('academies');
   const { data: reservations } = useCollection<RoomReservationDoc>('roomReservations');
 
@@ -128,7 +131,11 @@ export function RoomsPage() {
     await updateDoc(doc(db, 'rooms', r.id), { active: r.active === false });
   }
   async function deleteRoom(r: WithId<RoomDoc>) {
-    if (!window.confirm(`Delete room “${r.name}”? Existing bookings keep the room name but lose the managed link.`)) return;
+    if (reservations.some((res) => res.roomId === r.id)) {
+      alert('This room has ad-hoc reservations on the calendar — delete those first (they reference the room only by id and would be orphaned).');
+      return;
+    }
+    if (!window.confirm(`Delete room “${r.name}”? Existing class bookings keep the room name but lose the managed link.`)) return;
     await deleteDoc(doc(db, 'rooms', r.id));
   }
 
@@ -303,7 +310,8 @@ function ReservationModal({
       return;
     }
     const payload = { orgId, roomId, title: title.trim(), start: tsFromDate(start), end: tsFromDate(end), ...(notes.trim() ? { notes: notes.trim() } : {}) };
-    if (reservation) await updateDoc(doc(db, 'roomReservations', reservation.id), payload);
+    // On edit, clearing notes must remove the stored field (omitting keeps it stale).
+    if (reservation) await updateDoc(doc(db, 'roomReservations', reservation.id), { ...payload, notes: notes.trim() || deleteField() });
     else await addDoc(collection(db, 'roomReservations'), { ...payload, createdBy: firebaseUser.uid, createdAt: serverTimestamp() });
     setBusy(false);
     onClose();

@@ -52,6 +52,8 @@ beforeEach(async () => {
     await setDoc(doc(db, 'users/erin'), user({ role: 'director', status: 'active', orgId: BETA }));
     await setDoc(doc(db, 'academies/aA'), { orgId: ORG, status: 'published', isTemplate: false, title: 'A' });
     await setDoc(doc(db, 'academies/aB'), { orgId: BETA, status: 'published', isTemplate: false, title: 'B' });
+    await setDoc(doc(db, 'academies/aDraft'), { orgId: ORG, status: 'draft', isTemplate: false, title: 'Draft', approval: { state: 'pending_captain' } });
+    await setDoc(doc(db, 'academies/aApproved'), { orgId: ORG, status: 'draft', isTemplate: false, title: 'Approved', approval: { state: 'approved' } });
     await setDoc(doc(db, 'academies/aB/roster/m1'), { orgId: BETA, fullName: 'Cadet B', status: 'active' });
     await setDoc(doc(db, 'sessions/sB'), { academyId: 'aB', status: 'open', roleSlots: [], start: new Date(), orgId: BETA });
     await setDoc(doc(db, 'settings/' + BETA), { orgName: 'Beta College' });
@@ -373,6 +375,30 @@ describe('rooms + roomCategories — org isolation (staff-managed)', () => {
     await assertFails(setDoc(doc(as('carol', 'coordinator'), 'roomReservations/newB'), { orgId: BETA, roomId: 'roomB', title: 'X', start: new Date(), end: new Date() }));
     await assertFails(updateDoc(doc(as('carol', 'coordinator'), 'roomReservations/resA'), { orgId: BETA }));
     await assertFails(setDoc(doc(as('alice', 'instructor'), 'roomReservations/nope'), { orgId: ORG, roomId: 'roomA', title: 'X', start: new Date(), end: new Date() }));
+  });
+});
+
+// ── Academy publish gate: no client self-approval / forged approval. ─────────
+describe('academies — publish gate', () => {
+  it('staff CANNOT publish an un-approved draft', async () => {
+    await assertFails(updateDoc(doc(as('carol', 'coordinator'), 'academies/aDraft'), { status: 'published' }));
+  });
+  it('staff CANNOT self-approve by forging approval in the same write', async () => {
+    await assertFails(updateDoc(doc(as('carol', 'coordinator'), 'academies/aDraft'), { status: 'published', approval: { state: 'approved' } }));
+  });
+  it('clients CANNOT mutate approval at all (only the Admin-SDK callable may)', async () => {
+    await assertFails(updateDoc(doc(as('dave', 'director'), 'academies/aDraft'), { approval: { state: 'approved' } }));
+  });
+  it('staff CAN edit benign fields on a draft', async () => {
+    await assertSucceeds(updateDoc(doc(as('carol', 'coordinator'), 'academies/aDraft'), { name: 'Renamed' }));
+  });
+  it('staff CAN publish once approval.state is approved (set out-of-band by the callable)', async () => {
+    await assertSucceeds(updateDoc(doc(as('carol', 'coordinator'), 'academies/aApproved'), { status: 'published' }));
+  });
+  it('clients CANNOT create an already-published or pre-approved academy', async () => {
+    await assertFails(setDoc(doc(as('carol', 'coordinator'), 'academies/forgePub'), { orgId: ORG, status: 'published', isTemplate: false }));
+    await assertFails(setDoc(doc(as('carol', 'coordinator'), 'academies/forgeApp'), { orgId: ORG, status: 'draft', isTemplate: false, approval: { state: 'approved' } }));
+    await assertSucceeds(setDoc(doc(as('carol', 'coordinator'), 'academies/okDraft'), { orgId: ORG, status: 'draft', isTemplate: false }));
   });
 });
 

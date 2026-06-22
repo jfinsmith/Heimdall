@@ -20,8 +20,9 @@ export function CadetReportPrintPage() {
   );
   // The class's curriculum drives the unified header (branding + program).
   const { data: curriculum } = useDoc<CurriculumDoc>(academy?.discipline ? `curricula/${academy.discipline}` : null);
-  const { data: directors } = useCollection<UserDoc>('users', [where('role', '==', 'director'), limit(1)]);
-  const directorName = directors[0]?.displayName ?? 'Academy Director';
+  // lieutenant === director: include both so a lieutenant-led org's leader prints.
+  const { data: directors } = useCollection<UserDoc>('users', [where('role', 'in', ['director', 'lieutenant']), limit(2)]);
+  const directorName = (directors.find((d) => d.status === 'active') ?? directors[0])?.displayName ?? '';
   // Library forms aren't in the code registry — resolve the report's type by id.
   const { forms } = useOrgLibraryForms();
   // Fallback by-id read so a report filed against a form later deactivated (but

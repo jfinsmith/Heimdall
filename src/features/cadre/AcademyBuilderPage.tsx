@@ -20,7 +20,7 @@ import { db, functions } from '../../lib/firebase';
 import { useCollection, useDoc, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import { can } from '../../lib/rbac';
-import { hoursBetween, tsFromDate, fmtDate } from '../../lib/time';
+import { hoursBetween, tsFromDate, toTimeInputValue, fmtDate } from '../../lib/time';
 import { holidaysForYear, holidayBackgroundEvents, observedHolidayDatesInRange, HOLIDAY_PAY_HOURS } from '../../lib/holidays';
 import type { AcademyDoc, CoursePublishTarget, CurriculumDoc, QualificationKey, RosterMemberDoc, SessionDoc, UserDoc } from '../../types';
 import { QUALIFICATION_LABELS } from '../../types';
@@ -30,6 +30,7 @@ import { SessionFormModal } from './SessionFormModal';
 import { LunchBlockModal } from './LunchBlockModal';
 import { RecurringGeneratorModal } from './RecurringGeneratorModal';
 import { RoomSelect } from './rooms/RoomSelect';
+import { findRoomConflict } from './rooms/roomBooking';
 import { SessionDetailModal } from '../sessions/SessionDetailModal';
 import { sessionToEvent, renderEventContent } from './sessionEvents';
 import { ACADEMY_COLORS } from '../../lib/academyColors';
@@ -52,6 +53,8 @@ export function AcademyBuilderPage() {
     [where('academyId', '==', academyId ?? '')],
     [academyId]
   );
+  // All org academies — for room-conflict template exclusion + holder labels.
+  const { data: allAcademies } = useCollection<AcademyDoc>('academies');
   // Roster headcount (real academies only) — active cadets, withdrawals removed.
   const { data: rosterMembers } = useCollection<RosterMemberDoc>(
     academy && !academy.isTemplate ? `academies/${academyId}/roster` : null,
@@ -282,6 +285,27 @@ export function AcademyBuilderPage() {
     if (!s) return;
     const start = arg.event.start!;
     const end = arg.event.end ?? new Date(start.getTime() + (s.end.toMillis() - s.start.toMillis()));
+    // Block a drag/resize that double-books a managed room (the other save paths
+    // already guard; this is the most common scheduler action).
+    const acadOrgId = academy?.orgId;
+    if (s.roomId && acadOrgId && s.kind !== 'lunch') {
+      const templateIds = new Set(allAcademies.filter((a) => a.isTemplate).map((a) => a.id));
+      const acadName = (id: string) => allAcademies.find((a) => a.id === id)?.shortName || 'another class';
+      const conflict = await findRoomConflict({
+        orgId: acadOrgId,
+        roomId: s.roomId,
+        start,
+        end,
+        excludeSessionId: s.id,
+        isTemplate: (id) => templateIds.has(id),
+        labelFor: (x) => `${acadName(x.academyId)} — ${x.title || x.courseName}`,
+      });
+      if (conflict) {
+        arg.revert();
+        window.alert(`${s.room || 'That room'} is already booked ${toTimeInputValue(conflict.start)}–${toTimeInputValue(conflict.end)} by ${conflict.label}. Move blocked — pick another time or room.`);
+        return;
+      }
+    }
     await updateDoc(doc(db, 'sessions', s.id), {
       start: tsFromDate(start),
       end: tsFromDate(end),

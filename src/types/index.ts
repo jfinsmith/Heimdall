@@ -675,7 +675,7 @@ export interface RoleSlot {
   role: SlotRole;
   count: number;
   requiredQualificationKey?: QualificationKey;
-  filledBy: string[]; // uids; invariant: length <= count (enforced in transaction + rules guard)
+  filledBy: string[]; // uids; capacity (length <= count) + qualifications enforced ONLY in the signup transaction — rules cannot constrain array contents
 }
 
 export interface SessionDoc {

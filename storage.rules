@@ -45,7 +45,7 @@ service firebase.storage {
     // Schedule-building staff (who manage rooms) may upload; read is limited to
     // signed-in members (a floor plan is org-internal, unlike a public logo).
     match /rooms/{orgId}/{allPaths=**} {
-      allow read: if signedIn();
+      allow read: if signedIn() && orgId == request.auth.token.get('orgId', null);
       allow write: if isStaff()
         && orgId == request.auth.token.get('orgId', null)
         && request.resource.size < 5 * 1024 * 1024

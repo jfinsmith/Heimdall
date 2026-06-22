@@ -231,17 +231,26 @@ service cloud.firestore {
         isStaff()
         || (signedIn() && resource.data.status in ['published', 'in_progress', 'completed'])
       );
-      allow create: if isStaff() && inOrg(request.resource.data);
+      // New academies must start as un-approved drafts (the approval chain + the
+      // academyApproval Admin-SDK callable are the only way to 'approved'); this
+      // stops a client creating an already-published/approved class outright.
+      allow create: if isStaff() && inOrg(request.resource.data)
+        && request.resource.data.status == 'draft'
+        && request.resource.data.get(['approval', 'state'], 'not_submitted') != 'approved';
       allow delete: if isStaff() && inOrg(resource.data);
       // Staff edit freely within their org, EXCEPT moving into a published
       // lifecycle state, which requires the captain's approval (templates exempt).
       // orgId is immutable. Approval transitions are written by the academyApproval
       // callable (Admin SDK).
-      allow update: if isStaff() && inOrg(resource.data) && unchanged('orgId') && (
+      // The publish gate reads the STORED doc (resource.data), never the client
+      // payload — otherwise a client could forge approval:{state:'approved'} or
+      // isTemplate:true in the same write to self-publish. approval is immutable
+      // from clients: only the academyApproval Admin-SDK callable advances it.
+      allow update: if isStaff() && inOrg(resource.data) && unchanged('orgId') && unchanged('approval') && (
         !(request.resource.data.status in ['published', 'in_progress', 'completed'])
         || resource.data.status in ['published', 'in_progress', 'completed']
-        || request.resource.data.get('isTemplate', false) == true
-        || request.resource.data.get(['approval', 'state'], '') == 'approved'
+        || resource.data.get('isTemplate', false) == true
+        || resource.data.get(['approval', 'state'], '') == 'approved'
       );
 
       // ── roster (per-academy cadets) ──────────────────────────────────────

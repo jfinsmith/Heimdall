@@ -53,7 +53,10 @@ export function ReportLetter({
   const settings = useGlobalSettings();
   const { orgId } = useAuth();
   if (!type) return null;
-  const director = directorName || 'Academy Director';
+  // Empty when the org has no command member (rare); directorLine then degrades to
+  // just the title instead of the old garbled "Director Academy Director, …".
+  const director = directorName || '';
+  const directorLine = director ? `${director}, Academy Director` : 'Academy Director';
 
   // Stored as ISO (yyyy-mm-dd / HH:MM) for clean editing; rendered for print.
   const fmtD = (s?: string) => (s && /^\d{4}-\d{2}-\d{2}$/.test(s) ? `${+s.slice(5, 7)}/${+s.slice(8, 10)}/${s.slice(0, 4)}` : s || '');
@@ -112,15 +115,15 @@ export function ReportLetter({
     headerFields: [
       { label: 'To:', value: report.cadetName ?? '' },
       { label: 'From:', value: fromName },
-      { label: 'CC:', value: `Director ${director}, Academy Director` },
+      { label: 'CC:', value: directorLine },
       { label: 'Date:', value: display._memoDate },
       { label: 'Re:', value: type.reSubject },
     ],
     blocks: [{ kind: 'jsx', render: () => renderBody(display) }],
-    signerLine: `Director ${director}, Academy Director`,
+    signerLine: directorLine,
     acknowledgment: 'By signing below, I acknowledge receipt and understanding of this memorandum.',
     ackSignerLabel: 'Cadet',
-    distribution: ['Cadet', `Director ${director}`, 'Course File, Student File'],
+    distribution: ['Cadet', directorLine, 'Course File, Student File'],
     data: display,
   };
 

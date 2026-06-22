@@ -17,8 +17,10 @@ export function ReportsPage() {
   const { orgId } = useAuth();
   const { data: allAcademies } = useCollection<AcademyDoc>('academies');
   const academies = allAcademies.filter((a) => !a.isTemplate);
-  const { data: sessions } = useCollection<SessionDoc>('sessions');
   const [academyId, setAcademyId] = useState('');
+  // Bound the live subscription to the selected academy; only the all-academies
+  // export (no academy chosen) needs the full set.
+  const { data: sessions } = useCollection<SessionDoc>('sessions', academyId ? [where('academyId', '==', academyId)] : [], [academyId]);
   const academy = academies.find((a) => a.id === academyId);
   const academySessions = sessions.filter((s) => s.academyId === academyId && s.status !== 'cancelled');
   const scheduled = academySessions.reduce((sum, s) => sum + (s.hours || 0), 0);

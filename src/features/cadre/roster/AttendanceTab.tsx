@@ -46,6 +46,9 @@ export function AttendanceTab({
   const layout = curriculum?.attendanceLayout ?? 'grid';
   const courses = curriculum?.courses ?? [];
   const [courseName, setCourseName] = useState(courses[0]?.name ?? '');
+  // Curriculum loads async — if courses arrive after mount, default the picker so
+  // Course/Class Hours/Title aren't stuck blank.
+  useEffect(() => { if (!courseName && courses.length) setCourseName(courses[0].name); }, [courses, courseName]);
   const course = courses.find((c) => c.name === courseName);
   const [classDate, setClassDate] = useState(todayStr());
   const [classHours, setClassHours] = useState('');

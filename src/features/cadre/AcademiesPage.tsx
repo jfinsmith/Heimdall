@@ -535,7 +535,11 @@ function CloneAcademyModal({
 
     // Strip the doc id from the source before copying (Firestore rejects an
     // `id: undefined` field). The result is always a real academy, never a template.
-    const { id: _id, ...sourceData } = source;
+    // Also drop `approval` (else a clone of an approved class inherits
+    // state:'approved' and could be published with no sign-off) and `sequenceNo`
+    // (the FDLE CSN is per-cohort and must not be reused). Omit via destructure —
+    // never re-add as undefined (Firestore would reject it).
+    const { id: _id, approval: _approval, sequenceNo: _sequenceNo, ...sourceData } = source;
     const academyRef = await addDoc(collection(db, 'academies'), {
       ...sourceData,
       orgId: source.orgId,

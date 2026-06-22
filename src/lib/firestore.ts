@@ -58,8 +58,8 @@ export function useCollection<T = DocumentData>(
   const { orgId } = useAuth();
 
   // Tenant isolation: top-level org-owned collections are filtered to the
-  // caller's org. DORMANT until users carry an orgId (post-backfill) — a no-op
-  // for the current single-tenant deployment, so PHSC behaves exactly as before.
+  // caller's org. LIVE (post-Phase-5) — rules require docId/orgId == the caller's
+  // org claim, so an org-less client read is denied, not silently global.
   // Subcollections (e.g. academies/{id}/roster) inherit their parent's org and
   // are not filtered here.
   const segments = path ? path.split('/').filter(Boolean) : [];
@@ -151,10 +151,11 @@ export function shortId(): string {
 }
 
 /**
- * Per-org config doc path. `settings`/`reportConfig` move from a single 'global'
- * doc to one per tenant (doc id == orgId). Falls back to 'global' when there's
- * no orgId yet (pre-backfill) — so this is dormant for the single-tenant
- * deployment and the same doc is read/written exactly as before.
+ * Per-org config doc path. `settings`/`reportConfig` are one doc per tenant
+ * (doc id == orgId). The 'global' fallback is a DEAD path for clients post-Phase-5
+ * (rules deny reads of the legacy 'global' doc); it remains only so Admin-SDK
+ * server code can still reference the legacy doc. A client without an orgId will
+ * be denied — callers must have an org claim.
  */
 export const orgConfigPath = (coll: 'settings' | 'reportConfig', orgId?: string | null): string =>
   `${coll}/${orgId || 'global'}`;

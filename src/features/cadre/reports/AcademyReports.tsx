@@ -32,8 +32,10 @@ export function AcademyReports({ academy }: { academy: WithId<AcademyDoc> }) {
     () => [...reportsRaw].sort((a, b) => ((b.createdAt as { toMillis?: () => number })?.toMillis?.() ?? 0) - ((a.createdAt as { toMillis?: () => number })?.toMillis?.() ?? 0)),
     [reportsRaw]
   );
-  const { data: directors } = useCollection<UserDoc>('users', [where('role', '==', 'director'), limit(1)]);
-  const directorName = directors[0]?.displayName ?? 'Academy Director';
+  // lieutenant === director: a lieutenant-led org has no role==='director' user,
+  // so include both and prefer an active one. Empty when the org has no command.
+  const { data: directors } = useCollection<UserDoc>('users', [where('role', 'in', ['director', 'lieutenant']), limit(2)]);
+  const directorName = (directors.find((d) => d.status === 'active') ?? directors[0])?.displayName ?? '';
   const { data: curriculum } = useDoc<CurriculumDoc>(academy.discipline ? `curricula/${academy.discipline}` : null);
 
   const [formType, setFormType] = useState<ReportType | null>(null);
@@ -244,7 +246,7 @@ function ReportFormModal({
           </div>
         )}
         <div className="rounded-md bg-watch-50 px-3 py-2 text-xs text-slate-500">
-          {appliesTo === 'cadet' && <>To: <strong>{cadetName || '—'}</strong> · </>}From: {fromName || '—'} · CC: Director {directorName}, Academy Director · {type.name}
+          {appliesTo === 'cadet' && <>To: <strong>{cadetName || '—'}</strong> · </>}From: {fromName || '—'} · CC: {directorName ? `${directorName}, ` : ''}Academy Director · {type.name}
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">

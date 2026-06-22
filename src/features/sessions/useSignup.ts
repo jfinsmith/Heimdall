@@ -85,6 +85,10 @@ export async function signUpForSlot(
     const sessionSnap = await tx.get(sessionRefForWindow);
     if (!sessionSnap.exists()) throw new SignupError('Session no longer exists.');
     const session = sessionSnap.data() as SessionDoc;
+    // Guard a missing orgId — getFirestore() runs without ignoreUndefinedProperties,
+    // so writing orgId:undefined below would throw and abort the whole sign-up.
+    const sOrg = session.orgId ?? opts.orgId ?? null;
+    if (!sOrg) throw new SignupError('This session is missing its organization; an administrator must fix it before sign-ups.');
 
     if (session.status === 'cancelled') throw new SignupError('This session has been cancelled.');
     if (session.status === 'draft') throw new SignupError('This session is not yet published.');
@@ -144,7 +148,7 @@ export async function signUpForSlot(
       if (!opts.allowWaitlist) throw new SignupError('FULL'); // sentinel — UI offers waitlist
       tx.set(signupRef, {
         uid,
-        orgId: session.orgId,
+        orgId: sOrg,
         displayName: user.displayName,
         role: slot.role,
         slotId,
@@ -163,7 +167,7 @@ export async function signUpForSlot(
     tx.update(sessionRefForWindow, { roleSlots: newSlots, status: newStatus, updatedAt: now });
     tx.set(signupRef, {
       uid,
-      orgId: session.orgId,
+      orgId: sOrg,
       displayName: user.displayName,
       role: slot.role,
       slotId,
@@ -172,7 +176,7 @@ export async function signUpForSlot(
     } satisfies SignupDoc);
     tx.set(doc(db, 'assignments', `${sessionId}_${uid}`), {
       uid,
-      orgId: session.orgId,
+      orgId: sOrg,
       sessionId,
       academyId: session.academyId,
       role: slot.role,
