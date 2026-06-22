@@ -1,229 +1,47 @@
 /**
- * Sign-up / withdrawal logic — the careful part (§6 of the spec).
- *
- * signUpForSlot runs a Firestore transaction that:
- *   1. Re-reads the session; confirms the slot exists and has room.
- *   2. Confirms the user holds the required qualification (verified, not
- *      expired) — rejects with a clear error otherwise; offers waitlist when
- *      the slot is full.
- *   3. Adds the uid to roleSlots[].filledBy, writes signups/{uid}, and mirrors
- *      an assignments doc (deterministic id `${sessionId}_${uid}` so the
- *      transaction can address it without a query).
- *   4. Recomputes session.status → 'fully_staffed' when all slots are full.
- *
- * Double-booking is checked against the user's confirmed assignments before
- * the transaction (web SDK transactions cannot run queries). Withdrawal
- * reverses everything and promotes the first waitlisted user if present.
- * Every action appends to auditLog.
+ * Sign-up / withdrawal — now SERVER-OWNED (audit hardening). The validation +
+ * roleSlots/signup/assignment writes run inside an Admin-SDK transaction in the
+ * `submitSignup` / `withdrawSignup` Cloud Functions; the security rules forbid a
+ * client from writing session.roleSlots, so a non-staff client can no longer
+ * hand-edit the staffing of a session. These wrappers keep the original call
+ * signatures + the SignupError/'FULL' contract so callers don't change.
  */
-import {
-  collection,
-  doc,
-  getDocs,
-  query,
-  runTransaction,
-  Timestamp,
-  where,
-} from 'firebase/firestore';
-import { db } from '../../lib/firebase';
-import { overlaps } from '../../lib/time';
-import type { AssignmentDoc, SessionDoc, SignupDoc, UserDoc } from '../../types';
-import { instructorCertActive, isInstructorQual } from '../../types';
-import { logAudit } from './audit';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../../lib/firebase';
 
 export class SignupError extends Error {}
 
-function qualifies(user: UserDoc, requiredKey?: string): boolean {
-  if (!requiredKey) return true;
-  // verifiedQualKeys is the staff-maintained, rule-protected source of truth.
-  if (!(user.verifiedQualKeys ?? []).includes(requiredKey as never)) return false;
-  const q = user.qualifications.find((x) => x.key === requiredKey);
-  if (!q) return false; // claim removed — stale verifiedQualKeys entry doesn't count
-  return true;
-}
+const submitSignupFn = httpsCallable<{ sessionId: string; slotId: string; allowWaitlist?: boolean }, { status: 'confirmed' | 'waitlist' }>(functions, 'submitSignup');
+const withdrawSignupFn = httpsCallable<{ sessionId: string }, { ok: boolean }>(functions, 'withdrawSignup');
 
-/** Instructor certs that have lapsed (or aren't on file) can't fill an instructor
- *  slot. Role Player slots are exempt — Role Player never expires. */
-function certBlocks(user: UserDoc, requiredKey?: string): boolean {
-  return !!requiredKey && isInstructorQual(requiredKey as never) && !instructorCertActive(user);
-}
-
-function recomputeStatus(session: SessionDoc): SessionDoc['status'] {
-  // Only flip between open/fully_staffed — draft/scheduled/cancelled/completed
-  // are lifecycle states owned by coordinators, not by staffing math.
-  if (session.status !== 'open' && session.status !== 'fully_staffed') {
-    return session.status;
-  }
-  const full = session.roleSlots.every((s) => s.filledBy.length >= s.count);
-  return full ? 'fully_staffed' : 'open';
-}
+const cleanMessage = (e: unknown) => (e instanceof Error ? e.message.replace(/^FirebaseError:\s*/, '') : 'Something went wrong.');
 
 export interface SignupResult {
   status: 'confirmed' | 'waitlist';
 }
 
+/** Sign the current user up for a slot. `_uid` is ignored — the callable signs
+ *  up request.auth.uid (you can only sign yourself up). 'FULL' sentinel preserved
+ *  so the UI can offer the waitlist. */
 export async function signUpForSlot(
-  uid: string,
+  _uid: string,
   sessionId: string,
   slotId: string,
   opts: { allowWaitlist?: boolean; orgId?: string } = {}
 ): Promise<SignupResult> {
-  // ── Pre-check: double-booking against confirmed assignments ──────────────
-  const sessionRefForWindow = doc(db, 'sessions', sessionId);
-  const existing = await getDocs(
-    // Org-filter so an org-less/foreign assignment sibling can't deny the whole
-    // pre-check query (which would block sign-up entirely).
-    query(
-      collection(db, 'assignments'),
-      where('uid', '==', uid),
-      where('status', '==', 'confirmed'),
-      ...(opts.orgId ? [where('orgId', '==', opts.orgId)] : [])
-    )
-  );
-
-  const result = await runTransaction(db, async (tx) => {
-    const sessionSnap = await tx.get(sessionRefForWindow);
-    if (!sessionSnap.exists()) throw new SignupError('Session no longer exists.');
-    const session = sessionSnap.data() as SessionDoc;
-    // Guard a missing orgId — getFirestore() runs without ignoreUndefinedProperties,
-    // so writing orgId:undefined below would throw and abort the whole sign-up.
-    const sOrg = session.orgId ?? opts.orgId ?? null;
-    if (!sOrg) throw new SignupError('This session is missing its organization; an administrator must fix it before sign-ups.');
-
-    if (session.status === 'cancelled') throw new SignupError('This session has been cancelled.');
-    if (session.status === 'draft') throw new SignupError('This session is not yet published.');
-    if (session.status === 'scheduled') {
-      throw new SignupError('Sign-ups for this course have not been opened by the coordinators yet.');
-    }
-
-    // Read-only guests can't sign up (server-truth role check — also closes the
-    // quick-signup path that the UI button gate alone wouldn't cover).
-    const signerSnap = await tx.get(doc(db, 'users', uid));
-    if ((signerSnap.data()?.role as string | undefined) === 'guest') {
-      throw new SignupError('Guests have read-only access and cannot sign up for sessions.');
-    }
-
-    const slot = session.roleSlots.find((s) => s.slotId === slotId);
-    if (!slot) throw new SignupError('That role slot no longer exists on this session.');
-    if (slot.filledBy.includes(uid)) throw new SignupError('You are already signed up for this slot.');
-    // One slot per session — you can't hold two roles in the same time block.
-    // (UI hides the second button, but the quick-signup path doesn't, so gate here.)
-    if (session.roleSlots.some((s) => s.filledBy.includes(uid))) {
-      throw new SignupError('You are already signed up for another slot in this session.');
-    }
-
-    // Qualification gate — read the user doc inside the transaction.
-    const userSnap = await tx.get(doc(db, 'users', uid));
-    if (!userSnap.exists()) throw new SignupError('User profile not found.');
-    const user = userSnap.data() as UserDoc;
-    if (user.status !== 'active') throw new SignupError('Your account is not active.');
-    if (!qualifies(user, slot.requiredQualificationKey)) {
-      throw new SignupError(
-        `This slot requires a verified "${slot.requiredQualificationKey}" qualification. ` +
-          'Request it on your profile and have a coordinator verify it.'
-      );
-    }
-    if (certBlocks(user, slot.requiredQualificationKey)) {
-      throw new SignupError(
-        'Your FDLE instructor certification has expired or is not on file. ' +
-          'Contact Academy Leadership to recertify before signing up to instruct.'
-      );
-    }
-
-    // Double-booking: any confirmed assignment overlapping this window.
-    const start = session.start.toDate();
-    const end = session.end.toDate();
-    for (const a of existing.docs) {
-      const ad = a.data() as AssignmentDoc;
-      if (ad.sessionId !== sessionId && overlaps(start, end, ad.start.toDate(), ad.end.toDate())) {
-        throw new SignupError(`You are already assigned to "${ad.courseName}" during that time.`);
-      }
-    }
-
-    const signupRef = doc(db, 'sessions', sessionId, 'signups', uid);
-    const now = Timestamp.now();
-
-    // Slot full → waitlist (if the caller opted in).
-    if (slot.filledBy.length >= slot.count) {
-      if (!opts.allowWaitlist) throw new SignupError('FULL'); // sentinel — UI offers waitlist
-      tx.set(signupRef, {
-        uid,
-        orgId: sOrg,
-        displayName: user.displayName,
-        role: slot.role,
-        slotId,
-        status: 'waitlist',
-        signedUpAt: now,
-      } satisfies SignupDoc);
-      return { status: 'waitlist' as const };
-    }
-
-    // Confirmed sign-up: update slot, signup doc, assignment mirror, status.
-    const newSlots = session.roleSlots.map((s) =>
-      s.slotId === slotId ? { ...s, filledBy: [...s.filledBy, uid] } : s
-    );
-    const newStatus = recomputeStatus({ ...session, roleSlots: newSlots });
-
-    tx.update(sessionRefForWindow, { roleSlots: newSlots, status: newStatus, updatedAt: now });
-    tx.set(signupRef, {
-      uid,
-      orgId: sOrg,
-      displayName: user.displayName,
-      role: slot.role,
-      slotId,
-      status: 'confirmed',
-      signedUpAt: now,
-    } satisfies SignupDoc);
-    tx.set(doc(db, 'assignments', `${sessionId}_${uid}`), {
-      uid,
-      orgId: sOrg,
-      sessionId,
-      academyId: session.academyId,
-      role: slot.role,
-      courseName: session.courseName,
-      location: session.location,
-      room: session.room,
-      start: session.start,
-      end: session.end,
-      status: 'confirmed',
-      reminderSent: false,
-      createdAt: now,
-    } satisfies AssignmentDoc);
-
-    return { status: 'confirmed' as const };
-  });
-
-  await logAudit(uid, 'signup.create', 'session', sessionId, `Signed up (${result.status}) for slot ${slotId}`);
-  return result;
+  try {
+    const res = await submitSignupFn({ sessionId, slotId, allowWaitlist: opts.allowWaitlist });
+    return { status: res.data.status };
+  } catch (e) {
+    const msg = cleanMessage(e);
+    throw new SignupError(/FULL/.test(msg) ? 'FULL' : msg);
+  }
 }
 
-export async function withdrawFromSession(uid: string, sessionId: string): Promise<void> {
-  await runTransaction(db, async (tx) => {
-    const sessionRef = doc(db, 'sessions', sessionId);
-    const sessionSnap = await tx.get(sessionRef);
-    if (!sessionSnap.exists()) throw new SignupError('Session no longer exists.');
-    const session = sessionSnap.data() as SessionDoc;
-
-    const signupRef = doc(db, 'sessions', sessionId, 'signups', uid);
-    const signupSnap = await tx.get(signupRef);
-    if (!signupSnap.exists()) throw new SignupError('No sign-up found to withdraw.');
-    const signup = signupSnap.data() as SignupDoc;
-    const now = Timestamp.now();
-
-    // Remove yourself from the slot. Promoting the next waitlisted user is done
-    // server-side by the onSignupWritten Cloud Function — the security rules
-    // (correctly) forbid a client from writing another user's signup, so doing
-    // it here would make any withdrawal-with-waitlist fail outright.
-    const newSlots = session.roleSlots.map((s) =>
-      s.slotId === signup.slotId ? { ...s, filledBy: s.filledBy.filter((u) => u !== uid) } : s
-    );
-
-    tx.update(signupRef, { status: 'withdrawn' });
-    tx.update(doc(db, 'assignments', `${sessionId}_${uid}`), { status: 'withdrawn' });
-
-    const newStatus = recomputeStatus({ ...session, roleSlots: newSlots });
-    tx.update(sessionRef, { roleSlots: newSlots, status: newStatus, updatedAt: now });
-  });
-
-  await logAudit(uid, 'signup.withdraw', 'session', sessionId, 'Withdrew from session');
+export async function withdrawFromSession(_uid: string, sessionId: string): Promise<void> {
+  try {
+    await withdrawSignupFn({ sessionId });
+  } catch (e) {
+    throw new SignupError(cleanMessage(e));
+  }
 }

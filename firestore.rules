@@ -290,54 +290,38 @@ service cloud.firestore {
         && (request.resource.data.status == 'draft' || academyOkToPublish(request.resource.data.academyId));
       // NOTE: delete is separate — on delete there is no request.resource.
       allow delete: if isStaff() && inOrg(resource.data);
-      // Staff edit freely within their org, EXCEPT flipping draft→visible
-      // (publishing), which requires the parent academy's approval. orgId is
-      // immutable. Non-staff updates exist only for the sign-up transaction: they
-      // may touch ONLY roleSlots / status / updatedAt, may not invent new slots,
-      // and the count math is enforced in the transaction.
-      allow update: if (isStaff() && inOrg(resource.data) && unchanged('orgId') && (
+      // Staff-only updates, EXCEPT flipping draft→visible (publishing), which
+      // requires the parent academy's approval. orgId immutable. Sign-up/withdraw
+      // (roleSlots mutation) is now SERVER-owned (submitSignup/withdrawSignup
+      // callables via Admin SDK) — a client may NOT write roleSlots, so a non-staff
+      // member can't over-fill a slot, insert other uids, or skip qualification.
+      allow update: if isStaff() && inOrg(resource.data) && unchanged('orgId') && (
             request.resource.data.status == resource.data.status
             || request.resource.data.status == 'draft'
             || resource.data.status != 'draft'
             || academyOkToPublish(resource.data.academyId)
-          ))
-        || (signedIn()
-            && inOrg(resource.data)
-            && unchanged('orgId')
-            && request.resource.data.diff(resource.data).affectedKeys()
-                 .hasOnly(['roleSlots', 'status', 'updatedAt'])
-            && request.resource.data.roleSlots.size() == resource.data.roleSlots.size()
-            && request.resource.data.status in ['open', 'fully_staffed']);
+          );
 
       // ── signups subcollection ────────────────────────────────────────────
-      // Same-tenant. A user manages only their own signup doc; staff write any.
+      // Same-tenant. Self sign-up/withdraw is SERVER-owned (submitSignup/
+      // withdrawSignup, Admin SDK) — clients no longer write their own signup
+      // doc. Staff (reserve flow) still write any; everyone in-org may read.
       match /signups/{uid} {
         allow read: if signedIn() && inOrg(resource.data);
-        allow create: if (isStaff() && inOrg(request.resource.data))
-          || (isOwner(uid)
-              && request.resource.data.uid == uid
-              && inOrg(request.resource.data)
-              && request.resource.data.status in ['confirmed', 'waitlist']
-              && get(/databases/$(database)/documents/users/$(uid)).data.status == 'active');
-        allow update: if (isStaff() && inOrg(resource.data))
-          || (isOwner(uid) && inOrg(resource.data) && request.resource.data.status in ['confirmed', 'waitlist', 'withdrawn']);
+        allow create: if isStaff() && inOrg(request.resource.data);
+        allow update: if isStaff() && inOrg(resource.data);
         allow delete: if isStaff() && inOrg(resource.data);
       }
     }
 
     // ── assignments ────────────────────────────────────────────────────────
     // Denormalized mirror. Readable by owner + staff, within tenant. Written by
-    // the sign-up transaction (owner, own uid) and Cloud Functions (Admin SDK).
+    // the sign-up callables (Admin SDK) and staff (reserve flow) — NOT by a
+    // non-staff client (which previously could forge its own schedule entry).
     match /assignments/{assignmentId} {
       allow read: if inOrg(resource.data) && (isStaff() || resource.data.uid == request.auth.uid);
-      allow create: if inOrg(request.resource.data)
-        && (isStaff() || request.resource.data.uid == request.auth.uid);
-      allow update: if (isStaff() && inOrg(resource.data) && unchanged('orgId'))
-        || (signedIn()
-            && inOrg(resource.data)
-            && unchanged('orgId')
-            && resource.data.uid == request.auth.uid
-            && request.resource.data.uid == request.auth.uid);
+      allow create: if isStaff() && inOrg(request.resource.data);
+      allow update: if isStaff() && inOrg(resource.data) && unchanged('orgId');
       allow delete: if isStaff() && inOrg(resource.data);
     }
 

@@ -138,6 +138,7 @@ export interface AcademyDoc {
 
 export interface SignupDoc {
   uid: string;
+  orgId?: string;
   displayName: string;
   role: SlotRole;
   slotId: string;
@@ -147,6 +148,7 @@ export interface SignupDoc {
 
 export interface AssignmentDoc {
   uid: string;
+  orgId?: string;
   sessionId: string;
   academyId: string;
   role: SlotRole;
@@ -157,4 +159,5 @@ export interface AssignmentDoc {
   end: Timestamp;
   status: SignupStatus;
   reminderSent: boolean;
+  createdAt?: Timestamp;
 }

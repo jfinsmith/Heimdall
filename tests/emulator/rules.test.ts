@@ -183,20 +183,28 @@ describe('auditLog — owner-attributed create only', () => {
   });
 });
 
-describe('signups — ownership + active gate', () => {
-  it('active instructor CAN create own signup', async () => {
-    await assertSucceeds(
+describe('sessions/signups/assignments — server-owned sign-up (staff-only client writes)', () => {
+  it('non-staff CANNOT create their own signup (sign-up is via the submitSignup callable now)', async () => {
+    await assertFails(
       setDoc(doc(as('alice', 'instructor'), 'sessions/s1/signups/alice'), { uid: 'alice', status: 'confirmed', slotId: 'x', role: 'lead', orgId: ORG })
     );
   });
-  it('CANNOT create another user\'s signup', async () => {
+  it('non-staff CANNOT hand-edit session.roleSlots (over-fill / insert / skip-qual)', async () => {
     await assertFails(
-      setDoc(doc(as('alice', 'instructor'), 'sessions/s1/signups/bob'), { uid: 'bob', status: 'confirmed', slotId: 'x', role: 'lead', orgId: ORG })
+      updateDoc(doc(as('alice', 'instructor'), 'sessions/s1'), { roleSlots: [{ slotId: 'x', role: 'lead', count: 1, filledBy: ['alice'] }], status: 'open' })
     );
   });
-  it('pending user CANNOT create own signup', async () => {
+  it('non-staff CANNOT forge their own assignment (schedule) entry', async () => {
     await assertFails(
-      setDoc(doc(as('pat', 'instructor'), 'sessions/s1/signups/pat'), { uid: 'pat', status: 'confirmed', slotId: 'x', role: 'lead', orgId: ORG })
+      setDoc(doc(as('alice', 'instructor'), 'assignments/s1_alice'), { uid: 'alice', orgId: ORG, sessionId: 's1', status: 'confirmed' })
+    );
+  });
+  it('staff CAN still write signups + assignments (reserve flow)', async () => {
+    await assertSucceeds(
+      setDoc(doc(as('carol', 'coordinator'), 'sessions/s1/signups/bob'), { uid: 'bob', status: 'confirmed', slotId: 'x', role: 'lead', orgId: ORG })
+    );
+    await assertSucceeds(
+      setDoc(doc(as('carol', 'coordinator'), 'assignments/s1_bob'), { uid: 'bob', orgId: ORG, sessionId: 's1', status: 'confirmed' })
     );
   });
 });
