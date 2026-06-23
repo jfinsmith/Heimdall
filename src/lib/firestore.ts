@@ -55,7 +55,7 @@ export function useCollection<T = DocumentData>(
   deps: unknown[] = []
 ): QueryState<WithId<T>> {
   const [state, setState] = useState<QueryState<WithId<T>>>({ data: [], loading: true, error: null });
-  const { orgId } = useAuth();
+  const { orgId, loading: authLoading } = useAuth();
 
   // Tenant isolation: top-level org-owned collections are filtered to the
   // caller's org. LIVE (post-Phase-5) — rules require docId/orgId == the caller's
@@ -64,28 +64,32 @@ export function useCollection<T = DocumentData>(
   // are not filtered here.
   const segments = path ? path.split('/').filter(Boolean) : [];
   const lastSeg = segments[segments.length - 1];
-  // Inject the orgId filter for org-owned top-level collections AND org-owned
-  // subcollections (collection paths have an odd segment count).
-  const orgScope =
-    orgId &&
+  // Org-owned top-level collections AND org-owned subcollections (odd segment
+  // count) need the orgId filter.
+  const needsOrgScope =
+    !!path &&
     ((segments.length === 1 && !NON_ORG_SCOPED.has(segments[0])) ||
-      (segments.length >= 3 && segments.length % 2 === 1 && ORG_SCOPED_SUBCOLLECTIONS.has(lastSeg)))
-      ? orgId
-      : null;
+      (segments.length >= 3 && segments.length % 2 === 1 && ORG_SCOPED_SUBCOLLECTIONS.has(lastSeg)));
+  const orgScope = needsOrgScope && orgId ? orgId : null;
+  // An org-scoped collection has no rules-provable read without the orgId filter,
+  // so DON'T fire the query until orgId is known — otherwise every cold load
+  // throws a permissions error while auth is still resolving. Hold `loading`
+  // while auth resolves; once resolved-but-org-less, return empty.
+  const blockedOnOrg = needsOrgScope && !orgId;
 
   const q: Query | null = useMemo(
     () => {
-      if (!path) return null;
+      if (!path || blockedOnOrg) return null;
       const all = orgScope ? [where('orgId', '==', orgScope), ...constraints] : constraints;
       return query(collection(db, path), ...all);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [path, orgScope, ...deps]
+    [path, orgScope, blockedOnOrg, ...deps]
   );
 
   useEffect(() => {
     if (!q) {
-      setState({ data: [], loading: false, error: null });
+      setState({ data: [], loading: blockedOnOrg && authLoading, error: null });
       return;
     }
     setState((s) => ({ ...s, loading: true }));
@@ -104,7 +108,7 @@ export function useCollection<T = DocumentData>(
       }
     );
     return unsub;
-  }, [q]);
+  }, [q, blockedOnOrg, authLoading]);
 
   return state;
 }

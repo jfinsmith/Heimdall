@@ -22,9 +22,11 @@ export function useRoleLabels(): Record<Role, string> {
 }
 
 function BrandProvider({ children }: { children: React.ReactNode }) {
-  // Per-org settings (doc id == orgId), falling back to 'global' pre-backfill.
+  // Per-org settings (doc id == orgId). Skip the read until orgId is known — the
+  // legacy 'global' fallback doc is denied to clients post-Phase-5, so reading it
+  // while auth is still resolving just throws a permissions error on every load.
   const { orgId } = useAuth();
-  const { data: settings } = useDoc<GlobalSettings>(orgConfigPath('settings', orgId));
+  const { data: settings } = useDoc<GlobalSettings>(orgId ? orgConfigPath('settings', orgId) : null);
 
   useEffect(() => {
     if (!settings) return;
