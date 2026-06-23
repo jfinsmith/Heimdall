@@ -42,13 +42,27 @@ initializeApp({ credential: cert(sa as any) });
 const db = getFirestore();
 
 async function main() {
-  const docId = `curricula/${orgId}__${key}`;
-  const ref = db.doc(docId);
-  const snap = await ref.get();
+  // Prefer the org-namespaced id; fall back to a legacy BARE id (older PHSC
+  // curricula predate namespacing). Only accept a bare doc if it belongs to this
+  // org (or carries no orgId), so we never clobber another tenant's legacy doc.
+  const namespaced = db.doc(`curricula/${orgId}__${key}`);
+  let snap = await namespaced.get();
+  let ref = namespaced;
   if (!snap.exists) {
-    console.error(`${docId} does not exist — seed it via org setup or create it in Curriculum & Hours first.`);
+    const legacy = db.doc(`curricula/${key}`);
+    const legacySnap = await legacy.get();
+    const legacyOrg = legacySnap.exists ? (legacySnap.data() as { orgId?: string }).orgId : undefined;
+    if (legacySnap.exists && (legacyOrg === orgId || legacyOrg == null)) {
+      snap = legacySnap;
+      ref = legacy;
+      console.log(`(using legacy bare id curricula/${key}${legacyOrg == null ? ' — no orgId field' : ''})`);
+    }
+  }
+  if (!snap.exists) {
+    console.error(`No curriculum found at curricula/${orgId}__${key} or legacy curricula/${key} — seed it via org setup or create it in Curriculum & Hours first.`);
     process.exit(1);
   }
+  const docId = ref.path;
   const current = snap.data() as { courses?: unknown[]; totalHours?: number; estimated?: boolean };
   console.log(docId);
   console.log(`  current: ${(current.courses ?? []).length} courses, total ${current.totalHours ?? '?'} hrs, estimated=${current.estimated}`);
