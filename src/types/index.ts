@@ -488,11 +488,11 @@ export function letterFor(pct: number): string {
 export const FDLE_LE_COURSES: { code: string; name: string }[] = [
   ['0096', 'Law Enforcement Officer Physical Fitness Training'], ['0002', 'Introduction to Law Enforcement'], ['0031', 'First Aid for Criminal Justice Officers'],
   ['0051', 'Criminal Justice Defensive Tactics'], ['0040', 'Criminal Justice Firearms'], ['0020', 'Law Enforcement Vehicle Operations'],
-  ['0421', 'Conducted Electrical Weapon / Dart-Firing Stun Gun'], ['0016', 'Communication'], ['0021', 'Serving Your Community'],
+  ['0421', 'Conducted Electrical Weapon/Dart-Firing Stun Gun'], ['0016', 'Communication'], ['0021', 'Serving Your Community'],
   ['0018', 'Legal'], ['0073', 'Crimes Involving Property and Society'], ['0072', 'Crimes Against Persons'],
   ['0079', 'Crime Scene Follow-up Investigations'], ['0019', 'Interviewing and Report Writing'], ['0063', 'Fundamentals of Patrol'],
-  ['0400', 'Traffic Incidents'], ['0401', 'Traffic Stops'], ['0403', 'DUI Traffic Stops'],
-  ['0402', 'Traffic Crash Investigations'],
+  ['0093', 'Critical Incidents'], ['0400', 'Traffic Incidents'], ['0401', 'Traffic Stops'],
+  ['0403', 'DUI Traffic Stops'], ['0402', 'Traffic Crash Investigations'],
 ].map(([code, name]) => ({ code, name }));
 
 export type ReportTypeId =
