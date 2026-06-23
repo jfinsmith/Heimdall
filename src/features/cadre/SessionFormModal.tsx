@@ -12,7 +12,7 @@ import { db } from '../../lib/firebase';
 import { shortId, useCollection, useDoc, type WithId } from '../../lib/firestore';
 import { useClickOutside } from '../../lib/useClickOutside';
 import { useAuth } from '../../auth/AuthContext';
-import { combineDateTime, hoursBetween, toDateInputValue, toTimeInputValue, tsFromDate } from '../../lib/time';
+import { combineDateTime, hoursBetween, toDateInputValue, toTimeInputValue, tsFromDate, isValidDuration, END_BEFORE_START_MSG } from '../../lib/time';
 import type { AcademyDoc, CurriculumDoc, QualificationKey, RoleSlot, RosterMemberDoc, SessionDoc, SlotRole, UserDoc } from '../../types';
 import { QUALIFICATION_LABELS, SLOT_ROLE_LABELS, SELECTABLE_SLOT_ROLES } from '../../types';
 import { Button, Field, Input, Select, TextArea } from '../../components/ui';
@@ -274,6 +274,14 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
     setBusy(true);
     const start = combineDateTime(date, startTime);
     const end = combineDateTime(date, endTime);
+    // A session must have a positive duration — guard before any write so a
+    // zero/negative-duration session can't be saved (it would render with a
+    // null end and crash the calendar).
+    if (!isValidDuration(start, end)) {
+      setBusy(false);
+      setError(END_BEFORE_START_MSG);
+      return;
+    }
     const courseName = resolvedName;
 
     // Hard block: a managed room can't be double-booked over an overlapping time.

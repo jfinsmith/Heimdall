@@ -8,7 +8,7 @@ import { db } from '../../lib/firebase';
 import { shortId, useCollection, useDoc, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import { can } from '../../lib/rbac';
-import { fmtRange } from '../../lib/time';
+import { fmtRange, isValidDuration } from '../../lib/time';
 import type { SessionDoc, SignupDoc } from '../../types';
 import { SLOT_ROLE_LABELS, QUALIFICATION_LABELS, activeVerifiedQualKeys } from '../../types';
 import { Badge, Button, HighLiabilityBadge, StatusPill } from '../../components/ui';
@@ -95,6 +95,12 @@ export function SessionDetailModal({ sessionId, onClose, onEdit }: Props) {
       nextStart.setDate(nextStart.getDate() + dayDelta);
       const nextEnd = session.end.toDate();
       nextEnd.setDate(nextEnd.getDate() + dayDelta);
+      // Don't propagate a malformed source (end <= start) into a new doc.
+      if (!isValidDuration(nextStart, nextEnd)) {
+        setBusy(false);
+        setError('This session has an invalid time span (it ends before it starts). Fix its times before duplicating.');
+        return;
+      }
       await addDoc(collection(db, 'sessions'), {
         // Inherit the source session's tenant (reliable) over the possibly-null auth orgId.
         orgId: session.orgId ?? orgId,

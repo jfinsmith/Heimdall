@@ -21,7 +21,7 @@ import { useCollection, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import { useOrg } from '../../lib/useOrg';
 import { billingActive } from '../../lib/subscription';
-import { fmtDate, tsFromDate, addDays, toDateInputValue } from '../../lib/time';
+import { fmtDate, tsFromDate, addDays, toDateInputValue, isValidDuration } from '../../lib/time';
 import type { AcademyDoc, CurriculumDoc, SessionDoc, UserDoc } from '../../types';
 import { Badge, Button, Field, Input, PageHeader, Select } from '../../components/ui';
 import { Modal } from '../../components/Modal';
@@ -562,6 +562,10 @@ function CloneAcademyModal({
     let count = 0;
     for (const snap of sessionsSnap.docs) {
       const s = snap.data() as SessionDoc;
+      // Skip a malformed source session (missing or inverted times) so the clone
+      // never inherits a zero/negative-duration block. Shifting both ends by the
+      // same offset preserves duration, so any valid source clones valid.
+      if (!s.start || !s.end || !isValidDuration(s.start.toDate(), s.end.toDate())) continue;
       const ref = doc(collection(db, 'sessions'));
       batch.set(ref, {
         ...s,

@@ -25,6 +25,19 @@ export function hoursBetween(start: Date, end: Date): number {
   return Math.round(((end.getTime() - start.getTime()) / 36e5) * 4) / 4;
 }
 
+/**
+ * A scheduled block must have a positive duration — its end strictly after its
+ * start. A zero/negative-duration session is bad data: FullCalendar renders it
+ * with a null `end`, which historically crashed the calendar. Every create/edit
+ * path that sets a session's times should gate on this before writing.
+ */
+export function isValidDuration(start: Date, end: Date): boolean {
+  return end.getTime() > start.getTime();
+}
+
+/** Standard message shown when a session's end isn't after its start. */
+export const END_BEFORE_START_MSG = 'The end time must be after the start time.';
+
 export function addDays(d: Date, days: number): Date {
   const out = new Date(d);
   out.setDate(out.getDate() + days);

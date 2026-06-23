@@ -20,7 +20,7 @@ import { db, functions } from '../../lib/firebase';
 import { useCollection, useDoc, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import { can } from '../../lib/rbac';
-import { hoursBetween, tsFromDate, toTimeInputValue, fmtDate } from '../../lib/time';
+import { hoursBetween, tsFromDate, toTimeInputValue, fmtDate, isValidDuration } from '../../lib/time';
 import { holidaysForYear, holidayBackgroundEvents, observedHolidayDatesInRange, HOLIDAY_PAY_HOURS } from '../../lib/holidays';
 import type { AcademyDoc, CoursePublishTarget, CurriculumDoc, QualificationKey, RosterMemberDoc, SessionDoc, UserDoc } from '../../types';
 import { QUALIFICATION_LABELS } from '../../types';
@@ -285,6 +285,13 @@ export function AcademyBuilderPage() {
     if (!s) return;
     const start = arg.event.start!;
     const end = arg.event.end ?? new Date(start.getTime() + (s.end.toMillis() - s.start.toMillis()));
+    // A resize/drag that inverts the times (end <= start) would persist a
+    // zero/negative-duration session — revert it instead of writing bad data.
+    if (!isValidDuration(start, end)) {
+      arg.revert();
+      window.alert('A session must end after it starts. Move blocked — pick a valid time span.');
+      return;
+    }
     // Block a drag/resize that double-books a managed room (the other save paths
     // already guard; this is the most common scheduler action).
     const acadOrgId = academy?.orgId;

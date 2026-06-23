@@ -11,7 +11,7 @@ import { collection, doc, serverTimestamp, writeBatch, Timestamp, setDoc, where 
 import { db } from '../../lib/firebase';
 import { shortId, useCollection, useDoc, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
-import { addDays, combineDateTime, hoursBetween, toDateInputValue, tsFromDate } from '../../lib/time';
+import { addDays, combineDateTime, hoursBetween, toDateInputValue, tsFromDate, isValidDuration, END_BEFORE_START_MSG } from '../../lib/time';
 import type { AcademyDoc, CurriculumDoc, RoleSlot, UserDoc } from '../../types';
 import { Button, Field, Input, Select } from '../../components/ui';
 import { Modal } from '../../components/Modal';
@@ -126,6 +126,14 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
     }
     if (matchingDates.length === 0) {
       setError('No matching days in the selected range.');
+      return;
+    }
+    // Every generated day shares the same start/end time-of-day, so one check up
+    // front rejects the whole run rather than minting hundreds of zero/negative-
+    // duration sessions.
+    const sampleDay = toDateInputValue(matchingDates[0]);
+    if (!isValidDuration(combineDateTime(sampleDay, startTime), combineDateTime(sampleDay, endTime))) {
+      setError(END_BEFORE_START_MSG);
       return;
     }
     setBusy(true);
