@@ -65,8 +65,11 @@ export function sessionToEvent(s: WithId<SessionDoc>, opts: SessionEventOpts = {
   return {
     id: s.id,
     title: s.courseName,
-    start: s.start.toDate(),
-    end: s.end.toDate(),
+    // Guard against malformed sessions (missing start/end): a bad doc yields an
+    // event FullCalendar skips, instead of throwing during the map and blanking
+    // the whole calendar.
+    start: s.start?.toDate(),
+    end: s.end?.toDate(),
     backgroundColor: bg,
     borderColor: opts.academyColor ? status : bg,
     classNames: (() => {
@@ -113,7 +116,12 @@ export function renderEventContent(arg: EventContentArg): React.ReactNode | unde
   const s = arg.event.extendedProps.session as WithId<SessionDoc> | undefined;
   if (!s) return undefined;
   const prefix = arg.event.extendedProps.academyPrefix as string | undefined;
-  const durationMin = (arg.event.end!.getTime() - arg.event.start!.getTime()) / 60000;
+  // FullCalendar sets event.end to null when a session's end is <= its start
+  // (zero/negative-duration bad data). Never dereference null — fall back to the
+  // session's own timestamps — so one malformed session can't crash the calendar.
+  const startMs = arg.event.start?.getTime() ?? s.start?.toMillis() ?? 0;
+  const endMs = arg.event.end?.getTime() ?? s.end?.toMillis() ?? startMs;
+  const durationMin = (endMs - startMs) / 60000;
 
   // Lunch / break placeholders: a simple labelled block, never the full
   // course/staffing chrome (regardless of how short the block is).
@@ -140,8 +148,8 @@ export function renderEventContent(arg: EventContentArg): React.ReactNode | unde
   // draw the lunch break as a white band at the right vertical position.
   const isTimeGrid = arg.view.type.startsWith('timeGrid') || arg.view.type === 'twoWeek';
   let lunchBand: React.ReactNode = null;
-  if (s.lunchMinutes && s.lunchStart && isTimeGrid) {
-    const start = arg.event.start!;
+  if (s.lunchMinutes && s.lunchStart && isTimeGrid && arg.event.start && durationMin > 0) {
+    const start = arg.event.start;
     const startMin = start.getHours() * 60 + start.getMinutes();
     const endMin = startMin + durationMin;
     const [lh, lm] = s.lunchStart.split(':').map(Number);
