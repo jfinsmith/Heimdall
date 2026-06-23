@@ -149,10 +149,11 @@ export function AppShell() {
       {/* CADRE — Coordinated Academy Duty & Roster Engine */}
       <SectionLabel title="CADRE — Coordinated Academy Duty & Roster Engine">CADRE</SectionLabel>
       <NavItem to="/cadre/calendar" label="Calendar" />
-      {staff && <NavItem to="/cadre/academies" label="Academies & Builder" />}
+      {staff && <NavItem to="/cadre/academies" label="Academies" />}
       {staff && <NavItem to="/cadre/staffing" label="Staffing Board" />}
       {staff && <NavItem to="/cadre/rooms" label="Room Reservations" />}
-      {staff && <NavItem to="/cadet-reports" label="Cadet Reports" />}
+      {/* Cadet Reports hidden from nav — duplicative of the per-academy Reports tab. Route still works; re-enable by uncommenting.
+      {staff && <NavItem to="/cadet-reports" label="Cadet Reports" />} */}
       {staff && <NavItem to="/reports" label="Exports" />}
       <SectionLabel title="Instructor tools">Instructor</SectionLabel>
       <NavItem to="/open-sessions" label="Browse Open Sessions" />
