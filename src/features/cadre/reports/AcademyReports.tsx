@@ -7,10 +7,10 @@ import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { addDoc, collection, deleteDoc, doc, limit, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
-import { useCollection, useDoc, type WithId } from '../../../lib/firestore';
+import { useCollection, type WithId } from '../../../lib/firestore';
+import { useCurriculum } from '../../../lib/curricula';
 import { useAuth } from '../../../auth/AuthContext';
-import type { AcademyDoc, AcademyReportDoc, CurriculumDoc, RosterMemberDoc, UserDoc } from '../../../types';
-import { FDLE_LE_COURSES } from '../../../types';
+import type { AcademyDoc, AcademyReportDoc, CurriculumCourse, RosterMemberDoc, UserDoc } from '../../../types';
 import { Button, Field, Input, Select, TextArea } from '../../../components/ui';
 import { Modal } from '../../../components/Modal';
 import { getReportType, REPORT_TYPES, type ReportType } from './reportTypes';
@@ -36,7 +36,7 @@ export function AcademyReports({ academy }: { academy: WithId<AcademyDoc> }) {
   // so include both and prefer an active one. Empty when the org has no command.
   const { data: directors } = useCollection<UserDoc>('users', [where('role', 'in', ['director', 'lieutenant']), limit(2)]);
   const directorName = (directors.find((d) => d.status === 'active') ?? directors[0])?.displayName ?? '';
-  const { data: curriculum } = useDoc<CurriculumDoc>(academy.discipline ? `curricula/${academy.discipline}` : null);
+  const { data: curriculum } = useCurriculum(academy.discipline);
 
   const [formType, setFormType] = useState<ReportType | null>(null);
   const [editing, setEditing] = useState<WithId<AcademyReportDoc> | null>(null);
@@ -132,6 +132,7 @@ export function AcademyReports({ academy }: { academy: WithId<AcademyDoc> }) {
           type={formType}
           academy={academy}
           roster={roster}
+          courses={curriculum?.courses ?? []}
           editing={editing}
           fromName={profile?.displayName ?? ''}
           directorName={directorName}
@@ -155,11 +156,12 @@ function ReportTypeCard({ type, onPick }: { type: ReportType; onPick: () => void
 }
 
 function ReportFormModal({
-  type, academy, roster, editing, fromName, directorName, onClose,
+  type, academy, roster, courses, editing, fromName, directorName, onClose,
 }: {
   type: ReportType;
   academy: WithId<AcademyDoc>;
   roster: WithId<RosterMemberDoc>[];
+  courses: CurriculumCourse[];
   editing: WithId<AcademyReportDoc> | null;
   fromName: string;
   directorName: string;
@@ -274,9 +276,14 @@ function ReportFormModal({
               {f.type === 'course' ? (
                 <Select value={values[f.key] ?? ''} onChange={(e) => set(f.key, e.target.value)}>
                   <option value="">— select course —</option>
-                  {FDLE_LE_COURSES.map((c) => (
-                    <option key={c.code} value={`CJK ${c.code} — ${c.name}`}>CJK {c.code} — {c.name}</option>
-                  ))}
+                  {/* Pull from THIS academy's curriculum so the CJK list matches the
+                      discipline (LE / CO / crossover), not a hardcoded LE list. */}
+                  {courses
+                    .filter((c) => c.cjk)
+                    .map((c) => {
+                      const label = `${c.cjk!.replace(/^CJK\s*/, 'CJK ')} — ${c.name}`;
+                      return <option key={c.cjk} value={label}>{label}</option>;
+                    })}
                 </Select>
               ) : f.type === 'cadet' ? (
                 <Select value={values[f.key] ?? ''} onChange={(e) => set(f.key, e.target.value)}>

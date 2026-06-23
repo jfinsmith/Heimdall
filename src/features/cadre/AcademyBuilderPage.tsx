@@ -18,11 +18,12 @@ import { addDoc, collection, deleteField, doc, serverTimestamp, updateDoc, where
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../../lib/firebase';
 import { useCollection, useDoc, type WithId } from '../../lib/firestore';
+import { useCurriculum, useAllCurricula } from '../../lib/curricula';
 import { useAuth } from '../../auth/AuthContext';
 import { can } from '../../lib/rbac';
 import { hoursBetween, tsFromDate, toTimeInputValue, fmtDate, isValidDuration } from '../../lib/time';
 import { holidaysForYear, holidayBackgroundEvents, observedHolidayDatesInRange, HOLIDAY_PAY_HOURS } from '../../lib/holidays';
-import type { AcademyDoc, CoursePublishTarget, CurriculumDoc, QualificationKey, RosterMemberDoc, SessionDoc, UserDoc } from '../../types';
+import type { AcademyDoc, CoursePublishTarget, QualificationKey, RosterMemberDoc, SessionDoc, UserDoc } from '../../types';
 import { QUALIFICATION_LABELS } from '../../types';
 import { Badge, Button, Field, Input, PageHeader, Select } from '../../components/ui';
 import { Modal } from '../../components/Modal';
@@ -47,7 +48,7 @@ export function AcademyBuilderPage() {
   const { academyId } = useParams<{ academyId: string }>();
   const { firebaseUser, orgId } = useAuth();
   const { data: academy } = useDoc<AcademyDoc>(academyId ? `academies/${academyId}` : null);
-  const { data: curriculum } = useDoc<CurriculumDoc>(academy ? `curricula/${academy.discipline}` : null);
+  const { data: curriculum } = useCurriculum(academy?.discipline);
   const { data: sessions } = useCollection<SessionDoc>(
     academyId ? 'sessions' : null,
     [where('academyId', '==', academyId ?? '')],
@@ -1061,7 +1062,8 @@ function PayPeriodPanel({
 function EditAcademyModal({ academy, onClose }: { academy: WithId<AcademyDoc>; onClose: () => void }) {
   const { firebaseUser } = useAuth();
   const { data: coordinators } = useCollection<UserDoc>('users', [where('role', '==', 'coordinator')]);
-  const { data: curricula } = useCollection<CurriculumDoc>('curricula', [where('active', '==', true)]);
+  const { all: allCurr } = useAllCurricula();
+  const curricula = allCurr.filter((c) => c.active !== false);
   const [name, setName] = useState(academy.name);
   const [shortName, setShortName] = useState(academy.shortName ?? '');
   const [discipline, setDiscipline] = useState(academy.discipline ?? '');

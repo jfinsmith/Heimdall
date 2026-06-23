@@ -10,6 +10,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions, storage } from '../../lib/firebase';
 import { useCollection, type WithId } from '../../lib/firestore';
+import { useAllCurricula } from '../../lib/curricula';
 import { useAuth } from '../../auth/AuthContext';
 import type { CurriculumCourse, CurriculumDoc, QualificationKey, RosterModuleKey } from '../../types';
 import { QUALIFICATION_LABELS } from '../../types';
@@ -33,7 +34,13 @@ export function CurriculumAdminPage({ scope = 'org' }: { scope?: 'org' | 'defaul
   const { firebaseUser } = useAuth();
   const isDefaults = scope === 'defaults';
   const coll = isDefaults ? 'defaultCurricula' : 'curricula';
-  const { data: curricula } = useCollection<CurriculumDoc>(coll);
+  // Owner edits the five platform FDLE programs (defaultCurricula). An org sees
+  // those read-only — the single source of truth across all orgs — and may add or
+  // edit only its OWN curricula below.
+  const ownerDefaults = useCollection<CurriculumDoc>('defaultCurricula');
+  const orgView = useAllCurricula();
+  const platformCards = isDefaults ? [] : orgView.platform;
+  const editable = isDefaults ? ownerDefaults.data : orgView.org;
   const [editing, setEditing] = useState<WithId<CurriculumDoc> | 'new' | null>(null);
 
   async function toggleActive(c: WithId<CurriculumDoc>) {
@@ -45,6 +52,49 @@ export function CurriculumAdminPage({ scope = 'org' }: { scope?: 'org' | 'defaul
     await deleteDoc(doc(db, coll, c.id));
     if (!isDefaults) await logAudit(firebaseUser!.uid, 'curriculum.delete', 'curriculum', c.id, c.label);
   }
+
+  const renderCard = (c: WithId<CurriculumDoc>, readOnly: boolean) => (
+    <section key={c.id} className="rounded-lg border border-watch-100 bg-white p-4 shadow-sm">
+      <div className="mb-2 flex items-start justify-between gap-2">
+        <div>
+          <h3 className="font-semibold text-watch-900">{c.label}</h3>
+          <div className="text-xs text-slate-500">{c.fdleProgram}</div>
+        </div>
+        <div className="flex items-center gap-2">
+          {readOnly && <Badge tone="slate">Platform</Badge>}
+          {c.estimated && <Badge tone="amber">estimated hours</Badge>}
+          <Badge tone={c.active ? 'green' : 'slate'}>{c.active ? 'active' : 'inactive'}</Badge>
+        </div>
+      </div>
+      <div className="mb-2 text-sm text-watch-800">
+        <strong>{c.totalHours}</strong> total hours · {c.courses.length} course blocks
+      </div>
+      <ul className="mb-3 max-h-44 space-y-0.5 overflow-y-auto pr-1 text-sm">
+        {c.courses.map((course) => (
+          <li key={course.cjk || course.name} className="flex justify-between gap-2">
+            <span className="truncate text-slate-600">
+              {course.cjk && <span className="mr-1 font-mono text-xs text-slate-400">{course.cjk}</span>}
+              {course.name}
+            </span>
+            <span className="shrink-0 tabular-nums text-slate-400">{course.minHours} hrs</span>
+          </li>
+        ))}
+      </ul>
+      {readOnly ? (
+        <p className="text-xs text-slate-400">Managed by the platform owner — identical across every organization.</p>
+      ) : (
+        <div className="flex gap-2">
+          <Button onClick={() => setEditing(c)}>Edit</Button>
+          <Button variant="ghost" onClick={() => toggleActive(c)}>
+            {c.active ? 'Deactivate' : 'Activate'}
+          </Button>
+          <Button variant="ghost" onClick={() => remove(c)}>
+            Delete
+          </Button>
+        </div>
+      )}
+    </section>
+  );
 
   return (
     <div>
@@ -60,50 +110,29 @@ export function CurriculumAdminPage({ scope = 'org' }: { scope?: 'org' | 'defaul
       <p className="mb-4 max-w-2xl text-sm text-slate-500">
         {isDefaults
           ? 'These templates seed every NEW organization’s curricula automatically (with org-namespaced ids, so tenants never collide). Edit them here, or import a starting set from an existing organization below. FDLE high-liability courses (Firearms, Defensive Tactics, Vehicle Operations, First Aid) get their recommended instructor ratios applied on import.'
-          : "Each discipline's full course list lives here — the course name, required hours, whether it's high-liability (▲), and the qualification a lead instructor must hold. This is the single source for the builder's course picker and curriculum coverage. Editing changes defaults for new academies — existing academies aren't modified."}
+          : "The five platform FDLE programs (Law Enforcement, Corrections, both crossovers, and EOT) are managed by HEIMDALL and shown read-only — the single source of truth across every organization. Below them, add your ORG'S OWN curricula (course list, hours, high-liability ▲, lead-instructor qualification). The builder, roster, and reports all pull from here."}
       </p>
       {isDefaults && <ImportDefaults />}
 
+      {platformCards.length > 0 && (
+        <section className="mb-6">
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Platform FDLE programs
+            <span className="ml-1 font-normal normal-case text-slate-400">— managed by HEIMDALL, identical across every organization</span>
+          </h2>
+          <div className="grid gap-4 lg:grid-cols-2">
+            {[...platformCards].sort((a, b) => a.label.localeCompare(b.label)).map((c) => renderCard(c, true))}
+          </div>
+        </section>
+      )}
+      {!isDefaults && (
+        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Your organization’s curricula</h2>
+      )}
       <div className="grid gap-4 lg:grid-cols-2">
-        {[...curricula]
-          .sort((a, b) => a.label.localeCompare(b.label))
-          .map((c) => (
-            <section key={c.id} className="rounded-lg border border-watch-100 bg-white p-4 shadow-sm">
-              <div className="mb-2 flex items-start justify-between gap-2">
-                <div>
-                  <h2 className="font-semibold text-watch-900">{c.label}</h2>
-                  <div className="text-xs text-slate-500">{c.fdleProgram}</div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {c.estimated && <Badge tone="amber">estimated hours</Badge>}
-                  <Badge tone={c.active ? 'green' : 'slate'}>{c.active ? 'active' : 'inactive'}</Badge>
-                </div>
-              </div>
-              <div className="mb-2 text-sm text-watch-800">
-                <strong>{c.totalHours}</strong> total hours · {c.courses.length} course blocks
-              </div>
-              <ul className="mb-3 max-h-44 space-y-0.5 overflow-y-auto pr-1 text-sm">
-                {c.courses.map((course) => (
-                  <li key={course.name} className="flex justify-between gap-2">
-                    <span className="truncate text-slate-600">
-                      {course.cjk && <span className="mr-1 font-mono text-xs text-slate-400">{course.cjk}</span>}
-                      {course.name}
-                    </span>
-                    <span className="shrink-0 tabular-nums text-slate-400">{course.minHours} hrs</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="flex gap-2">
-                <Button onClick={() => setEditing(c)}>Edit</Button>
-                <Button variant="ghost" onClick={() => toggleActive(c)}>
-                  {c.active ? 'Deactivate' : 'Activate'}
-                </Button>
-                <Button variant="ghost" onClick={() => remove(c)}>
-                  Delete
-                </Button>
-              </div>
-            </section>
-          ))}
+        {!isDefaults && editable.length === 0 && (
+          <p className="text-sm text-slate-500">No organization-specific curricula yet — the platform programs above are available to every class. Use “New discipline” to add your own.</p>
+        )}
+        {[...editable].sort((a, b) => a.label.localeCompare(b.label)).map((c) => renderCard(c, false))}
       </div>
 
       {editing && (

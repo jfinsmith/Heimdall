@@ -9,11 +9,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { addDoc, collection, deleteDoc, deleteField, doc, serverTimestamp, setDoc, Timestamp, updateDoc, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { shortId, useCollection, useDoc, type WithId } from '../../lib/firestore';
+import { shortId, useCollection, type WithId } from '../../lib/firestore';
+import { useCurriculum } from '../../lib/curricula';
 import { useClickOutside } from '../../lib/useClickOutside';
 import { useAuth } from '../../auth/AuthContext';
 import { combineDateTime, hoursBetween, toDateInputValue, toTimeInputValue, tsFromDate, isValidDuration, END_BEFORE_START_MSG } from '../../lib/time';
-import type { AcademyDoc, CurriculumDoc, QualificationKey, RoleSlot, RosterMemberDoc, SessionDoc, SlotRole, UserDoc } from '../../types';
+import type { AcademyDoc, QualificationKey, RoleSlot, RosterMemberDoc, SessionDoc, SlotRole, UserDoc } from '../../types';
 import { QUALIFICATION_LABELS, SLOT_ROLE_LABELS, SELECTABLE_SLOT_ROLES } from '../../types';
 import { Button, Field, Input, Select, TextArea } from '../../components/ui';
 import { Modal } from '../../components/Modal';
@@ -101,7 +102,7 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
   // high-liability flag, lead qualification, and default staffing slots. There's
   // no separate catalog; anything off-curriculum goes through "Custom".
   // Alphabetical for easy scanning.
-  const { data: curriculum } = useDoc<CurriculumDoc>(academy.discipline ? `curricula/${academy.discipline}` : null);
+  const { data: curriculum } = useCurriculum(academy.discipline);
   const courseOptions = useMemo(
     () =>
       (curriculum?.courses ?? [])

@@ -10,6 +10,7 @@ import { httpsCallable } from 'firebase/functions';
 import { doc, serverTimestamp, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db, functions } from '../../../lib/firebase';
 import { useCollection, useDoc, type WithId } from '../../../lib/firestore';
+import { useCurriculum } from '../../../lib/curricula';
 import type { AcademyDoc, CurriculumDoc, RosterAgency, RosterMemberDoc } from '../../../types';
 import { ROSTER_AGENCIES } from '../../../types';
 import { Badge, Button, Field, Input, PageHeader, Select, Spinner } from '../../../components/ui';
@@ -41,7 +42,7 @@ export function RosterPage() {
   // useCollection org-scopes the roster subcollection; sort by roster number
   // client-side (dropping orderBy keeps the query on a single-field index).
   const members = useMemo(() => [...membersRaw].sort((a, b) => (a.no ?? 0) - (b.no ?? 0)), [membersRaw]);
-  const { data: curriculum } = useDoc<CurriculumDoc>(academy ? `curricula/${academy.discipline}` : null);
+  const { data: curriculum } = useCurriculum(academy?.discipline);
   const [tab, setTab] = useState<Tab>('members');
 
   if (loading) return <div className="flex justify-center py-20"><Spinner className="text-bifrost-400" /></div>;

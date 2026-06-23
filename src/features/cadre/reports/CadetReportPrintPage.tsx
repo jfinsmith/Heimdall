@@ -7,7 +7,8 @@ import React from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { limit, where } from 'firebase/firestore';
 import { useCollection, useDoc } from '../../../lib/firestore';
-import type { AcademyDoc, AcademyReportDoc, CurriculumDoc, UserDoc } from '../../../types';
+import { useCurriculum } from '../../../lib/curricula';
+import type { AcademyDoc, AcademyReportDoc, UserDoc } from '../../../types';
 import { Button, Spinner } from '../../../components/ui';
 import { ReportLetter } from './ReportLetter';
 import { libraryFormToReportType, useOrgLibraryForms, type LibraryFormDoc } from './documentLibrary';
@@ -19,7 +20,7 @@ export function CadetReportPrintPage() {
     academyId && reportId ? `academies/${academyId}/reports/${reportId}` : null
   );
   // The class's curriculum drives the unified header (branding + program).
-  const { data: curriculum } = useDoc<CurriculumDoc>(academy?.discipline ? `curricula/${academy.discipline}` : null);
+  const { data: curriculum } = useCurriculum(academy?.discipline);
   // lieutenant === director: include both so a lieutenant-led org's leader prints.
   const { data: directors } = useCollection<UserDoc>('users', [where('role', 'in', ['director', 'lieutenant']), limit(2)]);
   const directorName = (directors.find((d) => d.status === 'active') ?? directors[0])?.displayName ?? '';

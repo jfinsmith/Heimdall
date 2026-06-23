@@ -191,10 +191,13 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // ── defaultCurricula (platform-level templates new orgs seed from) ─────
-    // No orgId — these belong to the platform, not a tenant. Owner-only.
+    // ── defaultCurricula (platform-level FDLE programs) ───────────────────
+    // The five owner-managed FDLE programs are the single source of truth shown
+    // read-only across EVERY org, so any signed-in user may read them; only the
+    // platform owner may write. (No orgId — they belong to the platform.)
     match /defaultCurricula/{key} {
-      allow read, write: if isPlatformOwner();
+      allow read: if signedIn();
+      allow write: if isPlatformOwner();
     }
 
     // ── documentLibrary (owner-managed forms library) ─────────────────────

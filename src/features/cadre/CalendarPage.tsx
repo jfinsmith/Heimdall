@@ -12,10 +12,11 @@ import listPlugin from '@fullcalendar/list';
 import interactionPlugin from '@fullcalendar/interaction';
 import { orderBy, Timestamp, where } from 'firebase/firestore';
 import { useCollection, type WithId } from '../../lib/firestore';
+import { useAllCurricula } from '../../lib/curricula';
 import { useAuth } from '../../auth/AuthContext';
 import { useGlobalSettings } from '../../app/providers';
 import { can } from '../../lib/rbac';
-import type { AcademyDoc, CurriculumDoc, SessionDoc } from '../../types';
+import type { AcademyDoc, SessionDoc } from '../../types';
 import { unfilledSlots } from '../../types';
 import { academyColorFor } from '../../lib/academyColors';
 import { Field, Input, PageHeader, Select } from '../../components/ui';
@@ -35,7 +36,7 @@ export function CalendarPage() {
   const canEdit = can.buildSchedules(role);
 
   const { data: academies } = useCollection<AcademyDoc>('academies');
-  const { data: curricula } = useCollection<CurriculumDoc>('curricula');
+  const { all: curricula } = useAllCurricula();
   // Bound the sessions listener to a rolling 1-year-back window (covers any
   // in-progress academy + all future) instead of loading the entire growing
   // collection. Cutoff is computed once so the query identity stays stable.

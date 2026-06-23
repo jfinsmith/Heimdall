@@ -66,6 +66,8 @@ beforeEach(async () => {
     // curricula are org-namespaced ({orgId}__{key}); same base key across tenants.
     await setDoc(doc(db, 'curricula/' + ORG + '__le_brt'), { orgId: ORG, key: 'le_brt', label: 'LE' });
     await setDoc(doc(db, 'curricula/' + BETA + '__le_brt'), { orgId: BETA, key: 'le_brt', label: 'LE' });
+    // defaultCurricula: the platform FDLE programs (no orgId — shared across orgs).
+    await setDoc(doc(db, 'defaultCurricula/le_brt'), { key: 'le_brt', label: 'LE platform', courses: [], totalHours: 770 });
     await setDoc(doc(db, 'reportConfig/' + ORG), { categories: [] });
     await setDoc(doc(db, 'reportConfig/' + BETA), { categories: [] });
     // documentLibrary: a general form + one specialized per tenant.
@@ -350,6 +352,22 @@ describe('curricula + reportConfig — org isolation', () => {
     await assertFails(getDoc(doc(as('dave', 'director'), 'reportConfig/' + BETA)));
     await assertSucceeds(setDoc(doc(as('dave', 'director'), 'reportConfig/' + ORG), { categories: [] }, { merge: true }));
     await assertFails(setDoc(doc(as('dave', 'director'), 'reportConfig/' + BETA), { categories: [] }, { merge: true }));
+  });
+});
+
+// ── defaultCurricula: the five platform FDLE programs — readable by EVERY signed-in
+// user (single source of truth across orgs), writable only by the platform owner. ──
+describe('defaultCurricula — platform programs (cross-org read, owner-only write)', () => {
+  it('any signed-in user (any tenant) can READ a platform program', async () => {
+    await assertSucceeds(getDoc(doc(as('carol', 'coordinator'), 'defaultCurricula/le_brt')));
+    await assertSucceeds(getDoc(doc(as('erin', 'instructor', BETA), 'defaultCurricula/le_brt')));
+  });
+  it('a non-owner (even a director) CANNOT write a platform program', async () => {
+    await assertFails(setDoc(doc(as('dave', 'director'), 'defaultCurricula/le_brt'), { key: 'le_brt', label: 'hacked' }, { merge: true }));
+  });
+  it('the platform owner CAN write a platform program', async () => {
+    const owner = testEnv.authenticatedContext('owner', { role: 'director', orgId: ORG, platformOwner: true }).firestore();
+    await assertSucceeds(setDoc(doc(owner, 'defaultCurricula/le_brt'), { key: 'le_brt', label: 'LE platform', courses: [], totalHours: 770 }, { merge: true }));
   });
 });
 

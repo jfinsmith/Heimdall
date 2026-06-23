@@ -22,6 +22,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { useOrg } from '../../lib/useOrg';
 import { billingActive } from '../../lib/subscription';
 import { fmtDate, tsFromDate, addDays, toDateInputValue, isValidDuration } from '../../lib/time';
+import { useAllCurricula, baseCurriculumKey } from '../../lib/curricula';
 import type { AcademyDoc, CurriculumDoc, SessionDoc, UserDoc } from '../../types';
 import { Badge, Button, Field, Input, PageHeader, Select } from '../../components/ui';
 import { Modal } from '../../components/Modal';
@@ -55,7 +56,7 @@ export function AcademiesPage() {
   }, [params, setParams, canCreate]);
 
   const { data: allAcademies, loading } = useCollection<AcademyDoc>('academies', [orderBy('startDate', 'desc')]);
-  const { data: curricula } = useCollection<CurriculumDoc>('curricula');
+  const { all: curricula } = useAllCurricula();
   const [showArchived, setShowArchived] = useState(false);
   // Quarterly start templates, shown in calendar order: January, April, July, October.
   const templates = allAcademies
@@ -64,7 +65,7 @@ export function AcademiesPage() {
   // Group templates under their discipline so each program's start patterns sit
   // together; the discipline heading uses the curriculum label when available.
   const disciplineLabel = (key: string) =>
-    curricula.find((c) => c.id === key)?.label ??
+    curricula.find((c) => (c.key || baseCurriculumKey(c.id)) === baseCurriculumKey(key))?.label ??
     templates.find((t) => t.discipline === key)?.fdleProgram?.replace(/^FDLE\s*/, '') ??
     key;
   const templateGroups = [...new Set(templates.map((t) => t.discipline))]
@@ -352,9 +353,10 @@ function CreateAcademyModal({
   const [busy, setBusy] = useState(false);
   const { orgId } = useAuth();
 
-  // Disciplines come from the admin-editable curricula collection; the
+  // Disciplines = the platform FDLE programs + this org's own curricula; the
   // default target hours are that curriculum's course-hour sum.
-  const { data: curricula } = useCollection<CurriculumDoc>('curricula', [where('active', '==', true)]);
+  const { all: allCurricula } = useAllCurricula();
+  const curricula = allCurricula.filter((c) => c.active !== false);
   // Sergeants and above can edit everything regardless of assignment — the
   // coordinator list here is genuinely just coordinators.
   const { data: coordinatorUsers } = useCollection<UserDoc>('users', [where('role', '==', 'coordinator')]);

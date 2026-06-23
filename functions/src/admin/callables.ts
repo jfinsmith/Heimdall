@@ -331,25 +331,11 @@ export const createOrg = onCall<{
     { merge: true }
   );
 
-  // Seed the org's curricula from the platform default templates. Doc ids are
-  // org-namespaced ({orgId}__{key}) so tenants never collide on a shared key
-  // like 'le_brt' (a global id would let one org's Admin-SDK seed clobber another's).
-  const defaults = await db.collection('defaultCurricula').get();
-  if (!defaults.empty) {
-    const seed = db.batch();
-    defaults.docs.forEach((d) => {
-      const data = d.data();
-      const baseKey = (data.key as string) || d.id;
-      seed.set(db.doc(`curricula/${orgId}__${baseKey}`), {
-        ...data,
-        orgId,
-        key: baseKey,
-        courses: applyFdleHighLiability((data.courses as Record<string, unknown>[]) ?? []),
-        active: data.active !== false,
-      });
-    });
-    await seed.commit();
-  }
+  // Platform FDLE curricula (the five programs) are NOT copied into each org.
+  // They live once in `defaultCurricula` and every org reads them read-only as the
+  // single source of truth; an org adds only its OWN curricula in `curricula`
+  // (resolution in src/lib/curricula.ts). New orgs therefore start with no
+  // org-curricula and inherit the five platform programs automatically.
 
   // Optionally seat the first admin, preserving their other claims.
   const firstAdminUid = (request.data.firstAdminUid ?? '').trim();

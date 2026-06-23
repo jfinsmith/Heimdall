@@ -19,8 +19,9 @@ import React, { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { orderBy, where } from 'firebase/firestore';
 import { useCollection, useDoc, type WithId } from '../../lib/firestore';
+import { useCurriculum } from '../../lib/curricula';
 import { useGlobalSettings } from '../../app/providers';
-import type { AcademyDoc, CurriculumDoc, SessionDoc, UserDoc } from '../../types';
+import type { AcademyDoc, SessionDoc, UserDoc } from '../../types';
 import { SLOT_ROLE_LABELS } from '../../types';
 import { WordmarkHorizontal } from '../../brand/Logo';
 import { OrgLogo } from '../../brand/OrgLogo';
@@ -59,7 +60,7 @@ export function PrintableSchedulePage() {
   const { data: academy } = useDoc<AcademyDoc>(academyId ? `academies/${academyId}` : null);
   // The class's curriculum drives branding overrides (logo + org name) on the
   // printed cover/footer, falling back to org settings — same as DocumentHeader.
-  const { data: curriculum } = useDoc<CurriculumDoc>(academy?.discipline ? `curricula/${academy.discipline}` : null);
+  const { data: curriculum } = useCurriculum(academy?.discipline);
   const { data: sessions } = useCollection<SessionDoc>(
     academyId ? 'sessions' : null,
     [where('academyId', '==', academyId ?? ''), orderBy('start')],

@@ -9,10 +9,11 @@
 import React, { useMemo, useState } from 'react';
 import { collection, doc, serverTimestamp, writeBatch, Timestamp, setDoc, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { shortId, useCollection, useDoc, type WithId } from '../../lib/firestore';
+import { shortId, useCollection, type WithId } from '../../lib/firestore';
+import { useCurriculum } from '../../lib/curricula';
 import { useAuth } from '../../auth/AuthContext';
 import { addDays, combineDateTime, hoursBetween, toDateInputValue, tsFromDate, isValidDuration, END_BEFORE_START_MSG } from '../../lib/time';
-import type { AcademyDoc, CurriculumDoc, RoleSlot, UserDoc } from '../../types';
+import type { AcademyDoc, RoleSlot, UserDoc } from '../../types';
 import { Button, Field, Input, Select } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import { logAudit } from '../sessions/audit';
@@ -29,7 +30,7 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
   // Courses come entirely from THIS academy's discipline (its curriculum blocks)
   // — hours, high-liability, lead qualification, and default slots all live on
   // the block (Admin → Curriculum & Hours). Alphabetical.
-  const { data: curriculum } = useDoc<CurriculumDoc>(academy.discipline ? `curricula/${academy.discipline}` : null);
+  const { data: curriculum } = useCurriculum(academy.discipline);
   const courseOptions = useMemo(
     () =>
       (curriculum?.courses ?? [])

@@ -12,8 +12,9 @@ import React from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { where } from 'firebase/firestore';
 import { useCollection, useDoc } from '../../../lib/firestore';
+import { useCurriculum } from '../../../lib/curricula';
 import { useGlobalSettings } from '../../../app/providers';
-import type { AcademyDoc, CurriculumDoc, RosterMemberDoc, SessionDoc, UserDoc } from '../../../types';
+import type { AcademyDoc, RosterMemberDoc, SessionDoc, UserDoc } from '../../../types';
 import { DocumentHeader } from '../reports/DocumentHeader';
 import { Button, Spinner } from '../../../components/ui';
 
@@ -37,7 +38,7 @@ export function DayRosterPrintPage() {
   );
   const coordId = academy?.coordinatorIds?.[0];
   const { data: coordinator } = useDoc<UserDoc>(coordId ? `users/${coordId}` : null);
-  const { data: curriculum } = useDoc<CurriculumDoc>(academy?.discipline ? `curricula/${academy.discipline}` : null);
+  const { data: curriculum } = useCurriculum(academy?.discipline);
   const settings = useGlobalSettings();
 
   if (aLoading || rLoading) return <div className="flex h-screen items-center justify-center"><Spinner className="text-bifrost-400" /></div>;
