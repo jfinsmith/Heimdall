@@ -5,6 +5,7 @@
  */
 import React from 'react';
 import { Button } from './ui';
+import { isChunkLoadError, reloadForChunkError } from '../lib/chunkReload';
 
 interface Props {
   children: React.ReactNode;
@@ -21,11 +22,27 @@ export class ErrorBoundary extends React.Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
+    // A failed route-chunk load (stale chunk after deploy, or a network blip) —
+    // self-heal by reloading the current build instead of showing the error.
+    if (isChunkLoadError(error)) {
+      reloadForChunkError();
+      return;
+    }
     console.error('Render error caught by ErrorBoundary:', error, info);
   }
 
   render() {
     if (this.state.error) {
+      // Chunk-load failure: a reload is already in flight — show a calm interim
+      // message rather than the alarming error screen.
+      if (isChunkLoadError(this.state.error)) {
+        return (
+          <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 px-4 text-center">
+            <h1 className="text-lg font-semibold text-watch-900">Updating to the latest version…</h1>
+            <p className="max-w-md text-sm text-slate-500">One moment — reloading the app.</p>
+          </div>
+        );
+      }
       return (
         <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-4 text-center">
           <h1 className="text-lg font-semibold text-watch-900">Something went wrong</h1>
