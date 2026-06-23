@@ -4,7 +4,7 @@
  * from the Cadet Reports list.
  */
 import React from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { limit, where } from 'firebase/firestore';
 import { useCollection, useDoc } from '../../../lib/firestore';
 import { useCurriculum } from '../../../lib/curricula';
@@ -39,7 +39,7 @@ export function CadetReportPrintPage() {
   return (
     <div>
       <div className="no-print sticky top-0 flex items-center justify-between gap-2 border-b border-watch-100 bg-white px-4 py-2">
-        <Link to={`/cadet-reports`} className="text-sm text-bifrost-700 hover:underline">← Back to Cadet Reports</Link>
+        <button type="button" onClick={() => window.close()} className="text-sm text-bifrost-700 hover:underline">Close tab</button>
         <Button variant="primary" onClick={() => window.print()}>Print</Button>
       </div>
       <ReportLetter report={report} directorName={directorName} fromName={report.createdByName ?? ''} reportType={reportType} curriculum={curriculum} />
