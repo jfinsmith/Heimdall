@@ -135,6 +135,8 @@ function MembersTab({
 }) {
   const [addOpen, setAddOpen] = useState(false);
   const [withdrawTarget, setWithdrawTarget] = useState<WithId<RosterMemberDoc> | null>(null);
+  const [editTarget, setEditTarget] = useState<WithId<RosterMemberDoc> | null>(null);
+  const [emergencyTarget, setEmergencyTarget] = useState<WithId<RosterMemberDoc> | null>(null);
 
   async function remove(m: WithId<RosterMemberDoc>) {
     if (!window.confirm(`Remove ${m.fullName} from the roster entirely? To keep a record, withdraw them instead.`)) return;
@@ -160,6 +162,8 @@ function MembersTab({
               <th className="px-3 py-3">#</th>
               <th className="px-3 py-3">Name</th>
               <th className="px-3 py-3">Agency</th>
+              <th className="px-3 py-3">CJIS</th>
+              <th className="px-3 py-3">Student ID</th>
               <th className="px-3 py-3">Contact</th>
               <th className="px-3 py-3">Status</th>
               <th className="px-3 py-3" />
@@ -170,18 +174,20 @@ function MembersTab({
                 member collapses the numbers below them (e.g. pull #23 → #24 becomes #23). */}
             {full.map((m, i) => (
               <MemberRow key={m.id} m={m} displayNo={i + 1}
-                onWithdraw={() => setWithdrawTarget(m)} onReinstate={() => reinstate(m)} onRemove={() => remove(m)} />
+                onWithdraw={() => setWithdrawTarget(m)} onReinstate={() => reinstate(m)} onRemove={() => remove(m)}
+                onEdit={() => setEditTarget(m)} onEmergency={() => setEmergencyTarget(m)} />
             ))}
             {full.length === 0 && (
-              <tr><td colSpan={6} className="px-3 py-10 text-center text-slate-400">No members yet — add the first cadet.</td></tr>
+              <tr><td colSpan={8} className="px-3 py-10 text-center text-slate-400">No members yet — add the first cadet.</td></tr>
             )}
           </tbody>
           {blockTakers.length > 0 && (
             <tbody className="divide-y divide-watch-50">
-              <tr className="bg-watch-100/60"><td colSpan={6} className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-watch-600">Additional block takers</td></tr>
+              <tr className="bg-watch-100/60"><td colSpan={8} className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-watch-600">Additional block takers</td></tr>
               {blockTakers.map((m, i) => (
                 <MemberRow key={m.id} m={m} displayNo={i + 1}
-                  onWithdraw={() => setWithdrawTarget(m)} onReinstate={() => reinstate(m)} onRemove={() => remove(m)} />
+                  onWithdraw={() => setWithdrawTarget(m)} onReinstate={() => reinstate(m)} onRemove={() => remove(m)}
+                  onEdit={() => setEditTarget(m)} onEmergency={() => setEmergencyTarget(m)} />
               ))}
             </tbody>
           )}
@@ -192,18 +198,22 @@ function MembersTab({
       {withdrawTarget && (
         <WithdrawModal academyId={academyId} member={withdrawTarget} curriculum={curriculum} onClose={() => setWithdrawTarget(null)} />
       )}
+      {editTarget && <EditMemberModal academyId={academyId} member={editTarget} onClose={() => setEditTarget(null)} />}
+      {emergencyTarget && <EmergencyModal member={emergencyTarget} onClose={() => setEmergencyTarget(null)} />}
     </div>
   );
 }
 
 function MemberRow({
-  m, displayNo, onWithdraw, onReinstate, onRemove,
+  m, displayNo, onWithdraw, onReinstate, onRemove, onEdit, onEmergency,
 }: {
   m: WithId<RosterMemberDoc>;
   displayNo: number;
   onWithdraw: () => void; onReinstate: () => void; onRemove: () => void;
+  onEdit: () => void; onEmergency: () => void;
 }) {
   const withdrawn = m.status === 'withdrawn';
+  const hasEmergency = !!(m.emergencyName?.trim() || m.emergencyPhone?.trim());
   return (
     <tr className={withdrawn ? 'bg-slate-50 text-slate-400' : ''}>
       <td className="px-3 py-3 tabular-nums">{displayNo}</td>
@@ -211,14 +221,19 @@ function MemberRow({
         <span className={withdrawn ? 'line-through' : ''}>{m.fullName}</span>
       </td>
       <td className="px-3 py-3">{agencyLabel(m)}</td>
+      <td className="px-3 py-3 text-xs text-slate-500">{m.cjis || '—'}</td>
+      <td className="px-3 py-3 text-xs text-slate-500">{m.studentId || '—'}</td>
       <td className="px-3 py-3 text-xs text-slate-500">
         {m.email && <div>{m.email}</div>}
         {m.phone && <div>{formatPhone(m.phone)}</div>}
+        {!m.email && !m.phone && '—'}
       </td>
       <td className="px-3 py-3">
         {withdrawn ? <Badge tone="slate">withdrawn</Badge> : <Badge tone="green">active</Badge>}
       </td>
-      <td className="px-3 py-3 text-right">
+      <td className="px-3 py-3 text-right whitespace-nowrap">
+        <Button variant="ghost" onClick={onEmergency} disabled={!hasEmergency} title={hasEmergency ? 'View emergency contact' : 'No emergency contact on file'}>Emergency</Button>
+        <Button variant="ghost" className="text-bifrost-700" onClick={onEdit}>Edit</Button>
         {withdrawn ? (
           <Button variant="ghost" onClick={onReinstate}>Reinstate</Button>
         ) : (
@@ -227,6 +242,103 @@ function MemberRow({
         <Button variant="ghost" className="text-red-700" onClick={onRemove}>Remove</Button>
       </td>
     </tr>
+  );
+}
+
+// ── Emergency-contact popup ──────────────────────────────────────────────────
+function EmergencyModal({ member, onClose }: { member: WithId<RosterMemberDoc>; onClose: () => void }) {
+  return (
+    <Modal open onClose={onClose} title={`Emergency contact — ${member.fullName}`}>
+      <div className="space-y-3 text-sm">
+        <div>
+          <div className="text-xs uppercase tracking-wider text-slate-400">Name</div>
+          <div className="text-watch-900">{member.emergencyName?.trim() || '—'}</div>
+        </div>
+        <div>
+          <div className="text-xs uppercase tracking-wider text-slate-400">Phone</div>
+          <div className="text-watch-900">{member.emergencyPhone?.trim() ? formatPhone(member.emergencyPhone) : '—'}</div>
+        </div>
+        <div className="flex justify-end pt-2">
+          <Button variant="ghost" onClick={onClose}>Close</Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ── Edit member ──────────────────────────────────────────────────────────────
+function EditMemberModal({
+  academyId, member, onClose,
+}: {
+  academyId: string; member: WithId<RosterMemberDoc>; onClose: () => void;
+}) {
+  const [fullName, setFullName] = useState(member.fullName ?? '');
+  const [agency, setAgency] = useState<RosterAgency>((member.agency as RosterAgency) ?? 'PSO');
+  const [agencyOther, setAgencyOther] = useState(member.agencyOther ?? '');
+  const [cjis, setCjis] = useState(member.cjis ?? '');
+  const [studentId, setStudentId] = useState(member.studentId ?? '');
+  const [phone, setPhone] = useState(member.phone ?? '');
+  const [email, setEmail] = useState(member.email ?? '');
+  const [emergencyName, setEmergencyName] = useState(member.emergencyName ?? '');
+  const [emergencyPhone, setEmergencyPhone] = useState(member.emergencyPhone ?? '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    if (!fullName.trim()) { setError('A full name is required.'); return; }
+    if (agency === 'Other' && !agencyOther.trim()) { setError('Enter the agency name.'); return; }
+    setBusy(true);
+    setError(null);
+    try {
+      await updateDoc(doc(db, 'academies', academyId, 'roster', member.id), {
+        fullName: fullName.trim(),
+        agency,
+        agencyOther: agency === 'Other' ? agencyOther.trim() : '',
+        cjis: cjis.trim(),
+        studentId: studentId.trim(),
+        phone: formatPhone(phone),
+        email: email.trim(),
+        emergencyName: emergencyName.trim(),
+        emergencyPhone: formatPhone(emergencyPhone),
+        updatedAt: serverTimestamp(),
+      });
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save changes.');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open onClose={onClose} title={`Edit — ${member.fullName}`}>
+      <form onSubmit={save} className="space-y-4">
+        {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
+        <Field label="Full name">
+          <Input value={fullName} onChange={(e) => setFullName(e.target.value)} required placeholder="First Last" />
+        </Field>
+        <Field label="Sponsoring agency">
+          <Select value={agency} onChange={(e) => setAgency(e.target.value as RosterAgency)}>
+            {ROSTER_AGENCIES.map((a) => <option key={a.key} value={a.key}>{a.label}</option>)}
+          </Select>
+          {agency === 'Other' && (
+            <Input className="mt-2" value={agencyOther} onChange={(e) => setAgencyOther(e.target.value)} placeholder="Agency name" />
+          )}
+        </Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="CJIS number"><Input value={cjis} onChange={(e) => setCjis(e.target.value)} /></Field>
+          <Field label="Student ID"><Input value={studentId} onChange={(e) => setStudentId(e.target.value)} placeholder="P00000000" /></Field>
+          <Field label="Phone"><Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} onBlur={() => setPhone(formatPhone(phone))} /></Field>
+          <Field label="Email"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
+          <Field label="Emergency contact — name"><Input value={emergencyName} onChange={(e) => setEmergencyName(e.target.value)} /></Field>
+          <Field label="Emergency contact — phone"><Input type="tel" value={emergencyPhone} onChange={(e) => setEmergencyPhone(e.target.value)} onBlur={() => setEmergencyPhone(formatPhone(emergencyPhone))} /></Field>
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button type="submit" variant="primary" disabled={busy}>{busy ? 'Saving…' : 'Save'}</Button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
