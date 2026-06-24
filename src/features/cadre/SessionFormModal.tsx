@@ -340,21 +340,29 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
     if (allRoomIds.length && academy.orgId) {
       const templateIds = new Set(academies.filter((a) => a.isTemplate).map((a) => a.id));
       const acadName = (id: string) => academies.find((a) => a.id === id)?.shortName || 'another class';
-      for (const rid of allRoomIds) {
-        const conflict = await findRoomConflict({
-          orgId: academy.orgId,
-          roomId: rid,
-          start,
-          end,
-          excludeSessionId: session?.id,
-          isTemplate: (id) => templateIds.has(id),
-          labelFor: (s) => `${acadName(s.academyId)} — ${s.title || s.courseName}`,
-        });
-        if (conflict) {
-          setBusy(false);
-          setError(`${nameOf(rid) || 'A room'} is already booked ${toTimeInputValue(conflict.start)}–${toTimeInputValue(conflict.end)} by ${conflict.label}. Choose another room or time.`);
-          return;
+      try {
+        for (const rid of allRoomIds) {
+          const conflict = await findRoomConflict({
+            orgId: academy.orgId,
+            roomId: rid,
+            start,
+            end,
+            excludeSessionId: session?.id,
+            isTemplate: (id) => templateIds.has(id),
+            labelFor: (s) => `${acadName(s.academyId)} — ${s.title || s.courseName}`,
+          });
+          if (conflict) {
+            setBusy(false);
+            setError(`${nameOf(rid) || 'A room'} is already booked ${toTimeInputValue(conflict.start)}–${toTimeInputValue(conflict.end)} by ${conflict.label}. Choose another room or time.`);
+            return;
+          }
         }
+      } catch {
+        // A query failure (e.g. the room index still building) must never silently
+        // brick Save — surface it and let the user retry rather than hang.
+        setBusy(false);
+        setError('Couldn’t verify room availability right now — please try again in a moment.');
+        return;
       }
     }
 
