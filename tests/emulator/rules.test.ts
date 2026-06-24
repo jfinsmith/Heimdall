@@ -355,6 +355,32 @@ describe('curricula + reportConfig — org isolation', () => {
   });
 });
 
+// ── Billing gate: a commercialized org with a lapsed subscription cannot create
+// an academy; complimentary + pre-billing orgs always can (mirrors subscription.ts). ──
+describe('billing gate — create academy', () => {
+  async function setOrgBilling(fields: Record<string, unknown>) {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'orgs/' + ORG), { orgId: ORG, legalName: 'PHSC', ...fields }, { merge: true });
+    });
+  }
+  const draft = { orgId: ORG, status: 'draft', isTemplate: false, title: 'X' };
+  it('pre-billing org (no billingEnabled) may create', async () => {
+    await assertSucceeds(addDoc(collection(as('dave', 'director'), 'academies'), draft));
+  });
+  it('commercialized + canceled org may NOT create', async () => {
+    await setOrgBilling({ billingEnabled: true, subscriptionStatus: 'canceled' });
+    await assertFails(addDoc(collection(as('dave', 'director'), 'academies'), draft));
+  });
+  it('complimentary overrides a lapsed subscription', async () => {
+    await setOrgBilling({ billingEnabled: true, subscriptionStatus: 'canceled', complimentary: true });
+    await assertSucceeds(addDoc(collection(as('dave', 'director'), 'academies'), draft));
+  });
+  it('active subscription may create', async () => {
+    await setOrgBilling({ billingEnabled: true, subscriptionStatus: 'active' });
+    await assertSucceeds(addDoc(collection(as('dave', 'director'), 'academies'), draft));
+  });
+});
+
 // ── defaultCurricula: the five platform FDLE programs — readable by EVERY signed-in
 // user (single source of truth across orgs), writable only by the platform owner. ──
 describe('defaultCurricula — platform programs (cross-org read, owner-only write)', () => {

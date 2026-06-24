@@ -195,6 +195,12 @@ export interface OrgDoc {
    * gate the org. This keeps every existing tenant non-regressing.
    */
   billingEnabled?: boolean;
+  /**
+   * Complimentary tenant — never billed and never gated (the founding PHSC beta,
+   * or any partner the platform comps). Owner-set via setOrgComplimentary, checked
+   * FIRST everywhere so a billing lapse or a Stripe mishap can't restrict it.
+   */
+  complimentary?: boolean;
   plan?: string;
   /** Mirrors Stripe's Subscription.Status verbatim (written by the webhook). */
   subscriptionStatus?:

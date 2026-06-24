@@ -44,6 +44,12 @@ export function billingState(org: OrgDoc | null | undefined, now = Date.now()): 
   const status = (org?.subscriptionStatus ?? 'none') as SubscriptionStatus | 'none';
   const label = LABELS[status] ?? 'Unknown';
 
+  // Complimentary tenants are NEVER gated — checked first so a billing lapse or a
+  // Stripe mishap can't restrict the founding PHSC beta or any comped partner.
+  if (org?.complimentary === true) {
+    return { gated: false, active: true, inGrace: false, status, label: 'Complimentary' };
+  }
+
   // Not commercialized → unrestricted (founding tenant + pre-billing orgs).
   if (!org || org.billingEnabled !== true) {
     return { gated: false, active: true, inGrace: false, status, label };

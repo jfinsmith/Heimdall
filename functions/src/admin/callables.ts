@@ -1036,6 +1036,9 @@ export const getOrgDetail = onCall<{ orgId: string }>(async (request) => {
       dpaAcceptedAt: (o.dpaAcceptedAt as Timestamp | undefined)?.toMillis?.() ?? null,
       dpaAcceptedByName: (o.dpaAcceptedByName as string) ?? '',
       dpaVersion: (o.dpaVersion as string) ?? '',
+      complimentary: (o.complimentary as boolean) === true,
+      billingEnabled: (o.billingEnabled as boolean) === true,
+      subscriptionStatus: (o.subscriptionStatus as string) ?? 'none',
     },
     settings: {
       orgName: (s.orgName as string) ?? '',
@@ -1047,6 +1050,32 @@ export const getOrgDetail = onCall<{ orgId: string }>(async (request) => {
     memberCount: members.length,
     pendingCount: members.filter((m) => m.status === 'pending').length,
   };
+});
+
+/**
+ * Platform-owner: mark an org complimentary (never billed, never gated) or revert.
+ * Complimentary is checked first in billing everywhere — the founding PHSC beta
+ * gets this so a billing lapse / Stripe mishap can never restrict it.
+ */
+export const setOrgComplimentary = onCall<{ orgId: string; complimentary: boolean }>(async (request) => {
+  const caller = request.auth;
+  if (!caller) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = getFirestore();
+  const callerDoc = await db.doc(`users/${caller.uid}`).get();
+  if (!callerDoc.exists || callerDoc.data()!.platformOwner !== true) {
+    throw new HttpsError('permission-denied', 'Only the platform owner may change complimentary status.');
+  }
+  const orgId = (request.data.orgId ?? '').trim();
+  if (!orgId) throw new HttpsError('invalid-argument', 'Missing organization.');
+  const orgRef = db.doc(`orgs/${orgId}`);
+  if (!(await orgRef.get()).exists) throw new HttpsError('not-found', 'That organization does not exist.');
+  const complimentary = !!request.data.complimentary;
+  await orgRef.set({ complimentary }, { merge: true });
+  await db.collection('auditLog').add({
+    actorUid: caller.uid, action: 'org.set_complimentary', targetType: 'org', targetId: orgId,
+    summary: `Set complimentary = ${complimentary}`, createdAt: FieldValue.serverTimestamp(),
+  });
+  return { ok: true, complimentary };
 });
 
 /**

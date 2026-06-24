@@ -21,7 +21,7 @@ interface QueueAccount { uid: string; email: string; displayName: string; status
 interface OrgSummary { orgId: string; legalName: string; userCount: number }
 interface Member { uid: string; displayName: string; email: string; role: string; status: string; rank: string }
 interface OrgDetail {
-  org: { orgId: string; legalName: string; status: string; shortCode: string; dataRegion: string; dpaAcceptedAt: number | null; dpaAcceptedByName: string; dpaVersion: string };
+  org: { orgId: string; legalName: string; status: string; shortCode: string; dataRegion: string; dpaAcceptedAt: number | null; dpaAcceptedByName: string; dpaVersion: string; complimentary: boolean; billingEnabled: boolean; subscriptionStatus: string };
   settings: { orgName: string; allowedEmailDomains: string[]; siteCode: string; jurisdiction: string };
   members: Member[];
   memberCount: number;
@@ -34,6 +34,7 @@ const createOrg = httpsCallable<{ shortCode: string; legalName: string; allowedE
 const createOrgAdmin = httpsCallable<{ orgId: string; email: string; displayName: string; role: Role }, { ok: boolean; uid: string; tempPassword: string }>(functions, 'createOrgAdmin');
 const assignUserToOrg = httpsCallable<{ uid: string; orgId: string }, { ok: boolean }>(functions, 'assignUserToOrg');
 const deleteUnassignedAccount = httpsCallable<{ uid: string }, { ok: boolean }>(functions, 'deleteUnassignedAccount');
+const setOrgComplimentaryFn = httpsCallable<{ orgId: string; complimentary: boolean }, { ok: boolean; complimentary: boolean }>(functions, 'setOrgComplimentary');
 
 const ROLE_LABEL: Record<string, string> = Object.fromEntries(RANKS.map((r) => [r.key, r.defaultLabel]));
 const ADMIN_ROLE_OPTIONS = RANKS.filter((r) => r.key === 'director' || r.key === 'lieutenant');
@@ -107,8 +108,15 @@ export function OwnerConsolePage() {
         <OrgDetailPanel
           detail={detail}
           loading={detailLoading}
+          busy={busy === selectedOrgId}
           onBack={() => { setSelectedOrgId(null); setDetail(null); }}
           onAddAdmin={() => setAddAdminOrg(selectedOrgId)}
+          onToggleComplimentary={async (complimentary) => {
+            setBusy(selectedOrgId);
+            try { await setOrgComplimentaryFn({ orgId: selectedOrgId, complimentary }); openOrg(selectedOrgId); load(); }
+            catch (e) { setError((e as Error).message || 'Failed to update complimentary status.'); }
+            finally { setBusy(null); }
+          }}
         />
       ) : (
         <>
@@ -207,8 +215,9 @@ function QueueRow({ a, orgs, busy, onAssign, onDelete }: {
   );
 }
 
-function OrgDetailPanel({ detail, loading, onBack, onAddAdmin }: {
-  detail: OrgDetail | null; loading: boolean; onBack: () => void; onAddAdmin: () => void;
+function OrgDetailPanel({ detail, loading, busy, onBack, onAddAdmin, onToggleComplimentary }: {
+  detail: OrgDetail | null; loading: boolean; busy: boolean; onBack: () => void; onAddAdmin: () => void;
+  onToggleComplimentary: (complimentary: boolean) => void;
 }) {
   return (
     <div>
@@ -242,6 +251,19 @@ function OrgDetailPanel({ detail, loading, onBack, onAddAdmin }: {
               <Info label="Site join code" value={detail.settings.siteCode || '(none set)'} />
               <Info label="Auto-join domains" value={detail.settings.allowedEmailDomains.length ? detail.settings.allowedEmailDomains.join(', ') : '(none)'} />
             </dl>
+            <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-watch-50 pt-3">
+              <span className="text-sm">
+                <span className="font-medium text-watch-800">Billing:</span>{' '}
+                {detail.org.complimentary
+                  ? 'Complimentary — never billed or gated'
+                  : detail.org.billingEnabled
+                    ? `Commercial · ${detail.org.subscriptionStatus}`
+                    : 'Not commercialized'}
+              </span>
+              <Button variant="ghost" disabled={busy} onClick={() => onToggleComplimentary(!detail.org.complimentary)}>
+                {detail.org.complimentary ? 'Remove complimentary' : 'Mark complimentary'}
+              </Button>
+            </div>
           </section>
 
           <section className="rounded-lg border border-watch-100 bg-white p-4 shadow-sm">

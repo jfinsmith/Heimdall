@@ -145,6 +145,13 @@ async function applySubscription(db: Firestore, stripe: Stripe, eventSub: Stripe
     console.warn('stripeWebhook: no org for subscription', sub.id);
     return;
   }
+  // Complimentary orgs (the founding PHSC beta) are never billed — never flip
+  // commercialization on for them, even if a Stripe customer/subscription exists.
+  const orgDoc = await db.doc(`orgs/${orgId}`).get();
+  if (orgDoc.data()?.complimentary === true) {
+    console.log('stripeWebhook: org is complimentary — skipping billing write', orgId);
+    return;
+  }
   const customerId = typeof sub.customer === 'string' ? sub.customer : sub.customer.id;
   await db.doc(`orgs/${orgId}`).set(
     {

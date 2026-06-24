@@ -236,6 +236,19 @@ service cloud.firestore {
     // ── academies ──────────────────────────────────────────────────────────
     // Instructors see published lifecycle states only; staff see everything —
     // both within their own tenant. Lists MUST be orgId-constrained (useCollection).
+    // Billing gate — mirrors src/lib/subscription.ts. An org may create/publish
+    // academies unless commercialization is ON (billingEnabled) and its
+    // subscription has lapsed past the grace window. Complimentary + pre-billing
+    // orgs always pass (so the founding PHSC beta is never restricted).
+    function billingAllows(orgId) {
+      let o = get(/databases/$(database)/documents/orgs/$(orgId)).data;
+      return o.get('complimentary', false) == true
+        || o.get('billingEnabled', false) != true
+        || o.get('subscriptionStatus', 'none') in ['active', 'trialing', 'incomplete']
+        || (o.get('subscriptionStatus', 'none') in ['past_due', 'unpaid']
+            && o.get('currentPeriodEnd', 0) + 259200000 > request.time.toMillis());
+    }
+
     match /academies/{academyId} {
       allow read: if inOrg(resource.data) && (
         isStaff()
@@ -246,7 +259,8 @@ service cloud.firestore {
       // stops a client creating an already-published/approved class outright.
       allow create: if isStaff() && inOrg(request.resource.data)
         && request.resource.data.status == 'draft'
-        && request.resource.data.get(['approval', 'state'], 'not_submitted') != 'approved';
+        && request.resource.data.get(['approval', 'state'], 'not_submitted') != 'approved'
+        && billingAllows(request.resource.data.orgId);
       allow delete: if isStaff() && inOrg(resource.data);
       // Staff edit freely within their org, EXCEPT moving into a published
       // lifecycle state, which requires the captain's approval (templates exempt).
@@ -260,7 +274,7 @@ service cloud.firestore {
         !(request.resource.data.status in ['published', 'in_progress', 'completed'])
         || resource.data.status in ['published', 'in_progress', 'completed']
         || resource.data.get('isTemplate', false) == true
-        || resource.data.get(['approval', 'state'], '') == 'approved'
+        || (resource.data.get(['approval', 'state'], '') == 'approved' && billingAllows(resource.data.orgId))
       );
 
       // ── roster (per-academy cadets) ──────────────────────────────────────

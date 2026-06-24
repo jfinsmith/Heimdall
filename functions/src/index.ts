@@ -21,7 +21,7 @@ export { calendarFeed } from './gjallarhorn/icsFeed';
 // Gjallarhorn — scheduled sweeps (2 Cloud Scheduler jobs, within the 3 free)
 export { gjallarhornDailySweep, gjallarhornWeeklyDigest } from './gjallarhorn/sweeps';
 // Admin callables
-export { setUserRole, bootstrapFirstDirector, createUserAccount, createOrg, academyApproval, sendActivationEmail, setUserSuspension, setUserActive, listAllFeedback, joinOrgByCode, assignUserToOrg, denyUser, listOwnerQueue, getOrgDetail, createOrgAdmin, deleteUnassignedAccount, listAllAuditLog, ownerListOrgs, ownerSwitchOrg, importDefaultCurricula, acceptOrgDpa } from './admin/callables';
+export { setUserRole, bootstrapFirstDirector, createUserAccount, createOrg, academyApproval, sendActivationEmail, setUserSuspension, setUserActive, listAllFeedback, joinOrgByCode, assignUserToOrg, denyUser, listOwnerQueue, getOrgDetail, setOrgComplimentary, createOrgAdmin, deleteUnassignedAccount, listAllAuditLog, ownerListOrgs, ownerSwitchOrg, importDefaultCurricula, acceptOrgDpa } from './admin/callables';
 // Academy roster — member creation (no SSN stored; college holds SSNs locally)
 export { rosterCreateMember } from './admin/roster';
 // Billing (Phase 14) — Stripe subscriptions (checkout, portal, webhook)
