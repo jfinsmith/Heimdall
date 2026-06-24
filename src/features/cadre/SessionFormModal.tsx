@@ -15,7 +15,7 @@ import { useCurriculum } from '../../lib/curricula';
 import { useClickOutside } from '../../lib/useClickOutside';
 import { useAuth } from '../../auth/AuthContext';
 import { combineDateTime, hoursBetween, toDateInputValue, toTimeInputValue, tsFromDate, isValidDuration, END_BEFORE_START_MSG } from '../../lib/time';
-import type { AcademyDoc, QualificationKey, RoleSlot, RosterMemberDoc, SessionDoc, SlotRole, UserDoc } from '../../types';
+import type { AcademyDoc, QualificationKey, RoleSlot, RoomCategoryDoc, RoomDoc, RosterMemberDoc, SessionDoc, SlotRole, UserDoc } from '../../types';
 import { QUALIFICATION_LABELS, SLOT_ROLE_LABELS, SELECTABLE_SLOT_ROLES, instructorCertActive, isInstructorQual } from '../../types';
 import { Button, Field, Input, Select, TextArea } from '../../components/ui';
 import { Modal } from '../../components/Modal';
@@ -156,6 +156,18 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
   const [room, setRoom] = useState(session?.room ?? academy.defaultRoom ?? '');
   const [roomId, setRoomId] = useState<string | undefined>(session?.roomId ?? academy.defaultRoomId);
   const [location, setLocation] = useState(session?.location ?? academy.location);
+  // Picking a managed room auto-fills the location from that room's category and
+  // locks the field; a custom/no room leaves location free-text.
+  const { data: allRooms } = useCollection<RoomDoc>('rooms');
+  const { data: roomCats } = useCollection<RoomCategoryDoc>('roomCategories');
+  const roomLocation = useMemo(() => {
+    if (!roomId) return undefined;
+    const r = allRooms.find((x) => x.id === roomId);
+    const cat = r && roomCats.find((k) => k.id === r.categoryId);
+    return cat?.name;
+  }, [roomId, allRooms, roomCats]);
+  const locationLocked = !!roomId && roomLocation != null;
+  const effectiveLocation = locationLocked ? roomLocation! : location;
   // All org academies — for room-conflict template exclusion + holder labels.
   const { data: academies } = useCollection<AcademyDoc>('academies');
   const [notes, setNotes] = useState(session?.notes ?? '');
@@ -353,7 +365,7 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
       title: '',
       start: tsFromDate(start),
       end: tsFromDate(end),
-      location,
+      location: effectiveLocation,
       room,
       // Instructional hours exclude the lunch break — unless lunch is set to count.
       hours: Math.max(0, hoursBetween(start, end) - (lunchCounts ? 0 : lunchMinutes / 60)),
@@ -417,7 +429,7 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
             academyId: academy.id,
             role: info.role,
             courseName,
-            location,
+            location: effectiveLocation,
             room,
             start: tsFromDate(start),
             end: tsFromDate(end),
@@ -562,8 +574,8 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
           <Field label="Room (optional)" hint="Pick a managed room or Custom — booked rooms are blocked">
             <RoomSelect value={room} roomId={roomId} headcount={classSize} onChange={(name, id) => { setRoom(name); setRoomId(id); }} />
           </Field>
-          <Field label="Location" hint="This day only — e.g. an off-site range">
-            <Input value={location} onChange={(e) => setLocation(e.target.value)} required />
+          <Field label="Location" hint={locationLocked ? 'From the room’s location — pick Custom room to edit' : 'This day only — e.g. an off-site range'}>
+            <Input value={effectiveLocation} onChange={(e) => setLocation(e.target.value)} required disabled={locationLocked} />
           </Field>
         </div>
 

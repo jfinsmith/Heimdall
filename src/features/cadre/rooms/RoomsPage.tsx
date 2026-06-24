@@ -132,6 +132,11 @@ export function RoomsPage() {
     if (!window.confirm(`Delete category “${c.name}”?`)) return;
     await deleteDoc(doc(db, 'roomCategories', c.id));
   }
+  async function renameCategory(c: WithId<RoomCategoryDoc>) {
+    const name = window.prompt('Rename location', c.name)?.trim();
+    if (!name || name === c.name) return;
+    await updateDoc(doc(db, 'roomCategories', c.id), { name });
+  }
   async function toggleRoomActive(r: WithId<RoomDoc>) {
     await updateDoc(doc(db, 'rooms', r.id), { active: r.active === false });
   }
@@ -166,7 +171,7 @@ export function RoomsPage() {
         {roomsOpen && (
           <div className="mt-3 space-y-3">
             <div className="flex flex-wrap items-end gap-2">
-              <Field label="New location / category" hint="e.g. College, Range, Off-site">
+              <Field label="New location" hint="e.g. College, Range, Off-site">
                 <Input value={newCat} onChange={(e) => setNewCat(e.target.value)} placeholder="Range" onKeyDown={(e) => { if (e.key === 'Enter') addCategory(); }} />
               </Field>
               <Button variant="primary" disabled={busy || !newCat.trim()} onClick={addCategory}>Add</Button>
@@ -182,7 +187,10 @@ export function RoomsPage() {
                   <span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: catColor.get(c.id) }} />
                   <span className="font-medium text-watch-900">{c.name}</span>
                 </div>
-                <button className="text-xs text-slate-400 hover:text-red-600" onClick={() => deleteCategory(c)}>Delete</button>
+                <div className="flex items-center gap-2">
+                  <button className="text-xs text-bifrost-700 hover:underline" onClick={() => renameCategory(c)}>Rename</button>
+                  <button className="text-xs text-slate-400 hover:text-red-600" onClick={() => deleteCategory(c)}>Delete</button>
+                </div>
               </div>
               <ul className="space-y-1">
                 {(roomsByCat.get(c.id) ?? []).map((r) => (
