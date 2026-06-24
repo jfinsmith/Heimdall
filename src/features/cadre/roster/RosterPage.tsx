@@ -7,7 +7,7 @@
 import React, { useMemo, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
-import { doc, serverTimestamp, updateDoc, deleteDoc, deleteField } from 'firebase/firestore';
+import { doc, serverTimestamp, updateDoc, deleteDoc, deleteField, collection, getDocs } from 'firebase/firestore';
 import { db, functions } from '../../../lib/firebase';
 import { useCollection, useDoc, type WithId } from '../../../lib/firestore';
 import { useCurriculum } from '../../../lib/curricula';
@@ -16,6 +16,8 @@ import { ROSTER_AGENCIES } from '../../../types';
 import { Badge, Button, Field, Input, PageHeader, Select, Spinner } from '../../../components/ui';
 import { Modal } from '../../../components/Modal';
 import { agencyLabel, courseKey, memberStanding } from './rosterShared';
+import { buildCadetRecords } from './exportRecords';
+import { downloadCsv } from '../../../lib/csv';
 import { AttendanceTab } from './AttendanceTab';
 import { AttendanceLogTab } from './AttendanceLogTab';
 import { DisciplineTab } from './DisciplineTab';
@@ -48,6 +50,22 @@ export function RosterPage() {
   // "Generate letter" from grades/discipline → jump to Reports with a pre-fill.
   const [letterSeed, setLetterSeed] = useState<LetterSeed | null>(null);
   const generateLetter = (s: LetterSeed) => { setLetterSeed(s); setTab('reports'); };
+
+  // Records export (item 10): one CSV row per cadet — identity, outcome, standing,
+  // attended hours (summed from the attendance subcollection), per-course results.
+  async function exportRecords() {
+    const snap = await getDocs(collection(db, 'academies', academyId, 'attendance'));
+    const attendedHours = new Map<string, number>();
+    snap.forEach((d) => {
+      const entries = (d.data() as { entries?: Record<string, { hours?: number }> }).entries ?? {};
+      for (const [cid, e] of Object.entries(entries)) {
+        if (e?.hours) attendedHours.set(cid, (attendedHours.get(cid) ?? 0) + e.hours);
+      }
+    });
+    const { headers, rows } = buildCadetRecords(members, curriculum?.courses ?? [], attendedHours);
+    const stamp = new Date().toISOString().slice(0, 10);
+    downloadCsv(`${academy?.shortName || academy?.name || 'academy'}-records-${stamp}`, headers, rows);
+  }
 
   if (loading) return <div className="flex justify-center py-20"><Spinner className="text-bifrost-400" /></div>;
   if (!academy) return <p className="text-sm text-slate-500">Academy not found.</p>;
@@ -86,9 +104,12 @@ export function RosterPage() {
           kicker="Roster"
           title={`${academy.shortName ? academy.shortName + ' — ' : ''}${academy.name}`}
           actions={
-            <Link to={`/cadre/academies/${academyId}`} className="text-sm text-bifrost-700 hover:underline">
-              ← Back to builder
-            </Link>
+            <div className="flex items-center gap-3">
+              <button type="button" onClick={exportRecords} className="text-sm text-bifrost-700 hover:underline">⬇ Export records</button>
+              <Link to={`/cadre/academies/${academyId}`} className="text-sm text-bifrost-700 hover:underline">
+                ← Back to builder
+              </Link>
+            </div>
           }
         />
 
