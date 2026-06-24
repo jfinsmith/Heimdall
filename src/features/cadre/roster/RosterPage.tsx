@@ -333,7 +333,7 @@ function MemberRow({
       <td className="px-3 py-3 text-right whitespace-nowrap">
         <Button variant="ghost" onClick={onEmergency} disabled={!hasEmergency} title={hasEmergency ? 'View emergency contact' : 'No emergency contact on file'}>Emergency</Button>
         <Button variant="ghost" className="text-bifrost-700" onClick={onEdit}>Edit</Button>
-        <Link to={`/roster/cadet/print/${academyId}/${m.id}`} target="_blank" rel="noopener" className="inline-block px-2 text-sm text-bifrost-700 hover:underline">Record</Link>
+        <Link to={`/roster/cadet/print/${academyId}/${m.id}`} target="_blank" rel="noopener" className="inline-block px-2 text-sm text-bifrost-700 hover:underline">Certificate</Link>
         {m.status === 'active' ? (
           <>
             <Button variant="ghost" className="text-green-700" onClick={onGraduate}>Graduate</Button>

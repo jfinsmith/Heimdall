@@ -62,12 +62,16 @@ export function CadetRecordPrintPage() {
             in accordance with the Florida Criminal Justice Standards and Training Commission (CJSTC).
           </p>
           <p className="mt-6 text-sm">Awarded {completed}{academy.location ? ` at ${academy.location}` : ''}.</p>
-          <div className="mt-16 flex items-end justify-center gap-16 text-xs">
-            <div className="w-64 border-t border-black pt-1">
-              {directorName}
+          <div className="mt-16 flex items-start justify-center gap-12 text-xs">
+            <div className="w-64">
+              <div className="h-10 border-b border-black" />
+              <div className="pt-1">{directorName}</div>
               <div className="text-[10px] uppercase tracking-wide text-slate-500">Academy Director</div>
             </div>
-            <div className="w-36 border-t border-black pt-1">Date</div>
+            <div className="w-40">
+              <div className="h-10 border-b border-black" />
+              <div className="pt-1 text-[10px] uppercase tracking-wide text-slate-500">Date</div>
+            </div>
           </div>
           {classLine && <p className="mt-8 text-[10px] text-slate-500">Class {classLine}</p>}
         </div>
@@ -80,7 +84,7 @@ export function CadetRecordPrintPage() {
           <tbody>
             <tr>
               <td className="border border-black px-1.5 py-1"><div className="text-[8px] font-bold uppercase text-black/70">Name</div>{member.fullName}</td>
-              <td className="border border-black px-1.5 py-1"><div className="text-[8px] font-bold uppercase text-black/70">CJIS / Student ID</div>{member.cjis || member.studentId || '—'}</td>
+              <td className="border border-black px-1.5 py-1"><div className="text-[8px] font-bold uppercase text-black/70">Student ID</div>{member.studentId || '—'}</td>
               <td className="border border-black px-1.5 py-1"><div className="text-[8px] font-bold uppercase text-black/70">Agency</div>{agencyLabel(member)}</td>
               <td className="border border-black px-1.5 py-1"><div className="text-[8px] font-bold uppercase text-black/70">Outcome</div>{member.status === 'graduated' ? 'Graduated' : member.status === 'dismissed' ? 'Dismissed' : member.status === 'withdrawn' ? 'Withdrawn' : 'In progress'}</td>
             </tr>
@@ -126,9 +130,16 @@ export function CadetRecordPrintPage() {
           </ul>
         )}
 
-        <div className="mt-10 flex items-end gap-8 text-xs">
-          <div className="flex-1 border-t border-black pt-1">{directorName || 'Academy Director'}<div className="text-[10px] uppercase text-slate-500">Academy Director</div></div>
-          <div className="w-40 border-t border-black pt-1">Date</div>
+        <div className="mt-10 flex items-start gap-8 text-xs">
+          <div className="flex-1">
+            <div className="h-10 border-b border-black" />
+            <div className="pt-1">{directorName || 'Academy Director'}</div>
+            <div className="text-[10px] uppercase text-slate-500">Academy Director</div>
+          </div>
+          <div className="w-40">
+            <div className="h-10 border-b border-black" />
+            <div className="pt-1 text-[10px] uppercase text-slate-500">Date</div>
+          </div>
         </div>
       </div>
     </div>
