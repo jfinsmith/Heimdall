@@ -160,6 +160,13 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
   // locks the field; a custom/no room leaves location free-text.
   const { data: allRooms } = useCollection<RoomDoc>('rooms');
   const { data: roomCats } = useCollection<RoomCategoryDoc>('roomCategories');
+  const nameOf = (id: string) => allRooms.find((r) => r.id === id)?.name ?? '';
+  // Additional managed rooms beyond the primary (scenario days). The primary is
+  // roomId; roomIds[] stores all of them so every room is conflict-checked.
+  const [extraRoomIds, setExtraRoomIds] = useState<string[]>(() => (session?.roomIds ?? []).slice(1));
+  const addExtraRoom = () => setExtraRoomIds((p) => [...p, '']);
+  const updateExtraRoom = (i: number, id: string | undefined) => setExtraRoomIds((p) => p.map((x, j) => (j === i ? (id ?? '') : x)));
+  const removeExtraRoom = (i: number) => setExtraRoomIds((p) => p.filter((_, j) => j !== i));
   const roomLocation = useMemo(() => {
     if (!roomId) return undefined;
     const r = allRooms.find((x) => x.id === roomId);
@@ -323,24 +330,31 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
     }
     const courseName = resolvedName;
 
-    // Hard block: a managed room can't be double-booked over an overlapping time.
+    // All managed rooms attached to this session (primary + extras), de-duped.
+    const extraIds = [...new Set(extraRoomIds.filter(Boolean))].filter((id) => id !== roomId);
+    const allRoomIds = roomId ? [roomId, ...extraIds] : extraIds;
+    const roomDisplay = [room, ...extraIds.map(nameOf)].filter(Boolean).join(', ');
+
+    // Hard block: EVERY managed room must be free over the overlapping time.
     // (Custom/free-text rooms carry no roomId and are not reserved.)
-    if (roomId && academy.orgId) {
+    if (allRoomIds.length && academy.orgId) {
       const templateIds = new Set(academies.filter((a) => a.isTemplate).map((a) => a.id));
       const acadName = (id: string) => academies.find((a) => a.id === id)?.shortName || 'another class';
-      const conflict = await findRoomConflict({
-        orgId: academy.orgId,
-        roomId,
-        start,
-        end,
-        excludeSessionId: session?.id,
-        isTemplate: (id) => templateIds.has(id),
-        labelFor: (s) => `${acadName(s.academyId)} — ${s.title || s.courseName}`,
-      });
-      if (conflict) {
-        setBusy(false);
-        setError(`${room} is already booked ${toTimeInputValue(conflict.start)}–${toTimeInputValue(conflict.end)} by ${conflict.label}. Choose another room or time.`);
-        return;
+      for (const rid of allRoomIds) {
+        const conflict = await findRoomConflict({
+          orgId: academy.orgId,
+          roomId: rid,
+          start,
+          end,
+          excludeSessionId: session?.id,
+          isTemplate: (id) => templateIds.has(id),
+          labelFor: (s) => `${acadName(s.academyId)} — ${s.title || s.courseName}`,
+        });
+        if (conflict) {
+          setBusy(false);
+          setError(`${nameOf(rid) || 'A room'} is already booked ${toTimeInputValue(conflict.start)}–${toTimeInputValue(conflict.end)} by ${conflict.label}. Choose another room or time.`);
+          return;
+        }
       }
     }
 
@@ -366,7 +380,7 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
       start: tsFromDate(start),
       end: tsFromDate(end),
       location: effectiveLocation,
-      room,
+      room: roomDisplay,
       // Instructional hours exclude the lunch break — unless lunch is set to count.
       hours: Math.max(0, hoursBetween(start, end) - (lunchCounts ? 0 : lunchMinutes / 60)),
       lunchMinutes,
@@ -382,12 +396,13 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
     try {
       let sessionId = session?.id;
       if (session) {
-        await updateDoc(doc(db, 'sessions', session.id), { ...payload, roomId: roomId ?? deleteField() });
+        await updateDoc(doc(db, 'sessions', session.id), { ...payload, roomId: roomId ?? deleteField(), roomIds: allRoomIds.length ? allRoomIds : deleteField() });
         await logAudit(firebaseUser.uid, 'session.update', 'session', session.id, `Updated ${courseName} on ${date}`);
       } else {
         const ref = await addDoc(collection(db, 'sessions'), {
           ...payload,
           ...(roomId ? { roomId } : {}),
+          ...(allRoomIds.length ? { roomIds: allRoomIds } : {}),
           orgId: academy.orgId,
           // Visible on the calendar once the academy is published, but sign-ups
           // stay closed until the coordinator opens the course.
@@ -430,7 +445,7 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
             role: info.role,
             courseName,
             location: effectiveLocation,
-            room,
+            room: roomDisplay,
             start: tsFromDate(start),
             end: tsFromDate(end),
             status: 'confirmed',
@@ -571,8 +586,19 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
           {lunchMinutes > 0 && (lunchCounts ? ` (incl. a ${lunchMinutes}-min lunch)` : ` (after a ${lunchMinutes}-min lunch)`)}
         </p>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Room (optional)" hint="Pick a managed room or Custom — booked rooms are blocked">
-            <RoomSelect value={room} roomId={roomId} headcount={classSize} onChange={(name, id) => { setRoom(name); setRoomId(id); }} />
+          <Field label="Room (optional)" hint="Pick a managed room or Custom — booked rooms are blocked. Add more for scenario days.">
+            <div className="space-y-2">
+              <RoomSelect value={room} roomId={roomId} headcount={classSize} onChange={(name, id) => { setRoom(name); setRoomId(id); }} />
+              {extraRoomIds.map((id, i) => (
+                <div key={i} className="flex items-start gap-2">
+                  <div className="flex-1">
+                    <RoomSelect value={nameOf(id)} roomId={id || undefined} headcount={classSize} onChange={(_, nid) => updateExtraRoom(i, nid)} />
+                  </div>
+                  <button type="button" className="mt-2 text-slate-400 hover:text-red-600" onClick={() => removeExtraRoom(i)} aria-label="Remove room">✕</button>
+                </div>
+              ))}
+              <button type="button" className="text-xs font-medium text-bifrost-700 hover:underline" onClick={addExtraRoom}>+ Add room</button>
+            </div>
           </Field>
           <Field label="Location" hint={locationLocked ? 'From the room’s location — pick Custom room to edit' : 'This day only — e.g. an off-site range'}>
             <Input value={effectiveLocation} onChange={(e) => setLocation(e.target.value)} required disabled={locationLocked} />

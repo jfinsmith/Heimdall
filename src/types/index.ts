@@ -738,6 +738,10 @@ export interface SessionDoc {
    *  is chosen; absent for legacy or custom (free-text) rooms. `room` always holds
    *  the display name. Conflict-checking keys off roomId (falls back to name). */
   roomId?: string;
+  /** All managed rooms reserved for this session (primary first; mirrors roomId at
+   *  index 0). Present when one or more managed rooms are attached — e.g. a scenario
+   *  day. Conflict checks query this with array-contains so every room is covered. */
+  roomIds?: string[];
   /** Instructional hours = wall-clock span minus the lunch break (unless lunch counts — see below). */
   hours: number;
   /** Minutes of lunch carved out of the middle of the block (not instructional). */

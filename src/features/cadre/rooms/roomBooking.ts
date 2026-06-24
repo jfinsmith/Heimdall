@@ -15,12 +15,20 @@ export function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date): bo
   return aStart < bEnd && bStart < aEnd;
 }
 
-/** All sessions in the org that reference `roomId` (any status — caller filters). */
+/**
+ * All sessions that reference `roomId` (any status — caller filters), as either
+ * the primary room (`roomId`) OR one of several reserved rooms (`roomIds`, e.g. a
+ * scenario day). Two queries merged + de-duped: the array-contains query needs no
+ * orgId filter since room ids are globally unique (one room → one org).
+ */
 export async function loadRoomBookings(orgId: string, roomId: string): Promise<(SessionDoc & { id: string })[]> {
-  const snap = await getDocs(
-    query(collection(db, 'sessions'), where('orgId', '==', orgId), where('roomId', '==', roomId))
-  );
-  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as SessionDoc) }));
+  const [byPrimary, byArray] = await Promise.all([
+    getDocs(query(collection(db, 'sessions'), where('orgId', '==', orgId), where('roomId', '==', roomId))),
+    getDocs(query(collection(db, 'sessions'), where('roomIds', 'array-contains', roomId))),
+  ]);
+  const map = new Map<string, SessionDoc & { id: string }>();
+  for (const d of [...byPrimary.docs, ...byArray.docs]) map.set(d.id, { id: d.id, ...(d.data() as SessionDoc) });
+  return [...map.values()];
 }
 
 /** All ad-hoc reservations in the org for `roomId`. */

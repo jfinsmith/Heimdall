@@ -65,12 +65,19 @@ export const saveRoomReservation = onCall<{
 
   const id = reservationId || db.collection('roomReservations').doc().id;
   await db.runTransaction(async (tx) => {
-    // Reads first (Admin SDK transaction requirement).
-    const sess = await tx.get(db.collection('sessions').where('orgId', '==', orgId).where('roomId', '==', roomId));
+    // Reads first (Admin SDK transaction requirement). A session can hold this
+    // room as its primary (roomId) OR one of several rooms (roomIds, e.g. a
+    // scenario day) — check both. The array-contains query needs no orgId filter
+    // since room ids are globally unique (one room → one org).
+    const sessByPrimary = await tx.get(db.collection('sessions').where('orgId', '==', orgId).where('roomId', '==', roomId));
+    const sessByArray = await tx.get(db.collection('sessions').where('roomIds', 'array-contains', roomId));
     const res = await tx.get(db.collection('roomReservations').where('orgId', '==', orgId).where('roomId', '==', roomId));
     const roomName = (roomSnap.data()!.name as string) || 'That room';
 
-    for (const d of sess.docs) {
+    const seenSess = new Set<string>();
+    for (const d of [...sessByPrimary.docs, ...sessByArray.docs]) {
+      if (seenSess.has(d.id)) continue;
+      seenSess.add(d.id);
       const s = d.data();
       if (s.status === 'cancelled' || templateIds.has(s.academyId)) continue;
       if (overlaps(startD, endD, s.start.toDate(), s.end.toDate())) {
