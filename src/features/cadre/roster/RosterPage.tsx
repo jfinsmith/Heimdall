@@ -18,6 +18,7 @@ import { Modal } from '../../../components/Modal';
 import { agencyLabel, courseKey, memberStanding } from './rosterShared';
 import { buildCadetRecords } from './exportRecords';
 import { downloadCsv } from '../../../lib/csv';
+import { BulkImportModal, type ImportColumn } from '../../../components/BulkImportModal';
 import { AttendanceTab } from './AttendanceTab';
 import { AttendanceLogTab } from './AttendanceLogTab';
 import { DisciplineTab } from './DisciplineTab';
@@ -153,6 +154,38 @@ export function RosterPage() {
 }
 
 // ── Members tab ──────────────────────────────────────────────────────────────
+const CADET_IMPORT_COLUMNS: ImportColumn[] = [
+  { key: 'fullName', label: 'Name', required: true, aliases: ['full name', 'cadet', 'cadet name'] },
+  { key: 'agency', label: 'Agency', aliases: ['dept', 'department'] },
+  { key: 'cjis', label: 'CJIS', aliases: ['cjis id', 'cjis number'] },
+  { key: 'studentId', label: 'Student ID', aliases: ['student', 'sid'] },
+  { key: 'email', label: 'Email', aliases: ['e-mail'] },
+  { key: 'phone', label: 'Phone', aliases: ['phone number', 'cell'] },
+];
+
+function validateCadetRow(r: Record<string, string>): string[] {
+  const errs: string[] = [];
+  if (!r.fullName?.trim()) errs.push('Name required');
+  if (r.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(r.email)) errs.push('Bad email');
+  return errs;
+}
+
+/** Map a CSV row to a rosterCreateMember payload. An unrecognized agency name is
+ *  preserved as agencyOther under the 'Other' bucket (matches the intake wizard). */
+function toCadetMember(r: Record<string, string>): Record<string, unknown> {
+  const raw = (r.agency ?? '').trim();
+  const match = ROSTER_AGENCIES.find((a) => a.key.toLowerCase() === raw.toLowerCase() || a.label.toLowerCase() === raw.toLowerCase());
+  return {
+    fullName: r.fullName.trim(),
+    agency: match?.key ?? (raw ? 'Other' : 'PSO'),
+    ...(match || !raw ? {} : { agencyOther: raw }),
+    ...(r.cjis ? { cjis: r.cjis } : {}),
+    ...(r.studentId ? { studentId: r.studentId } : {}),
+    ...(r.email ? { email: r.email } : {}),
+    ...(r.phone ? { phone: r.phone } : {}),
+  };
+}
+
 function MembersTab({
   academyId,
   academy,
@@ -165,6 +198,7 @@ function MembersTab({
   curriculum: WithId<CurriculumDoc> | null;
 }) {
   const [addOpen, setAddOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [withdrawTarget, setWithdrawTarget] = useState<WithId<RosterMemberDoc> | null>(null);
   const [editTarget, setEditTarget] = useState<WithId<RosterMemberDoc> | null>(null);
   const [emergencyTarget, setEmergencyTarget] = useState<WithId<RosterMemberDoc> | null>(null);
@@ -198,7 +232,8 @@ function MembersTab({
 
   return (
     <div>
-      <div className="mb-3 flex justify-end">
+      <div className="mb-3 flex justify-end gap-2">
+        <Button variant="ghost" onClick={() => setBulkOpen(true)}>Bulk import</Button>
         <Button variant="primary" onClick={() => setAddOpen(true)}>+ Add member</Button>
       </div>
 
@@ -244,6 +279,17 @@ function MembersTab({
       </div>
 
       {addOpen && <IntakeWizard academyId={academyId} onClose={() => setAddOpen(false)} />}
+      {bulkOpen && (
+        <BulkImportModal
+          title="Bulk import cadets"
+          columns={CADET_IMPORT_COLUMNS}
+          exampleRow="Jane Cadet,PSO,FL0512345,S-1042,jane@example.com,727-555-0142"
+          rowLabel={(r) => r.fullName || '—'}
+          validateRow={validateCadetRow}
+          importRow={async (r) => { await rosterCreateMember({ academyId, member: toCadetMember(r) }); }}
+          onClose={() => setBulkOpen(false)}
+        />
+      )}
       {withdrawTarget && (
         <WithdrawModal academyId={academyId} member={withdrawTarget} curriculum={curriculum} onClose={() => setWithdrawTarget(null)} />
       )}

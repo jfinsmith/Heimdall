@@ -18,6 +18,7 @@ import { Badge, Button, Field, Input, PageHeader, Select, TextArea } from '../..
 import { Modal } from '../../components/Modal';
 import { logAudit } from '../sessions/audit';
 import { formatPhone } from '../../lib/format';
+import { BulkImportModal, type ImportColumn } from '../../components/BulkImportModal';
 
 const setUserRole = httpsCallable<{ uid: string; role: Role }, { ok: boolean }>(functions, 'setUserRole');
 const createUserAccount = httpsCallable<
@@ -44,6 +45,39 @@ function randomPassword(): string {
   return [...words, num].join('-');
 }
 
+const STAFF_IMPORT_COLUMNS: ImportColumn[] = [
+  { key: 'displayName', label: 'Name', required: true, aliases: ['full name', 'instructor', 'staff'] },
+  { key: 'email', label: 'Email', required: true, aliases: ['e-mail'] },
+  { key: 'role', label: 'Role', required: true, aliases: ['rank', 'position'] },
+  { key: 'phone', label: 'Phone', aliases: ['phone number', 'cell'] },
+];
+const ROLE_KEYS: Role[] = ['director', 'lieutenant', 'sergeant', 'coordinator', 'instructor', 'guest'];
+const normalizeRole = (s: string): Role | undefined => ROLE_KEYS.find((k) => k === s.trim().toLowerCase());
+
+function validateStaffRow(r: Record<string, string>): string[] {
+  const errs: string[] = [];
+  if (!r.displayName?.trim()) errs.push('Name required');
+  if (!r.email?.trim()) errs.push('Email required');
+  else if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(r.email)) errs.push('Bad email');
+  if (!r.role?.trim()) errs.push('Role required');
+  else if (!normalizeRole(r.role)) errs.push('Role must be director/lieutenant/sergeant/coordinator/instructor/guest');
+  return errs;
+}
+
+/** Create one pending account and email it an activation link with a temp password
+ *  (mirrors the single Add-user flow). */
+async function importStaffRow(r: Record<string, string>): Promise<void> {
+  const password = randomPassword();
+  const res = await createUserAccount({
+    email: r.email.trim().toLowerCase(),
+    displayName: r.displayName.trim(),
+    role: normalizeRole(r.role)!,
+    ...(r.phone ? { phone: formatPhone(r.phone) } : {}),
+    password,
+  });
+  await sendActivationEmail({ uid: res.data.uid, password });
+}
+
 export function UsersAdminPage() {
   const { firebaseUser } = useAuth();
   const roleLabels = useRoleLabels();
@@ -66,6 +100,7 @@ export function UsersAdminPage() {
   const [qualUser, setQualUser] = useState<WithId<UserDoc> | null>(null);
   const [suspendTarget, setSuspendTarget] = useState<WithId<UserDoc> | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -154,7 +189,8 @@ export function UsersAdminPage() {
   return (
     <div>
       <PageHeader kicker="Admin" title="Users & Roles" />
-      <div className="-mt-2 mb-4 flex justify-end">
+      <div className="-mt-2 mb-4 flex justify-end gap-2">
+        <Button variant="ghost" onClick={() => setBulkOpen(true)}>Bulk import</Button>
         <Button variant="primary" onClick={() => setAddOpen(true)}>
           + Add user
         </Button>
@@ -302,6 +338,18 @@ export function UsersAdminPage() {
 
       {qualUser && <QualificationsModal user={qualUser} onClose={() => setQualUser(null)} />}
       {addOpen && <AddUserModal onClose={() => setAddOpen(false)} />}
+      {bulkOpen && (
+        <BulkImportModal
+          title="Bulk import staff"
+          columns={STAFF_IMPORT_COLUMNS}
+          exampleRow="Dep. Jane Smith,jane@pso.gov,instructor,727-555-0100"
+          rowLabel={(r) => r.displayName || r.email || '—'}
+          validateRow={validateStaffRow}
+          importRow={importStaffRow}
+          confirmNote="Each row becomes a pending account and is emailed an activation link with a temporary password. Roles can be changed afterward."
+          onClose={() => setBulkOpen(false)}
+        />
+      )}
       {suspendTarget && <SuspendUserModal user={suspendTarget} onClose={() => setSuspendTarget(null)} />}
     </div>
   );
