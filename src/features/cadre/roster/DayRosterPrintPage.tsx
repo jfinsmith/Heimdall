@@ -8,7 +8,7 @@
  * UI stays Heimdall). Reuses the attendance-print look + the fluid positional
  * numbering.
  */
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { where } from 'firebase/firestore';
 import { useCollection, useDoc } from '../../../lib/firestore';
@@ -39,7 +39,20 @@ export function DayRosterPrintPage() {
   const coordId = academy?.coordinatorIds?.[0];
   const { data: coordinator } = useDoc<UserDoc>(coordId ? `users/${coordId}` : null);
   const { data: curriculum } = useCurriculum(academy?.discipline);
+  const { data: users } = useCollection<UserDoc>('users');
   const settings = useGlobalSettings();
+
+  const nameFor = useMemo(() => {
+    const map = new Map(users.map((u) => [u.id, u.displayName]));
+    return (uid: string) => map.get(uid) ?? '—';
+  }, [users]);
+  // Instructors assigned to a session = the filled lead/assistant/safety slots
+  // (coordinators/role-players excluded), lead first.
+  const instructorsFor = (s: SessionDoc) =>
+    s.roleSlots
+      .filter((sl) => sl.role === 'lead' || sl.role === 'assistant' || sl.role === 'safety_officer')
+      .flatMap((sl) => sl.filledBy)
+      .map(nameFor);
 
   if (aLoading || rLoading) return <div className="flex h-screen items-center justify-center"><Spinner className="text-bifrost-400" /></div>;
   if (!academy) return <p className="p-8 text-sm text-slate-500">Academy not found.</p>;
@@ -77,15 +90,26 @@ export function DayRosterPrintPage() {
         {/* The day's course load (the "above listed training") */}
         <div className="mt-3 bg-black px-1 py-0.5 text-[10px] font-bold uppercase text-white">Topics covered</div>
         <table className="w-full border-collapse text-[11px]">
+          <thead>
+            <tr className="bg-watch-100/60">
+              <th className="w-[24%] border border-black px-2 py-0.5 text-left">Time</th>
+              <th className="border border-black px-2 py-0.5 text-left">Topic</th>
+              <th className="w-[32%] border border-black px-2 py-0.5 text-left">Instructor(s)</th>
+            </tr>
+          </thead>
           <tbody>
-            {topics.map((t) => (
-              <tr key={t.id}>
-                <td className="w-[30%] border border-black px-2 py-1 align-top tabular-nums">{fmtTime(t.start.toDate())} – {fmtTime(t.end.toDate())}</td>
-                <td className="border border-black px-2 py-1">{t.title || t.courseName}{t.highLiability ? ' ▲' : ''}</td>
-              </tr>
-            ))}
+            {topics.map((t) => {
+              const instructors = instructorsFor(t);
+              return (
+                <tr key={t.id}>
+                  <td className="w-[24%] border border-black px-2 py-1 align-top tabular-nums">{fmtTime(t.start.toDate())} – {fmtTime(t.end.toDate())}</td>
+                  <td className="border border-black px-2 py-1">{t.title || t.courseName}{t.highLiability ? ' ▲' : ''}</td>
+                  <td className="w-[32%] border border-black px-2 py-1 align-top">{instructors.length ? instructors.join(', ') : <span className="text-slate-400">—</span>}</td>
+                </tr>
+              );
+            })}
             {topics.length === 0 && (
-              <tr><td className="border border-black px-2 py-3 text-center text-slate-500">No sessions scheduled on this date.</td></tr>
+              <tr><td colSpan={3} className="border border-black px-2 py-3 text-center text-slate-500">No sessions scheduled on this date.</td></tr>
             )}
           </tbody>
         </table>

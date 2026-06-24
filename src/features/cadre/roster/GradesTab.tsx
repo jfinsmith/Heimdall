@@ -50,6 +50,7 @@ export function GradesTab({
         <Legend className="bg-slate-100 text-slate-500" label="N/A (injured)" />
         <Legend className="bg-sky-50 text-sky-700" label="XO (crossover)" />
         <Legend className="bg-slate-200 text-slate-400" label="WD (withdrawn)" />
+        <Legend className="ring-2 ring-inset ring-red-400" label="Re-exam / remediation used" />
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-watch-100 bg-white shadow-sm">
@@ -107,13 +108,17 @@ export function GradesTab({
                   {graded.map((c, i) => {
                     const res = courseResult(m, c, idxById, i);
                     const cell = m.grades?.[courseKey(c)];
+                    // A red outline marks any block that used its FDLE lifeline (a
+                    // written re-exam or a practical remediation) — so a re-exam that
+                    // PASSED (score capped at 80) is visibly distinct from a clean pass.
+                    const usedReexam = !!(cell && (cell.reexamScore != null || cell.lifeline || cell.remediation));
                     return (
                       <td key={c.name} className="px-1 py-1 text-center">
                         <button
-                          className={`min-w-[3rem] rounded px-2 py-1 text-xs ${resultClasses(res)} hover:ring-2 hover:ring-bifrost-300`}
+                          className={`min-w-[3rem] rounded px-2 py-1 text-xs ${resultClasses(res)} ${usedReexam ? 'ring-2 ring-inset ring-red-400' : ''} hover:ring-2 hover:ring-bifrost-300`}
                           onClick={() => setEditing({ member: m, course: c })}
                           disabled={res === 'wd'}
-                          title={res === 'wd' ? 'Withdrawn' : 'Edit grade'}
+                          title={usedReexam ? 'Re-exam / remediation used — Edit grade' : res === 'wd' ? 'Withdrawn' : 'Edit grade'}
                         >
                           {cellLabel(res, cell)}
                         </button>
