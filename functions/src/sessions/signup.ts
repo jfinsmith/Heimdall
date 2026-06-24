@@ -13,25 +13,8 @@
  */
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
-import type { AssignmentDoc, RoleSlot, SessionDoc, SignupDoc, UserDoc } from '../types';
-
-const overlaps = (aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) => aStart < bEnd && bStart < aEnd;
-const isInstructorQual = (key?: string) => !!key && key !== 'role_player';
-
-function qualifies(user: UserDoc, requiredKey?: string): boolean {
-  if (!requiredKey) return true;
-  if (!(user.verifiedQualKeys ?? []).includes(requiredKey)) return false;
-  return (user.qualifications ?? []).some((q) => q.key === requiredKey);
-}
-function certBlocks(user: UserDoc & { instructorCertExpires?: Timestamp }, requiredKey?: string): boolean {
-  if (!isInstructorQual(requiredKey)) return false;
-  const exp = user.instructorCertExpires;
-  return !(exp && exp.toDate() >= new Date());
-}
-function recomputeStatus(status: SessionDoc['status'], slots: RoleSlot[]): SessionDoc['status'] {
-  if (status !== 'open' && status !== 'fully_staffed') return status;
-  return slots.every((s) => s.filledBy.length >= s.count) ? 'fully_staffed' : 'open';
-}
+import type { AssignmentDoc, SessionDoc, SignupDoc, UserDoc } from '../types';
+import { overlaps, qualifies, certBlocks, recomputeStatus } from './validation';
 
 export const submitSignup = onCall<{ sessionId: string; slotId: string; allowWaitlist?: boolean }>(async (request) => {
   const uid = request.auth?.uid;

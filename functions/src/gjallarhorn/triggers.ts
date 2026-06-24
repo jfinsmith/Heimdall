@@ -26,6 +26,7 @@ import {
   sessionIcs,
 } from './notify';
 import { renderEmail, escapeHtml } from './templates';
+import { fillConflictReason } from '../sessions/validation';
 import type { AssignmentDoc, SessionDoc, SignupDoc, UserDoc } from '../types';
 
 const db = () => getFirestore();
@@ -58,9 +59,22 @@ async function promoteFromWaitlist(sessionId: string, slotId: string): Promise<b
     const waitlistSnap = await tx.get(
       db().collection(`sessions/${sessionId}/signups`).where('status', '==', 'waitlist').orderBy('signedUpAt')
     );
-    const candidate = waitlistSnap.docs
+    // Promote the oldest waitlister who STILL passes the same gates as self-signup
+    // (qualification, current FDLE instructor cert, no double-booking elsewhere) —
+    // skip anyone who no longer qualifies; they remain on the waitlist. All reads
+    // happen here, before any write below (transaction ordering).
+    const waiters = waitlistSnap.docs
       .map((d) => d.data() as SignupDoc)
-      .find((w) => w.slotId === slotId && !slot.filledBy.includes(w.uid));
+      .filter((w) => w.slotId === slotId && !slot.filledBy.includes(w.uid));
+    let candidate: SignupDoc | null = null;
+    for (const w of waiters) {
+      const uSnap = await tx.get(db().doc(`users/${w.uid}`));
+      if (!uSnap.exists) continue;
+      const u = uSnap.data() as UserDoc;
+      if (u.status !== 'active') continue;
+      const reason = await fillConflictReason(tx, { uid: w.uid, user: u, slot, session, sessionId, orgId: session.orgId ?? '' });
+      if (!reason) { candidate = w; break; }
+    }
     if (!candidate) return false;
 
     const newSlots = session.roleSlots.map((s) =>
