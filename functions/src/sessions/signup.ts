@@ -14,6 +14,7 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
 import type { AssignmentDoc, SessionDoc, SignupDoc, UserDoc } from '../types';
+import { STAFF_ROLES } from '../types';
 import { overlaps, qualifies, certBlocks, recomputeStatus } from './validation';
 
 export const submitSignup = onCall<{ sessionId: string; slotId: string; allowWaitlist?: boolean }>(async (request) => {
@@ -131,4 +132,44 @@ export const withdrawSignup = onCall<{ sessionId: string }>(async (request) => {
     summary: 'Withdrew from session', createdAt: FieldValue.serverTimestamp(),
   });
   return { ok: true };
+});
+
+/**
+ * Read-only: does instructor `uid` already have a CONFIRMED assignment overlapping
+ * [startMs, endMs] in another session? Clients can't query other users'
+ * assignments, so the coordinator reserve picker calls this to block a
+ * double-booking — the same cross-session gate self-sign-up enforces. Staff-only.
+ */
+export const checkInstructorConflict = onCall<{ uid: string; startMs: number; endMs: number; excludeSessionId?: string }>(async (request) => {
+  const callerUid = request.auth?.uid;
+  if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = getFirestore();
+  const callerSnap = await db.doc(`users/${callerUid}`).get();
+  const caller = callerSnap.data() as UserDoc | undefined;
+  if (!caller || !STAFF_ROLES.includes(caller.role) || caller.status !== 'active') {
+    throw new HttpsError('permission-denied', 'Schedule-building staff only.');
+  }
+  const orgId = caller.orgId;
+  if (!orgId) throw new HttpsError('failed-precondition', 'Your account has no organization.');
+
+  const targetUid = (request.data.uid ?? '').trim();
+  const { startMs, endMs, excludeSessionId } = request.data;
+  if (!targetUid || typeof startMs !== 'number' || typeof endMs !== 'number') {
+    throw new HttpsError('invalid-argument', 'Missing arguments.');
+  }
+  const start = new Date(startMs);
+  const end = new Date(endMs);
+  const snap = await db
+    .collection('assignments')
+    .where('uid', '==', targetUid)
+    .where('status', '==', 'confirmed')
+    .where('orgId', '==', orgId)
+    .get();
+  for (const a of snap.docs) {
+    const ad = a.data() as AssignmentDoc;
+    if (ad.sessionId !== excludeSessionId && overlaps(start, end, ad.start.toDate(), ad.end.toDate())) {
+      return { conflict: true, courseName: ad.courseName ?? '' };
+    }
+  }
+  return { conflict: false };
 });

@@ -14,7 +14,7 @@ setGlobalOptions({ region: 'us-east1', maxInstances: 10 });
 
 // Gjallarhorn — event triggers
 export { onSignupWritten, onSessionUpdated, onUserCreated, onUserUpdated, onBulkMessageCreated, onCoursePublished, onFeedbackCreated } from './gjallarhorn/triggers';
-export { submitSignup, withdrawSignup } from './sessions/signup';
+export { submitSignup, withdrawSignup, checkInstructorConflict } from './sessions/signup';
 export { saveRoomReservation, deleteRoomReservation } from './rooms/reservations';
 // Gjallarhorn — personal ICS calendar feed (perpetual subscription URL)
 export { calendarFeed } from './gjallarhorn/icsFeed';

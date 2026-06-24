@@ -8,7 +8,8 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { addDoc, collection, deleteDoc, deleteField, doc, serverTimestamp, setDoc, Timestamp, updateDoc, where } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { db, functions } from '../../lib/firebase';
+import { httpsCallable } from 'firebase/functions';
 import { shortId, useCollection, type WithId } from '../../lib/firestore';
 import { useCurriculum } from '../../lib/curricula';
 import { useClickOutside } from '../../lib/useClickOutside';
@@ -24,6 +25,13 @@ import { RoomSelect } from './rooms/RoomSelect';
 import { findRoomConflict } from './rooms/roomBooking';
 
 const CUSTOM = '__custom__';
+
+// Server-side cross-session double-booking check — clients can't query other
+// users' assignments, so the reserve picker asks the server before reserving.
+const checkConflictFn = httpsCallable<
+  { uid: string; startMs: number; endMs: number; excludeSessionId?: string },
+  { conflict: boolean; courseName?: string }
+>(functions, 'checkInstructorConflict');
 
 /**
  * Type-ahead reserve picker — replaces a long instructor dropdown. Typing a name
@@ -215,9 +223,24 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
     setSlots((prev) => prev.map((s) => (s.slotId === slotId ? { ...s, ...patch } : s)));
   }
 
-  /** Reserve a specific instructor into a slot (up to its count). */
-  function reserve(slotId: string, uid: string) {
+  /** Reserve a specific instructor into a slot (up to its count). Blocks a
+   *  cross-session double-booking via the server (the cert gate is in eligibleFor). */
+  async function reserve(slotId: string, uid: string) {
     if (!uid) return;
+    setError(null);
+    if (date && startTime && endTime) {
+      try {
+        const start = combineDateTime(date, startTime);
+        const end = combineDateTime(date, endTime);
+        const r = await checkConflictFn({ uid, startMs: start.getTime(), endMs: end.getTime(), excludeSessionId: session?.id });
+        if (r.data.conflict) {
+          setError(`${userName(uid)} is already assigned to ${r.data.courseName || 'another session'} during this time. Pick another instructor or time.`);
+          return;
+        }
+      } catch {
+        /* check unavailable (offline) — allow the reserve; the cert gate still applies and a real conflict still surfaces server-side at self-signup */
+      }
+    }
     setSlots((prev) =>
       prev.map((s) =>
         s.slotId === slotId && s.filledBy.length < s.count && !s.filledBy.includes(uid)
@@ -666,7 +689,7 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
                     {slot.filledBy.length < slot.count && (
                       <ReserveSearch
                         options={eligibleFor(slot)}
-                        onSelect={(uid) => reserve(slot.slotId, uid)}
+                        onSelect={(uid) => void reserve(slot.slotId, uid)}
                       />
                     )}
                   </div>
