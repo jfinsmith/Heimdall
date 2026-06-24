@@ -40,6 +40,9 @@ export interface SessionEventOpts {
   academyPrefix?: string;
   /** When set, the event background uses the academy color; border = status. */
   academyColor?: string;
+  /** Cumulative curriculum-coverage tag for the builder, e.g. "6/12" — hours of
+   *  this course scheduled up to and including this block / the course minimum. */
+  coverage?: string;
 }
 
 /**
@@ -77,7 +80,7 @@ export function sessionToEvent(s: WithId<SessionDoc>, opts: SessionEventOpts = {
       return flag ? ['hd-flagged', `hd-flagged--${flag}`] : [];
     })(),
     editable: opts.editable ?? false,
-    extendedProps: { session: s, academyPrefix: opts.academyPrefix },
+    extendedProps: { session: s, academyPrefix: opts.academyPrefix, coverage: opts.coverage },
   };
 }
 
@@ -116,6 +119,7 @@ export function renderEventContent(arg: EventContentArg): React.ReactNode | unde
   const s = arg.event.extendedProps.session as WithId<SessionDoc> | undefined;
   if (!s) return undefined;
   const prefix = arg.event.extendedProps.academyPrefix as string | undefined;
+  const coverage = arg.event.extendedProps.coverage as string | undefined;
   // FullCalendar sets event.end to null when a session's end is <= its start
   // (zero/negative-duration bad data). Never dereference null — fall back to the
   // session's own timestamps — so one malformed session can't crash the calendar.
@@ -182,6 +186,11 @@ export function renderEventContent(arg: EventContentArg): React.ReactNode | unde
           lunch {s.lunchMinutes}m{s.lunchStart ? ` · ${s.lunchStart}` : ''}
         </div>
       ) : null}
+      {coverage && (
+        <div className="hd-event-room" style={{ fontWeight: 600 }} title="Cumulative hours scheduled for this course so far">
+          {coverage} hrs
+        </div>
+      )}
     </div>
   );
 }

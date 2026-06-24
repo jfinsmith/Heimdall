@@ -197,9 +197,29 @@ export function AcademyBuilderPage() {
     );
   }, [sessions, search]);
 
+  // Cumulative curriculum coverage per session: walking the FDLE blocks in time
+  // order, each curriculum course accrues hours, so a block shows "6/12" then the
+  // next block of the same course shows "12/12". Non-curriculum/custom blocks omit it.
+  const coverageBySession = useMemo(() => {
+    const out = new Map<string, string>();
+    if (!curriculum) return out;
+    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+    const minByCourse = new Map(curriculum.courses.map((c) => [norm(c.name), c.minHours]));
+    const running = new Map<string, number>();
+    for (const s of [...fdleSessions].sort((a, b) => a.start.toMillis() - b.start.toMillis())) {
+      const key = norm(s.courseName);
+      const min = minByCourse.get(key);
+      if (min == null) continue;
+      const now = (running.get(key) ?? 0) + (s.hours || 0);
+      running.set(key, now);
+      out.set(s.id, `${q(now)}/${min}`);
+    }
+    return out;
+  }, [curriculum, fdleSessions]);
+
   const events = useMemo(
-    () => [...matchedSessions.map((s) => sessionToEvent(s, { editable: true })), ...holidayBackgroundEvents(disabledHolidays, observedHolidays, holidayRange, { labelInBody: true })],
-    [matchedSessions, disabledHolidays, observedHolidays, holidayRange]
+    () => [...matchedSessions.map((s) => sessionToEvent(s, { editable: true, coverage: coverageBySession.get(s.id) })), ...holidayBackgroundEvents(disabledHolidays, observedHolidays, holidayRange, { labelInBody: true })],
+    [matchedSessions, coverageBySession, disabledHolidays, observedHolidays, holidayRange]
   );
 
   // Jump to the earliest match so a hit far out on the calendar is found, not just filtered.
