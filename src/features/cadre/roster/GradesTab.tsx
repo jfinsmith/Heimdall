@@ -13,7 +13,7 @@ import type { CurriculumCourse, CurriculumDoc, GradeCell, RosterMemberDoc } from
 import { PASS_MARK } from '../../../types';
 import { Badge, Button, Field, Input, Select } from '../../../components/ui';
 import { Modal } from '../../../components/Modal';
-import { courseResult, effectiveScore, gradedCourses, memberStanding, resultClasses } from './rosterShared';
+import { courseKey, courseResult, effectiveScore, gradedCourses, memberStanding, resultClasses } from './rosterShared';
 
 export function GradesTab({
   academyId,
@@ -26,7 +26,7 @@ export function GradesTab({
 }) {
   const courses = curriculum?.courses ?? [];
   const graded = useMemo(() => gradedCourses(courses), [courses]);
-  const idxById = useMemo(() => new Map(graded.map((c, i) => [c.name, i] as const)), [graded]);
+  const idxById = useMemo(() => new Map(graded.map((c, i) => [courseKey(c), i] as const)), [graded]);
   const roster = members.filter((m) => !m.blockTaker);
   const [editing, setEditing] = useState<{ member: WithId<RosterMemberDoc>; course: CurriculumCourse } | null>(null);
 
@@ -83,7 +83,7 @@ export function GradesTab({
                   </td>
                   {graded.map((c, i) => {
                     const res = courseResult(m, c, idxById, i);
-                    const cell = m.grades?.[c.name];
+                    const cell = m.grades?.[courseKey(c)];
                     return (
                       <td key={c.name} className="px-1 py-1 text-center">
                         <button
@@ -140,7 +140,7 @@ function GradeEditor({
 }: {
   academyId: string; member: WithId<RosterMemberDoc>; course: CurriculumCourse; onClose: () => void;
 }) {
-  const existing = member.grades?.[course.name] ?? {};
+  const existing = member.grades?.[courseKey(course)] ?? {};
   const [score, setScore] = useState<string>(existing.score != null ? String(existing.score) : '');
   const [status, setStatus] = useState<'graded' | 'na' | 'co' | 'xo'>(existing.status ?? 'graded');
   const [lifeline, setLifeline] = useState<'' | 'reexam' | 'remediation'>(existing.lifeline ?? '');
@@ -170,7 +170,7 @@ function GradeEditor({
         }
       }
     }
-    const grades = { ...(member.grades ?? {}), [course.name]: cell };
+    const grades = { ...(member.grades ?? {}), [courseKey(course)]: cell };
     await updateDoc(doc(db, 'academies', academyId, 'roster', member.id), { grades, updatedAt: serverTimestamp() });
     setBusy(false);
     onClose();
@@ -179,7 +179,7 @@ function GradeEditor({
   async function clearCell() {
     setBusy(true);
     const grades = { ...(member.grades ?? {}) };
-    delete grades[course.name];
+    delete grades[courseKey(course)];
     await updateDoc(doc(db, 'academies', academyId, 'roster', member.id), { grades, updatedAt: serverTimestamp() });
     setBusy(false);
     onClose();

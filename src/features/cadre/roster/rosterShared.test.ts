@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import { Timestamp } from 'firebase/firestore';
 import type { CurriculumCourse, GradeCell, RosterMemberDoc, ViolationEntry } from '../../../types';
-import { disciplineTally, effectiveScore, courseResult, memberStanding } from './rosterShared';
+import { disciplineTally, effectiveScore, courseResult, memberStanding, courseKey } from './rosterShared';
 
 const ts = (y = 2026, m = 5, d = 1) => Timestamp.fromDate(new Date(y, m - 1, d, 12));
 
@@ -20,6 +20,18 @@ const v = (level: ViolationEntry['level'], type: ViolationEntry['type'] = 'Tardy
   id: Math.random().toString(36).slice(2), date: ts(), type, level,
 });
 const course = (name: string, hl = false, tested = true): CurriculumCourse => ({ name, minHours: 8, highLiability: hl, tested });
+
+describe('courseKey (stable grade keys)', () => {
+  it('uses the CJK number when present (survives a rename), else the name', () => {
+    expect(courseKey({ cjk: 'CJK0040', name: 'Firearms' })).toBe('CJK0040');
+    expect(courseKey({ name: 'Guest Speaker' })).toBe('Guest Speaker');
+  });
+  it("grades keyed by CJK are still found after the course is renamed", () => {
+    const m = member({ grades: { CJK0040: { score: 92 } } });
+    const renamed: CurriculumCourse[] = [{ cjk: 'CJK0040', name: 'Criminal Justice Firearms', minHours: 80, highLiability: true, tested: true }];
+    expect(memberStanding(m, renamed).avgPct).toBe(92); // found via CJK despite the new name
+  });
+});
 
 describe('disciplineTally', () => {
   it('counts warnings separately from demerit points', () => {

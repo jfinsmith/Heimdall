@@ -33,6 +33,15 @@ export function gradedCourses(courses: CurriculumCourse[] = []): CurriculumCours
 }
 
 /**
+ * Stable key for a course in the grades / standing / withdrawal maps — the CJK
+ * number when present (survives a course RENAME, so grades aren't orphaned), else
+ * the name. Used everywhere a course is keyed in member data.
+ */
+export function courseKey(course: Pick<CurriculumCourse, 'cjk' | 'name'>): string {
+  return (course.cjk && course.cjk.trim()) || course.name;
+}
+
+/**
  * Effective numeric score recorded for a course, or null. A passing primary
  * stands as-is. If the primary FAILED (< 80), a re-examination can only restore
  * the score up to the pass mark — the recorded score is CAPPED at 80 no matter
@@ -63,7 +72,7 @@ export function courseResult(
     const wIdx = member.withdrawnAfterCourse ? courseIndexById.get(member.withdrawnAfterCourse) ?? -1 : -1;
     if (wIdx < 0 || thisIndex > wIdx) return 'wd';
   }
-  const cell = member.grades?.[course.name];
+  const cell = member.grades?.[courseKey(course)];
   if (cell?.status === 'na') return 'na';
   if (cell?.status === 'xo') return 'xo'; // crossover / Blackbird — exempt, not graded
   const primary = cell?.score;
@@ -86,12 +95,12 @@ export function memberStanding(
   courses: CurriculumCourse[]
 ): { avgPct: number | null; letter: string | null; nonHlFails: number; hlFails: number; warnings: string[] } {
   const graded = gradedCourses(courses);
-  const idxById = new Map(graded.map((c, i) => [c.name, i] as const));
+  const idxById = new Map(graded.map((c, i) => [courseKey(c), i] as const));
   const scores: number[] = [];
   let nonHlFails = 0;
   let hlFails = 0;
   graded.forEach((c, i) => {
-    const eff = effectiveScore(member.grades?.[c.name]);
+    const eff = effectiveScore(member.grades?.[courseKey(c)]);
     if (eff != null) scores.push(eff);
     const res = courseResult(member, c, idxById, i);
     if (res === 'fail') c.highLiability ? hlFails++ : nonHlFails++;

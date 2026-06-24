@@ -15,7 +15,7 @@ import type { AcademyDoc, CurriculumDoc, RosterAgency, RosterMemberDoc } from '.
 import { ROSTER_AGENCIES } from '../../../types';
 import { Badge, Button, Field, Input, PageHeader, Select, Spinner } from '../../../components/ui';
 import { Modal } from '../../../components/Modal';
-import { agencyLabel } from './rosterShared';
+import { agencyLabel, courseKey } from './rosterShared';
 import { AttendanceTab } from './AttendanceTab';
 import { AttendanceLogTab } from './AttendanceLogTab';
 import { DisciplineTab } from './DisciplineTab';
@@ -377,7 +377,7 @@ function WithdrawModal({
         <Field label="Withdrawn after which course? (optional)" hint="Grades for courses after this one show WD.">
           <Select value={afterCourse} onChange={(e) => setAfterCourse(e.target.value)}>
             <option value="">— not specified —</option>
-            {tested.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
+            {tested.map((c) => <option key={courseKey(c)} value={courseKey(c)}>{c.name}</option>)}
           </Select>
         </Field>
         <div className="flex justify-end gap-2">
