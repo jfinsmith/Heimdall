@@ -21,7 +21,16 @@ const today = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-export function AcademyReports({ academy }: { academy: WithId<AcademyDoc> }) {
+/** A pre-fill handed in from the gradebook/discipline tabs: the cadet (+ for a
+ *  course failure, the course/score). The coordinator still PICKS the letter — we
+ *  never auto-file a legally-sensitive document — and these values pre-populate it. */
+export interface LetterSeed {
+  cadetId?: string;
+  cadetName?: string;
+  values?: Record<string, string>;
+}
+
+export function AcademyReports({ academy, seed, onSeedConsumed }: { academy: WithId<AcademyDoc>; seed?: LetterSeed | null; onSeedConsumed?: () => void }) {
   const { profile } = useAuth();
   const academyId = academy.id;
   // Org-scoped in useCollection; sorted client-side (no orderBy → single-field index).
@@ -70,6 +79,11 @@ export function AcademyReports({ academy }: { academy: WithId<AcademyDoc> }) {
       {availableTypes.length > 0 ? (
         <>
           <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-watch-600">New document</h2>
+          {seed?.cadetName && (
+            <div className="mb-3 rounded-md border border-bifrost-200 bg-bifrost-50 px-3 py-2 text-sm text-bifrost-800">
+              Generating a letter for <strong>{seed.cadetName}</strong> — choose the document below; the cadet{seed.values?.course ? ' and failed course' : ''} will be pre-filled. Review the wording before sending.
+            </div>
+          )}
           <p className="mb-2 -mt-1 text-xs text-slate-500">
             Forms available to this class. <span className="font-medium text-amber-700">Some wording is draft — pending your legal review.</span>
           </p>
@@ -134,9 +148,10 @@ export function AcademyReports({ academy }: { academy: WithId<AcademyDoc> }) {
           roster={roster}
           courses={curriculum?.courses ?? []}
           editing={editing}
+          seed={editing ? null : seed ?? null}
           fromName={profile?.displayName ?? ''}
           directorName={directorName}
-          onClose={() => { setFormType(null); setEditing(null); }}
+          onClose={() => { setFormType(null); setEditing(null); onSeedConsumed?.(); }}
         />
       )}
     </div>
@@ -156,13 +171,14 @@ function ReportTypeCard({ type, onPick }: { type: ReportType; onPick: () => void
 }
 
 function ReportFormModal({
-  type, academy, roster, courses, editing, fromName, directorName, onClose,
+  type, academy, roster, courses, editing, seed, fromName, directorName, onClose,
 }: {
   type: ReportType;
   academy: WithId<AcademyDoc>;
   roster: WithId<RosterMemberDoc>[];
   courses: CurriculumCourse[];
   editing: WithId<AcademyReportDoc> | null;
+  seed: LetterSeed | null;
   fromName: string;
   directorName: string;
   onClose: () => void;
@@ -171,11 +187,11 @@ function ReportFormModal({
   // 'cadet' docs address a cadet (To: line); 'file'/'general' docs capture the
   // subject in their own fields. Academic letters (no document) are cadet-addressed.
   const appliesTo = type.document?.appliesTo ?? 'cadet';
-  const [cadetId, setCadetId] = useState(editing?.cadetId ?? '');
-  const [cadetName, setCadetName] = useState(editing?.cadetName ?? '');
+  const [cadetId, setCadetId] = useState(editing?.cadetId ?? seed?.cadetId ?? '');
+  const [cadetName, setCadetName] = useState(editing?.cadetName ?? seed?.cadetName ?? '');
   const [memoDate, setMemoDate] = useState(editing?.data._memoDate ?? today());
   const [values, setValues] = useState<Record<string, string>>(() => {
-    const init: Record<string, string> = { ...(editing?.data ?? {}) };
+    const init: Record<string, string> = { ...(editing?.data ?? seed?.values ?? {}) };
     for (const f of type.fields) {
       if (init[f.key] !== undefined) continue;
       init[f.key] = f.defaultFrom === 'className' ? academy.shortName ?? '' : f.default ?? '';

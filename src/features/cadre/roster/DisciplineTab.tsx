@@ -13,6 +13,7 @@ import { AUTO_DISMISSAL_POINTS } from '../../../types';
 import { Badge, Button, Field, Input, Select, TextArea } from '../../../components/ui';
 import { Modal } from '../../../components/Modal';
 import { agencyLabel, disciplineTally } from './rosterShared';
+import type { LetterSeed } from '../reports/AcademyReports';
 
 const TYPES: ViolationType[] = ['Tardy', 'Uniform', 'Grooming', 'Other'];
 const LEVELS: { key: DemeritLevel; label: string }[] = [
@@ -24,7 +25,7 @@ const LEVELS: { key: DemeritLevel; label: string }[] = [
 ];
 const levelLabel = (l: DemeritLevel) => (l === 'warning' ? 'Warning' : `Demerit ${l}`);
 
-export function DisciplineTab({ academyId, members }: { academyId: string; members: WithId<RosterMemberDoc>[] }) {
+export function DisciplineTab({ academyId, members, onGenerateLetter }: { academyId: string; members: WithId<RosterMemberDoc>[]; onGenerateLetter?: (seed: LetterSeed) => void }) {
   const [addFor, setAddFor] = useState<WithId<RosterMemberDoc> | null>(null);
   const roster = members.filter((m) => !m.blockTaker);
 
@@ -96,7 +97,10 @@ export function DisciplineTab({ academyId, members }: { academyId: string; membe
                         ))}
                     </div>
                   </td>
-                  <td className="px-3 py-3 text-right">
+                  <td className="px-3 py-3 text-right whitespace-nowrap">
+                    {onGenerateLetter && t.points >= AUTO_DISMISSAL_POINTS && (
+                      <Button variant="ghost" className="text-red-700" onClick={() => onGenerateLetter({ cadetId: m.id, cadetName: m.fullName })}>✉ Letter</Button>
+                    )}
                     <Button variant="ghost" onClick={() => setAddFor(m)}>+ Add</Button>
                   </td>
                 </tr>

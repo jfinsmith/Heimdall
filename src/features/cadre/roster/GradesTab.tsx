@@ -14,15 +14,18 @@ import { PASS_MARK } from '../../../types';
 import { Badge, Button, Field, Input, Select } from '../../../components/ui';
 import { Modal } from '../../../components/Modal';
 import { courseKey, courseResult, effectiveScore, gradedCourses, memberStanding, resultClasses } from './rosterShared';
+import type { LetterSeed } from '../reports/AcademyReports';
 
 export function GradesTab({
   academyId,
   members,
   curriculum,
+  onGenerateLetter,
 }: {
   academyId: string;
   members: WithId<RosterMemberDoc>[];
   curriculum: WithId<CurriculumDoc> | null;
+  onGenerateLetter?: (seed: LetterSeed) => void;
 }) {
   const courses = curriculum?.courses ?? [];
   const graded = useMemo(() => gradedCourses(courses), [courses]);
@@ -69,12 +72,32 @@ export function GradesTab({
           <tbody className="divide-y divide-watch-50">
             {roster.map((m) => {
               const standing = memberStanding(m, courses);
+              const hasFail = standing.hlFails + standing.nonHlFails > 0;
+              const failC = hasFail ? graded.find((c, i) => courseResult(m, c, idxById, i) === 'fail') : undefined;
+              const failCell = failC ? m.grades?.[courseKey(failC)] : undefined;
+              const courseVal = failC ? (failC.cjk ? `${failC.cjk.replace(/^CJK\s*/, 'CJK ')} — ${failC.name}` : failC.name) : '';
               return (
                 <tr key={m.id} className={m.status === 'withdrawn' ? 'opacity-60' : ''}>
                   <td className="sticky left-0 z-10 bg-white px-3 py-2 font-medium text-watch-900">
                     <span className={m.status === 'withdrawn' ? 'line-through' : ''}>{m.fullName}</span>
                     {standing.warnings.length > 0 && (
                       <span className="ml-1 cursor-help text-red-600" title={standing.warnings.join('\n')}>⚠</span>
+                    )}
+                    {onGenerateLetter && hasFail && (
+                      <button
+                        className="ml-2 text-xs text-bifrost-700 hover:underline"
+                        title="Generate a pre-filled academic-action letter"
+                        onClick={() => onGenerateLetter({
+                          cadetId: m.id,
+                          cadetName: m.fullName,
+                          values: {
+                            ...(courseVal ? { course: courseVal } : {}),
+                            ...(failCell?.score != null ? { score: String(failCell.score) } : {}),
+                          },
+                        })}
+                      >
+                        ✉ Letter
+                      </button>
                     )}
                   </td>
                   <td className="px-2 py-2 text-center font-semibold">{standing.letter ?? '—'}</td>

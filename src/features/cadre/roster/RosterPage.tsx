@@ -20,7 +20,7 @@ import { AttendanceTab } from './AttendanceTab';
 import { AttendanceLogTab } from './AttendanceLogTab';
 import { DisciplineTab } from './DisciplineTab';
 import { GradesTab } from './GradesTab';
-import { AcademyReports } from '../reports/AcademyReports';
+import { AcademyReports, type LetterSeed } from '../reports/AcademyReports';
 import { enabledRosterModules, ROSTER_MODULE_BY_KEY } from './rosterModules';
 import { formatPhone } from '../../../lib/format';
 import type { RosterModuleKey } from '../../../types';
@@ -45,6 +45,9 @@ export function RosterPage() {
   const members = useMemo(() => [...membersRaw].sort((a, b) => (a.no ?? 0) - (b.no ?? 0)), [membersRaw]);
   const { data: curriculum } = useCurriculum(academy?.discipline);
   const [tab, setTab] = useState<Tab>('members');
+  // "Generate letter" from grades/discipline → jump to Reports with a pre-fill.
+  const [letterSeed, setLetterSeed] = useState<LetterSeed | null>(null);
+  const generateLetter = (s: LetterSeed) => { setLetterSeed(s); setTab('reports'); };
 
   if (loading) return <div className="flex justify-center py-20"><Spinner className="text-bifrost-400" /></div>;
   if (!academy) return <p className="text-sm text-slate-500">Academy not found.</p>;
@@ -121,9 +124,9 @@ export function RosterPage() {
       {activeTab === 'members' && <MembersTab academyId={academyId} academy={academy} members={members} curriculum={curriculum} />}
       {activeModule?.attendanceFormat && <AttendanceTab academy={academy} members={members} curriculum={curriculum} />}
       {activeTab === 'attendance_log' && <AttendanceLogTab academyId={academyId} members={members} />}
-      {activeTab === 'discipline' && <DisciplineTab academyId={academyId} members={members} />}
-      {activeTab === 'grades' && <GradesTab academyId={academyId} members={members} curriculum={curriculum} />}
-      {activeTab === 'reports' && <AcademyReports academy={academy} />}
+      {activeTab === 'discipline' && <DisciplineTab academyId={academyId} members={members} onGenerateLetter={generateLetter} />}
+      {activeTab === 'grades' && <GradesTab academyId={academyId} members={members} curriculum={curriculum} onGenerateLetter={generateLetter} />}
+      {activeTab === 'reports' && <AcademyReports academy={academy} seed={letterSeed} onSeedConsumed={() => setLetterSeed(null)} />}
     </div>
   );
 }
