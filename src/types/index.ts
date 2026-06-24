@@ -452,6 +452,10 @@ export interface GradeCell {
   reexamScore?: number | null;  // written reexamination %
   remediation?: 'pass' | 'fail'; // HL practical proficiency remediation result
   lifeline?: 'reexam' | 'remediation'; // which single lifeline was used (HL)
+  /** Non-HL only: the cadet had already spent their one program re-exam on an
+   *  earlier non-HL course, so no re-exam is offered here — the EOC exam score is
+   *  the final score (manually flagged by staff; never auto-applied). */
+  reexamIneligible?: boolean;
 }
 
 export interface RosterMemberDoc {

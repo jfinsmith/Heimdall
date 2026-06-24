@@ -92,6 +92,11 @@ describe('courseResult', () => {
     expect(res(member({ grades: {} }), 'Intro')).toBe('pending');
   });
 
+  it('non-HL fail marked not-eligible for re-exam is final (fail, not pending)', () => {
+    expect(res(member({ grades: { Intro: { score: 70 } } }), 'Intro')).toBe('pending'); // re-exam still available
+    expect(res(member({ grades: { Intro: { score: 70, reexamIneligible: true } } }), 'Intro')).toBe('fail');
+  });
+
   it('HL: one lifeline — reexam or remediation, not both', () => {
     const failNoLifeline = member({ grades: { Firearms: { score: 70 } } });
     expect(res(failNoLifeline, 'Firearms')).toBe('pending'); // failed, lifeline not used yet

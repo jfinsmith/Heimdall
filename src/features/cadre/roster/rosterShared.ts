@@ -86,6 +86,7 @@ export function courseResult(
     return 'pending'; // failed, lifeline not yet used
   }
   if (cell?.reexamScore != null) return cell.reexamScore >= PASS_MARK ? 'pass' : 'fail';
+  if (cell?.reexamIneligible) return 'fail'; // re-exam already spent elsewhere — the EOC score stands as final
   return 'pending'; // failed primary, reexam available
 }
 

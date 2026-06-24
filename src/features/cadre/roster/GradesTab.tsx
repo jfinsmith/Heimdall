@@ -137,6 +137,7 @@ export function GradesTab({
           academyId={academyId}
           member={editing.member}
           course={editing.course}
+          courses={courses}
           onClose={() => setEditing(null)}
         />
       )}
@@ -164,9 +165,9 @@ function Legend({ className, label }: { className: string; label: string }) {
 }
 
 function GradeEditor({
-  academyId, member, course, onClose,
+  academyId, member, course, courses, onClose,
 }: {
-  academyId: string; member: WithId<RosterMemberDoc>; course: CurriculumCourse; onClose: () => void;
+  academyId: string; member: WithId<RosterMemberDoc>; course: CurriculumCourse; courses: CurriculumCourse[]; onClose: () => void;
 }) {
   const existing = member.grades?.[courseKey(course)] ?? {};
   const [score, setScore] = useState<string>(existing.score != null ? String(existing.score) : '');
@@ -174,7 +175,12 @@ function GradeEditor({
   const [lifeline, setLifeline] = useState<'' | 'reexam' | 'remediation'>(existing.lifeline ?? '');
   const [reexamScore, setReexamScore] = useState<string>(existing.reexamScore != null ? String(existing.reexamScore) : '');
   const [remediation, setRemediation] = useState<'' | 'pass' | 'fail'>(existing.remediation ?? '');
+  const [ineligible, setIneligible] = useState<boolean>(existing.reexamIneligible ?? false);
   const [busy, setBusy] = useState(false);
+  // Did this cadet already spend their one non-HL re-exam on a DIFFERENT non-HL course?
+  const priorReexamCourse = courses.find(
+    (c) => courseKey(c) !== courseKey(course) && !c.highLiability && member.grades?.[courseKey(c)]?.reexamScore != null
+  );
 
   const primary = Number(score);
   const failedPrimary = status === 'graded' && score !== '' && primary < PASS_MARK;
@@ -193,6 +199,8 @@ function GradeEditor({
         if (hl) {
           if (lifeline === 'reexam') { cell.lifeline = 'reexam'; if (reexamScore !== '' && Number.isFinite(reexamNum)) cell.reexamScore = reexamNum; }
           else if (lifeline === 'remediation') { cell.lifeline = 'remediation'; if (remediation) cell.remediation = remediation; }
+        } else if (ineligible) {
+          cell.reexamIneligible = true; // re-exam already spent — the EOC score stands as final
         } else if (reexamScore !== '' && Number.isFinite(reexamNum)) {
           cell.reexamScore = reexamNum;
         }
@@ -262,7 +270,20 @@ function GradeEditor({
                     )}
                   </>
                 ) : (
-                  <Field label="Reexamination score (%)"><Input type="number" min={0} max={100} value={reexamScore} onChange={(e) => setReexamScore(e.target.value)} /></Field>
+                  <>
+                    {priorReexamCourse && (
+                      <div className="mb-2 rounded border border-red-300 bg-red-50 px-2 py-1.5 text-xs text-red-800">
+                        ⚠ {member.fullName} has already used a re-examination for <strong>{priorReexamCourse.name}</strong>. Under the course outline, a non-high-liability cadet gets <strong>one</strong> re-exam for the whole program — they may not be eligible for another.
+                      </div>
+                    )}
+                    <label className="mb-2 flex items-center gap-2 text-sm font-medium text-watch-800">
+                      <input type="checkbox" checked={ineligible} onChange={(e) => setIneligible(e.target.checked)} />
+                      Not eligible for re-examination — record the EOC exam score as final
+                    </label>
+                    {!ineligible && (
+                      <Field label="Reexamination score (%)"><Input type="number" min={0} max={100} value={reexamScore} onChange={(e) => setReexamScore(e.target.value)} /></Field>
+                    )}
+                  </>
                 )}
               </div>
             )}
