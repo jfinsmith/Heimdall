@@ -15,6 +15,7 @@ import { Spinner } from '../components/ui';
 import { SignInPage } from '../auth/SignInPage';
 import { PendingApprovalPage } from '../auth/PendingApprovalPage';
 import { AwaitingOrgPage } from '../auth/AwaitingOrgPage';
+import { OrgSuspendedPage } from '../auth/OrgSuspendedPage';
 import { CompleteProfilePage } from '../auth/CompleteProfilePage';
 import { ChangePasswordPage } from '../auth/ChangePasswordPage';
 
@@ -93,6 +94,7 @@ export function AppRouter() {
           <Route path="/signin" element={<SignInPage />} />
           <Route path="/pending" element={<PendingApprovalPage />} />
           <Route path="/awaiting-org" element={<AwaitingOrgPage />} />
+          <Route path="/org-suspended" element={<OrgSuspendedPage />} />
 
           <Route element={<RequireAuth />}>
             <Route path="/change-password" element={<ChangePasswordPage />} />

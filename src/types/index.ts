@@ -184,6 +184,10 @@ export interface OrgDoc {
   shortCode: string;      // human prefix, e.g. 'phsc'
   legalName: string;      // e.g. 'Pasco-Hernando State College'
   status: 'active' | 'suspended';
+  /** When status==='suspended' (owner-set via setOrgSuspension): why / when / who. */
+  suspendedReason?: string;
+  suspendedAt?: Timestamp;
+  suspendedBy?: string;
   /**
    * Billing (Phase 14). All fields are SERVER-managed (Stripe webhook via the
    * Admin SDK; orgs are `allow write: if false` for clients) so a tenant can

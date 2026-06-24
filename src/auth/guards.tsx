@@ -6,16 +6,25 @@
 import React from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext';
+import { useOrg } from '../lib/useOrg';
 import { can } from '../lib/rbac';
 import { Spinner } from '../components/Spinner';
 
 export function RequireAuth() {
-  const { firebaseUser, profile, loading } = useAuth();
+  const { firebaseUser, profile, loading, platformOwner } = useAuth();
+  const { data: org } = useOrg();
   const location = useLocation();
 
   if (loading) return <FullPageSpinner />;
   if (!firebaseUser) return <Navigate to="/signin" state={{ from: location }} replace />;
   if (profile && (profile.status === 'inactive' || profile.status === 'suspended')) return <Navigate to="/signin" replace />;
+  // Org-level suspension locks out every member (the platform owner is exempt so
+  // they can still operate the Owner Console to lift it). The live useOrg
+  // subscription drives this in real time; while the org doc is still loading
+  // (org == null) we don't bounce prematurely.
+  if (profile?.orgId && org?.status === 'suspended' && !platformOwner) {
+    return <Navigate to="/org-suspended" replace />;
+  }
   // No tenant yet (self-registered, domain didn't match an org). A graceful
   // holding screen — not a hard lockout — that auto-resolves once an org is
   // assigned. Checked before 'pending' so an orgless account sees "setting up"

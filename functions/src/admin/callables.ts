@@ -1030,6 +1030,7 @@ export const getOrgDetail = onCall<{ orgId: string }>(async (request) => {
       orgId,
       legalName: (o.legalName as string) || orgId,
       status: (o.status as string) ?? 'active',
+      suspendedReason: (o.suspendedReason as string) ?? '',
       shortCode: (o.shortCode as string) ?? '',
       // Compliance (Phase 13) — owner oversight of each org's DPA acceptance.
       dataRegion: (o.dataRegion as string) ?? '',
@@ -1076,6 +1077,45 @@ export const setOrgComplimentary = onCall<{ orgId: string; complimentary: boolea
     summary: `Set complimentary = ${complimentary}`, createdAt: FieldValue.serverTimestamp(),
   });
   return { ok: true, complimentary };
+});
+
+/**
+ * Platform-owner: suspend an org (its members are locked out at sign-in via the
+ * RequireAuth org-status check — the live org doc drives it in real time) or
+ * reactivate it. A COMPLIMENTARY org cannot be suspended, which protects the
+ * founding PHSC beta.
+ */
+export const setOrgSuspension = onCall<{ orgId: string; suspended: boolean; reason?: string }>(async (request) => {
+  const caller = request.auth;
+  if (!caller) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = getFirestore();
+  const callerDoc = await db.doc(`users/${caller.uid}`).get();
+  if (!callerDoc.exists || callerDoc.data()!.platformOwner !== true) {
+    throw new HttpsError('permission-denied', 'Only the platform owner may suspend an organization.');
+  }
+  const orgId = (request.data.orgId ?? '').trim();
+  const suspended = !!request.data.suspended;
+  const reason = (request.data.reason ?? '').trim();
+  if (!orgId) throw new HttpsError('invalid-argument', 'Missing organization.');
+  if (suspended && !reason) throw new HttpsError('invalid-argument', 'A suspension reason is required.');
+  const orgRef = db.doc(`orgs/${orgId}`);
+  const orgSnap = await orgRef.get();
+  if (!orgSnap.exists) throw new HttpsError('not-found', 'That organization does not exist.');
+  // Never suspend a complimentary org (protects the founding PHSC beta).
+  if (suspended && orgSnap.data()?.complimentary === true) {
+    throw new HttpsError('failed-precondition', 'A complimentary organization cannot be suspended — remove complimentary status first if this is truly intended.');
+  }
+  await orgRef.set(
+    suspended
+      ? { status: 'suspended', suspendedReason: reason, suspendedAt: FieldValue.serverTimestamp(), suspendedBy: caller.uid }
+      : { status: 'active', suspendedReason: FieldValue.delete(), suspendedAt: FieldValue.delete(), suspendedBy: FieldValue.delete() },
+    { merge: true }
+  );
+  await db.collection('auditLog').add({
+    actorUid: caller.uid, action: suspended ? 'org.suspend' : 'org.reactivate', targetType: 'org', targetId: orgId,
+    summary: suspended ? `Suspended: ${reason}` : 'Reactivated', createdAt: FieldValue.serverTimestamp(),
+  });
+  return { ok: true, status: suspended ? 'suspended' : 'active' };
 });
 
 /**

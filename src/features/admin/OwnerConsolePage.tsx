@@ -21,7 +21,7 @@ interface QueueAccount { uid: string; email: string; displayName: string; status
 interface OrgSummary { orgId: string; legalName: string; userCount: number }
 interface Member { uid: string; displayName: string; email: string; role: string; status: string; rank: string }
 interface OrgDetail {
-  org: { orgId: string; legalName: string; status: string; shortCode: string; dataRegion: string; dpaAcceptedAt: number | null; dpaAcceptedByName: string; dpaVersion: string; complimentary: boolean; billingEnabled: boolean; subscriptionStatus: string };
+  org: { orgId: string; legalName: string; status: string; shortCode: string; dataRegion: string; dpaAcceptedAt: number | null; dpaAcceptedByName: string; dpaVersion: string; complimentary: boolean; billingEnabled: boolean; subscriptionStatus: string; suspendedReason: string };
   settings: { orgName: string; allowedEmailDomains: string[]; siteCode: string; jurisdiction: string };
   members: Member[];
   memberCount: number;
@@ -35,6 +35,7 @@ const createOrgAdmin = httpsCallable<{ orgId: string; email: string; displayName
 const assignUserToOrg = httpsCallable<{ uid: string; orgId: string }, { ok: boolean }>(functions, 'assignUserToOrg');
 const deleteUnassignedAccount = httpsCallable<{ uid: string }, { ok: boolean }>(functions, 'deleteUnassignedAccount');
 const setOrgComplimentaryFn = httpsCallable<{ orgId: string; complimentary: boolean }, { ok: boolean; complimentary: boolean }>(functions, 'setOrgComplimentary');
+const setOrgSuspensionFn = httpsCallable<{ orgId: string; suspended: boolean; reason?: string }, { ok: boolean; status: string }>(functions, 'setOrgSuspension');
 
 const ROLE_LABEL: Record<string, string> = Object.fromEntries(RANKS.map((r) => [r.key, r.defaultLabel]));
 const ADMIN_ROLE_OPTIONS = RANKS.filter((r) => r.key === 'director' || r.key === 'lieutenant');
@@ -115,6 +116,12 @@ export function OwnerConsolePage() {
             setBusy(selectedOrgId);
             try { await setOrgComplimentaryFn({ orgId: selectedOrgId, complimentary }); openOrg(selectedOrgId); load(); }
             catch (e) { setError((e as Error).message || 'Failed to update complimentary status.'); }
+            finally { setBusy(null); }
+          }}
+          onSetSuspension={async (suspended, reason) => {
+            setBusy(selectedOrgId);
+            try { await setOrgSuspensionFn({ orgId: selectedOrgId, suspended, reason }); openOrg(selectedOrgId); load(); }
+            catch (e) { setError((e as Error).message || 'Failed to update suspension.'); }
             finally { setBusy(null); }
           }}
         />
@@ -215,9 +222,10 @@ function QueueRow({ a, orgs, busy, onAssign, onDelete }: {
   );
 }
 
-function OrgDetailPanel({ detail, loading, busy, onBack, onAddAdmin, onToggleComplimentary }: {
+function OrgDetailPanel({ detail, loading, busy, onBack, onAddAdmin, onToggleComplimentary, onSetSuspension }: {
   detail: OrgDetail | null; loading: boolean; busy: boolean; onBack: () => void; onAddAdmin: () => void;
   onToggleComplimentary: (complimentary: boolean) => void;
+  onSetSuspension: (suspended: boolean, reason: string) => void;
 }) {
   return (
     <div>
@@ -237,7 +245,7 @@ function OrgDetailPanel({ detail, loading, busy, onBack, onAddAdmin, onToggleCom
               <Button variant="primary" onClick={onAddAdmin}>+ Add administrator</Button>
             </div>
             <dl className="mt-3 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
-              <Info label="Status" value={detail.org.status} />
+              <Info label="Status" value={detail.org.status === 'suspended' ? `suspended — ${detail.org.suspendedReason || 'no reason given'}` : detail.org.status} />
               <Info label="Jurisdiction" value={detail.settings.jurisdiction || '—'} />
               <Info label="Data region" value={detail.org.dataRegion || '—'} />
               <Info
@@ -262,6 +270,19 @@ function OrgDetailPanel({ detail, loading, busy, onBack, onAddAdmin, onToggleCom
               </span>
               <Button variant="ghost" disabled={busy} onClick={() => onToggleComplimentary(!detail.org.complimentary)}>
                 {detail.org.complimentary ? 'Remove complimentary' : 'Mark complimentary'}
+              </Button>
+              <Button
+                variant="ghost"
+                className={detail.org.status === 'suspended' ? undefined : 'text-red-600 hover:bg-red-50'}
+                disabled={busy || (detail.org.status !== 'suspended' && detail.org.complimentary)}
+                title={detail.org.status !== 'suspended' && detail.org.complimentary ? 'Remove complimentary status first' : undefined}
+                onClick={() => {
+                  if (detail.org.status === 'suspended') { onSetSuspension(false, ''); return; }
+                  const reason = window.prompt('Reason for suspending this organization? All its members are locked out (the platform owner is not) until reactivated.');
+                  if (reason && reason.trim()) onSetSuspension(true, reason.trim());
+                }}
+              >
+                {detail.org.status === 'suspended' ? 'Reactivate organization' : 'Suspend organization'}
               </Button>
             </div>
           </section>
