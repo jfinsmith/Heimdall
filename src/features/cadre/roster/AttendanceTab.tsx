@@ -278,7 +278,8 @@ export function AttendanceTab({
 
   const [mode, setMode] = useState<'manual' | 'schedule'>('manual');
   const [genDate, setGenDate] = useState(localDateStr(new Date()));
-  const [includeNonFdle, setIncludeNonFdle] = useState(true);
+  // Only official curriculum courses are rostered (custom/agency blocks excluded).
+  const officialCourses = useMemo(() => new Set((curriculum?.courses ?? []).map((c) => c.name)), [curriculum]);
 
   // Schedule mode pulls the day's blocks + instructor names from the calendar.
   const { data: sessions, loading: sLoading } = useCollection<SessionDoc>(
@@ -291,8 +292,8 @@ export function AttendanceTab({
 
   const totalHoursStr = String(curriculum?.totalHours ?? academy.targetTotalHours);
   const generated = useMemo(
-    () => (mode === 'schedule' ? buildDayRosters(sessions, genDate, { includeNonFdle }) : []),
-    [mode, sessions, genDate, includeNonFdle]
+    () => (mode === 'schedule' ? buildDayRosters(sessions, genDate, officialCourses) : []),
+    [mode, sessions, genDate, officialCourses]
   );
 
   const manualInit: SheetInit = {
@@ -318,13 +319,7 @@ export function AttendanceTab({
           <button type="button" className={mode === 'schedule' ? `${tab} bg-watch-800 text-white` : `${tab} text-watch-700`} onClick={() => setMode('schedule')}>From schedule</button>
         </div>
         {mode === 'schedule' && (
-          <>
-            <Field label="Date" className="max-w-[11rem]"><Input type="date" value={genDate} onChange={(e) => setGenDate(e.target.value)} /></Field>
-            <label className="flex items-center gap-2 pb-2 text-sm text-watch-700">
-              <input type="checkbox" checked={includeNonFdle} onChange={(e) => setIncludeNonFdle(e.target.checked)} />
-              Include non-FDLE blocks (PSO / formation)
-            </label>
-          </>
+          <Field label="Date" className="max-w-[11rem]"><Input type="date" value={genDate} onChange={(e) => setGenDate(e.target.value)} /></Field>
         )}
         <Button variant="primary" onClick={() => window.print()}>
           Print attendance roster{mode === 'schedule' && generated.length > 1 ? 's' : ''}

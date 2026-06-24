@@ -50,12 +50,13 @@ const ADDITIONAL_INSTRUCTOR_ROLES: SlotRole[] = ['assistant', 'safety_officer'];
 export function buildDayRosters(
   sessions: WithId<SessionDoc>[],
   dateStr: string,
-  opts: { includeNonFdle?: boolean } = {}
+  officialCourses: Set<string>
 ): DayRoster[] {
   const onDay = (s: WithId<SessionDoc>) => localDateStr(s.start.toDate()) === dateStr;
+  // Only OFFICIAL curriculum courses are rostered — custom/agency blocks (guest
+  // speakers, PSO/formation, one-offs a coordinator typed) are excluded.
   const instructional = sessions
-    .filter((s) => s.kind !== 'lunch' && onDay(s))
-    .filter((s) => (opts.includeNonFdle ? true : s.countsTowardFdle !== false))
+    .filter((s) => s.kind !== 'lunch' && onDay(s) && officialCourses.has(s.courseName))
     .sort((a, b) => a.start.toMillis() - b.start.toMillis());
   const lunches = sessions.filter((s) => s.kind === 'lunch' && onDay(s));
 

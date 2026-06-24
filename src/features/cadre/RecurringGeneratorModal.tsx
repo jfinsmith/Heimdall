@@ -340,10 +340,18 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
             <Field label="Lunch starts at" className="max-w-[10rem]">
               <Input type="time" value={lunchStart} onChange={(e) => setLunchStart(e.target.value)} />
             </Field>
-            <label className="mb-2 flex items-center gap-2 text-sm text-watch-800">
-              <input type="checkbox" checked={lunchCounts} onChange={(e) => setLunchCounts(e.target.checked)} />
-              Count lunch toward instructional hours
-            </label>
+            <details className="mb-2 w-full">
+              <summary className="cursor-pointer text-xs font-medium text-slate-500 hover:text-watch-700">
+                Advanced{lunchCounts && <span className="ml-1 text-amber-700">⚠ lunch counts toward hours</span>}
+              </summary>
+              <label className="mt-1.5 flex items-start gap-2 text-sm text-watch-800">
+                <input type="checkbox" className="mt-0.5" checked={lunchCounts} onChange={(e) => setLunchCounts(e.target.checked)} />
+                <span>
+                  Count lunch toward instructional hours
+                  <span className="block text-xs text-amber-700">⚠ Rare — FDLE: lunch must NOT count toward instructional hours except in a separately-approved case. Leave unchecked unless you have approval.</span>
+                </span>
+              </label>
+            </details>
           </div>
         )}
 
