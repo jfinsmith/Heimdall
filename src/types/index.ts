@@ -627,7 +627,26 @@ export type RosterModuleKey =
   | 'nmt_attendance'
   | 'discipline'
   | 'grades'
-  | 'reports';
+  | 'reports'
+  | 'attendance_log';
+
+/** Voluntary digital attendance (opt-in tally — the signed paper roster stays the
+ *  legal record of attendance). One doc per academy per day:
+ *  academies/{id}/attendance/{yyyy-mm-dd}. */
+export type AttendanceStatus = 'present' | 'excused' | 'unexcused' | 'tardy' | 'makeup';
+export interface AttendanceEntry {
+  status: AttendanceStatus;
+  /** Attended hours credited that day (staff-editable; excused/absent typically 0). */
+  hours: number;
+}
+export interface AttendanceDoc {
+  orgId?: string;
+  academyId: string;
+  date: string;            // yyyy-mm-dd (also the doc id)
+  entries: Record<string, AttendanceEntry>; // cadetId → entry
+  updatedBy?: string;
+  updatedAt?: Timestamp;
+}
 
 export interface CurriculumDoc {
   /** Tenant (orgs/{orgId}); set at provisioning/backfill. */

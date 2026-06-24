@@ -294,6 +294,14 @@ service cloud.firestore {
           && request.resource.data.get('ssnLast4', '') == resource.data.get('ssnLast4', '');
       }
 
+      // ── voluntary attendance log (one doc per day; staff-only, org-scoped) ──
+      match /attendance/{date} {
+        allow read: if isStaff() && inOrg(resource.data);
+        allow create: if isStaff() && inOrg(request.resource.data);
+        allow update: if isStaff() && inOrg(resource.data) && unchanged('orgId');
+        allow delete: if isStaff() && inOrg(resource.data);
+      }
+
       // ── academic-action reports (cadet exam-failure / dismissal letters) ──
       match /reports/{reportId} {
         allow read: if isStaff() && inOrg(resource.data);

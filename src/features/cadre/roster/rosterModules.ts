@@ -28,6 +28,8 @@ export const ROSTER_MODULES: RosterModuleDef[] = [
   { key: 'discipline', label: 'Discipline' },
   { key: 'grades', label: 'Gradebook' },
   { key: 'reports', label: 'Reports' },
+  // Voluntary digital attendance capture — available on every roster (opt-in to use).
+  { key: 'attendance_log', label: 'Attendance Log' },
 ];
 
 export const ROSTER_MODULE_BY_KEY: Record<RosterModuleKey, RosterModuleDef> = Object.fromEntries(
@@ -40,5 +42,6 @@ export const DEFAULT_ROSTER_MODULES: RosterModuleKey[] = ['le_attendance', 'disc
 /** The modules to actually show for a curriculum, in registry order, skipping unbuilt ones. */
 export function enabledRosterModules(rosterModules: RosterModuleKey[] | undefined): RosterModuleDef[] {
   const enabled = new Set(rosterModules ?? DEFAULT_ROSTER_MODULES);
+  enabled.add('attendance_log'); // voluntary digital attendance is available on every roster
   return ROSTER_MODULES.filter((m) => enabled.has(m.key) && !m.comingSoon);
 }

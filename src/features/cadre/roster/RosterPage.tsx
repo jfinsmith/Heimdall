@@ -17,6 +17,7 @@ import { Badge, Button, Field, Input, PageHeader, Select, Spinner } from '../../
 import { Modal } from '../../../components/Modal';
 import { agencyLabel } from './rosterShared';
 import { AttendanceTab } from './AttendanceTab';
+import { AttendanceLogTab } from './AttendanceLogTab';
 import { DisciplineTab } from './DisciplineTab';
 import { GradesTab } from './GradesTab';
 import { AcademyReports } from '../reports/AcademyReports';
@@ -115,6 +116,7 @@ export function RosterPage() {
 
       {activeTab === 'members' && <MembersTab academyId={academyId} academy={academy} members={members} curriculum={curriculum} />}
       {activeModule?.attendanceFormat && <AttendanceTab academy={academy} members={members} curriculum={curriculum} />}
+      {activeTab === 'attendance_log' && <AttendanceLogTab academyId={academyId} members={members} />}
       {activeTab === 'discipline' && <DisciplineTab academyId={academyId} members={members} />}
       {activeTab === 'grades' && <GradesTab academyId={academyId} members={members} curriculum={curriculum} />}
       {activeTab === 'reports' && <AcademyReports academy={academy} />}

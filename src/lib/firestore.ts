@@ -36,7 +36,7 @@ const NON_ORG_SCOPED = new Set(['orgs', 'notifications', 'mail', 'defaultCurricu
 // denied ENTIRELY by Firestore if any sibling doc fails the per-doc inOrg rule
 // (e.g. one org-less leftover), which silently empties the whole list. Filtering
 // makes Firestore evaluate the rule only on matching docs (excluding the rest).
-const ORG_SCOPED_SUBCOLLECTIONS = new Set(['roster', 'reports', 'signups']);
+const ORG_SCOPED_SUBCOLLECTIONS = new Set(['roster', 'reports', 'signups', 'attendance']);
 
 interface QueryState<T> {
   data: T[];
