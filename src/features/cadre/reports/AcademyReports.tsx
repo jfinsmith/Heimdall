@@ -9,17 +9,37 @@ import { addDoc, collection, deleteDoc, doc, limit, serverTimestamp, updateDoc, 
 import { db } from '../../../lib/firebase';
 import { useCollection, type WithId } from '../../../lib/firestore';
 import { useCurriculum } from '../../../lib/curricula';
+import { fmtDate } from '../../../lib/time';
 import { useAuth } from '../../../auth/AuthContext';
 import type { AcademyDoc, AcademyReportDoc, CurriculumCourse, RosterMemberDoc, UserDoc } from '../../../types';
 import { Button, Field, Input, Select, TextArea } from '../../../components/ui';
 import { Modal } from '../../../components/Modal';
-import { getReportType, REPORT_TYPES, type ReportType } from './reportTypes';
+import { getReportType, REPORT_TYPES, type ReportField, type ReportType } from './reportTypes';
 import { offeredLetterForms, libraryFormToReportType, useOrgLibraryForms } from './documentLibrary';
 
 const today = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
+
+/** Class designation (e.g. "LE 131") — shortName plus the sequence number, unless
+ *  the sequence is already part of shortName (avoids "LE 131 131"). */
+function classDesignation(academy: AcademyDoc): string {
+  const sn = academy.shortName ?? '';
+  const seq = academy.sequenceNo ?? '';
+  return seq && !sn.includes(seq) ? [sn, seq].filter(Boolean).join(' ') : sn;
+}
+
+/** Item 17 — pre-fill a field from data the academy already carries. Returns
+ *  undefined when the field declares no data source (caller falls back to f.default). */
+function resolveFieldDefault(f: ReportField, academy: AcademyDoc): string | undefined {
+  switch (f.defaultFrom) {
+    case 'className': return classDesignation(academy);
+    case 'sequenceNo': return academy.sequenceNo ?? '';
+    case 'programDates': return `${fmtDate(academy.startDate)} – ${fmtDate(academy.endDate)}`;
+    default: return undefined;
+  }
+}
 
 /** A pre-fill handed in from the gradebook/discipline tabs: the cadet (+ for a
  *  course failure, the course/score). The coordinator still PICKS the letter — we
@@ -194,7 +214,7 @@ function ReportFormModal({
     const init: Record<string, string> = { ...(editing?.data ?? seed?.values ?? {}) };
     for (const f of type.fields) {
       if (init[f.key] !== undefined) continue;
-      init[f.key] = f.defaultFrom === 'className' ? academy.shortName ?? '' : f.default ?? '';
+      init[f.key] = resolveFieldDefault(f, academy) ?? f.default ?? '';
     }
     return init;
   });
