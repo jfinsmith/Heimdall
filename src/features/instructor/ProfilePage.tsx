@@ -5,7 +5,7 @@
  * actually unlocks restricted slots).
  */
 // (ChangePasswordCard is defined at the bottom of this file.)
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../../lib/firebase';
 import { useAuth } from '../../auth/AuthContext';
@@ -216,7 +216,48 @@ export function ProfilePage() {
           })}
         </ul>
       </section>
+      <UnavailableDatesCard />
     </div>
+  );
+}
+
+/** Self-service blackout days — Browse Open Sessions hides open sessions on these. */
+function UnavailableDatesCard() {
+  const { firebaseUser, profile } = useAuth();
+  const [day, setDay] = useState('');
+  const dates = useMemo(() => [...(profile?.unavailableDates ?? [])].sort(), [profile]);
+  if (!firebaseUser || !profile) return null;
+
+  async function add() {
+    if (!day || dates.includes(day)) { setDay(''); return; }
+    await updateDoc(doc(db, 'users', firebaseUser!.uid), { unavailableDates: [...dates, day], updatedAt: serverTimestamp() });
+    setDay('');
+  }
+  async function remove(d: string) {
+    await updateDoc(doc(db, 'users', firebaseUser!.uid), { unavailableDates: dates.filter((x) => x !== d), updatedAt: serverTimestamp() });
+  }
+
+  return (
+    <section className="mt-6 rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
+      <h2 className="mb-1 text-sm font-semibold uppercase tracking-wider text-watch-600">Unavailable days</h2>
+      <p className="mb-3 text-sm text-slate-500">Mark days you can't work — open sessions on those days are hidden from your Browse Open Sessions list.</p>
+      <div className="flex items-end gap-2">
+        <Field label="Add a day" className="max-w-[12rem]">
+          <Input type="date" value={day} onChange={(e) => setDay(e.target.value)} />
+        </Field>
+        <Button variant="secondary" disabled={!day} onClick={add}>Add</Button>
+      </div>
+      {dates.length > 0 && (
+        <ul className="mt-3 flex flex-wrap gap-2">
+          {dates.map((d) => (
+            <li key={d} className="flex items-center gap-1.5 rounded-full border border-watch-200 px-3 py-1 text-sm">
+              {d}
+              <button type="button" className="text-slate-400 hover:text-red-600" aria-label={`Remove ${d}`} onClick={() => remove(d)}>✕</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 

@@ -116,6 +116,9 @@ export interface UserDoc {
    */
   instructorCertExpires?: Timestamp;
   notificationPrefs: NotificationPrefs;
+  /** Full days the user marked unavailable to work (yyyy-mm-dd, local). Web-only:
+   *  Browse Open Sessions hides open sessions on these days. */
+  unavailableDates?: string[];
   /** Random token for the personal ICS calendar-feed URL (user-generated). */
   icsToken?: string;
   /**

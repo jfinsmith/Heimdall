@@ -27,6 +27,9 @@ export function BrowseOpenSessionsPage() {
   );
   const { data: academies } = useCollection<AcademyDoc>('academies');
   const [academyFilter, setAcademyFilter] = useState('all');
+  const [showUnavailable, setShowUnavailable] = useState(false);
+  // Days the user marked unavailable (Profile → Unavailable days) — hidden unless toggled.
+  const blackout = useMemo(() => new Set(profile?.unavailableDates ?? []), [profile]);
   const academyLabel = useMemo(() => {
     const m = new Map<string, string>();
     for (const a of academies) m.set(a.id, a.shortName || a.name);
@@ -41,7 +44,15 @@ export function BrowseOpenSessionsPage() {
   const matches = useMemo(
     () =>
       sessions
-        .filter((s) => academyFilter === 'all' || s.academyId === academyFilter)
+        .filter((s) => {
+          if (academyFilter !== 'all' && s.academyId !== academyFilter) return false;
+          if (!showUnavailable) {
+            const d = s.start.toDate();
+            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            if (blackout.has(key)) return false;
+          }
+          return true;
+        })
         .map((s) => ({
           session: s,
           openSlots: s.roleSlots.filter(
@@ -52,7 +63,7 @@ export function BrowseOpenSessionsPage() {
           ),
         }))
         .filter((m) => m.openSlots.length > 0),
-    [sessions, myQuals, firebaseUser?.uid, academyFilter]
+    [sessions, myQuals, firebaseUser?.uid, academyFilter, blackout, showUnavailable]
   );
 
   async function quickSignup(sessionId: string, slotId: string) {
@@ -75,23 +86,31 @@ export function BrowseOpenSessionsPage() {
         kicker="Instructor"
         title="Browse Open Sessions"
         actions={
-          <label className="flex items-center gap-2 text-sm text-watch-800">
-            Academy
-            <select
-              className="rounded-md border border-watch-200 bg-white px-2 py-1.5 text-sm"
-              value={academyFilter}
-              onChange={(e) => setAcademyFilter(e.target.value)}
-            >
-              <option value="all">All</option>
-              {academies
-                .filter((a) => a.status === 'published' || a.status === 'in_progress')
-                .map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.shortName || a.name}
-                  </option>
-                ))}
-            </select>
-          </label>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-2 text-sm text-watch-800">
+              Academy
+              <select
+                className="rounded-md border border-watch-200 bg-white px-2 py-1.5 text-sm"
+                value={academyFilter}
+                onChange={(e) => setAcademyFilter(e.target.value)}
+              >
+                <option value="all">All</option>
+                {academies
+                  .filter((a) => a.status === 'published' || a.status === 'in_progress')
+                  .map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.shortName || a.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            {blackout.size > 0 && (
+              <label className="flex items-center gap-2 text-sm text-watch-700">
+                <input type="checkbox" checked={showUnavailable} onChange={(e) => setShowUnavailable(e.target.checked)} />
+                Show my unavailable days
+              </label>
+            )}
+          </div>
         }
       />
       {message && <div className="mb-4 rounded-md bg-watch-100 px-3 py-2 text-sm text-watch-800">{message}</div>}
