@@ -15,7 +15,7 @@ import { useClickOutside } from '../../lib/useClickOutside';
 import { useAuth } from '../../auth/AuthContext';
 import { combineDateTime, hoursBetween, toDateInputValue, toTimeInputValue, tsFromDate, isValidDuration, END_BEFORE_START_MSG } from '../../lib/time';
 import type { AcademyDoc, QualificationKey, RoleSlot, RosterMemberDoc, SessionDoc, SlotRole, UserDoc } from '../../types';
-import { QUALIFICATION_LABELS, SLOT_ROLE_LABELS, SELECTABLE_SLOT_ROLES } from '../../types';
+import { QUALIFICATION_LABELS, SLOT_ROLE_LABELS, SELECTABLE_SLOT_ROLES, instructorCertActive, isInstructorQual } from '../../types';
 import { Button, Field, Input, Select, TextArea } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import { BlockModeToggle } from './blockMode';
@@ -230,7 +230,10 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
     setSlots((prev) => prev.map((s) => (s.slotId === slotId ? { ...s, filledBy: s.filledBy.filter((u) => u !== uid) } : s)));
   }
 
-  /** Active users eligible to fill a slot (hold the verified qualification it requires). */
+  /** Active users eligible to fill a slot (hold the verified qualification it
+   *  requires, and — for instructor slots — a CURRENT FDLE instructor cert, so a
+   *  coordinator can't reserve an expired-cert instructor onto a high-liability
+   *  block; the same gate self-sign-up enforces). */
   function eligibleFor(slot: RoleSlot) {
     const req = slot.requiredQualificationKey;
     const reservedAnywhere = new Set(slots.flatMap((s) => s.filledBy)); // no double-booking within the session
@@ -239,7 +242,8 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
         (u) =>
           !slot.filledBy.includes(u.id) &&
           !reservedAnywhere.has(u.id) &&
-          (!req || (u.verifiedQualKeys ?? []).includes(req))
+          (!req || (u.verifiedQualKeys ?? []).includes(req)) &&
+          (!req || !isInstructorQual(req) || instructorCertActive(u))
       )
       .sort((a, b) => a.displayName.localeCompare(b.displayName));
   }
