@@ -26,6 +26,8 @@ import { SLOT_ROLE_LABELS } from '../../types';
 import { WordmarkHorizontal } from '../../brand/Logo';
 import { OrgLogo } from '../../brand/OrgLogo';
 import { Button } from '../../components/ui';
+import { sessionFlag, type SessionFlag } from '../cadre/sessionEvents';
+import { holidaysForYear } from '../../lib/holidays';
 
 const TZ = 'America/New_York';
 const NAVY_FALLBACK = '#16203a';
@@ -33,7 +35,15 @@ const AMBER_FALLBACK = '#d99320';
 const PSO_BLOCK = 'PSO Assignment'; // coordinator pay-filler — hidden from cadets
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 
+// Same highlight rules as the live calendar: test → red, scenario → green, PT → amber.
+const FLAG_STYLE: Record<SessionFlag, { color: string; label: string }> = {
+  test: { color: '#dc2626', label: 'Test' },
+  scenario: { color: '#16a34a', label: 'Scenario' },
+  pt: { color: '#ca8a04', label: 'PT' },
+};
+
 type Mode = 'cadet' | 'staff';
+type Day = { date: Date; sessions: WithId<SessionDoc>[]; holiday?: string };
 
 const t = (d: Date) => d.toLocaleTimeString('en-US', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false });
 const localKey = (d: Date) => {
@@ -82,6 +92,8 @@ export function PrintableSchedulePage() {
   const leadOf = (s: WithId<SessionDoc>) =>
     s.roleSlots.filter((sl) => sl.role === 'lead').flatMap((sl) => sl.filledBy).map(nameFor).join(', ');
 
+  const disabledHolidays = useMemo(() => new Set(settings?.disabledHolidays ?? []), [settings]);
+
   const weeks = useMemo(() => {
     const visible = sessions.filter(
       (s) => s.status !== 'cancelled' && (mode === 'staff' || s.courseName !== PSO_BLOCK)
@@ -91,19 +103,35 @@ export function PrintableSchedulePage() {
       const k = localKey(s.start.toDate());
       (dayMap.get(k) ?? dayMap.set(k, []).get(k)!).push(s);
     }
-    const days = [...dayMap.keys()].sort().map((k) => ({
+    // Enabled (non-disabled) holidays within the academy window — surfaced on the
+    // printout even when no class is scheduled that day.
+    const holidayMap = new Map<string, string>();
+    if (academy) {
+      const startK = localKey(academy.startDate.toDate());
+      const endK = localKey(academy.endDate.toDate());
+      for (let y = academy.startDate.toDate().getFullYear(); y <= academy.endDate.toDate().getFullYear(); y++) {
+        for (const h of holidaysForYear(y, disabledHolidays)) {
+          const hk = localKey(h.date);
+          if (hk >= startK && hk <= endK) holidayMap.set(hk, h.name);
+        }
+      }
+    }
+    const allKeys = [...new Set([...dayMap.keys(), ...holidayMap.keys()])];
+    const days: Day[] = allKeys.sort().map((k) => ({
       date: new Date(`${k}T12:00:00`),
-      sessions: dayMap.get(k)!.sort((a, b) => a.start.toMillis() - b.start.toMillis()),
+      sessions: (dayMap.get(k) ?? []).sort((a, b) => a.start.toMillis() - b.start.toMillis()),
+      holiday: holidayMap.get(k),
     }));
-    const weekMap = new Map<string, typeof days>();
+    const weekMap = new Map<string, Day[]>();
     for (const d of days) {
-      (weekMap.get(localKey(mondayOf(d.date))) ?? weekMap.set(localKey(mondayOf(d.date)), []).get(localKey(mondayOf(d.date)))!).push(d);
+      const wk = localKey(mondayOf(d.date));
+      (weekMap.get(wk) ?? weekMap.set(wk, []).get(wk)!).push(d);
     }
     return [...weekMap.keys()].sort().map((wk, i) => ({ index: i + 1, monday: new Date(`${wk}T12:00:00`), days: weekMap.get(wk)! }));
-  }, [sessions, mode]);
+  }, [sessions, mode, academy, disabledHolidays]);
 
   const stats = useMemo(() => {
-    const days = weeks.reduce((n, w) => n + w.days.length, 0);
+    const days = weeks.reduce((n, w) => n + w.days.filter((d) => d.sessions.length > 0).length, 0);
     const hours = weeks.reduce((n, w) => n + w.days.reduce((m, d) => m + d.sessions.reduce((h, s) => h + s.hours, 0), 0), 0);
     return { days, hours: Math.round(hours * 4) / 4, weeks: weeks.length };
   }, [weeks]);
@@ -218,6 +246,14 @@ export function PrintableSchedulePage() {
                     {WEEKDAYS.map((_, wd) => {
                       const day = w.days.find((d) => weekdayIdx(d.date) === wd);
                       if (!day) return <td key={wd} className="border border-slate-200 bg-slate-50/40" />;
+                      if (day.sessions.length === 0) {
+                        return (
+                          <td key={wd} className="border border-slate-200 bg-amber-50/60 px-2 py-1.5 align-top">
+                            <div className="text-[10px] font-semibold leading-tight text-amber-800">{day.holiday}</div>
+                            <div className="text-[10px] text-slate-400">{day.date.getDate()}</div>
+                          </td>
+                        );
+                      }
                       const p = primaryOf(day.sessions);
                       const hl = day.sessions.some((s) => s.highLiability);
                       return (
@@ -246,7 +282,10 @@ export function PrintableSchedulePage() {
           {mode === 'staff' && (
             <> Names fill role slots; <span className="font-semibold" style={{ color: amber }}>OPEN</span> = unfilled.</>
           )}{' '}
-          ▲ = high-liability course.
+          ▲ = high-liability course.{' '}
+          <span className="font-semibold" style={{ color: FLAG_STYLE.test.color }}>Test</span> ·{' '}
+          <span className="font-semibold" style={{ color: FLAG_STYLE.scenario.color }}>Scenario</span> ·{' '}
+          <span className="font-semibold" style={{ color: FLAG_STYLE.pt.color }}>PT</span> blocks are flagged.
         </div>
 
         {weeks.map((w) => (
@@ -265,20 +304,29 @@ export function PrintableSchedulePage() {
                     <h3 className="text-sm font-bold" style={{ color: navy }}>
                       {d.date.toLocaleDateString('en-US', { timeZone: TZ, weekday: 'long', month: 'long', day: 'numeric' })}
                     </h3>
-                    <span className="text-[11px] font-medium text-slate-400">{dayHours} hrs</span>
+                    <span className="text-[11px] font-medium text-slate-400">{d.sessions.length > 0 ? `${dayHours} hrs` : 'Holiday'}</span>
                   </div>
+                  {d.holiday && (
+                    <div className="border-t border-amber-200 bg-amber-50 px-4 py-1 text-[11px] font-semibold text-amber-800">
+                      🏛 {d.holiday}{d.sessions.length === 0 ? ' — no scheduled training' : ''}
+                    </div>
+                  )}
+                  {d.sessions.length > 0 && (
                   <table className="w-full border-collapse text-sm">
                     <tbody>
                       {d.sessions.map((s) => {
                         const lead = leadOf(s);
+                        const flag = sessionFlag(s);
+                        const flagStyle = flag ? FLAG_STYLE[flag] : null;
                         return (
                           <tr key={s.id} className="border-t border-slate-100 align-top">
-                            <td className="w-[5.4rem] whitespace-nowrap px-4 py-1.5 font-mono text-xs text-slate-500">
+                            <td className="w-[5.4rem] whitespace-nowrap px-4 py-1.5 font-mono text-xs text-slate-500" style={flagStyle ? { borderLeft: `3px solid ${flagStyle.color}` } : undefined}>
                               {t(s.start.toDate())}–{t(s.end.toDate())}
                             </td>
                             <td className="px-2 py-1.5">
                               <span className="font-semibold text-[#1f2a45]">{s.title || s.courseName}</span>
                               {s.highLiability && <span className="ml-2 align-middle text-[10px] font-bold" style={{ color: amber }}>▲</span>}
+                              {flagStyle && <span className="ml-2 rounded px-1 align-middle text-[9px] font-bold uppercase text-white" style={{ backgroundColor: flagStyle.color }}>{flagStyle.label}</span>}
                               {mode === 'cadet' && lead && <div className="mt-0.5 text-[11px] text-slate-500">Instructor: {lead}</div>}
                               {mode === 'staff' && (
                                 <div className="mt-0.5 space-y-0.5">
@@ -296,6 +344,7 @@ export function PrintableSchedulePage() {
                                   })}
                                 </div>
                               )}
+                              {s.notes && <div className="mt-0.5 text-[11px] italic leading-tight text-slate-500">{s.notes}</div>}
                             </td>
                             <td className="w-28 px-2 py-1.5">
                               {s.room && (
@@ -310,6 +359,7 @@ export function PrintableSchedulePage() {
                       })}
                     </tbody>
                   </table>
+                  )}
                 </section>
               );
             })}
