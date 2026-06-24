@@ -7,7 +7,7 @@
 import React, { useMemo, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
-import { doc, serverTimestamp, updateDoc, deleteDoc } from 'firebase/firestore';
+import { doc, serverTimestamp, updateDoc, deleteDoc, deleteField } from 'firebase/firestore';
 import { db, functions } from '../../../lib/firebase';
 import { useCollection, useDoc, type WithId } from '../../../lib/firestore';
 import { useCurriculum } from '../../../lib/curricula';
@@ -15,7 +15,7 @@ import type { AcademyDoc, CurriculumDoc, RosterAgency, RosterMemberDoc } from '.
 import { ROSTER_AGENCIES } from '../../../types';
 import { Badge, Button, Field, Input, PageHeader, Select, Spinner } from '../../../components/ui';
 import { Modal } from '../../../components/Modal';
-import { agencyLabel, courseKey } from './rosterShared';
+import { agencyLabel, courseKey, memberStanding } from './rosterShared';
 import { AttendanceTab } from './AttendanceTab';
 import { AttendanceLogTab } from './AttendanceLogTab';
 import { DisciplineTab } from './DisciplineTab';
@@ -59,8 +59,10 @@ export function RosterPage() {
     );
   }
 
-  const active = members.filter((m) => m.status !== 'withdrawn' && !m.blockTaker);
+  const active = members.filter((m) => m.status === 'active' && !m.blockTaker);
+  const graduated = members.filter((m) => m.status === 'graduated');
   const withdrawn = members.filter((m) => m.status === 'withdrawn');
+  const dismissed = members.filter((m) => m.status === 'dismissed');
 
   // Tabs are driven by the discipline's configured roster modules (Members
   // always shows). Configure these in Admin → Curriculum & Hours.
@@ -89,7 +91,9 @@ export function RosterPage() {
 
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <Badge tone="green">{active.length} active</Badge>
+          {graduated.length > 0 && <Badge tone="navy">{graduated.length} graduated</Badge>}
           {withdrawn.length > 0 && <Badge tone="slate">{withdrawn.length} withdrawn</Badge>}
+          {dismissed.length > 0 && <Badge tone="red">{dismissed.length} dismissed</Badge>}
         </div>
         {membersError && (
           <div className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
@@ -146,7 +150,23 @@ function MembersTab({
     await deleteDoc(doc(db, 'academies', academyId, 'roster', m.id));
   }
   async function reinstate(m: WithId<RosterMemberDoc>) {
-    await updateDoc(doc(db, 'academies', academyId, 'roster', m.id), { status: 'active', updatedAt: serverTimestamp() });
+    await updateDoc(doc(db, 'academies', academyId, 'roster', m.id), {
+      status: 'active', completedAt: deleteField(), dismissalReason: deleteField(), updatedAt: serverTimestamp(),
+    });
+  }
+  async function graduate(m: WithId<RosterMemberDoc>) {
+    const standing = memberStanding(m, curriculum?.courses ?? []);
+    const fails = standing.hlFails + standing.nonHlFails;
+    const warn = fails > 0 ? `\n\nNote: ${fails} unresolved course failure(s) on record. Graduation is NOT blocked — verify before issuing the certificate.` : '';
+    if (!window.confirm(`Mark ${m.fullName} as GRADUATED? Their Certificate of Completion becomes available.${warn}`)) return;
+    await updateDoc(doc(db, 'academies', academyId, 'roster', m.id), { status: 'graduated', completedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+  }
+  async function dismiss(m: WithId<RosterMemberDoc>) {
+    const reason = window.prompt(`Reason for dismissing ${m.fullName}? (kept on the record)`);
+    if (reason == null) return; // cancelled
+    await updateDoc(doc(db, 'academies', academyId, 'roster', m.id), {
+      status: 'dismissed', completedAt: serverTimestamp(), ...(reason.trim() ? { dismissalReason: reason.trim() } : {}), updatedAt: serverTimestamp(),
+    });
   }
 
   const full = members.filter((m) => !m.blockTaker);
@@ -176,9 +196,10 @@ function MembersTab({
             {/* # is the LIVE position in the roster, not a stored id — so removing a
                 member collapses the numbers below them (e.g. pull #23 → #24 becomes #23). */}
             {full.map((m, i) => (
-              <MemberRow key={m.id} m={m} displayNo={i + 1}
+              <MemberRow key={m.id} m={m} displayNo={i + 1} academyId={academyId}
                 onWithdraw={() => setWithdrawTarget(m)} onReinstate={() => reinstate(m)} onRemove={() => remove(m)}
-                onEdit={() => setEditTarget(m)} onEmergency={() => setEmergencyTarget(m)} />
+                onEdit={() => setEditTarget(m)} onEmergency={() => setEmergencyTarget(m)}
+                onGraduate={() => graduate(m)} onDismiss={() => dismiss(m)} />
             ))}
             {full.length === 0 && (
               <tr><td colSpan={8} className="px-3 py-10 text-center text-slate-400">No members yet — add the first cadet.</td></tr>
@@ -188,9 +209,10 @@ function MembersTab({
             <tbody className="divide-y divide-watch-50">
               <tr className="bg-watch-100/60"><td colSpan={8} className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-watch-600">Additional block takers</td></tr>
               {blockTakers.map((m, i) => (
-                <MemberRow key={m.id} m={m} displayNo={i + 1}
+                <MemberRow key={m.id} m={m} displayNo={i + 1} academyId={academyId}
                   onWithdraw={() => setWithdrawTarget(m)} onReinstate={() => reinstate(m)} onRemove={() => remove(m)}
-                  onEdit={() => setEditTarget(m)} onEmergency={() => setEmergencyTarget(m)} />
+                  onEdit={() => setEditTarget(m)} onEmergency={() => setEmergencyTarget(m)}
+                  onGraduate={() => graduate(m)} onDismiss={() => dismiss(m)} />
               ))}
             </tbody>
           )}
@@ -208,20 +230,26 @@ function MembersTab({
 }
 
 function MemberRow({
-  m, displayNo, onWithdraw, onReinstate, onRemove, onEdit, onEmergency,
+  m, displayNo, academyId, onWithdraw, onReinstate, onRemove, onEdit, onEmergency, onGraduate, onDismiss,
 }: {
   m: WithId<RosterMemberDoc>;
   displayNo: number;
+  academyId: string;
   onWithdraw: () => void; onReinstate: () => void; onRemove: () => void;
-  onEdit: () => void; onEmergency: () => void;
+  onEdit: () => void; onEmergency: () => void; onGraduate: () => void; onDismiss: () => void;
 }) {
-  const withdrawn = m.status === 'withdrawn';
+  const dim = m.status === 'withdrawn' || m.status === 'dismissed';
   const hasEmergency = !!(m.emergencyName?.trim() || m.emergencyPhone?.trim());
+  const statusBadge =
+    m.status === 'graduated' ? <Badge tone="navy">graduated</Badge>
+    : m.status === 'dismissed' ? <Badge tone="red">dismissed</Badge>
+    : m.status === 'withdrawn' ? <Badge tone="slate">withdrawn</Badge>
+    : <Badge tone="green">active</Badge>;
   return (
-    <tr className={withdrawn ? 'bg-slate-50 text-slate-400' : ''}>
+    <tr className={dim ? 'bg-slate-50 text-slate-400' : ''}>
       <td className="px-3 py-3 tabular-nums">{displayNo}</td>
       <td className="px-3 py-3 font-medium text-watch-900">
-        <span className={withdrawn ? 'line-through' : ''}>{m.fullName}</span>
+        <span className={dim ? 'line-through' : ''}>{m.fullName}</span>
       </td>
       <td className="px-3 py-3">{agencyLabel(m)}</td>
       <td className="px-3 py-3 text-xs text-slate-500">{m.cjis || '—'}</td>
@@ -231,16 +259,19 @@ function MemberRow({
         {m.phone && <div>{formatPhone(m.phone)}</div>}
         {!m.email && !m.phone && '—'}
       </td>
-      <td className="px-3 py-3">
-        {withdrawn ? <Badge tone="slate">withdrawn</Badge> : <Badge tone="green">active</Badge>}
-      </td>
+      <td className="px-3 py-3">{statusBadge}</td>
       <td className="px-3 py-3 text-right whitespace-nowrap">
         <Button variant="ghost" onClick={onEmergency} disabled={!hasEmergency} title={hasEmergency ? 'View emergency contact' : 'No emergency contact on file'}>Emergency</Button>
         <Button variant="ghost" className="text-bifrost-700" onClick={onEdit}>Edit</Button>
-        {withdrawn ? (
-          <Button variant="ghost" onClick={onReinstate}>Reinstate</Button>
+        <Link to={`/roster/cadet/print/${academyId}/${m.id}`} target="_blank" rel="noopener" className="inline-block px-2 text-sm text-bifrost-700 hover:underline">Record</Link>
+        {m.status === 'active' ? (
+          <>
+            <Button variant="ghost" className="text-green-700" onClick={onGraduate}>Graduate</Button>
+            <Button variant="ghost" className="text-amber-700" onClick={onWithdraw}>Withdraw</Button>
+            <Button variant="ghost" className="text-red-700" onClick={onDismiss}>Dismiss</Button>
+          </>
         ) : (
-          <Button variant="ghost" className="text-amber-700" onClick={onWithdraw}>Withdraw</Button>
+          <Button variant="ghost" onClick={onReinstate}>Reinstate</Button>
         )}
         <Button variant="ghost" className="text-red-700" onClick={onRemove}>Remove</Button>
       </td>

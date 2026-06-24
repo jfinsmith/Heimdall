@@ -466,9 +466,13 @@ export interface RosterMemberDoc {
   email?: string;
   emergencyName?: string;
   emergencyPhone?: string;
-  status: 'active' | 'withdrawn';
+  status: 'active' | 'withdrawn' | 'graduated' | 'dismissed';
   withdrawnAt?: Timestamp;
-  /** Curriculum course name the cadet was withdrawn after (grades past it show WD). */
+  /** Set when the cadet reaches a terminal outcome (graduated or dismissed). */
+  completedAt?: Timestamp;
+  /** Reason recorded when status === 'dismissed'. */
+  dismissalReason?: string;
+  /** Curriculum course KEY (see courseKey) the cadet was withdrawn after (grades past it show WD). */
   withdrawnAfterCourse?: string;
   /** Additional block taker (printed in a separate roster section), not a full cadet. */
   blockTaker?: boolean;

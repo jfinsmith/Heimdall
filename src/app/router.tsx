@@ -44,6 +44,7 @@ const PrintableSchedulePage = lazy(() => import('../features/reports/PrintableSc
 const CadetReportsPage = lazy(() => import('../features/cadre/reports/CadetReportsPage').then((m) => ({ default: m.CadetReportsPage })));
 const CadetReportPrintPage = lazy(() => import('../features/cadre/reports/CadetReportPrintPage').then((m) => ({ default: m.CadetReportPrintPage })));
 const DayRosterPrintPage = lazy(() => import('../features/cadre/roster/DayRosterPrintPage').then((m) => ({ default: m.DayRosterPrintPage })));
+const CadetRecordPrintPage = lazy(() => import('../features/cadre/roster/CadetRecordPrintPage').then((m) => ({ default: m.CadetRecordPrintPage })));
 const FeedbackReportPage = lazy(() => import('../features/feedback/FeedbackReportPage').then((m) => ({ default: m.FeedbackReportPage })));
 const FeedbackAdminPage = lazy(() => import('../features/feedback/FeedbackAdminPage').then((m) => ({ default: m.FeedbackAdminPage })));
 const ReportFormsAdminPage = lazy(() => import('../features/admin/ReportFormsAdminPage').then((m) => ({ default: m.ReportFormsAdminPage })));
@@ -104,6 +105,7 @@ export function AppRouter() {
             <Route element={<RequireStaff />}>
               <Route path="/cadet-reports/print/:academyId/:reportId" element={<CadetReportPrintPage />} />
               <Route path="/roster/day/print/:academyId/:date" element={<DayRosterPrintPage />} />
+              <Route path="/roster/cadet/print/:academyId/:memberId" element={<CadetRecordPrintPage />} />
             </Route>
 
             <Route element={<AppShell />}>
