@@ -6,10 +6,12 @@ import React, { useState } from 'react';
 import { addDoc, collection, deleteDoc, doc, serverTimestamp, Timestamp, updateDoc, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { shortId, useCollection, useDoc, type WithId } from '../../lib/firestore';
+import { useCurriculum } from '../../lib/curricula';
+import { instructorCount, requiredInstructors } from '../cadre/instructorRatio';
 import { useAuth } from '../../auth/AuthContext';
 import { can } from '../../lib/rbac';
 import { fmtRange, isValidDuration } from '../../lib/time';
-import type { SessionDoc, SignupDoc } from '../../types';
+import type { AcademyDoc, RosterMemberDoc, SessionDoc, SignupDoc } from '../../types';
 import { SLOT_ROLE_LABELS, QUALIFICATION_LABELS, activeVerifiedQualKeys } from '../../types';
 import { Badge, Button, HighLiabilityBadge, StatusPill } from '../../components/ui';
 import { Modal } from '../../components/Modal';
@@ -31,12 +33,27 @@ export function SessionDetailModal({ sessionId, onClose, onEdit }: Props) {
     [where('status', 'in', ['confirmed', 'waitlist'])],
     [sessionId]
   );
+  // Resolve the FDLE instructor ratio read-time: the course's ratio (from the
+  // academy's curriculum) vs the academy's active cadet count. Advisory only.
+  const { data: academy } = useDoc<AcademyDoc>(session ? `academies/${session.academyId}` : null);
+  const { data: curriculum } = useCurriculum(academy?.discipline);
+  const { data: roster } = useCollection<RosterMemberDoc>(
+    session ? `academies/${session.academyId}/roster` : null,
+    [],
+    [session?.academyId]
+  );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   if (!session) return null;
 
   const mySignup = signups.find((s) => s.uid === firebaseUser?.uid);
+
+  const classSize = roster.filter((m) => m.status === 'active' && !m.blockTaker).length;
+  const ratioCourse = (curriculum?.courses ?? []).find((c) => c.name === session.courseName);
+  const requiredInstr = requiredInstructors(ratioCourse?.instructorRatio, classSize);
+  const filledInstr = instructorCount(session.roleSlots, 'filled');
+  const ratioShort = requiredInstr - filledInstr;
 
   function hasQual(requiredKey?: string): boolean {
     if (!requiredKey) return true;
@@ -177,6 +194,9 @@ export function SessionDetailModal({ sessionId, onClose, onEdit }: Props) {
         <span>{fmtRange(session.start, session.end)}</span>
         <span>· {session.location}{session.room ? ` — ${session.room}` : ''}</span>
         <span>· {session.hours} hrs</span>
+        {requiredInstr > 0 && (ratioShort > 0
+          ? <Badge tone="red">⚠ Short {ratioShort} instructor{ratioShort === 1 ? '' : 's'} — FDLE wants {requiredInstr} for {classSize} cadets (1:{ratioCourse?.instructorRatio})</Badge>
+          : <Badge tone="green">Instructor ratio met ({filledInstr}/{requiredInstr})</Badge>)}
       </div>
       {session.notes && <p className="mb-4 rounded-md bg-watch-50 px-3 py-2 text-sm text-slate-600">{session.notes}</p>}
       {error && <div className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">{error}</div>}

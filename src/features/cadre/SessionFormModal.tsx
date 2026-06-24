@@ -20,6 +20,7 @@ import { QUALIFICATION_LABELS, SLOT_ROLE_LABELS, SELECTABLE_SLOT_ROLES, instruct
 import { Button, Field, Input, Select, TextArea } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import { BlockModeToggle } from './blockMode';
+import { instructorCount, requiredInstructors } from './instructorRatio';
 import { logAudit } from '../sessions/audit';
 import { RoomSelect } from './rooms/RoomSelect';
 import { findRoomConflict } from './rooms/roomBooking';
@@ -169,10 +170,8 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
   // FDLE instructor ratio (1 instructor per N cadets). Counts true instructor
   // slots (lead/assistant/safety officer). Not enforced — some days need fewer.
   const ratio = selectedOption?.instructorRatio;
-  const instructorSlotCount = slots
-    .filter((s) => s.role === 'lead' || s.role === 'assistant' || s.role === 'safety_officer')
-    .reduce((n, s) => n + (s.count || 0), 0);
-  const ratioRequired = ratio && classSize > 0 ? Math.ceil(classSize / ratio) : 0;
+  const instructorSlotCount = instructorCount(slots, 'planned');
+  const ratioRequired = requiredInstructors(ratio, classSize);
   const ratioMet = ratioRequired === 0 || instructorSlotCount >= ratioRequired;
 
   // On edit, match the saved session to a curriculum option by name (handles
