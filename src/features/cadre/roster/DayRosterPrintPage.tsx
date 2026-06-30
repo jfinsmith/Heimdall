@@ -16,6 +16,7 @@ import { useCurriculum } from '../../../lib/curricula';
 import { useGlobalSettings } from '../../../app/providers';
 import type { AcademyDoc, RosterMemberDoc, SessionDoc, UserDoc } from '../../../types';
 import { DocumentHeader } from '../reports/DocumentHeader';
+import { FitToPage } from '../../../components/FitToPage';
 import { Button, Spinner } from '../../../components/ui';
 
 /** A session is "on" the given yyyy-mm-dd if its local start date matches. */
@@ -79,6 +80,7 @@ export function DayRosterPrintPage() {
         <Button variant="primary" onClick={() => window.print()}>Print</Button>
       </div>
 
+      <FitToPage>
       <div className="mx-auto max-w-[8.5in] bg-white p-6 text-black">
         <DocumentHeader curriculum={curriculum} settings={settings} documentTitle="Training Roster" classLine={classLine} />
 
@@ -144,6 +146,7 @@ export function DayRosterPrintPage() {
           </tbody>
         </table>
       </div>
+      </FitToPage>
     </div>
   );
 }

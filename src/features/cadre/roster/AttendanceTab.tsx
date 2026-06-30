@@ -20,6 +20,7 @@ import type { AcademyDoc, CurriculumCourse, CurriculumDoc, RosterMemberDoc, Sess
 import { fmtDate } from '../../../lib/time';
 import { useGlobalSettings } from '../../../app/providers';
 import { DocumentHeader } from '../reports/DocumentHeader';
+import { FitToPage } from '../../../components/FitToPage';
 import { buildDayRosters, localDateStr } from './attendanceRoster';
 import { Button, Field, Input, Select, TextArea } from '../../../components/ui';
 import type { GlobalSettings } from '../../../types';
@@ -81,6 +82,7 @@ function PrintSheet({
   pageBreak?: boolean;
 }) {
   return (
+    <FitToPage>
     <div className={`mx-auto max-w-[8.5in] bg-white p-4 text-black ${pageBreak ? 'print:break-before-page' : ''}`}>
       <DocumentHeader
         curriculum={curriculum}
@@ -138,6 +140,7 @@ function PrintSheet({
         <div className="w-40 border-t border-black pt-1">Date</div>
       </div>
     </div>
+    </FitToPage>
   );
 }
 
