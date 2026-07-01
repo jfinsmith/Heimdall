@@ -66,26 +66,25 @@ jobs:
     needs: [build-and-deploy, emulator-tests]
     steps:
       - uses: actions/checkout@v4
-      # Token auth (firebase login:ci → FIREBASE_TOKEN secret). The service-account
-      # ADC path (sa.json + GOOGLE_APPLICATION_CREDENTIALS) intermittently failed
-      # "Failed to authenticate" in this job while the SAME secret kept working for
-      # hosting — switched 2026-07-01. Re-mint with `firebase login:ci` if it ever
-      # expires/revokes, then update the FIREBASE_TOKEN repo secret.
+      # Auth history: (a) hand-rolled `printf > sa.json` + GOOGLE_APPLICATION_CREDENTIALS
+      # flaked "Failed to authenticate" intermittently; (b) a `firebase login:ci`
+      # --token was rejected by Google only from GitHub runners ("credentials no
+      # longer valid" — datacenter-IP heuristics). The official auth action with the
+      # SAME service account the hosting job uses is the canonical, validated path.
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_HEIMDALL_E1F03 }}
       - name: Deploy Firestore rules & indexes
-        env:
-          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
         run: |
           npx -y firebase-tools@13 deploy --only firestore:rules,firestore:indexes \
-            --project heimdall-e1f03 --non-interactive --token "$FIREBASE_TOKEN"
+            --project heimdall-e1f03 --non-interactive
       # Best-effort: skips cleanly until Firebase Storage is enabled in the
       # console (firebasestorage.googleapis.com). Doesn't fail the job/firestore.
       - name: Deploy Storage rules (best-effort)
         continue-on-error: true
-        env:
-          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
         run: |
           npx -y firebase-tools@13 deploy --only storage \
-            --project heimdall-e1f03 --non-interactive --token "$FIREBASE_TOKEN"
+            --project heimdall-e1f03 --non-interactive
 
   # Emulator-backed rules + signup-concurrency tests (need Java). Make it a
   # required status check in branch protection to gate merges.
