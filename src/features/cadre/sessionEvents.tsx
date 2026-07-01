@@ -56,7 +56,8 @@ export interface SessionEventOpts {
 export type SessionFlag = 'test' | 'scenario' | 'pt';
 export function sessionFlag(s: SessionDoc): SessionFlag | null {
   const hay = `${s.courseName ?? ''} ${s.title ?? ''} ${s.notes ?? ''}`;
-  if (/\btest/i.test(hay)) return 'test';
+  // Whole word only — "Courtroom Testimony" must NOT flag as a graded test.
+  if (/\btests?\b|\btesting\b/i.test(hay)) return 'test';
   if (/\bscenario/i.test(hay)) return 'scenario';
   if (/\bPT\b/i.test(hay)) return 'pt';
   return null;

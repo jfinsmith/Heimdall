@@ -61,25 +61,30 @@ export function SettingsAdminPage() {
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    await setDoc(
-      doc(db, orgConfigPath('settings', orgId)),
-      {
-        orgName,
-        brandPrimaryColor: primary,
-        brandAccentColor: accent,
-        logoUrl,
-        allowedEmailDomains: domains.split(',').map((d) => d.trim()).filter(Boolean),
-        payPeriodTargetHours: payTarget,
-        jurisdiction,
-        letterheadTagline: tagline,
-        letterheadAddressLines: addressLines.split('\n').map((l) => l.trim()).filter(Boolean),
-        siteCode: siteCode.trim(),
-      },
-      { merge: true }
-    );
-    await logAudit(firebaseUser!.uid, 'settings.update', 'settings', 'global', 'Updated org settings');
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+    try {
+      await setDoc(
+        doc(db, orgConfigPath('settings', orgId)),
+        {
+          orgName,
+          brandPrimaryColor: primary,
+          brandAccentColor: accent,
+          logoUrl,
+          allowedEmailDomains: domains.split(',').map((d) => d.trim()).filter(Boolean),
+          payPeriodTargetHours: payTarget,
+          jurisdiction,
+          letterheadTagline: tagline,
+          letterheadAddressLines: addressLines.split('\n').map((l) => l.trim()).filter(Boolean),
+          siteCode: siteCode.trim(),
+        },
+        { merge: true }
+      );
+      await logAudit(firebaseUser!.uid, 'settings.update', 'settings', 'global', 'Updated org settings');
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (err) {
+      // Silent failure here read as "saved" — surface it.
+      window.alert(`Save failed: ${err instanceof Error ? err.message : 'unknown error'}`);
+    }
   }
 
   return (

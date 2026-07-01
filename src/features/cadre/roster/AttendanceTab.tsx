@@ -384,7 +384,9 @@ export function AttendanceTab({
 /** Sign-in sheet layout (NMT/ARGUS): NO. / CJIS & Name / Signature, active cadets
  *  only, positionally numbered. */
 function SignInTable({ rows }: { rows: WithId<RosterMemberDoc>[] }) {
-  const active = rows.filter((m) => m.status !== 'withdrawn');
+  // Dismissed cadets are gone like withdrawn ones — no blank signature lines
+  // for people no longer in the class.
+  const active = rows.filter((m) => m.status !== 'withdrawn' && m.status !== 'dismissed');
   return (
     <table className="mt-3 w-full border-collapse text-[11px]">
       <thead>
@@ -445,7 +447,7 @@ function RosterTable({
               <td className="border border-black px-1 py-1 text-center tabular-nums">{renumber ? i + 1 : m.no}</td>
               <td className="border border-black px-1 py-1">{m.fullName}</td>
               <td className="border border-black px-1 py-1 text-center text-[9px] font-bold uppercase text-slate-500">
-                {m.status === 'withdrawn' ? 'Withdrawn' : ''}
+                {m.status === 'withdrawn' ? 'Withdrawn' : m.status === 'dismissed' ? 'Dismissed' : ''}
               </td>
               <td className="h-7 border border-black" />
               <td className="border border-black" />

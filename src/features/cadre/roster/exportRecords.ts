@@ -46,8 +46,10 @@ export function buildCadetRecords(
         attendedHours.get(m.id) ?? '',
         ...graded.map((c, i) => {
           const res = courseResult(m, c, idxById, i);
-          if (res === 'pending') return '';
           const eff = effectiveScore(m.grades?.[courseKey(c)]);
+          // A pending course with a recorded score (failed EOC awaiting re-exam)
+          // still exports the score — a blank would hide a recorded 65.
+          if (res === 'pending') return eff != null ? `${eff} (pending)` : '';
           return `${RESULT_LABEL[res] ?? res}${eff != null ? ` (${eff})` : ''}`.trim();
         }),
       ];

@@ -22,18 +22,21 @@ export function SignInPage() {
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // A deactivated account stays authenticated; RequireAuth bounces it to
-  // /signin, so show a terminal notice here instead of redirecting back into
-  // the app (which would loop).
-  if (firebaseUser && profile?.status === 'inactive') {
+  // A deactivated OR suspended account stays authenticated; RequireAuth bounces
+  // both here, so BOTH need a terminal notice — redirecting either back into the
+  // app loops forever (suspended members used to hit exactly that: /signin → /
+  // → RequireAuth → /signin, a frozen blank screen).
+  if (firebaseUser && (profile?.status === 'inactive' || profile?.status === 'suspended')) {
+    const suspended = profile.status === 'suspended';
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-watch-950 px-4 text-center">
         <WordmarkStacked size={130} />
         <div className="max-w-md rounded-xl bg-white p-6 shadow-2xl">
-          <h1 className="mb-2 text-lg font-semibold text-watch-900">Account deactivated</h1>
+          <h1 className="mb-2 text-lg font-semibold text-watch-900">{suspended ? 'Account suspended' : 'Account deactivated'}</h1>
           <p className="text-sm text-slate-600">
-            Access for {profile.email} has been turned off. Contact an administrator if you believe this is
-            a mistake.
+            {suspended
+              ? `Access for ${profile.email} is suspended. Contact Academy Leadership if you believe this is a mistake.`
+              : `Access for ${profile.email} has been turned off. Contact an administrator if you believe this is a mistake.`}
           </p>
           <Button variant="ghost" className="mt-4" onClick={() => signOut()}>
             Sign out

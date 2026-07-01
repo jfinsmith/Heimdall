@@ -20,12 +20,15 @@ export function OverviewPage() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const now = Timestamp.now();
 
+  // Bound the query at now (minus a 1h grace) — without the start bound it
+  // returned the 5 OLDEST assignments ever, so anyone with 5+ past assignments
+  // saw "no upcoming assignments" forever.
   const { data: myAssignments, loading: assignmentsLoading } = useCollection<AssignmentDoc>(
     firebaseUser ? 'assignments' : null,
-    [where('uid', '==', firebaseUser?.uid ?? ''), where('status', '==', 'confirmed'), orderBy('start'), limit(5)],
+    [where('uid', '==', firebaseUser?.uid ?? ''), where('status', '==', 'confirmed'), where('start', '>=', Timestamp.fromMillis(now.toMillis() - 36e5)), orderBy('start'), limit(5)],
     [firebaseUser?.uid]
   );
-  const upcoming = myAssignments.filter((a) => a.start.toMillis() >= now.toMillis() - 36e5);
+  const upcoming = myAssignments;
 
   const staff = can.viewStaffing(role);
   const { data: upcomingSessions } = useCollection<SessionDoc>(
@@ -44,8 +47,9 @@ export function OverviewPage() {
     const st = a.approval?.state;
     return (
       (st === 'pending_sergeant' && a.approval?.sergeantId === firebaseUser?.uid) ||
-      (st === 'pending_lieutenant' && role === 'lieutenant') ||
-      (st === 'pending_captain' && role === 'director')
+      // Lieutenant = director (identical rank): either clears either command
+      // stage — a lieutenant-led org has no 'director' user at all.
+      ((st === 'pending_lieutenant' || st === 'pending_captain') && (role === 'lieutenant' || role === 'director'))
     );
   });
 

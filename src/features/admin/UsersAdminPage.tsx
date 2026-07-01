@@ -383,7 +383,7 @@ function SuspendUserModal({ user, onClose }: { user: WithId<UserDoc>; onClose: (
     <Modal open onClose={busy ? () => {} : onClose} title={`Suspend ${user.displayName}`}>
       <form onSubmit={submit} className="space-y-4 text-sm">
         <div className="rounded-md bg-amber-50 px-3 py-2 text-amber-800">
-          They’ll still be able to sign in, but every page shows a banner telling them to contact Academy
+          They’ll be blocked from the app at sign-in with a notice telling them to contact Academy
           Leadership. They’re emailed the reason below, and can be reinstated any time.
         </div>
         {error && <div className="rounded-md bg-red-50 px-3 py-2 text-red-800">{error}</div>}

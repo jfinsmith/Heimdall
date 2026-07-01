@@ -70,10 +70,13 @@ export function BulkImportModal({
       ? grid[0].map((h) => colByNorm.get(norm(h)) ?? null)
       : columns;
     const dataRows = firstIsHeader ? grid.slice(1) : grid;
+    // Line numbers match the source file (header counts as line 1) so an error
+    // report sends the user to the right spreadsheet row.
+    const lineOffset = firstIsHeader ? 2 : 1;
     return dataRows.map((cells, idx) => {
       const record: Record<string, string> = {};
       order.forEach((col, i) => { if (col) record[col.key] = (cells[i] ?? '').trim(); });
-      return { line: idx + 1, record, errors: validateRow(record) };
+      return { line: idx + lineOffset, record, errors: validateRow(record) };
     });
   }, [raw, columns, validateRow]);
 

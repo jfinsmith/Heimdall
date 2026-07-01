@@ -63,8 +63,10 @@ export function AcademyReports({ academy, seed, onSeedConsumed }: { academy: Wit
   );
   // lieutenant === director: a lieutenant-led org has no role==='director' user,
   // so include both and prefer an active one. Empty when the org has no command.
-  const { data: directors } = useCollection<UserDoc>('users', [where('role', 'in', ['director', 'lieutenant']), limit(2)]);
-  const directorName = (directors.find((d) => d.status === 'active') ?? directors[0])?.displayName ?? '';
+  // Active-only in the QUERY — with limit(2), two suspended command users could
+  // otherwise crowd out the active director entirely.
+  const { data: directors } = useCollection<UserDoc>('users', [where('role', 'in', ['director', 'lieutenant']), where('status', '==', 'active'), limit(2)]);
+  const directorName = directors[0]?.displayName ?? '';
   const { data: curriculum } = useCurriculum(academy.discipline);
 
   const [formType, setFormType] = useState<ReportType | null>(null);

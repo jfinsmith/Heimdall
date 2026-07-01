@@ -7,7 +7,7 @@
 import React, { useMemo, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
-import { doc, serverTimestamp, updateDoc, deleteDoc, deleteField, collection, getDocs } from 'firebase/firestore';
+import { doc, serverTimestamp, updateDoc, deleteDoc, deleteField, collection, getDocs, query, where } from 'firebase/firestore';
 import { db, functions } from '../../../lib/firebase';
 import { useCollection, useDoc, type WithId } from '../../../lib/firestore';
 import { useCurriculum } from '../../../lib/curricula';
@@ -55,7 +55,14 @@ export function RosterPage() {
   // Records export (item 10): one CSV row per cadet — identity, outcome, standing,
   // attended hours (summed from the attendance subcollection), per-course results.
   async function exportRecords() {
-    const snap = await getDocs(collection(db, 'academies', academyId, 'attendance'));
+    // The attendance list rule is inOrg(resource.data) — the query MUST carry the
+    // orgId filter or Firestore denies it outright (raw getDocs gets no
+    // auto-injection, unlike useCollection).
+    if (!academy?.orgId) { window.alert('This academy is missing its organization — export unavailable.'); return; }
+    const snap = await getDocs(
+      query(collection(db, 'academies', academyId, 'attendance'), where('orgId', '==', academy.orgId))
+    ).catch(() => null);
+    if (!snap) { window.alert('Couldn’t read the attendance log — try again in a moment.'); return; }
     const attendedHours = new Map<string, number>();
     snap.forEach((d) => {
       const entries = (d.data() as { entries?: Record<string, { hours?: number }> }).entries ?? {};

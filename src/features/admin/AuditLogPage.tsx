@@ -1,5 +1,5 @@
 /** Admin — Audit log viewer (read-only; writes come from clients + functions). */
-import React from 'react';
+import React, { useMemo } from 'react';
 import { limit, orderBy } from 'firebase/firestore';
 import { useCollection } from '../../lib/firestore';
 import type { AuditLogDoc, UserDoc } from '../../types';
@@ -7,8 +7,9 @@ import { EmptyState, PageHeader } from '../../components/ui';
 
 export function AuditLogPage() {
   const { data: entries, loading } = useCollection<AuditLogDoc>('auditLog', [orderBy('createdAt', 'desc'), limit(200)]);
-  const { data: users } = useCollection<UserDoc>('users');
-  const nameOf = (uid: string) => users.find((u) => u.id === uid)?.displayName ?? uid;
+  const { data: users } = useCollection<UserDoc>('users', [limit(2000)]);
+  const nameByUid = useMemo(() => new Map(users.map((u) => [u.id, u.displayName])), [users]);
+  const nameOf = (uid: string) => nameByUid.get(uid) ?? uid;
 
   return (
     <div>

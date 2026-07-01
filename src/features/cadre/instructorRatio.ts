@@ -26,5 +26,7 @@ export function requiredInstructors(ratio: number | undefined, classSize: number
 export function instructorCount(slots: SlotLike[] = [], mode: 'planned' | 'filled'): number {
   return slots
     .filter((s) => INSTRUCTOR_ROLES.includes(s.role))
-    .reduce((n, s) => n + (mode === 'filled' ? Math.min(s.filledBy?.length ?? 0, s.count) : s.count), 0);
+    // 'filled' counts real people present (legacy over-filled slots included) —
+    // clamping to slot capacity undercounted actual staffing.
+    .reduce((n, s) => n + (mode === 'filled' ? (s.filledBy?.length ?? 0) : s.count), 0);
 }

@@ -76,7 +76,11 @@ export function GradesTab({
               const hasFail = standing.hlFails + standing.nonHlFails > 0;
               const failC = hasFail ? graded.find((c, i) => courseResult(m, c, idxById, i) === 'fail') : undefined;
               const failCell = failC ? m.grades?.[courseKey(failC)] : undefined;
-              const courseVal = failC ? (failC.cjk ? `${failC.cjk.replace(/^CJK\s*/, 'CJK ')} — ${failC.name}` : failC.name) : '';
+              // A 'fail' usually IS a failed re-exam — the letter must cite that
+              // score, not the primary. CJK-less courses seed no value (the course
+              // select only lists CJK courses, so a name would silently mismatch).
+              const seedScore = failCell?.reexamScore ?? failCell?.score;
+              const courseVal = failC?.cjk ? `${failC.cjk.replace(/^CJK\s*/, 'CJK ')} — ${failC.name}` : '';
               return (
                 <tr key={m.id} className={m.status === 'withdrawn' ? 'opacity-60' : ''}>
                   <td className="sticky left-0 z-10 bg-white px-3 py-2 font-medium text-watch-900">
@@ -93,7 +97,7 @@ export function GradesTab({
                           cadetName: m.fullName,
                           values: {
                             ...(courseVal ? { course: courseVal } : {}),
-                            ...(failCell?.score != null ? { score: String(failCell.score) } : {}),
+                            ...(seedScore != null ? { score: String(seedScore) } : {}),
                           },
                         })}
                       >

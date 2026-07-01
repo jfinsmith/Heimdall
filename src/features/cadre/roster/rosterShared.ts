@@ -81,8 +81,11 @@ export function courseResult(
   if ((primary ?? 0) >= PASS_MARK) return 'pass';
   // Failed the primary written exam — resolve the single lifeline.
   if (course.highLiability) {
-    if (cell?.lifeline === 'reexam') return (cell.reexamScore ?? 0) >= PASS_MARK ? 'pass' : 'fail';
-    if (cell?.lifeline === 'remediation') return cell.remediation === 'pass' ? 'pass' : 'fail';
+    // A lifeline that's been ELECTED but not yet resolved (no score / result
+    // recorded) is still pending — not an automatic fail the moment staff note
+    // "remediation scheduled".
+    if (cell?.lifeline === 'reexam') return cell.reexamScore == null ? 'pending' : cell.reexamScore >= PASS_MARK ? 'pass' : 'fail';
+    if (cell?.lifeline === 'remediation') return cell.remediation == null ? 'pending' : cell.remediation === 'pass' ? 'pass' : 'fail';
     return 'pending'; // failed, lifeline not yet used
   }
   if (cell?.reexamScore != null) return cell.reexamScore >= PASS_MARK ? 'pass' : 'fail';

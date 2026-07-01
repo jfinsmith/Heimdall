@@ -316,22 +316,26 @@ export function AcademyBuilderPage() {
     // Block a drag/resize that double-books a managed room (the other save paths
     // already guard; this is the most common scheduler action).
     const acadOrgId = academy?.orgId;
-    if (s.roomId && acadOrgId && s.kind !== 'lunch') {
+    // Every managed room the session holds (multi-room scenario days included).
+    const dragRoomIds = s.roomIds?.length ? s.roomIds : s.roomId ? [s.roomId] : [];
+    if (dragRoomIds.length && acadOrgId && s.kind !== 'lunch') {
       const templateIds = new Set(allAcademies.filter((a) => a.isTemplate).map((a) => a.id));
       const acadName = (id: string) => allAcademies.find((a) => a.id === id)?.shortName || 'another class';
-      const conflict = await findRoomConflict({
-        orgId: acadOrgId,
-        roomId: s.roomId,
-        start,
-        end,
-        excludeSessionId: s.id,
-        isTemplate: (id) => templateIds.has(id),
-        labelFor: (x) => `${acadName(x.academyId)} — ${x.title || x.courseName}`,
-      });
-      if (conflict) {
-        arg.revert();
-        window.alert(`${s.room || 'That room'} is already booked ${toTimeInputValue(conflict.start)}–${toTimeInputValue(conflict.end)} by ${conflict.label}. Move blocked — pick another time or room.`);
-        return;
+      for (const rid of dragRoomIds) {
+        const conflict = await findRoomConflict({
+          orgId: acadOrgId,
+          roomId: rid,
+          start,
+          end,
+          excludeSessionId: s.id,
+          isTemplate: (id) => templateIds.has(id),
+          labelFor: (x) => `${acadName(x.academyId)} — ${x.title || x.courseName}`,
+        });
+        if (conflict) {
+          arg.revert();
+          window.alert(`${s.room || 'That room'} is already booked ${toTimeInputValue(conflict.start)}–${toTimeInputValue(conflict.end)} by ${conflict.label}. Move blocked — pick another time or room.`);
+          return;
+        }
       }
     }
     await updateDoc(doc(db, 'sessions', s.id), {
@@ -1236,8 +1240,8 @@ function ApprovalPanel({ academy }: { academy: WithId<AcademyDoc> }) {
   const canSubmit = can.buildSchedules(role) && (state === 'not_submitted' || state === 'changes_requested');
   const isActiveApprover =
     (state === 'pending_sergeant' && uid === ap?.sergeantId) ||
-    (state === 'pending_lieutenant' && role === 'lieutenant') ||
-    (state === 'pending_captain' && role === 'director');
+    // Lieutenant = director (identical rank): either clears either command stage.
+    ((state === 'pending_lieutenant' || state === 'pending_captain') && (role === 'lieutenant' || role === 'director'));
   // Fast-track: command can push the workflow up to the rank above them, skipping
   // the sergeant step, to speed things up. A lieutenant jumps to the captain; a
   // (non-assigned) sergeant pushes their step to the lieutenant.

@@ -109,8 +109,12 @@ export function PrintableSchedulePage() {
     if (academy) {
       const startK = localKey(academy.startDate.toDate());
       const endK = localKey(academy.endDate.toDate());
-      for (let y = academy.startDate.toDate().getFullYear(); y <= academy.endDate.toDate().getFullYear(); y++) {
+      // Year-1 like the builder: a winter break whose January days belong to the
+      // PREVIOUS year's holiday set still shows at an academy's start.
+      for (let y = academy.startDate.toDate().getFullYear() - 1; y <= academy.endDate.toDate().getFullYear(); y++) {
         for (const h of holidaysForYear(y, disabledHolidays)) {
+          // Weekdays only — a Saturday July 4th isn't a training day to annotate.
+          if (weekdayIdx(h.date) > 4) continue;
           const hk = localKey(h.date);
           if (hk >= startK && hk <= endK) holidayMap.set(hk, h.name);
         }
@@ -127,13 +131,18 @@ export function PrintableSchedulePage() {
       const wk = localKey(mondayOf(d.date));
       (weekMap.get(wk) ?? weekMap.set(wk, []).get(wk)!).push(d);
     }
-    return [...weekMap.keys()].sort().map((wk, i) => ({ index: i + 1, monday: new Date(`${wk}T12:00:00`), days: weekMap.get(wk)! }));
+    // Weeks are numbered by TRAINING weeks: a holiday-only week (winter break)
+    // must not mint a phantom "Week N" and shift every later week number.
+    return [...weekMap.keys()]
+      .sort()
+      .map((wk) => ({ monday: new Date(`${wk}T12:00:00`), days: weekMap.get(wk)! }))
+      .filter((w) => w.days.some((d) => d.sessions.length > 0))
+      .map((w, i) => ({ index: i + 1, ...w }));
   }, [sessions, mode, academy, disabledHolidays]);
 
   const stats = useMemo(() => {
     const days = weeks.reduce((n, w) => n + w.days.filter((d) => d.sessions.length > 0).length, 0);
-    const hours = weeks.reduce((n, w) => n + w.days.reduce((m, d) => m + d.sessions.reduce((h, s) => h + s.hours, 0), 0), 0);
-    return { days, hours: Math.round(hours * 4) / 4, weeks: weeks.length };
+    return { days, weeks: weeks.length };
   }, [weeks]);
 
   if (!academy) return null;

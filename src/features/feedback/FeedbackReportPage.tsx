@@ -78,7 +78,8 @@ export function FeedbackReportPage() {
         ...(isBug && expected.trim() ? { expected: expected.trim() } : {}),
         ...(isBug && actual.trim() ? { actual: actual.trim() } : {}),
         ...(screenshotUrls.length ? { screenshotUrls } : {}),
-        pageUrl: document.referrer || '',
+        // referrer is empty in an SPA — the current URL is what triage needs.
+        pageUrl: window.location.href,
         userAgent: navigator.userAgent,
         ...(orgId ? { orgId } : {}),
         submittedByUid: firebaseUser.uid,

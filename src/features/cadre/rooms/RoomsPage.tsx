@@ -77,24 +77,31 @@ export function RoomsPage() {
   );
 
   // Bookings → calendar events (managed rooms only; skip cancelled + templates).
+  // A multi-room session (roomIds) fans out into one event PER room so every
+  // held room shows as booked — filtering by any of its rooms finds it.
   const events = useMemo(() => {
     return sessions
-      .filter((s) => s.roomId && roomById.has(s.roomId) && s.status !== 'cancelled' && !templateIds.has(s.academyId))
-      .filter((s) => roomFilter === 'all' || s.roomId === roomFilter)
-      .filter((s) => categoryFilter === 'all' || roomById.get(s.roomId!)?.categoryId === categoryFilter)
-      .map((s) => {
-        const r = roomById.get(s.roomId!)!;
-        const acad = academyById.get(s.academyId);
-        const color = r.color || catColor.get(r.categoryId) || '#64748b';
-        return {
-          id: s.id,
-          title: `${r.name} · ${acad?.shortName ?? ''} — ${s.title || s.courseName}`.replace(' ·  —', ' —'),
-          start: s.start.toDate(),
-          end: s.end.toDate(),
-          backgroundColor: color,
-          borderColor: color,
-          extendedProps: { academyId: s.academyId },
-        };
+      .filter((s) => s.status !== 'cancelled' && !templateIds.has(s.academyId))
+      .flatMap((s) => {
+        const held = [...new Set(s.roomIds?.length ? s.roomIds : s.roomId ? [s.roomId] : [])];
+        return held
+          .filter((rid) => roomById.has(rid))
+          .filter((rid) => roomFilter === 'all' || rid === roomFilter)
+          .filter((rid) => categoryFilter === 'all' || roomById.get(rid)?.categoryId === categoryFilter)
+          .map((rid) => {
+            const r = roomById.get(rid)!;
+            const acad = academyById.get(s.academyId);
+            const color = r.color || catColor.get(r.categoryId) || '#64748b';
+            return {
+              id: `${s.id}_${rid}`,
+              title: `${r.name} · ${acad?.shortName ?? ''} — ${s.title || s.courseName}`.replace(' ·  —', ' —'),
+              start: s.start.toDate(),
+              end: s.end.toDate(),
+              backgroundColor: color,
+              borderColor: color,
+              extendedProps: { academyId: s.academyId },
+            };
+          });
       });
   }, [sessions, roomById, templateIds, roomFilter, categoryFilter, academyById, catColor]);
 

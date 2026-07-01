@@ -81,24 +81,29 @@ export function GjallarhornSettingsPage() {
   async function save(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
-    await setDoc(
-      doc(db, orgConfigPath('settings', orgId)),
-      {
-        emailMasterEnabled: masterOn,
-        emailAutomations: automations,
-        emailAutomationRoles: roles,
-        reminderDefaultLeadHours: leadHours,
-        understaffingAlertDays: alertDays,
-        escalationWindowDays: escalationDays,
-        escalationRecipients: recipients,
-        weeklyDigestEnabled: digest,
-      },
-      { merge: true }
-    );
-    await logAudit(firebaseUser!.uid, 'settings.gjallarhorn', 'settings', 'global', 'Updated Gjallarhorn & email settings');
-    setBusy(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+    try {
+      await setDoc(
+        doc(db, orgConfigPath('settings', orgId)),
+        {
+          emailMasterEnabled: masterOn,
+          emailAutomations: automations,
+          emailAutomationRoles: roles,
+          reminderDefaultLeadHours: leadHours,
+          understaffingAlertDays: alertDays,
+          escalationWindowDays: escalationDays,
+          escalationRecipients: recipients,
+          weeklyDigestEnabled: digest,
+        },
+        { merge: true }
+      );
+      await logAudit(firebaseUser!.uid, 'settings.gjallarhorn', 'settings', 'global', 'Updated Gjallarhorn & email settings');
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (err) {
+      window.alert(`Save failed: ${err instanceof Error ? err.message : 'unknown error'}`);
+    } finally {
+      setBusy(false);
+    }
   }
 
   const dirty = useMemo(() => {

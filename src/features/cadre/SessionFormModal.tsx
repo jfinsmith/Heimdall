@@ -153,7 +153,13 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
   // Default to noon — use || so a saved empty string (lunch was 0) still defaults to 12:00.
   const [lunchStart, setLunchStart] = useState<string>(session?.lunchStart || '12:00');
   const [lunchCounts, setLunchCounts] = useState<boolean>(session?.lunchCountsTowardHours ?? false);
-  const [room, setRoom] = useState(session?.room ?? academy.defaultRoom ?? '');
+  // For a multi-room session, session.room is the already comma-JOINED display
+  // ("SIM, E-120") — keep only the primary segment or re-saving would re-append
+  // the extras ("SIM, E-120, E-120", growing every save).
+  const [room, setRoom] = useState(() => {
+    const raw = session?.room ?? academy.defaultRoom ?? '';
+    return session?.roomIds?.length ? raw.split(', ')[0] : raw;
+  });
   const [roomId, setRoomId] = useState<string | undefined>(session?.roomId ?? academy.defaultRoomId);
   const [location, setLocation] = useState(session?.location ?? academy.location);
   // Picking a managed room auto-fills the location from that room's category and
@@ -163,7 +169,12 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
   const nameOf = (id: string) => allRooms.find((r) => r.id === id)?.name ?? '';
   // Additional managed rooms beyond the primary (scenario days). The primary is
   // roomId; roomIds[] stores all of them so every room is conflict-checked.
-  const [extraRoomIds, setExtraRoomIds] = useState<string[]>(() => (session?.roomIds ?? []).slice(1));
+  // Everything in roomIds except the managed primary — NOT slice(1): with a
+  // custom (free-text) primary, roomIds holds only the extras, so slice(1)
+  // would silently drop the first one.
+  const [extraRoomIds, setExtraRoomIds] = useState<string[]>(() =>
+    (session?.roomIds ?? []).filter((id) => id !== session?.roomId)
+  );
   const addExtraRoom = () => setExtraRoomIds((p) => [...p, '']);
   const updateExtraRoom = (i: number, id: string | undefined) => setExtraRoomIds((p) => p.map((x, j) => (j === i ? (id ?? '') : x)));
   const removeExtraRoom = (i: number) => setExtraRoomIds((p) => p.filter((_, j) => j !== i));
@@ -333,7 +344,10 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
     // All managed rooms attached to this session (primary + extras), de-duped.
     const extraIds = [...new Set(extraRoomIds.filter(Boolean))].filter((id) => id !== roomId);
     const allRoomIds = roomId ? [roomId, ...extraIds] : extraIds;
-    const roomDisplay = [room, ...extraIds.map(nameOf)].filter(Boolean).join(', ');
+    // Managed primary resolves through nameOf so a since-renamed room prints its
+    // current name; custom (no roomId) keeps the free text.
+    const primaryDisplay = roomId ? (nameOf(roomId) || room) : room;
+    const roomDisplay = [primaryDisplay, ...extraIds.map(nameOf)].filter(Boolean).join(', ');
 
     // Hard block: EVERY managed room must be free over the overlapping time.
     // (Custom/free-text rooms carry no roomId and are not reserved.)

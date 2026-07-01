@@ -30,6 +30,13 @@ export function Modal({
     <dialog
       ref={ref}
       onClose={onClose}
+      onCancel={(e) => {
+        // Escape: don't let the native <dialog> close itself — route through
+        // onClose so an owner passing a no-op while busy (e.g. mid bulk-import)
+        // keeps the dialog visibly open instead of it vanishing while work runs.
+        e.preventDefault();
+        onClose();
+      }}
       onClick={(e) => {
         // Click on the backdrop (the dialog element itself) closes.
         if (e.target === ref.current) onClose();

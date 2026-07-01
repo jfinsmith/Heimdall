@@ -527,6 +527,7 @@ function CloneAcademyModal({
     e.preventDefault();
     setBusy(true);
     setProgress('Copying academy…');
+    try {
 
     // Day-offset between old and new start; every session shifts by the same amount.
     const oldStart = source.startDate.toDate();
@@ -587,9 +588,14 @@ function CloneAcademyModal({
       }
     }
     await batch.commit();
-
-    setBusy(false);
     onClose();
+    } catch (err) {
+      // Without this, a rules denial / offline blip left the modal stuck on
+      // "Copying…" forever (busy never reset) with a half-created academy.
+      window.alert(`Clone failed partway: ${err instanceof Error ? err.message : 'unknown error'}. Check the new academy and delete it if incomplete, then retry.`);
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (

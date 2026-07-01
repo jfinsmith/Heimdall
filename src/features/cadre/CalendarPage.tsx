@@ -74,7 +74,9 @@ export function CalendarPage() {
   );
 
   const courses = useMemo(() => [...new Set(sessions.map((s) => s.courseName))].sort(), [sessions]);
-  const rooms = useMemo(() => [...new Set(sessions.map((s) => s.room).filter(Boolean))].sort(), [sessions]);
+  // Multi-room sessions store a comma-joined display ("SIM, E-120") — split into
+  // tokens so each room is one option and the filter matches any held room.
+  const rooms = useMemo(() => [...new Set(sessions.flatMap((s) => (s.room ? s.room.split(', ') : [])))].sort(), [sessions]);
 
   const filtered = useMemo(
     () =>
@@ -90,7 +92,7 @@ export function CalendarPage() {
         }
         if (academyFilter !== 'all' && s.academyId !== academyFilter) return false;
         if (courseFilter !== 'all' && s.courseName !== courseFilter) return false;
-        if (roomFilter !== 'all' && s.room !== roomFilter) return false;
+        if (roomFilter !== 'all' && !(s.room ?? '').split(', ').includes(roomFilter)) return false;
         if (disciplineFilter !== 'all' && academyById.get(s.academyId)?.discipline !== disciplineFilter) return false;
         if (staffingFilter !== 'all') {
           const under = unfilledSlots(s).length > 0;

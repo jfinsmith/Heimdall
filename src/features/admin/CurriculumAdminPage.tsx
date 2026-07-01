@@ -37,7 +37,9 @@ export function CurriculumAdminPage({ scope = 'org' }: { scope?: 'org' | 'defaul
   // Owner edits the five platform FDLE programs (defaultCurricula). An org sees
   // those read-only — the single source of truth across all orgs — and may add or
   // edit only its OWN curricula below.
-  const ownerDefaults = useCollection<CurriculumDoc>('defaultCurricula');
+  // Only the owner console needs this list; org scope already gets the platform
+  // set via useAllCurricula — a second live listener here was pure duplication.
+  const ownerDefaults = useCollection<CurriculumDoc>(isDefaults ? 'defaultCurricula' : null);
   const orgView = useAllCurricula();
   const platformCards = isDefaults ? [] : orgView.platform;
   const editable = isDefaults ? ownerDefaults.data : orgView.org;
@@ -309,28 +311,34 @@ function CurriculumEditorModal({
       ...(c.leadQualification && !c.coordinatorRun ? { leadQualification: c.leadQualification } : {}),
       ...(c.defaultRoleSlots && c.defaultRoleSlots.length ? { defaultRoleSlots: c.defaultRoleSlots } : {}),
     }));
-    await setDoc(doc(db, coll, id), {
-      ...(isDefaults ? {} : { orgId: orgId! }),
-      key: baseKey,
-      label,
-      fdleProgram,
-      courses: cleaned,
-      totalHours: cleaned.reduce((s, c) => s + c.minHours, 0),
-      active: curriculum?.active ?? true,
-      estimated,
-      rosterModules,
-      attendanceLayout,
-      ...(brandLogoUrl.trim() ? { brandLogoUrl: brandLogoUrl.trim() } : {}),
-      ...(brandOrgName.trim() ? { brandOrgName: brandOrgName.trim() } : {}),
-      ...(brandTagline.trim() ? { brandTagline: brandTagline.trim() } : {}),
-      ...(brandAddress.trim() ? { brandAddressLines: brandAddress.split('\n').map((l) => l.trim()).filter(Boolean) } : {}),
-      ...(disabledForms.length ? { disabledForms } : {}),
-      ...(Object.keys(formOverrides).length ? { formOverrides } : {}),
-      ...(addedForms.length ? { addedForms } : {}),
-    } satisfies CurriculumDoc);
-    if (!isDefaults) await logAudit(firebaseUser!.uid, 'curriculum.save', 'curriculum', id, `${label} (${total} hrs)`);
-    setBusy(false);
-    onClose();
+    try {
+      await setDoc(doc(db, coll, id), {
+        ...(isDefaults ? {} : { orgId: orgId! }),
+        key: baseKey,
+        label,
+        fdleProgram,
+        courses: cleaned,
+        totalHours: cleaned.reduce((s, c) => s + c.minHours, 0),
+        active: curriculum?.active ?? true,
+        estimated,
+        rosterModules,
+        attendanceLayout,
+        ...(brandLogoUrl.trim() ? { brandLogoUrl: brandLogoUrl.trim() } : {}),
+        ...(brandOrgName.trim() ? { brandOrgName: brandOrgName.trim() } : {}),
+        ...(brandTagline.trim() ? { brandTagline: brandTagline.trim() } : {}),
+        ...(brandAddress.trim() ? { brandAddressLines: brandAddress.split('\n').map((l) => l.trim()).filter(Boolean) } : {}),
+        ...(disabledForms.length ? { disabledForms } : {}),
+        ...(Object.keys(formOverrides).length ? { formOverrides } : {}),
+        ...(addedForms.length ? { addedForms } : {}),
+      } satisfies CurriculumDoc);
+      if (!isDefaults) await logAudit(firebaseUser!.uid, 'curriculum.save', 'curriculum', id, `${label} (${total} hrs)`);
+      onClose();
+    } catch (err) {
+      // A rejected write used to strand the modal on a disabled Save forever.
+      window.alert(`Save failed: ${err instanceof Error ? err.message : 'unknown error'}`);
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (

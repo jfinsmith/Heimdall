@@ -46,10 +46,15 @@ export function PermissionsPage() {
       const v = labels[r.key]?.trim();
       roleLabels[r.key] = v && v !== r.defaultLabel ? v : deleteField();
     }
-    await setDoc(doc(db, orgConfigPath('settings', orgId)), { roleLabels, updatedAt: serverTimestamp() }, { merge: true });
-    if (firebaseUser) await logAudit(firebaseUser.uid, 'settings.role_labels', 'settings', 'global', 'Updated rank labels');
-    setBusy(false);
-    setSaved(true);
+    try {
+      await setDoc(doc(db, orgConfigPath('settings', orgId)), { roleLabels, updatedAt: serverTimestamp() }, { merge: true });
+      if (firebaseUser) await logAudit(firebaseUser.uid, 'settings.role_labels', 'settings', 'global', 'Updated rank labels');
+      setSaved(true);
+    } catch (err) {
+      window.alert(`Save failed: ${err instanceof Error ? err.message : 'unknown error'}`);
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (

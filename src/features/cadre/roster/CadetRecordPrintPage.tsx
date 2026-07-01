@@ -25,8 +25,10 @@ export function CadetRecordPrintPage() {
   const { data: academy, loading: aLoading } = useDoc<AcademyDoc>(academyId ? `academies/${academyId}` : null);
   const { data: member, loading: mLoading } = useDoc<RosterMemberDoc>(academyId && memberId ? `academies/${academyId}/roster/${memberId}` : null);
   const { data: curriculum } = useCurriculum(academy?.discipline);
-  const { data: directors } = useCollection<UserDoc>('users', [where('role', 'in', ['director', 'lieutenant']), limit(2)]);
-  const directorName = (directors.find((d) => d.status === 'active') ?? directors[0])?.displayName ?? '';
+  // Active-only in the QUERY — with limit(2), two suspended command users could
+  // otherwise crowd out the active director and misprint the certificate signer.
+  const { data: directors } = useCollection<UserDoc>('users', [where('role', 'in', ['director', 'lieutenant']), where('status', '==', 'active'), limit(2)]);
+  const directorName = directors[0]?.displayName ?? '';
   const settings = useGlobalSettings();
 
   if (aLoading || mLoading) return <div className="flex h-screen items-center justify-center"><Spinner className="text-bifrost-400" /></div>;

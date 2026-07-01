@@ -63,9 +63,9 @@ export function DayRosterPrintPage() {
     .filter((s) => s.kind !== 'lunch' && s.status !== 'cancelled' && localDateStr(s.start.toDate()) === date)
     .sort((a, b) => a.start.toMillis() - b.start.toMillis());
 
-  // Active cadets (no withdrawn, no block-takers), positionally numbered.
+  // Active cadets (no withdrawn/dismissed, no block-takers), positionally numbered.
   const cadets = [...rosterRaw]
-    .filter((m) => m.status !== 'withdrawn' && !m.blockTaker)
+    .filter((m) => m.status !== 'withdrawn' && m.status !== 'dismissed' && !m.blockTaker)
     .sort((a, b) => (a.no ?? 0) - (b.no ?? 0));
 
   const prettyDate = date ? new Date(`${date}T00:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : '';

@@ -3,11 +3,12 @@
  * Sign Up / Withdraw actions for qualifying users.
  */
 import React, { useState } from 'react';
-import { addDoc, collection, deleteDoc, doc, serverTimestamp, Timestamp, updateDoc, where } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, getDocs, query, serverTimestamp, Timestamp, updateDoc, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { shortId, useCollection, useDoc, type WithId } from '../../lib/firestore';
 import { useCurriculum } from '../../lib/curricula';
 import { instructorCount, requiredInstructors } from '../cadre/instructorRatio';
+import { findRoomConflict } from '../cadre/rooms/roomBooking';
 import { useAuth } from '../../auth/AuthContext';
 import { can } from '../../lib/rbac';
 import { fmtRange, isValidDuration } from '../../lib/time';
@@ -118,6 +119,30 @@ export function SessionDetailModal({ sessionId, onClose, onEdit }: Props) {
         setError('This session has an invalid time span (it ends before it starts). Fix its times before duplicating.');
         return;
       }
+      // Rooms carry over, so the duplicate must clear the same booking gate as the
+      // editor — every managed room (primary + extras) checked on the target day.
+      const dupRoomIds = session.roomIds?.length ? session.roomIds : session.roomId ? [session.roomId] : [];
+      const dupOrgId = session.orgId ?? orgId;
+      if (dupRoomIds.length && dupOrgId) {
+        const acadSnap = await getDocs(query(collection(db, 'academies'), where('orgId', '==', dupOrgId)));
+        const templateIds = new Set(acadSnap.docs.filter((d) => (d.data() as AcademyDoc).isTemplate).map((d) => d.id));
+        const acadName = (id: string) =>
+          (acadSnap.docs.find((x) => x.id === id)?.data() as AcademyDoc | undefined)?.shortName || 'another class';
+        for (const rid of dupRoomIds) {
+          const conflict = await findRoomConflict({
+            orgId: dupOrgId,
+            roomId: rid,
+            start: nextStart,
+            end: nextEnd,
+            isTemplate: (id) => templateIds.has(id),
+            labelFor: (x) => `${acadName(x.academyId)} — ${x.title || x.courseName}`,
+          });
+          if (conflict) {
+            setError(`Can't duplicate: ${session.room || 'the room'} is already booked on that day by ${conflict.label}. Reschedule or change rooms first.`);
+            return;
+          }
+        }
+      }
       await addDoc(collection(db, 'sessions'), {
         // Inherit the source session's tenant (reliable) over the possibly-null auth orgId.
         orgId: session.orgId ?? orgId,
@@ -130,6 +155,8 @@ export function SessionDetailModal({ sessionId, onClose, onEdit }: Props) {
         end: Timestamp.fromDate(nextEnd),
         location: session.location,
         room: session.room ?? '',
+        ...(session.roomId ? { roomId: session.roomId } : {}),
+        ...(session.roomIds?.length ? { roomIds: session.roomIds } : {}),
         hours: session.hours,
         lunchMinutes: session.lunchMinutes ?? 0,
         lunchStart: session.lunchStart ?? '',

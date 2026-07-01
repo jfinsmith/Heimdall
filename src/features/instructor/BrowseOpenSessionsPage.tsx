@@ -25,7 +25,12 @@ export function BrowseOpenSessionsPage() {
     [where('status', '==', 'open'), where('start', '>=', Timestamp.now()), orderBy('start')],
     []
   );
-  const { data: academies } = useCollection<AcademyDoc>('academies');
+  // Non-staff may only read academies in these statuses, and the list-rule
+  // analyzer must SEE the constraint in the query — an unconstrained list is
+  // permission-denied outright for instructors/guests (empty academy dropdown).
+  const { data: academies } = useCollection<AcademyDoc>('academies', [
+    where('status', 'in', ['published', 'in_progress', 'completed']),
+  ]);
   const [academyFilter, setAcademyFilter] = useState('all');
   const [showUnavailable, setShowUnavailable] = useState(false);
   // Days the user marked unavailable (Profile → Unavailable days) — hidden unless toggled.

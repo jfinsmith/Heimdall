@@ -91,7 +91,9 @@ export function AppRouter() {
       <Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route path="/" element={<RootGate />} />
-          <Route path="/pricing" element={<MarketingPage />} />
+          {/* Marketing exists only on the public domain — the agency-internal
+              host skips straight to sign-in, same as RootGate. */}
+          <Route path="/pricing" element={isMarketingHost() ? <MarketingPage /> : <Navigate to="/signin" replace />} />
           <Route path="/signin" element={<SignInPage />} />
           <Route path="/pending" element={<PendingApprovalPage />} />
           <Route path="/awaiting-org" element={<AwaitingOrgPage />} />
