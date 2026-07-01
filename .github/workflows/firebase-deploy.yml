@@ -66,26 +66,26 @@ jobs:
     needs: [build-and-deploy, emulator-tests]
     steps:
       - uses: actions/checkout@v4
-      - name: Write service account
-        run: printf '%s' '${{ secrets.FIREBASE_SERVICE_ACCOUNT_HEIMDALL_E1F03 }}' > "$RUNNER_TEMP/sa.json"
+      # Token auth (firebase login:ci → FIREBASE_TOKEN secret). The service-account
+      # ADC path (sa.json + GOOGLE_APPLICATION_CREDENTIALS) intermittently failed
+      # "Failed to authenticate" in this job while the SAME secret kept working for
+      # hosting — switched 2026-07-01. Re-mint with `firebase login:ci` if it ever
+      # expires/revokes, then update the FIREBASE_TOKEN repo secret.
       - name: Deploy Firestore rules & indexes
         env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
         run: |
           npx -y firebase-tools@13 deploy --only firestore:rules,firestore:indexes \
-            --project heimdall-e1f03 --non-interactive
+            --project heimdall-e1f03 --non-interactive --token "$FIREBASE_TOKEN"
       # Best-effort: skips cleanly until Firebase Storage is enabled in the
       # console (firebasestorage.googleapis.com). Doesn't fail the job/firestore.
       - name: Deploy Storage rules (best-effort)
         continue-on-error: true
         env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
         run: |
           npx -y firebase-tools@13 deploy --only storage \
-            --project heimdall-e1f03 --non-interactive
-      - name: Clean up service account
-        if: always()
-        run: rm -f "$RUNNER_TEMP/sa.json"
+            --project heimdall-e1f03 --non-interactive --token "$FIREBASE_TOKEN"
 
   # Emulator-backed rules + signup-concurrency tests (need Java). Make it a
   # required status check in branch protection to gate merges.
