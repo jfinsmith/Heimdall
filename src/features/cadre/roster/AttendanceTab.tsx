@@ -135,9 +135,15 @@ function PrintSheet({
         </>
       )}
 
-      <div className="mt-8 flex items-end gap-8 text-xs">
-        <div className="flex-1 border-t border-black pt-1">{layout === 'signin' ? 'Coordinator / Instructor Signature' : "Instructor's Signature"}</div>
-        <div className="w-40 border-t border-black pt-1">Date</div>
+      <div className="mt-8 flex items-end justify-between gap-10 text-xs">
+        <div className="flex flex-1 items-end gap-3">
+          <div className="flex-1 border-t border-black pt-1">Instructor&apos;s Signature</div>
+          <div className="w-24 border-t border-black pt-1">Date</div>
+        </div>
+        <div className="flex flex-1 items-end gap-3">
+          <div className="flex-1 border-t border-black pt-1">Coordinator&apos;s Signature</div>
+          <div className="w-24 border-t border-black pt-1">Date</div>
+        </div>
       </div>
     </div>
     </FitToPage>
