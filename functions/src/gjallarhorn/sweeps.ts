@@ -4,6 +4,12 @@
  * Cloud Scheduler allows 3 free jobs, so the daily work is consolidated into
  * ONE function (reminders + understaffing) and the weekly digest is a second:
  * 2 jobs total. Times/timezone are constants below — adjust as needed.
+ *
+ * TENANT ISOLATION: every query here is org-scoped. These sweeps predate the
+ * multi-tenant conversion and once aggregated ALL orgs' sessions into one body
+ * delivered to every org's staff — a cross-tenant leak. Each org is now swept
+ * independently with its own settings, and reminder emails resolve branding
+ * from the assignment's own org.
  */
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
@@ -17,22 +23,32 @@ const WEEKLY_AT = '0 6 * * 1';         // 06:00 ET Mondays
 
 const db = () => getFirestore();
 
+type OrgSettings = Awaited<ReturnType<typeof getSettings>>;
+
 function unfilled(session: SessionDoc) {
   return session.roleSlots.filter((s) => s.filledBy.length < s.count);
+}
+
+/** All tenant ids + their settings, fetched once per sweep run. */
+async function loadOrgs(): Promise<Map<string, OrgSettings>> {
+  const orgsSnap = await db().collection('orgs').get();
+  const out = new Map<string, OrgSettings>();
+  for (const doc of orgsSnap.docs) out.set(doc.id, await getSettings(doc.id));
+  return out;
 }
 
 // ── Daily: reminders + understaffing in one job ─────────────────────────────
 export const gjallarhornDailySweep = onSchedule(
   { schedule: DAILY_AT, timeZone: TIMEZONE },
   async () => {
-    const settings = await getSettings();
-    const defaultLead = settings?.reminderDefaultLeadHours ?? 48;
-    const alertDays = settings?.understaffingAlertDays ?? 7;
     const now = Date.now();
+    const settingsByOrg = await loadOrgs();
 
     // ── 1. Reminder sweep ──────────────────────────────────────────────────
     // Assignments starting within the maximum possible lead window that have
     // not been reminded; each user's own reminderLeadHours decides the cut.
+    // Content is strictly the recipient's OWN assignment, so the query can stay
+    // global — but lead default + email branding come from the assignment's org.
     const maxLeadMs = 168 * 36e5; // 7-day ceiling on per-user lead times
     const upcoming = await db()
       .collection('assignments')
@@ -43,7 +59,9 @@ export const gjallarhornDailySweep = onSchedule(
       .get();
 
     for (const doc of upcoming.docs) {
-      const a = doc.data() as AssignmentDoc;
+      const a = doc.data() as AssignmentDoc & { orgId?: string };
+      const orgSettings = a.orgId ? settingsByOrg.get(a.orgId) ?? null : null;
+      const defaultLead = orgSettings?.reminderDefaultLeadHours ?? 48;
       const userSnap = await db().doc(`users/${a.uid}`).get();
       const user = userSnap.exists ? (userSnap.data() as UserDoc) : null;
       const leadHours = user?.notificationPrefs?.reminderLeadHours ?? defaultLead;
@@ -69,27 +87,31 @@ export const gjallarhornDailySweep = onSchedule(
           heading: 'Upcoming assignment',
           bodyHtml: `<p>The horn sounds: you have an assignment coming up.</p>${details.html}`,
           bodyText: `The horn sounds: you have an assignment coming up.\n\n${details.text}`,
-          orgName: settings?.orgName,
-          logoUrl: settings?.logoUrl,
+          orgName: orgSettings?.orgName,
+          logoUrl: orgSettings?.logoUrl,
         }),
       });
       await doc.ref.update({ reminderSent: true });
     }
 
-    // ── 2. Understaffing sweep ─────────────────────────────────────────────
-    const horizon = Timestamp.fromMillis(now + alertDays * 864e5);
-    const sessions = await db()
-      .collection('sessions')
-      .where('status', 'in', ['open', 'fully_staffed'])
-      .where('start', '>=', Timestamp.fromMillis(now))
-      .where('start', '<=', horizon)
-      .get();
+    // ── 2. Understaffing sweep — PER ORG ───────────────────────────────────
+    const dayKey = new Date(now).toISOString().slice(0, 10);
+    for (const [orgId, orgSettings] of settingsByOrg) {
+      const alertDays = orgSettings?.understaffingAlertDays ?? 7;
+      const horizon = Timestamp.fromMillis(now + alertDays * 864e5);
+      const sessions = await db()
+        .collection('sessions')
+        .where('orgId', '==', orgId)
+        .where('status', 'in', ['open', 'fully_staffed'])
+        .where('start', '>=', Timestamp.fromMillis(now))
+        .where('start', '<=', horizon)
+        .get();
 
-    const understaffed = sessions.docs
-      .map((d) => ({ id: d.id, data: d.data() as SessionDoc }))
-      .filter(({ data }) => unfilled(data).length > 0);
+      const understaffed = sessions.docs
+        .map((d) => ({ id: d.id, data: d.data() as SessionDoc }))
+        .filter(({ data }) => unfilled(data).length > 0);
+      if (understaffed.length === 0) continue;
 
-    if (understaffed.length > 0) {
       const lines = understaffed.map(({ data }) => {
         const missing = unfilled(data)
           .map((s) => `${s.count - s.filledBy.length}× ${s.role.replace('_', ' ')}`)
@@ -100,9 +122,8 @@ export const gjallarhornDailySweep = onSchedule(
       });
       const body = `${understaffed.length} session(s) within ${alertDays} days are missing required staff:\n\n${lines.join('\n')}`;
 
-      // Coordinators of each affected academy + the command escalation list.
-      // dayKey makes a retried daily run on the same date idempotent.
-      const dayKey = new Date(now).toISOString().slice(0, 10);
+      // Coordinators of each affected academy + THIS org's command escalation
+      // list. dayKey makes a retried daily run on the same date idempotent.
       const academyIds = [...new Set(understaffed.map(({ data }) => data.academyId))];
       for (const academyId of academyIds) {
         await notifyCoordinators(academyId, {
@@ -113,82 +134,91 @@ export const gjallarhornDailySweep = onSchedule(
           link: '/cadre/staffing',
         });
       }
-      await escalateToCommand({
-        dedupeKey: `understaff_${dayKey}_cmd`,
-        type: 'understaffing_alert',
-        title: `Understaffing alert — ${understaffed.length} session(s) inside ${alertDays} days`,
-        body,
-        link: '/cadre/staffing',
-      });
+      await escalateToCommand(
+        {
+          dedupeKey: `understaff_${dayKey}_${orgId}_cmd`,
+          type: 'understaffing_alert',
+          title: `Understaffing alert — ${understaffed.length} session(s) inside ${alertDays} days`,
+          body,
+          link: '/cadre/staffing',
+        },
+        orgId
+      );
     }
   }
 );
 
-// ── Weekly digest ───────────────────────────────────────────────────────────
+// ── Weekly digest — PER ORG ─────────────────────────────────────────────────
 export const gjallarhornWeeklyDigest = onSchedule(
   { schedule: WEEKLY_AT, timeZone: TIMEZONE },
   async () => {
-    const settings = await getSettings();
-    if (settings?.weeklyDigestEnabled === false) return;
     const now = Date.now();
     const horizon = Timestamp.fromMillis(now + 14 * 864e5);
+    const settingsByOrg = await loadOrgs();
 
-    const sessions = await db()
-      .collection('sessions')
-      .where('start', '>=', Timestamp.fromMillis(now))
-      .where('start', '<=', horizon)
-      .get();
+    for (const [orgId, orgSettings] of settingsByOrg) {
+      if (orgSettings?.weeklyDigestEnabled === false) continue;
 
-    const all = sessions.docs.map((d) => d.data() as SessionDoc).filter((s) => s.status !== 'cancelled');
-    const open = all.filter((s) => unfilled(s).length > 0);
-    const staffed = all.filter((s) => unfilled(s).length === 0);
-    const openSlotCount = open.reduce(
-      (n, s) => n + unfilled(s).reduce((m, slot) => m + (slot.count - slot.filledBy.length), 0),
-      0
-    );
+      const sessions = await db()
+        .collection('sessions')
+        .where('orgId', '==', orgId)
+        .where('start', '>=', Timestamp.fromMillis(now))
+        .where('start', '<=', horizon)
+        .get();
 
-    const body = [
-      `Staffing health for the next 14 days:`,
-      ``,
-      `  Sessions scheduled: ${all.length}`,
-      `  Fully staffed:      ${staffed.length}`,
-      `  Understaffed:       ${open.length} (${openSlotCount} open slots)`,
-      ``,
-      ...open
-        .slice(0, 15)
-        .map(
-          (s) =>
-            `• ${s.title || s.courseName} — ${s.start
-              .toDate()
-              .toLocaleDateString('en-US', { timeZone: TIMEZONE })} — ${unfilled(s)
-              .map((slot) => `${slot.count - slot.filledBy.length}× ${slot.role.replace('_', ' ')}`)
-              .join(', ')}`
-        ),
-      open.length > 15 ? `…and ${open.length - 15} more.` : '',
-    ].join('\n');
+      const all = sessions.docs.map((d) => d.data() as SessionDoc).filter((s) => s.status !== 'cancelled');
+      if (all.length === 0) continue;
+      const open = all.filter((s) => unfilled(s).length > 0);
+      const staffed = all.filter((s) => unfilled(s).length === 0);
+      const openSlotCount = open.reduce(
+        (n, s) => n + unfilled(s).reduce((m, slot) => m + (slot.count - slot.filledBy.length), 0),
+        0
+      );
 
-    // Digest goes to all staff (coordinator+) who haven't opted out.
-    const staff = await db()
-      .collection('users')
-      .where('role', 'in', ['coordinator', 'sergeant', 'lieutenant', 'director'])
-      .where('status', '==', 'active')
-      .get();
+      const body = [
+        `Staffing health for the next 14 days:`,
+        ``,
+        `  Sessions scheduled: ${all.length}`,
+        `  Fully staffed:      ${staffed.length}`,
+        `  Understaffed:       ${open.length} (${openSlotCount} open slots)`,
+        ``,
+        ...open
+          .slice(0, 15)
+          .map(
+            (s) =>
+              `• ${s.title || s.courseName} — ${s.start
+                .toDate()
+                .toLocaleDateString('en-US', { timeZone: TIMEZONE })} — ${unfilled(s)
+                .map((slot) => `${slot.count - slot.filledBy.length}× ${slot.role.replace('_', ' ')}`)
+                .join(', ')}`
+          ),
+        open.length > 15 ? `…and ${open.length - 15} more.` : '',
+      ].join('\n');
 
-    // weekKey makes a double-invoked weekly run idempotent (one digest per week).
-    const weekKey = new Date(now).toISOString().slice(0, 10);
-    await Promise.all(
-      staff.docs
-        .filter((d) => (d.data() as UserDoc).notificationPrefs?.digest !== false)
-        .map((d) =>
-          notify({
-            uid: d.id,
-            dedupeKey: `digest_${weekKey}_${d.id}`,
-            type: 'digest',
-            title: 'Weekly staffing digest',
-            body,
-            link: '/cadre/staffing',
-          })
-        )
-    );
+      // Digest goes to THIS org's staff (coordinator+) who haven't opted out.
+      const staff = await db()
+        .collection('users')
+        .where('orgId', '==', orgId)
+        .where('role', 'in', ['coordinator', 'sergeant', 'lieutenant', 'director'])
+        .where('status', '==', 'active')
+        .get();
+
+      // weekKey makes a double-invoked weekly run idempotent (one digest per week).
+      const weekKey = new Date(now).toISOString().slice(0, 10);
+      await Promise.all(
+        staff.docs
+          .filter((d) => (d.data() as UserDoc).notificationPrefs?.digest !== false)
+          .map((d) =>
+            notify({
+              uid: d.id,
+              dedupeKey: `digest_${weekKey}_${d.id}`,
+              type: 'digest',
+              title: 'Weekly staffing digest',
+              body,
+              link: '/cadre/staffing',
+            })
+          )
+      );
+    }
   }
 );

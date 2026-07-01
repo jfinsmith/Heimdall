@@ -26,6 +26,9 @@ export const submitSignup = onCall<{ sessionId: string; slotId: string; allowWai
   const allowWaitlist = !!request.data.allowWaitlist;
   if (!sessionId || !slotId) throw new HttpsError('invalid-argument', 'Missing session or slot.');
 
+  // Captured inside the transaction so the audit entry can carry the tenant —
+  // an org-less audit row fails the inOrg read rule and never shows to org admins.
+  let auditOrgId: string | null = null;
   const status = await db.runTransaction(async (tx) => {
     const sessionRef = db.doc(`sessions/${sessionId}`);
     const sessionSnap = await tx.get(sessionRef);
@@ -33,6 +36,7 @@ export const submitSignup = onCall<{ sessionId: string; slotId: string; allowWai
     const session = sessionSnap.data() as SessionDoc;
     const sOrg = session.orgId ?? null;
     if (!sOrg) throw new HttpsError('failed-precondition', 'This session is missing its organization.');
+    auditOrgId = sOrg;
     if (session.status === 'cancelled') throw new HttpsError('failed-precondition', 'This session has been cancelled.');
     if (session.status === 'draft') throw new HttpsError('failed-precondition', 'This session is not yet published.');
     if ((session.status as string) === 'scheduled') throw new HttpsError('failed-precondition', 'Sign-ups for this course have not been opened yet.');
@@ -93,6 +97,7 @@ export const submitSignup = onCall<{ sessionId: string; slotId: string; allowWai
 
   await db.collection('auditLog').add({
     actorUid: uid, action: 'signup.create', targetType: 'session', targetId: sessionId,
+    ...(auditOrgId ? { orgId: auditOrgId } : {}),
     summary: `Signed up (${status}) for slot ${slotId}`, createdAt: FieldValue.serverTimestamp(),
   });
   return { status };
@@ -105,11 +110,13 @@ export const withdrawSignup = onCall<{ sessionId: string }>(async (request) => {
   const sessionId = (request.data.sessionId ?? '').trim();
   if (!sessionId) throw new HttpsError('invalid-argument', 'Missing session.');
 
+  let auditOrgId: string | null = null;
   await db.runTransaction(async (tx) => {
     const sessionRef = db.doc(`sessions/${sessionId}`);
     const sessionSnap = await tx.get(sessionRef);
     if (!sessionSnap.exists) throw new HttpsError('not-found', 'Session no longer exists.');
     const session = sessionSnap.data() as SessionDoc;
+    auditOrgId = session.orgId ?? null;
 
     const signupRef = db.doc(`sessions/${sessionId}/signups/${uid}`);
     const signupSnap = await tx.get(signupRef);
@@ -129,6 +136,7 @@ export const withdrawSignup = onCall<{ sessionId: string }>(async (request) => {
 
   await db.collection('auditLog').add({
     actorUid: uid, action: 'signup.withdraw', targetType: 'session', targetId: sessionId,
+    ...(auditOrgId ? { orgId: auditOrgId } : {}),
     summary: 'Withdrew from session', createdAt: FieldValue.serverTimestamp(),
   });
   return { ok: true };

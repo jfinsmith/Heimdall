@@ -88,13 +88,16 @@ async function promoteFromWaitlist(sessionId: string, slotId: string): Promise<b
       sessionId,
       // Stamp the tenant (Admin SDK bypasses the rule that would block an org-less
       // assignment) — otherwise the auto-promoted instructor's assignment is
-      // org-less and silently filtered out of every schedule view.
-      orgId: session.orgId,
-      academyId: session.academyId,
+      // org-less and silently filtered out of every schedule view. Guard every
+      // optional (getFirestore runs WITHOUT ignoreUndefinedProperties): a single
+      // undefined would crash the transaction and silently kill the promotion
+      // AND the slot-reopened/lead-withdrawal alerts downstream.
+      ...(session.orgId ? { orgId: session.orgId } : {}),
+      academyId: session.academyId ?? '',
       role: candidate.role,
-      courseName: session.courseName,
-      location: session.location,
-      room: session.room,
+      courseName: session.courseName ?? '',
+      location: session.location ?? '',
+      room: session.room ?? '',
       start: session.start,
       end: session.end,
       status: 'confirmed',
@@ -525,6 +528,8 @@ export const onBulkMessageCreated = onDocumentCreated('bulkMessages/{id}', async
     action: 'gjallarhorn.bulk_message',
     targetType: 'bulkMessage',
     targetId: event.params.id,
+    // Tenant stamp — org-less audit rows fail inOrg and hide from org admins.
+    ...(data.orgId ? { orgId: data.orgId } : {}),
     summary: `Bulk message "${data.subject}" sent to ${uids.length} instructors`,
     createdAt: FieldValue.serverTimestamp(),
   });

@@ -1130,6 +1130,10 @@ export const acceptOrgDpa = onCall<{ version: string }>(async (request) => {
   const db = getFirestore();
   const callerDoc = await db.doc(`users/${caller.uid}`).get();
   const data = callerDoc.exists ? callerDoc.data()! : null;
+  // The doc role survives suspension (only the claim is stripped) — assert the
+  // caller is active like every other admin callable, or a suspended director
+  // could still stamp a compliance attestation.
+  assertActiveCaller(data ?? undefined);
   const role = data?.role as Role | undefined;
   const orgId = data?.orgId as string | undefined;
   if (!role || !ADMIN_ROLES.includes(role) || !orgId) {

@@ -72,6 +72,13 @@ export const createCheckoutSession = onCall<Record<string, never>>(
     if (!orgSnap.exists) throw new HttpsError('not-found', 'Organization not found.');
     const org = orgSnap.data()!;
 
+    // A complimentary org must NEVER be charged — block checkout outright (the
+    // webhook already ignores its events, which would otherwise mask a live,
+    // card-charging Stripe subscription).
+    if (org.complimentary === true) {
+      throw new HttpsError('failed-precondition', 'This organization is complimentary — no subscription is needed.');
+    }
+
     // Reuse the org's Stripe customer, or create one keyed back to the org so the
     // webhook can always map an event to a tenant.
     let customerId = org.stripeCustomerId as string | undefined;

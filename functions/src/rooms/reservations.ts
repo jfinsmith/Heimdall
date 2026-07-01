@@ -70,7 +70,7 @@ export const saveRoomReservation = onCall<{
     // scenario day) — check both. The array-contains query needs no orgId filter
     // since room ids are globally unique (one room → one org).
     const sessByPrimary = await tx.get(db.collection('sessions').where('orgId', '==', orgId).where('roomId', '==', roomId));
-    const sessByArray = await tx.get(db.collection('sessions').where('roomIds', 'array-contains', roomId));
+    const sessByArray = await tx.get(db.collection('sessions').where('orgId', '==', orgId).where('roomIds', 'array-contains', roomId));
     const res = await tx.get(db.collection('roomReservations').where('orgId', '==', orgId).where('roomId', '==', roomId));
     const roomName = (roomSnap.data()!.name as string) || 'That room';
 
