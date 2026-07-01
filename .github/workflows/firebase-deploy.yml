@@ -74,17 +74,24 @@ jobs:
       - uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_HEIMDALL_E1F03 }}
+      # Retries: the SA token exchange intermittently fails from GitHub runners
+      # (invalid_grant-style flake — a rerun on another runner always passed).
+      # Three attempts self-heal it instead of needing a manual re-run.
       - name: Deploy Firestore rules & indexes
         run: |
-          npx -y firebase-tools@13 deploy --only firestore:rules,firestore:indexes \
-            --project heimdall-e1f03 --non-interactive
+          for i in 1 2 3; do
+            npx -y firebase-tools@13 deploy --only firestore:rules,firestore:indexes \
+              --project heimdall-e1f03 --non-interactive && exit 0
+            echo "Attempt $i failed — retrying in 20s (intermittent auth flake)"; sleep 20
+          done
+          exit 1
       # Best-effort: skips cleanly until Firebase Storage is enabled in the
       # console (firebasestorage.googleapis.com). Doesn't fail the job/firestore.
       - name: Deploy Storage rules (best-effort)
         continue-on-error: true
         run: |
           npx -y firebase-tools@13 deploy --only storage \
-            --project heimdall-e1f03 --non-interactive
+            --project heimdall-e1f03 --non-interactive || true
 
   # Emulator-backed rules + signup-concurrency tests (need Java). Make it a
   # required status check in branch protection to gate merges.
