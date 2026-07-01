@@ -36,8 +36,11 @@ export interface ReportField {
  * {memoDate} {reSubject} resolve the same way. Header/signer/distribution
  * templates resolve the same tokens to PLAIN text.
  *
- * NOTE: this is DRAFT wording. Statutory/policy citations are intentionally left
- * as [bracketed placeholders] for the org's legal pass — never fabricated.
+ * The academic letters' F.A.C. citations (11B-35.001(10)(b), (13)(a)1.-3.,
+ * (13)(b); 11B-35.002; 11B-35.0024) were verified against the current rule text
+ * (eff. 4/9/2025) on 2026-07-01. The block-model documents assert no section
+ * numbers; org-specific terms that must be concrete (e.g. dismissal appeal
+ * authority/deadline) are required form fields filled at issue time.
  */
 export interface DocBlock {
   kind: 'paragraph' | 'clause';

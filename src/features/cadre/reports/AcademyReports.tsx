@@ -107,7 +107,7 @@ export function AcademyReports({ academy, seed, onSeedConsumed }: { academy: Wit
             </div>
           )}
           <p className="mb-2 -mt-1 text-xs text-slate-500">
-            Forms available to this class. <span className="font-medium text-amber-700">Some wording is draft — pending your legal review.</span>
+            Forms available to this class.
           </p>
           <div className="mb-6 grid gap-3 md:grid-cols-2">
             {availableTypes.map((t) => (
@@ -280,11 +280,6 @@ function ReportFormModal({
     <Modal open onClose={onClose} title={`${editing ? 'Edit' : 'New'} — ${type.name}`} wide>
       <div className="space-y-4">
         {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
-        {type.document && (
-          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            Draft wording — pending legal review. Bracketed items like “[Academy Cadet Manual §___]” are placeholders to replace during your legal pass.
-          </div>
-        )}
         <div className="rounded-md bg-watch-50 px-3 py-2 text-xs text-slate-500">
           {appliesTo === 'cadet' && <>To: <strong>{cadetName || '—'}</strong> · </>}From: {fromName || '—'} · CC: {directorName ? `${directorName}, ` : ''}Academy Director · {type.name}
         </div>

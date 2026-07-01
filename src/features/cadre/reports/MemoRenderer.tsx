@@ -60,9 +60,9 @@ export function MemoRenderer({
   const settings = useGlobalSettings();
   const data = memo.data ?? {};
 
-  // Any unfilled [bracketed placeholder] left in the resolved document means it is
-  // still DRAFT legal text — surface a banner that prints, so no one issues an
-  // official-looking memo with raw placeholders.
+  // Safety net: the built-in documents carry no [bracketed placeholders] anymore,
+  // but owner-authored library forms can — any unresolved bracket in a rendered
+  // document surfaces a banner that PRINTS, so nothing incomplete gets issued.
   const placeholderTexts = [
     ...memo.headerFields.map((f) => f.value),
     ...memo.blocks.flatMap((b) => (b.spans ?? []).map((s) => (typeof s === 'string' ? s : ''))),
@@ -76,7 +76,7 @@ export function MemoRenderer({
     <div className="mx-auto max-w-[8.5in] bg-white p-8 text-[11px] leading-snug text-black">
       {placeholders.length > 0 && (
         <div className="mb-4 rounded border-2 border-red-600 bg-red-50 px-3 py-2 text-[10px] font-semibold text-red-800">
-          DRAFT — not for issue. Replace the bracketed placeholder(s) before signing: {placeholders.join(' · ')}
+          NOT FOR ISSUE — complete the bracketed placeholder(s) before signing: {placeholders.join(' · ')}
         </div>
       )}
       <DocumentHeader curriculum={curriculum} settings={settings} />
