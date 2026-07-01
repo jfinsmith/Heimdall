@@ -101,6 +101,15 @@ describe('users — self-edit limits', () => {
   it('instructor CAN edit own profile fields', async () => {
     await assertSucceeds(updateDoc(doc(as('alice', 'instructor'), 'users/alice'), { phone: '555-1212', rank: 'Deputy' }));
   });
+  it('instructor CAN remove own verified qual, but never add one back', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'users/vera'), user({ orgId: ORG, verifiedQualKeys: ['general', 'handgun'] }));
+    });
+    // Removal (subset) is self-service…
+    await assertSucceeds(updateDoc(doc(as('vera', 'instructor'), 'users/vera'), { verifiedQualKeys: ['general'] }));
+    // …re-adding (superset) still requires staff verification.
+    await assertFails(updateDoc(doc(as('vera', 'instructor'), 'users/vera'), { verifiedQualKeys: ['general', 'handgun'] }));
+  });
 });
 
 describe('users — staff verification (SEC-1)', () => {

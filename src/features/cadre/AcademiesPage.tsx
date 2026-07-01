@@ -23,6 +23,7 @@ import { useOrg } from '../../lib/useOrg';
 import { billingActive } from '../../lib/subscription';
 import { fmtDate, tsFromDate, addDays, toDateInputValue, isValidDuration } from '../../lib/time';
 import { useAllCurricula, baseCurriculumKey } from '../../lib/curricula';
+import { loadRoomBookings, loadRoomReservations, overlaps } from './rooms/roomBooking';
 import type { AcademyDoc, CurriculumDoc, SessionDoc, UserDoc } from '../../types';
 import { Badge, Button, Field, Input, PageHeader, Select } from '../../components/ui';
 import { Modal } from '../../components/Modal';
@@ -563,19 +564,27 @@ function CloneAcademyModal({
     // Batched writes, 400 per batch (Firestore limit is 500).
     let batch = writeBatch(db);
     let count = 0;
+    // Cloned sessions that hold managed rooms — swept for conflicts post-commit.
+    const clonedRoomSessions: { courseName: string; start: Date; end: Date; roomIds: string[] }[] = [];
     for (const snap of sessionsSnap.docs) {
       const s = snap.data() as SessionDoc;
       // Skip a malformed source session (missing or inverted times) so the clone
       // never inherits a zero/negative-duration block. Shifting both ends by the
       // same offset preserves duration, so any valid source clones valid.
       if (!s.start || !s.end || !isValidDuration(s.start.toDate(), s.end.toDate())) continue;
+      const newStart = new Date(s.start.toDate().getTime() + offsetMs);
+      const newEnd = new Date(s.end.toDate().getTime() + offsetMs);
+      const heldRooms = s.roomIds?.length ? s.roomIds : s.roomId ? [s.roomId] : [];
+      if (heldRooms.length && s.status !== 'cancelled') {
+        clonedRoomSessions.push({ courseName: s.title || s.courseName, start: newStart, end: newEnd, roomIds: heldRooms });
+      }
       const ref = doc(collection(db, 'sessions'));
       batch.set(ref, {
         ...s,
         orgId: source.orgId, // explicit (don't depend on the source session's backfill state)
         academyId: academyRef.id,
-        start: tsFromDate(new Date(s.start.toDate().getTime() + offsetMs)),
-        end: tsFromDate(new Date(s.end.toDate().getTime() + offsetMs)),
+        start: tsFromDate(newStart),
+        end: tsFromDate(newEnd),
         status: 'draft',
         // Staffing does NOT copy — new cohort starts unstaffed.
         roleSlots: s.roleSlots.map((slot) => ({ ...slot, filledBy: [] })),
@@ -588,7 +597,43 @@ function CloneAcademyModal({
       }
     }
     await batch.commit();
+
+    // Room-conflict sweep (non-blocking, like the holiday warning): every
+    // single-session path hard-blocks double-booking, but a bulk clone lands a
+    // whole calendar at once — flag any copied session whose room is already
+    // held by another class or reservation so the coordinator can fix those days.
+    const conflictLines: string[] = [];
+    try {
+      const roomsHeld = [...new Set(clonedRoomSessions.flatMap((c) => c.roomIds))];
+      if (roomsHeld.length && source.orgId) {
+        setProgress('Checking room conflicts…');
+        const templSnap = await getDocs(query(collection(db, 'academies'), where('orgId', '==', source.orgId), where('isTemplate', '==', true)));
+        const templateIds = new Set(templSnap.docs.map((d) => d.id));
+        for (const rid of roomsHeld) {
+          const bookings = (await loadRoomBookings(source.orgId, rid)).filter(
+            (b) => b.academyId !== academyRef.id && b.status !== 'cancelled' && !templateIds.has(b.academyId)
+          );
+          const holds = await loadRoomReservations(source.orgId, rid);
+          for (const c of clonedRoomSessions) {
+            if (!c.roomIds.includes(rid)) continue;
+            const hit = bookings.find((b) => overlaps(c.start, c.end, b.start.toDate(), b.end.toDate()));
+            const resHit = hit ? null : holds.find((r) => overlaps(c.start, c.end, r.start.toDate(), r.end.toDate()));
+            if (hit || resHit) {
+              conflictLines.push(`• ${c.start.toLocaleDateString()} — ${c.courseName}: room already held by ${hit ? hit.title || hit.courseName : `reservation “${resHit!.title}”`}`);
+            }
+          }
+        }
+      }
+    } catch {
+      // The sweep is advisory — never fail a completed clone over it.
+    }
     onClose();
+    if (conflictLines.length) {
+      const shown = [...new Set(conflictLines)].slice(0, 12);
+      window.alert(
+        `⚠ The clone copied rooms that are already booked (${conflictLines.length} conflict${conflictLines.length === 1 ? '' : 's'}):\n\n${shown.join('\n')}${conflictLines.length > shown.length ? `\n…and ${conflictLines.length - shown.length} more.` : ''}\n\nAdjust those days' rooms or times in the builder.`
+      );
+    }
     } catch (err) {
       // Without this, a rules denial / offline blip left the modal stuck on
       // "Copying…" forever (busy never reset) with a half-created academy.

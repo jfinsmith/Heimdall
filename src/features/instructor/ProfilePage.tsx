@@ -78,9 +78,18 @@ export function ProfilePage() {
   }
 
   async function removeQualification(key: QualificationKey) {
-    // Removing a verified qualification is allowed — re-verification needed to get it back.
+    // Removing a verified qualification is allowed — re-verification needed to
+    // get it back. ALSO strip it from verifiedQualKeys (the authoritative list
+    // the server checks for sign-ups/reserves/call-outs) — rules permit
+    // removal-only self-edits there, so the member stops being scheduled as
+    // qualified the moment they drop the cert.
     const next = profile!.qualifications.filter((q) => q.key !== key);
-    await updateDoc(doc(db, 'users', firebaseUser!.uid), { qualifications: next, updatedAt: serverTimestamp() });
+    const nextVerified = (profile!.verifiedQualKeys ?? []).filter((k) => k !== key);
+    await updateDoc(doc(db, 'users', firebaseUser!.uid), {
+      qualifications: next,
+      verifiedQualKeys: nextVerified,
+      updatedAt: serverTimestamp(),
+    });
   }
 
   return (

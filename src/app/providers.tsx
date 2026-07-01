@@ -4,7 +4,7 @@
  * brandAccentColor as CSS custom properties so admins can retheme without a
  * code change.
  */
-import React, { createContext, useContext, useEffect } from 'react';
+import React, { createContext, useContext } from 'react';
 import { AuthProvider, useAuth } from '../auth/AuthContext';
 import { useDoc, orgConfigPath } from '../lib/firestore';
 import { rankLabels } from '../lib/rbac';
@@ -28,13 +28,9 @@ function BrandProvider({ children }: { children: React.ReactNode }) {
   const { orgId } = useAuth();
   const { data: settings } = useDoc<GlobalSettings>(orgId ? orgConfigPath('settings', orgId) : null);
 
-  useEffect(() => {
-    if (!settings) return;
-    const root = document.documentElement;
-    if (settings.brandPrimaryColor) root.style.setProperty('--brand-primary', settings.brandPrimaryColor);
-    if (settings.brandAccentColor) root.style.setProperty('--brand-accent', settings.brandAccentColor);
-  }, [settings]);
-
+  // NOTE (branding split): org brand colors are NOT applied to the app UI — the
+  // app is always Heimdall-branded; org colors appear only on PRINTED documents
+  // (schedule covers, letterheads), which read settings.brand* directly.
   return <SettingsContext.Provider value={settings}>{children}</SettingsContext.Provider>;
 }
 

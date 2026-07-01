@@ -104,21 +104,29 @@ service cloud.firestore {
       // SDK (callables + scripts), which bypass these rules. No client update — not
       // even an admin — may change them; the role-minting + owner-switch callables
       // trust the user doc (homeOrgId/homeRole anchor the owner's reversible switch).
+      // A member may REMOVE their own verified quals (cert lapsed / no longer
+      // holds it) but never ADD — additions still require staff verification.
+      // Removal-only = the new set is a subset of the old.
+      function verifiedQualsOnlyRemoved() {
+        return resource.data.get('verifiedQualKeys', []).toSet()
+          .hasAll(request.resource.data.get('verifiedQualKeys', []).toSet());
+      }
       allow update: if unchanged('orgId') && unchanged('platformOwner')
         && unchanged('homeOrgId') && unchanged('homeRole') && (
         (isAdmin() && inOrg(resource.data))
         // Staff (coordinator/sergeant) may approve accounts and verify quals on
         // OTHER same-tenant users, but may not change roles, and may NOT
-        // self-grant their own status / verifiedQualKeys (no self-escalation).
+        // self-grant their own status / verifiedQualKeys (no self-escalation;
+        // removal-only self-edits are allowed).
         || (isStaff()
             && inOrg(resource.data)
             && unchanged('role')
-            && (request.auth.uid != uid || (unchanged('status') && unchanged('verifiedQualKeys'))))
-        // Self-service: profile fields only.
+            && (request.auth.uid != uid || (unchanged('status') && verifiedQualsOnlyRemoved())))
+        // Self-service: profile fields only (+ removal-only verified quals).
         || (isOwner(uid)
             && unchanged('role')
             && unchanged('status')
-            && unchanged('verifiedQualKeys')
+            && verifiedQualsOnlyRemoved()
             && unchanged('email')));
       allow delete: if isAdmin() && inOrg(resource.data);
     }

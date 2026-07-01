@@ -92,7 +92,7 @@ export function SettingsAdminPage() {
       <PageHeader kicker="Admin" title="Org Settings & Branding" />
       <p className="mb-4 max-w-xl text-sm text-slate-500">
         These control how HEIMDALL identifies your agency outside the app itself: the organization name
-        appears in email footers and printed schedule headers, the colors re-tint the interface accent,
+        appears in email footers and printed schedule headers, the colors brand your printed documents (the app itself stays Heimdall-branded),
         and the allowed domains restrict who can self-register. If the defaults look right, there is
         nothing you need to do here.
       </p>
