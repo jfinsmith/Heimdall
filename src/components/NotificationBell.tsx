@@ -9,7 +9,8 @@ import { db } from '../lib/firebase';
 import { useCollection } from '../lib/firestore';
 import { useClickOutside } from '../lib/useClickOutside';
 import { useAuth } from '../auth/AuthContext';
-import type { NotificationDoc } from '../types';
+import type { NotificationDoc, NotificationType } from '../types';
+import { CATEGORY, TONE_DOT, timeAgo } from '../lib/notificationMeta';
 import { GjallarhornGlyph } from '../brand/Logo';
 
 export function NotificationBell() {
@@ -45,7 +46,7 @@ export function NotificationBell() {
         <GjallarhornGlyph size={22} title="Gjallarhorn notifications" />
         {unread > 0 && (
           <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-bifrost-500 px-1 text-[10px] font-bold text-watch-950">
-            {unread}
+            {unread > 9 ? '9+' : unread}
           </span>
         )}
       </button>
@@ -67,24 +68,36 @@ export function NotificationBell() {
             {notifications.length === 0 && (
               <li className="px-4 py-6 text-center text-sm text-slate-400">The horn is silent. No notifications.</li>
             )}
-            {notifications.map((n) => (
-              <li key={n.id} className={`border-b border-watch-50 px-4 py-3 text-sm ${n.read ? 'opacity-60' : ''}`}>
-                <div className="font-medium text-watch-900">{n.title}</div>
-                <div className="text-slate-600">{n.body}</div>
-                <div className="mt-1 flex gap-3 text-xs">
-                  {n.link && (
-                    <Link to={n.link} className="text-bifrost-700 hover:underline" onClick={() => setOpen(false)}>
-                      View
-                    </Link>
-                  )}
-                  {!n.read && (
-                    <button className="text-watch-500 hover:underline" onClick={() => markRead(n.id)}>
-                      Mark read
-                    </button>
-                  )}
-                </div>
-              </li>
-            ))}
+            {notifications.map((n) => {
+              const tone = CATEGORY[n.type as NotificationType]?.tone ?? 'slate';
+              const when = n.createdAt?.toDate?.();
+              return (
+                <li key={n.id} className={`border-b border-watch-50 px-4 py-3 text-sm ${n.read ? 'opacity-60' : 'bg-bifrost-50/40'}`}>
+                  <div className="flex items-baseline gap-2">
+                    <span aria-hidden className={`h-2 w-2 shrink-0 self-center rounded-full ${TONE_DOT[tone]}`} />
+                    <span className="min-w-0 flex-1 truncate font-medium text-watch-900">{n.title}</span>
+                    {when && <span className="shrink-0 text-[11px] text-slate-400">{timeAgo(when)}</span>}
+                  </div>
+                  <div className="mt-0.5 line-clamp-2 pl-4 text-slate-600">{n.body}</div>
+                  <div className="mt-1 flex gap-3 pl-4 text-xs">
+                    {n.link && (
+                      <Link
+                        to={n.link}
+                        className="text-bifrost-700 hover:underline"
+                        onClick={() => { if (!n.read) markRead(n.id); setOpen(false); }}
+                      >
+                        View
+                      </Link>
+                    )}
+                    {!n.read && (
+                      <button className="text-watch-500 hover:underline" onClick={() => markRead(n.id)}>
+                        Mark read
+                      </button>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
           <Link
             to="/notifications"

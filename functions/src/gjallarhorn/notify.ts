@@ -36,6 +36,14 @@ export interface NotifyOptions {
    * derive it from the stable CloudEvent id + recipient.
    */
   dedupeKey?: string;
+  /**
+   * BASE curriculum key this notification broadcasts for (e.g. 'le_brt'). When
+   * set and the recipient muted that discipline (notificationPrefs.mutedCurricula),
+   * the notification is skipped ENTIRELY — no bell doc, no email. Only stamp this
+   * on discipline-wide broadcasts (course-open announcements); never on personal
+   * notifications (own assignment, own waitlist promotion, account notices).
+   */
+  curriculumKey?: string;
 }
 
 /** Create a doc idempotently — a retry with the same id is a no-op, not a duplicate. */
@@ -66,6 +74,17 @@ export async function notify(opts: NotifyOptions): Promise<void> {
   let recipientOrgId: string | undefined = opts.orgId;
 
   if (opts.uid) {
+    // Recipient doc FIRST: a curriculum-muted broadcast must be skipped entirely
+    // (no bell doc, no email) — checked before anything is written.
+    const userSnap = await db().doc(`users/${opts.uid}`).get();
+    const user = userSnap.exists ? (userSnap.data() as UserDoc) : null;
+    if (
+      !opts.force &&
+      opts.curriculumKey &&
+      user?.notificationPrefs?.mutedCurricula?.includes(opts.curriculumKey)
+    ) {
+      return; // the recipient unsubscribed from this discipline's broadcasts
+    }
     // In-app notification (bell) — deduped on retry when a dedupeKey is given.
     const notifData = {
       uid: opts.uid,
@@ -78,9 +97,7 @@ export async function notify(opts: NotifyOptions): Promise<void> {
     };
     if (opts.dedupeKey) await idempotentCreate(db().collection('notifications').doc(`n_${opts.dedupeKey}`), notifData);
     else await db().collection('notifications').add(notifData);
-    const userSnap = await db().doc(`users/${opts.uid}`).get();
-    if (userSnap.exists) {
-      const user = userSnap.data() as UserDoc;
+    if (user) {
       email = email ?? user.email;
       recipientRole = user.role;
       recipientOrgId = user.orgId ?? opts.orgId;

@@ -415,6 +415,10 @@ export const onCoursePublished = onDocumentCreated('coursePublishEvents/{id}', a
   const academy = await db().doc(`academies/${academyId}`).get();
   const academyLabel = academy.exists ? (academy.data()!.shortName || academy.data()!.name) : '';
   const academyOrgId = academy.exists ? (academy.data()!.orgId as string | undefined) : undefined;
+  // Base curriculum key (org-namespaced ids are '{orgId}__{key}') — recipients who
+  // muted this discipline in their profile are skipped by notify().
+  const disciplineId = academy.exists ? ((academy.data()!.discipline as string | undefined) ?? '') : '';
+  const curriculumKey = disciplineId.includes('__') ? disciplineId.slice(disciplineId.indexOf('__') + 2) : disciplineId;
 
   // Resolve recipients for the email blast (the course is visible to all eligible
   // instructors regardless — this only controls who gets pushed an email).
@@ -445,6 +449,7 @@ export const onCoursePublished = onDocumentCreated('coursePublishEvents/{id}', a
       notify({
         uid,
         dedupeKey: `${event.id}_${uid}`,
+        ...(curriculumKey ? { curriculumKey } : {}),
         type: 'course_published',
         title: `Sign-ups open: ${academyLabel} ${courseLabel}`,
         body: `${courseLabel} (${sessionCount} session${sessionCount === 1 ? '' : 's'}${firstDay ? `, starting ${firstDay}` : ''}) is now open for instructor sign-up in ${academyLabel}.`,

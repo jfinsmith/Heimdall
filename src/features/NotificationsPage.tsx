@@ -12,36 +12,8 @@ import { db } from '../lib/firebase';
 import { useCollection } from '../lib/firestore';
 import { useAuth } from '../auth/AuthContext';
 import type { NotificationDoc, NotificationType } from '../types';
-import { EMAIL_AUTOMATIONS } from '../types';
+import { CATEGORY, CATEGORY_GROUPS, TYPE_LABEL } from '../lib/notificationMeta';
 import { Badge, Button, EmptyState, PageHeader, Select } from '../components/ui';
-
-type Tone = 'slate' | 'amber' | 'green' | 'red' | 'navy';
-
-// Friendly label per type (keys match the email-automation keys).
-const TYPE_LABEL: Record<string, string> = Object.fromEntries(EMAIL_AUTOMATIONS.map((a) => [a.key, a.label]));
-
-// Each notification type rolls up into a category (for the badge color + filter).
-const CATEGORY: Record<NotificationType, { group: string; tone: Tone }> = {
-  signup_confirmed: { group: 'Staffing', tone: 'green' },
-  slot_reopened: { group: 'Staffing', tone: 'amber' },
-  session_fully_staffed: { group: 'Staffing', tone: 'green' },
-  understaffing_alert: { group: 'Staffing', tone: 'red' },
-  lead_withdrawal_escalation: { group: 'Staffing', tone: 'red' },
-  schedule_change: { group: 'Schedule', tone: 'amber' },
-  course_published: { group: 'Schedule', tone: 'navy' },
-  approval_request: { group: 'Approvals', tone: 'amber' },
-  approval_update: { group: 'Approvals', tone: 'green' },
-  qualification_approved: { group: 'Account', tone: 'green' },
-  account_approved: { group: 'Account', tone: 'green' },
-  new_account_pending: { group: 'Account', tone: 'navy' },
-  account_suspended: { group: 'Account', tone: 'red' },
-  account_reinstated: { group: 'Account', tone: 'green' },
-  reminder: { group: 'Reminders', tone: 'navy' },
-  digest: { group: 'Reminders', tone: 'slate' },
-  message: { group: 'Messages', tone: 'navy' },
-  feedback_submitted: { group: 'Messages', tone: 'amber' },
-};
-const CATEGORY_GROUPS = [...new Set(Object.values(CATEGORY).map((c) => c.group))].sort();
 
 const BUCKET_ORDER = ['Today', 'Yesterday', 'Earlier this week', 'Earlier this month', 'Older'];
 

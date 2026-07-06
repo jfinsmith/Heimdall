@@ -33,7 +33,7 @@ export interface UserDoc {
   qualifications: Qualification[];
   /** Staff-maintained authoritative verified keys (see web app types). */
   verifiedQualKeys: string[];
-  notificationPrefs: { email: boolean; reminderLeadHours: number; digest: boolean };
+  notificationPrefs: { email: boolean; reminderLeadHours: number; digest: boolean; mutedCurricula?: string[] };
   /** Forces a password change on first sign-in (admin-created accounts). */
   mustChangePassword?: boolean;
   /** Tenant this user belongs to (orgs/{orgId}). */

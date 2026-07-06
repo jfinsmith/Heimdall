@@ -13,6 +13,7 @@ import { useOrg } from '../../lib/useOrg';
 import type { Qualification, QualificationKey } from '../../types';
 import { QUALIFICATION_LABELS, isInstructorQual } from '../../types';
 import { certYearOf, march31, tsFromDate } from '../../lib/time';
+import { useAllCurricula, baseCurriculumKey } from '../../lib/curricula';
 import { formatPhone } from '../../lib/format';
 import { Badge, Button, Field, Input, PageHeader } from '../../components/ui';
 
@@ -49,7 +50,14 @@ export function ProfilePage() {
       phone: formatPhone(phone),
       rank,
       agency,
-      notificationPrefs: { email: emailOn, reminderLeadHours: safeLead, digest },
+      // Preserve the curriculum mutes — this whole-object write would otherwise
+      // silently resubscribe the user to everything on every profile save.
+      notificationPrefs: {
+        email: emailOn,
+        reminderLeadHours: safeLead,
+        digest,
+        ...(profile?.notificationPrefs?.mutedCurricula?.length ? { mutedCurricula: profile.notificationPrefs.mutedCurricula } : {}),
+      },
       updatedAt: serverTimestamp(),
     });
     setLeadHours(safeLead);
@@ -226,11 +234,61 @@ export function ProfilePage() {
         </ul>
       </section>
       <UnavailableDatesCard />
+      <CurriculumSubscriptionsCard />
     </div>
   );
 }
 
 /** Self-service blackout days — Browse Open Sessions hides open sessions on these. */
+/**
+ * Per-curriculum notification subscriptions. Everyone is subscribed to every
+ * discipline by default; un-checking one silences that discipline's broadcast
+ * notifications (course-open call-outs) across bell AND email — enforced
+ * server-side, so nothing is even created for a muted discipline. Personal
+ * notifications (own assignments, reminders, account notices) always deliver.
+ */
+function CurriculumSubscriptionsCard() {
+  const { firebaseUser, profile } = useAuth();
+  const { platform, org } = useAllCurricula();
+  const disciplines = useMemo(() => {
+    const seen = new Map<string, string>(); // base key → label (platform first)
+    for (const c of [...platform, ...org]) {
+      if (c.active === false) continue;
+      const key = c.key || baseCurriculumKey(c.id);
+      if (!seen.has(key)) seen.set(key, c.label);
+    }
+    return [...seen.entries()].map(([key, label]) => ({ key, label })).sort((a, b) => a.label.localeCompare(b.label));
+  }, [platform, org]);
+  const muted = useMemo(() => new Set(profile?.notificationPrefs?.mutedCurricula ?? []), [profile]);
+
+  async function toggle(key: string) {
+    const next = muted.has(key) ? [...muted].filter((k) => k !== key) : [...muted, key];
+    await updateDoc(doc(db, 'users', firebaseUser!.uid), {
+      'notificationPrefs.mutedCurricula': next,
+      updatedAt: serverTimestamp(),
+    });
+  }
+
+  if (disciplines.length === 0) return null;
+  return (
+    <div className="mt-6 rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
+      <h2 className="text-sm font-semibold uppercase tracking-wider text-watch-600">Curriculum notifications</h2>
+      <p className="mt-1 text-xs text-slate-500">
+        You&apos;re subscribed to every discipline by default. Un-check one to stop its course-opening call-outs
+        (bell and email). Your own assignments, reminders, and account notices always come through.
+      </p>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {disciplines.map((d) => (
+          <label key={d.key} className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={!muted.has(d.key)} onChange={() => toggle(d.key)} />
+            <span className={muted.has(d.key) ? 'text-slate-400' : ''}>{d.label}</span>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function UnavailableDatesCard() {
   const { firebaseUser, profile } = useAuth();
   const [day, setDay] = useState('');

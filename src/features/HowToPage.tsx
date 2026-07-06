@@ -153,6 +153,13 @@ export function HowToPage() {
               (a toggle shows them again). This is advisory — it never blocks staff from reserving you, so tell your coordinator too.
             </p>
           </Sub>
+          <Sub title="Curriculum notifications">
+            <p>
+              You&apos;re subscribed to every discipline&apos;s course-opening call-outs by default. Under <B>Profile → Curriculum notifications</B>,
+              un-check any discipline (e.g. Corrections, if you only teach Law Enforcement) to silence its announcements across bell and email.
+              Your own assignments, reminders, and account notices always come through regardless.
+            </p>
+          </Sub>
         </Section>
 
         {/* ── Instructors ────────────────────────────────────────────────── */}
@@ -174,6 +181,11 @@ export function HowToPage() {
             <B>My Schedule</B> lists your upcoming and past assignments. Email reminders arrive before each assignment — set your preferred
             lead time in <B>Profile → Notifications</B> (your org sets the default). The <B>calendar feed (ICS)</B> link on My Schedule
             subscribes your phone/Outlook/Google calendar to your assignments so they stay in sync automatically.
+          </p>
+          <p>
+            The <B>Gjallarhorn bell</B> (top right) shows your latest notifications with category colors and timestamps — clicking View
+            marks one read and takes you to the source. <B>View all notifications</B> opens the full feed, grouped by day and filterable
+            by category or unread state, with one-click mark-all-read.
           </p>
         </Section>
 

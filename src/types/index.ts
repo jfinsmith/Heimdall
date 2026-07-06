@@ -87,6 +87,13 @@ export interface NotificationPrefs {
   /** Hours before a session start to send the Gjallarhorn reminder. */
   reminderLeadHours: number;
   digest: boolean;
+  /**
+   * BASE curriculum keys (e.g. 'co_brt') whose broadcast notifications the user
+   * opted out of. Everyone is subscribed to every discipline by default; muting
+   * only silences discipline-wide broadcasts (course-open announcements) — the
+   * user's own assignments, reminders, and account notices always deliver.
+   */
+  mutedCurricula?: string[];
 }
 
 export interface UserDoc {
