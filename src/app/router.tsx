@@ -21,6 +21,7 @@ import { ChangePasswordPage } from '../auth/ChangePasswordPage';
 
 // Lazy page chunks.
 const OverviewPage = lazy(() => import('../features/OverviewPage').then((m) => ({ default: m.OverviewPage })));
+const HowToPage = lazy(() => import('../features/HowToPage').then((m) => ({ default: m.HowToPage })));
 const NotificationsPage = lazy(() => import('../features/NotificationsPage').then((m) => ({ default: m.NotificationsPage })));
 const CalendarPage = lazy(() => import('../features/cadre/CalendarPage').then((m) => ({ default: m.CalendarPage })));
 const AcademiesPage = lazy(() => import('../features/cadre/AcademiesPage').then((m) => ({ default: m.AcademiesPage })));
@@ -114,6 +115,7 @@ export function AppRouter() {
               {/* The app dashboard lives at /overview; the bare "/" is the public
                   marketing landing (RootGate) that redirects members here. */}
               <Route path="/overview" element={<OverviewPage />} />
+              <Route path="/how-to" element={<HowToPage />} />
               <Route path="/notifications" element={<NotificationsPage />} />
               <Route path="/cadre/calendar" element={<CalendarPage />} />
               <Route path="/open-sessions" element={<BrowseOpenSessionsPage />} />

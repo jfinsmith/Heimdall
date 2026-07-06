@@ -146,6 +146,7 @@ export function AppShell() {
   const nav = (
     <nav aria-label="Main navigation" className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3">
       <NavItem to="/overview" label="Overview" end />
+      <NavItem to="/how-to" label="How To" />
       {/* CADRE — Coordinated Academy Duty & Roster Engine */}
       <SectionLabel title="CADRE — Coordinated Academy Duty & Roster Engine">CADRE</SectionLabel>
       <NavItem to="/cadre/calendar" label="Calendar" />
