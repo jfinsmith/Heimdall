@@ -60,6 +60,10 @@ interface SheetFields {
 
 type Extra = { id: string; no: number; fullName: string; status: string };
 
+/** Five empty write-in rows for the blank roster's Additional Course Takers
+ *  section — numbered boxes with blank name cells to be filled in by hand. */
+const BLANK_WRITE_INS: Extra[] = Array.from({ length: 5 }, (_, i) => ({ id: `blank-${i}`, no: 0, fullName: '', status: '' }));
+
 /** Pure printable sheet — the FDLE roster. `pageBreak` forces a new page when
  *  several generated sheets stack on one print job. */
 function PrintSheet({
@@ -285,7 +289,7 @@ export function AttendanceTab({
   const cadets = useMemo(() => members.filter((m) => !m.blockTaker).sort((a, b) => a.no - b.no), [members]);
   const blockTakers = useMemo(() => members.filter((m) => m.blockTaker).sort((a, b) => a.no - b.no), [members]);
 
-  const [mode, setMode] = useState<'manual' | 'schedule'>('manual');
+  const [mode, setMode] = useState<'manual' | 'schedule' | 'blank'>('manual');
   const [genDate, setGenDate] = useState(localDateStr(new Date()));
   // Only official curriculum courses are rostered (custom/agency blocks excluded).
   const officialCourses = useMemo(() => new Set((curriculum?.courses ?? []).map((c) => c.name)), [curriculum]);
@@ -326,16 +330,46 @@ export function AttendanceTab({
         <div className="inline-flex rounded-md border border-watch-200 p-0.5 text-sm">
           <button type="button" className={mode === 'manual' ? `${tab} bg-watch-800 text-white` : `${tab} text-watch-700`} onClick={() => setMode('manual')}>Manual</button>
           <button type="button" className={mode === 'schedule' ? `${tab} bg-watch-800 text-white` : `${tab} text-watch-700`} onClick={() => setMode('schedule')}>From schedule</button>
+          <button type="button" className={mode === 'blank' ? `${tab} bg-watch-800 text-white` : `${tab} text-watch-700`} onClick={() => setMode('blank')}>Blank</button>
         </div>
         {mode === 'schedule' && (
           <Field label="Date" className="max-w-[11rem]"><Input type="date" value={genDate} onChange={(e) => setGenDate(e.target.value)} /></Field>
         )}
         <Button variant="primary" onClick={() => window.print()}>
-          Print attendance roster{mode === 'schedule' && generated.length > 1 ? 's' : ''}
+          Print {mode === 'blank' ? 'blank roster' : `attendance roster${mode === 'schedule' && generated.length > 1 ? 's' : ''}`}
         </Button>
+        {mode === 'blank' && (
+          <span className="text-xs text-slate-500">Class info + student list print; course, date, times, and instructors stay blank for handwriting, with 5 write-in rows at the bottom.</span>
+        )}
       </div>
 
-      {mode === 'manual' ? (
+      {mode === 'blank' ? (
+        // Blank roster: class-specific facts stay printed (header, program dates,
+        // sequence #, class #, total hours, the student list); the per-day fields
+        // (course, date, time, hours, instructors, lunch) print as empty boxes to
+        // be filled in by hand, plus 5 write-in rows for additional course takers.
+        <PrintSheet
+          academy={academy}
+          curriculum={curriculum}
+          settings={settings}
+          layout={layout}
+          fields={{
+            courseTitle: '',
+            programDates: `${fmtDate(academy.startDate)} - ${fmtDate(academy.endDate)}`,
+            classTime: '',
+            classHours: '',
+            classDate: '',
+            lead: '',
+            additional: '',
+            seqNo: academy.sequenceNo || '',
+            classNo: academy.shortName ?? '',
+            totalHours: totalHoursStr,
+            lunch: '',
+          }}
+          cadets={cadets}
+          additionalSection={BLANK_WRITE_INS}
+        />
+      ) : mode === 'manual' ? (
         <SheetEditor
           key={`manual-${curriculum?.id ?? 'none'}`}
           init={manualInit}
