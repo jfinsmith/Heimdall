@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import { Timestamp } from 'firebase/firestore';
 import type { CurriculumCourse, GradeCell, RosterMemberDoc, ViolationEntry } from '../../../types';
-import { disciplineTally, effectiveScore, courseResult, memberStanding, courseKey } from './rosterShared';
+import { disciplineTally, effectiveScore, courseResult, memberStanding, courseKey, lastFirst, rosterCompare } from './rosterShared';
 
 const ts = (y = 2026, m = 5, d = 1) => Timestamp.fromDate(new Date(y, m - 1, d, 12));
 
@@ -30,6 +30,22 @@ describe('courseKey (stable grade keys)', () => {
     const m = member({ grades: { CJK0040: { score: 92 } } });
     const renamed: CurriculumCourse[] = [{ cjk: 'CJK0040', name: 'Criminal Justice Firearms', minHours: 80, highLiability: true, tested: true }];
     expect(memberStanding(m, renamed).avgPct).toBe(92); // found via CJK despite the new name
+  });
+});
+
+describe('lastFirst + rosterCompare (roster ordering)', () => {
+  it('formats Last, First (suffix-aware, single names unchanged)', () => {
+    expect(lastFirst('Jane Smith')).toBe('Smith, Jane');
+    expect(lastFirst('Jane Q Smith')).toBe('Smith, Jane Q');
+    expect(lastFirst('John Smith Jr.')).toBe('Smith Jr., John');
+    expect(lastFirst('Cher')).toBe('Cher');
+  });
+  it('sorts alphabetically by LAST name; withdrawn/dismissed sink to the bottom', () => {
+    const mk = (fullName: string, status: RosterMemberDoc['status'] = 'active', no = 1) => ({ fullName, status, no });
+    const sorted = [mk('Aaron Zimmer'), mk('Zoe Abbott'), mk('Bob Miller', 'withdrawn'), mk('Al Adams', 'dismissed')]
+      .sort(rosterCompare)
+      .map((m) => m.fullName);
+    expect(sorted).toEqual(['Zoe Abbott', 'Aaron Zimmer', 'Al Adams', 'Bob Miller']);
   });
 });
 

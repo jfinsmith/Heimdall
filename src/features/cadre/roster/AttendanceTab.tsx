@@ -22,6 +22,7 @@ import { useGlobalSettings } from '../../../app/providers';
 import { DocumentHeader } from '../reports/DocumentHeader';
 import { FitToPage } from '../../../components/FitToPage';
 import { buildDayRosters, localDateStr } from './attendanceRoster';
+import { lastFirst } from './rosterShared';
 import { Button, Field, Input, Select, TextArea } from '../../../components/ui';
 import type { GlobalSettings } from '../../../types';
 
@@ -286,8 +287,10 @@ export function AttendanceTab({
   const settings = useGlobalSettings();
   const layout = curriculum?.attendanceLayout ?? 'grid';
   const courses = curriculum?.courses ?? [];
-  const cadets = useMemo(() => members.filter((m) => !m.blockTaker).sort((a, b) => a.no - b.no), [members]);
-  const blockTakers = useMemo(() => members.filter((m) => m.blockTaker).sort((a, b) => a.no - b.no), [members]);
+  // `members` arrives in the canonical roster order (alphabetical by last name,
+  // withdrawn/dismissed last) — filtering preserves it.
+  const cadets = useMemo(() => members.filter((m) => !m.blockTaker), [members]);
+  const blockTakers = useMemo(() => members.filter((m) => m.blockTaker), [members]);
 
   const [mode, setMode] = useState<'manual' | 'schedule' | 'blank'>('manual');
   const [genDate, setGenDate] = useState(localDateStr(new Date()));
@@ -435,7 +438,7 @@ function SignInTable({ rows }: { rows: WithId<RosterMemberDoc>[] }) {
           <tr key={m.id}>
             <td className="border border-black px-1 py-2 text-center tabular-nums">{i + 1}</td>
             <td className="border border-black px-1 py-2">
-              {m.cjis ? <span className="mr-2 font-semibold tabular-nums">{m.cjis}</span> : null}{m.fullName}
+              {m.cjis ? <span className="mr-2 font-semibold tabular-nums">{m.cjis}</span> : null}{lastFirst(m.fullName)}
             </td>
             <td className="border border-black" />
           </tr>
@@ -479,7 +482,7 @@ function RosterTable({
           {rows.map((m, i) => (
             <tr key={m.id}>
               <td className="border border-black px-1 py-1 text-center tabular-nums">{renumber ? i + 1 : m.no}</td>
-              <td className="border border-black px-1 py-1">{m.fullName}</td>
+              <td className="border border-black px-1 py-1">{lastFirst(m.fullName)}</td>
               <td className="border border-black px-1 py-1 text-center text-[9px] font-bold uppercase text-slate-500">
                 {m.status === 'withdrawn' ? 'Withdrawn' : m.status === 'dismissed' ? 'Dismissed' : ''}
               </td>

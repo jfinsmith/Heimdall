@@ -34,6 +34,8 @@ interface MemberInput {
   agencyOther?: string;
   cjis?: string;
   studentId?: string;
+  /** Date of birth, yyyy-mm-dd. */
+  dob?: string;
   phone?: string;
   email?: string;
   emergencyName?: string;
@@ -74,6 +76,7 @@ export const rosterCreateMember = onCall<{ academyId: string; member: MemberInpu
     ...(member.agencyOther ? { agencyOther: member.agencyOther.trim() } : {}),
     ...(member.cjis ? { cjis: member.cjis.trim() } : {}),
     ...(member.studentId ? { studentId: member.studentId.trim() } : {}),
+    ...(member.dob ? { dob: member.dob.trim() } : {}),
     ...(member.phone ? { phone: member.phone.trim() } : {}),
     ...(member.email ? { email: member.email.trim().toLowerCase() } : {}),
     ...(member.emergencyName ? { emergencyName: member.emergencyName.trim() } : {}),

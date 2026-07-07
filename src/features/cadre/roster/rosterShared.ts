@@ -11,6 +11,31 @@ export function agencyLabel(m: Pick<RosterMemberDoc, 'agency' | 'agencyOther'>):
 }
 
 /** Warning count + weighted demerit points (A=1,B=3,C=6,D=12) for a member. */
+const NAME_SUFFIX = /^(jr\.?|sr\.?|ii|iii|iv|v)$/i;
+/** "Jane Q Smith" → "Smith, Jane Q" (suffix-aware: "John Smith Jr." → "Smith Jr., John"). */
+export function lastFirst(name: string): string {
+  const parts = (name ?? '').trim().split(/\s+/);
+  if (parts.length < 2) return name ?? '';
+  let lastIdx = parts.length - 1;
+  if (NAME_SUFFIX.test(parts[lastIdx]) && lastIdx >= 2) lastIdx -= 1;
+  return `${parts.slice(lastIdx).join(' ')}, ${parts.slice(0, lastIdx).join(' ')}`;
+}
+
+/**
+ * Canonical roster ordering: alphabetical by LAST name; withdrawn/dismissed
+ * members sink to the bottom (alphabetical there too). Roster `no` stays a
+ * stable intake-order identifier and only tie-breaks identical names.
+ */
+export function rosterCompare(a: Pick<RosterMemberDoc, 'fullName' | 'status' | 'no'>, b: Pick<RosterMemberDoc, 'fullName' | 'status' | 'no'>): number {
+  const termA = a.status === 'withdrawn' || a.status === 'dismissed' ? 1 : 0;
+  const termB = b.status === 'withdrawn' || b.status === 'dismissed' ? 1 : 0;
+  if (termA !== termB) return termA - termB;
+  return (
+    lastFirst(a.fullName).localeCompare(lastFirst(b.fullName), undefined, { sensitivity: 'base' }) ||
+    (a.no ?? 0) - (b.no ?? 0)
+  );
+}
+
 export function disciplineTally(violations: ViolationEntry[] = []) {
   let warnings = 0;
   const counts = { A: 0, B: 0, C: 0, D: 0 };

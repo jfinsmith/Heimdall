@@ -27,11 +27,11 @@ describe('buildCadetRecords', () => {
     expect(headers).toContain('CJK0040 Firearms');
     expect(rows).toHaveLength(1);
     const row = rows[0];
-    expect(row[1]).toBe('Test Cadet');
-    expect(row[7]).toBe('Graduated');       // status label
-    expect(row[10]).toBe(712);              // attended hours from the map
-    expect(row[11]).toBe('Pass (92)');      // Firearms result keyed by CJK
-    expect(row[12]).toBe('Pass (88)');      // Legal
+    expect(row[1]).toBe('Cadet, Test');     // Last, First
+    expect(row[8]).toBe('Graduated');       // status label (DOB column shifted indices)
+    expect(row[11]).toBe(712);              // attended hours from the map
+    expect(row[12]).toBe('Pass (92)');      // Firearms result keyed by CJK
+    expect(row[13]).toBe('Pass (88)');      // Legal
   });
 
   it('excludes block-takers and leaves attended-hours blank when unknown', () => {
@@ -40,7 +40,7 @@ describe('buildCadetRecords', () => {
       courses,
       new Map(),
     );
-    expect(rows.map((r) => r[1])).toEqual(['Cadet A']);
-    expect(rows[0][10]).toBe('');           // no attendance recorded → blank, not 0
+    expect(rows.map((r) => r[1])).toEqual(['A, Cadet']);
+    expect(rows[0][11]).toBe('');           // no attendance recorded → blank, not 0
   });
 });

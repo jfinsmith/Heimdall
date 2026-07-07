@@ -6,7 +6,7 @@
  */
 import type { CurriculumCourse, RosterMemberDoc } from '../../../types';
 import type { WithId } from '../../../lib/firestore';
-import { agencyLabel, courseKey, courseResult, effectiveScore, gradedCourses, memberStanding } from './rosterShared';
+import { agencyLabel, courseKey, courseResult, effectiveScore, gradedCourses, lastFirst, memberStanding } from './rosterShared';
 
 const RESULT_LABEL: Record<string, string> = {
   pass: 'Pass', fail: 'Fail', na: 'N/A', xo: 'XO', wd: 'WD', pending: '',
@@ -24,7 +24,7 @@ export function buildCadetRecords(
   const graded = gradedCourses(courses);
   const idxById = new Map(graded.map((c, i) => [courseKey(c), i] as const));
   const headers = [
-    'No', 'Name', 'Agency', 'CJIS', 'Student ID', 'Email', 'Phone',
+    'No', 'Name', 'Agency', 'CJIS', 'Student ID', 'DOB', 'Email', 'Phone',
     'Status', 'Avg %', 'Letter', 'Attended hrs',
     ...graded.map((c) => `${c.cjk ? `${c.cjk} ` : ''}${c.name}`),
   ];
@@ -34,10 +34,11 @@ export function buildCadetRecords(
       const standing = memberStanding(m, courses);
       return [
         m.no ?? '',
-        m.fullName,
+        lastFirst(m.fullName),
         agencyLabel(m),
         m.cjis ?? '',
         m.studentId ?? '',
+        m.dob ?? '',
         m.email ?? '',
         m.phone ?? '',
         STATUS_LABEL[m.status] ?? m.status,

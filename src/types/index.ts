@@ -473,6 +473,8 @@ export interface RosterMemberDoc {
   agencyOther?: string;
   cjis?: string;
   studentId?: string;
+  /** Date of birth, yyyy-mm-dd (date-only string — no timezone ambiguity). */
+  dob?: string;
   phone?: string;
   email?: string;
   emergencyName?: string;

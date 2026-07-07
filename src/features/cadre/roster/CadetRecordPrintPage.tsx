@@ -12,7 +12,7 @@ import { useCurriculum } from '../../../lib/curricula';
 import { useGlobalSettings } from '../../../app/providers';
 import type { AcademyDoc, RosterMemberDoc, UserDoc } from '../../../types';
 import { fmtDate } from '../../../lib/time';
-import { agencyLabel, courseKey, courseResult, effectiveScore, gradedCourses, memberStanding } from './rosterShared';
+import { agencyLabel, courseKey, courseResult, effectiveScore, gradedCourses, lastFirst, memberStanding } from './rosterShared';
 import { DocumentHeader } from '../reports/DocumentHeader';
 import { Button, Spinner } from '../../../components/ui';
 
@@ -85,8 +85,9 @@ export function CadetRecordPrintPage() {
         <table className="mt-3 w-full border-collapse text-xs">
           <tbody>
             <tr>
-              <td className="border border-black px-1.5 py-1"><div className="text-[8px] font-bold uppercase text-black/70">Name</div>{member.fullName}</td>
+              <td className="border border-black px-1.5 py-1"><div className="text-[8px] font-bold uppercase text-black/70">Name</div>{lastFirst(member.fullName)}</td>
               <td className="border border-black px-1.5 py-1"><div className="text-[8px] font-bold uppercase text-black/70">Student ID</div>{member.studentId || '—'}</td>
+              <td className="border border-black px-1.5 py-1"><div className="text-[8px] font-bold uppercase text-black/70">DOB</div>{member.dob ? new Date(`${member.dob}T12:00:00`).toLocaleDateString() : '—'}</td>
               <td className="border border-black px-1.5 py-1"><div className="text-[8px] font-bold uppercase text-black/70">Agency</div>{agencyLabel(member)}</td>
               <td className="border border-black px-1.5 py-1"><div className="text-[8px] font-bold uppercase text-black/70">Outcome</div>{member.status === 'graduated' ? 'Graduated' : member.status === 'dismissed' ? 'Dismissed' : member.status === 'withdrawn' ? 'Withdrawn' : 'In progress'}</td>
             </tr>

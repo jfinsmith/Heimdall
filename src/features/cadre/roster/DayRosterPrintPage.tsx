@@ -16,6 +16,7 @@ import { useCurriculum } from '../../../lib/curricula';
 import { useGlobalSettings } from '../../../app/providers';
 import type { AcademyDoc, RosterMemberDoc, SessionDoc, UserDoc } from '../../../types';
 import { DocumentHeader } from '../reports/DocumentHeader';
+import { lastFirst, rosterCompare } from './rosterShared';
 import { FitToPage } from '../../../components/FitToPage';
 import { Button, Spinner } from '../../../components/ui';
 
@@ -63,10 +64,11 @@ export function DayRosterPrintPage() {
     .filter((s) => s.kind !== 'lunch' && s.status !== 'cancelled' && localDateStr(s.start.toDate()) === date)
     .sort((a, b) => a.start.toMillis() - b.start.toMillis());
 
-  // Active cadets (no withdrawn/dismissed, no block-takers), positionally numbered.
+  // Active cadets (no withdrawn/dismissed, no block-takers), alphabetical by
+  // last name and positionally numbered.
   const cadets = [...rosterRaw]
     .filter((m) => m.status !== 'withdrawn' && m.status !== 'dismissed' && !m.blockTaker)
-    .sort((a, b) => (a.no ?? 0) - (b.no ?? 0));
+    .sort(rosterCompare);
 
   const prettyDate = date ? new Date(`${date}T00:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : '';
   const classLine = [academy.shortName, academy.sequenceNo].filter(Boolean).join(' · ');
@@ -135,7 +137,7 @@ export function DayRosterPrintPage() {
               <tr key={m.id}>
                 <td className="border border-black px-1 py-2 text-center tabular-nums">{i + 1}</td>
                 <td className="border border-black px-1 py-2">
-                  {m.cjis ? <span className="mr-2 font-semibold tabular-nums">{m.cjis}</span> : null}{m.fullName}
+                  {m.cjis ? <span className="mr-2 font-semibold tabular-nums">{m.cjis}</span> : null}{lastFirst(m.fullName)}
                 </td>
                 <td className="border border-black" />
               </tr>

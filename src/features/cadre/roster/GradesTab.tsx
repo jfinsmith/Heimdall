@@ -13,7 +13,7 @@ import type { CurriculumCourse, CurriculumDoc, GradeCell, RosterMemberDoc } from
 import { PASS_MARK } from '../../../types';
 import { Badge, Button, Field, Input, Select } from '../../../components/ui';
 import { Modal } from '../../../components/Modal';
-import { courseKey, courseResult, effectiveScore, gradedCourses, memberStanding, resultClasses } from './rosterShared';
+import { courseKey, courseResult, effectiveScore, gradedCourses, lastFirst, memberStanding, resultClasses } from './rosterShared';
 import type { LetterSeed } from '../reports/AcademyReports';
 
 export function GradesTab({
@@ -84,7 +84,7 @@ export function GradesTab({
               return (
                 <tr key={m.id} className={m.status === 'withdrawn' ? 'opacity-60' : ''}>
                   <td className="sticky left-0 z-10 bg-white px-3 py-2 font-medium text-watch-900">
-                    <span className={m.status === 'withdrawn' ? 'line-through' : ''}>{m.fullName}</span>
+                    <span className={m.status === 'withdrawn' ? 'line-through' : ''}>{lastFirst(m.fullName)}</span>
                     {standing.warnings.length > 0 && (
                       <span className="ml-1 cursor-help text-red-600" title={standing.warnings.join('\n')}>⚠</span>
                     )}

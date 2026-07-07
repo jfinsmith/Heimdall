@@ -15,7 +15,7 @@ import type { AcademyDoc, CurriculumDoc, RosterAgency, RosterMemberDoc } from '.
 import { ROSTER_AGENCIES } from '../../../types';
 import { Badge, Button, Field, Input, PageHeader, Select, Spinner } from '../../../components/ui';
 import { Modal } from '../../../components/Modal';
-import { agencyLabel, courseKey, memberStanding } from './rosterShared';
+import { agencyLabel, courseKey, lastFirst, memberStanding, rosterCompare } from './rosterShared';
 import { buildCadetRecords } from './exportRecords';
 import { downloadCsv } from '../../../lib/csv';
 import { BulkImportModal, type ImportColumn } from '../../../components/BulkImportModal';
@@ -45,7 +45,10 @@ export function RosterPage() {
   );
   // useCollection org-scopes the roster subcollection; sort by roster number
   // client-side (dropping orderBy keeps the query on a single-field index).
-  const members = useMemo(() => [...membersRaw].sort((a, b) => (a.no ?? 0) - (b.no ?? 0)), [membersRaw]);
+  // Canonical order for EVERY roster tab: alphabetical by last name, with
+  // withdrawn/dismissed members sinking to the bottom. A newly added cadet
+  // slots straight into place; `no` remains a stable intake-order identifier.
+  const members = useMemo(() => [...membersRaw].sort(rosterCompare), [membersRaw]);
   const { data: curriculum } = useCurriculum(academy?.discipline);
   const [tab, setTab] = useState<Tab>('members');
   // "Generate letter" from grades/discipline → jump to Reports with a pre-fill.
@@ -166,14 +169,27 @@ const CADET_IMPORT_COLUMNS: ImportColumn[] = [
   { key: 'agency', label: 'Agency', aliases: ['dept', 'department'] },
   { key: 'cjis', label: 'CJIS', aliases: ['cjis id', 'cjis number'] },
   { key: 'studentId', label: 'Student ID', aliases: ['student', 'sid'] },
+  { key: 'dob', label: 'DOB', aliases: ['date of birth', 'birthdate', 'birth date'] },
   { key: 'email', label: 'Email', aliases: ['e-mail'] },
   { key: 'phone', label: 'Phone', aliases: ['phone number', 'cell'] },
 ];
+
+/** Normalize a CSV date-of-birth to yyyy-mm-dd. Already-ISO strings pass through
+ *  untouched (parsing them would shift a day in UTC); US formats parse locally. */
+function normalizeDob(raw?: string): string | null {
+  const v = (raw ?? '').trim();
+  if (!v) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return null;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 function validateCadetRow(r: Record<string, string>): string[] {
   const errs: string[] = [];
   if (!r.fullName?.trim()) errs.push('Name required');
   if (r.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(r.email)) errs.push('Bad email');
+  if (normalizeDob(r.dob) === null) errs.push('Bad DOB');
   return errs;
 }
 
@@ -188,6 +204,7 @@ function toCadetMember(r: Record<string, string>): Record<string, unknown> {
     ...(match || !raw ? {} : { agencyOther: raw }),
     ...(r.cjis ? { cjis: r.cjis } : {}),
     ...(r.studentId ? { studentId: r.studentId } : {}),
+    ...(normalizeDob(r.dob) ? { dob: normalizeDob(r.dob) } : {}),
     ...(r.email ? { email: r.email } : {}),
     ...(r.phone ? { phone: r.phone } : {}),
   };
@@ -253,6 +270,7 @@ function MembersTab({
               <th className="px-3 py-3">Agency</th>
               <th className="px-3 py-3">CJIS</th>
               <th className="px-3 py-3">Student ID</th>
+              <th className="px-3 py-3">DOB</th>
               <th className="px-3 py-3">Contact</th>
               <th className="px-3 py-3">Status</th>
               <th className="px-3 py-3" />
@@ -290,7 +308,7 @@ function MembersTab({
         <BulkImportModal
           title="Bulk import cadets"
           columns={CADET_IMPORT_COLUMNS}
-          exampleRow="Jane Cadet,PSO,FL0512345,S-1042,jane@example.com,727-555-0142"
+          exampleRow="Jane Cadet,PSO,FL0512345,S-1042,03/05/2001,jane@example.com,727-555-0142"
           rowLabel={(r) => r.fullName || '—'}
           validateRow={validateCadetRow}
           importRow={async (r) => { await rosterCreateMember({ academyId, member: toCadetMember(r) }); }}
@@ -326,11 +344,12 @@ function MemberRow({
     <tr className={dim ? 'bg-slate-50 text-slate-400' : ''}>
       <td className="px-3 py-3 tabular-nums">{displayNo}</td>
       <td className="px-3 py-3 font-medium text-watch-900">
-        <span className={dim ? 'line-through' : ''}>{m.fullName}</span>
+        <span className={dim ? 'line-through' : ''}>{lastFirst(m.fullName)}</span>
       </td>
       <td className="px-3 py-3">{agencyLabel(m)}</td>
       <td className="px-3 py-3 text-xs text-slate-500">{m.cjis || '—'}</td>
       <td className="px-3 py-3 text-xs text-slate-500">{m.studentId || '—'}</td>
+      <td className="px-3 py-3 text-xs tabular-nums text-slate-500">{m.dob ? new Date(`${m.dob}T12:00:00`).toLocaleDateString() : '—'}</td>
       <td className="px-3 py-3 text-xs text-slate-500">
         {m.email && <div>{m.email}</div>}
         {m.phone && <div>{formatPhone(m.phone)}</div>}
@@ -388,6 +407,7 @@ function EditMemberModal({
   const [agencyOther, setAgencyOther] = useState(member.agencyOther ?? '');
   const [cjis, setCjis] = useState(member.cjis ?? '');
   const [studentId, setStudentId] = useState(member.studentId ?? '');
+  const [dob, setDob] = useState(member.dob ?? '');
   const [phone, setPhone] = useState(member.phone ?? '');
   const [email, setEmail] = useState(member.email ?? '');
   const [emergencyName, setEmergencyName] = useState(member.emergencyName ?? '');
@@ -408,6 +428,7 @@ function EditMemberModal({
         agencyOther: agency === 'Other' ? agencyOther.trim() : '',
         cjis: cjis.trim(),
         studentId: studentId.trim(),
+        ...(dob ? { dob } : { dob: deleteField() }),
         phone: formatPhone(phone),
         email: email.trim(),
         emergencyName: emergencyName.trim(),
@@ -439,6 +460,7 @@ function EditMemberModal({
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="CJIS number"><Input value={cjis} onChange={(e) => setCjis(e.target.value)} /></Field>
           <Field label="Student ID"><Input value={studentId} onChange={(e) => setStudentId(e.target.value)} placeholder="P00000000" /></Field>
+          <Field label="Date of birth"><Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} /></Field>
           <Field label="Phone"><Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} onBlur={() => setPhone(formatPhone(phone))} /></Field>
           <Field label="Email"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
           <Field label="Emergency contact — name"><Input value={emergencyName} onChange={(e) => setEmergencyName(e.target.value)} /></Field>
@@ -500,11 +522,11 @@ function WithdrawModal({
 // ── Tiered intake wizard ─────────────────────────────────────────────────────
 interface Draft {
   fullName: string; agency: RosterAgency; agencyOther: string;
-  cjis: string; studentId: string; phone: string; email: string;
+  cjis: string; studentId: string; dob: string; phone: string; email: string;
   emergencyName: string; emergencyPhone: string;
 }
 const BLANK: Draft = {
-  fullName: '', agency: 'PSO', agencyOther: '', cjis: '', studentId: '', phone: '', email: '',
+  fullName: '', agency: 'PSO', agencyOther: '', cjis: '', studentId: '', dob: '', phone: '', email: '',
   emergencyName: '', emergencyPhone: '',
 };
 
@@ -536,6 +558,7 @@ function IntakeWizard({ academyId, onClose }: { academyId: string; onClose: () =
     },
     { label: 'CJIS number', hint: 'Optional', valid: () => true, render: () => <Input autoFocus value={draft.cjis} onChange={(e) => set({ cjis: e.target.value })} /> },
     { label: 'Student ID', hint: 'Optional', valid: () => true, render: () => <Input autoFocus value={draft.studentId} onChange={(e) => set({ studentId: e.target.value })} placeholder="P00000000" /> },
+    { label: 'Date of birth', hint: 'Optional', valid: () => true, render: () => <Input autoFocus type="date" value={draft.dob} onChange={(e) => set({ dob: e.target.value })} /> },
     { label: 'Phone number', hint: 'Optional', valid: () => true, render: () => <Input autoFocus type="tel" value={draft.phone} onChange={(e) => set({ phone: e.target.value })} onBlur={() => set({ phone: formatPhone(draft.phone) })} /> },
     { label: 'Email address', hint: 'Optional', valid: () => true, render: () => <Input autoFocus type="email" value={draft.email} onChange={(e) => set({ email: e.target.value })} /> },
     { label: 'Emergency contact — name', hint: 'Optional', valid: () => true, render: () => <Input autoFocus value={draft.emergencyName} onChange={(e) => set({ emergencyName: e.target.value })} /> },
@@ -553,7 +576,7 @@ function IntakeWizard({ academyId, onClose }: { academyId: string; onClose: () =
         academyId,
         member: {
           fullName: draft.fullName, agency: draft.agency, agencyOther: draft.agencyOther,
-          cjis: draft.cjis, studentId: draft.studentId, phone: formatPhone(draft.phone), email: draft.email,
+          cjis: draft.cjis, studentId: draft.studentId, dob: draft.dob, phone: formatPhone(draft.phone), email: draft.email,
           emergencyName: draft.emergencyName, emergencyPhone: formatPhone(draft.emergencyPhone),
         },
       });

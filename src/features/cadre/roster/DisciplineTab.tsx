@@ -12,7 +12,7 @@ import type { DemeritLevel, RosterMemberDoc, ViolationEntry, ViolationType } fro
 import { AUTO_DISMISSAL_POINTS } from '../../../types';
 import { Badge, Button, Field, Input, Select, TextArea } from '../../../components/ui';
 import { Modal } from '../../../components/Modal';
-import { agencyLabel, disciplineTally } from './rosterShared';
+import { agencyLabel, disciplineTally, lastFirst } from './rosterShared';
 import type { LetterSeed } from '../reports/AcademyReports';
 
 const TYPES: ViolationType[] = ['Tardy', 'Uniform', 'Grooming', 'Other'];
@@ -53,7 +53,7 @@ export function DisciplineTab({ academyId, members, onGenerateLetter }: { academ
               const t = disciplineTally(m.violations);
               return (
                 <tr key={m.id} className={m.status === 'withdrawn' ? 'text-slate-400' : ''}>
-                  <td className="px-3 py-3 font-medium text-watch-900">{m.fullName}</td>
+                  <td className="px-3 py-3 font-medium text-watch-900">{lastFirst(m.fullName)}</td>
                   <td className="px-3 py-3">{agencyLabel(m)}</td>
                   <td className="px-3 py-3 text-center">
                     {t.warnings > 0 ? <Badge tone="amber">{t.warnings}</Badge> : <span className="text-slate-300">0</span>}

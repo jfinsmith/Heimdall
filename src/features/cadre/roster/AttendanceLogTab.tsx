@@ -15,6 +15,7 @@ import { useCollection, type WithId } from '../../../lib/firestore';
 import { useAuth } from '../../../auth/AuthContext';
 import type { AttendanceDoc, AttendanceEntry, AttendanceStatus, RosterMemberDoc } from '../../../types';
 import { Button, Field, Input, Select, Spinner } from '../../../components/ui';
+import { lastFirst } from './rosterShared';
 
 const STATUSES: { value: AttendanceStatus; label: string }[] = [
   { value: 'present', label: 'Present' },
@@ -32,8 +33,9 @@ const todayKey = () => {
 
 export function AttendanceLogTab({ academyId, members }: { academyId: string; members: WithId<RosterMemberDoc>[] }) {
   const { firebaseUser, orgId } = useAuth();
+  // Canonical roster order arrives pre-sorted (alphabetical by last name).
   const cadets = useMemo(
-    () => members.filter((m) => m.status !== 'withdrawn' && !m.blockTaker).sort((a, b) => a.no - b.no),
+    () => members.filter((m) => m.status !== 'withdrawn' && m.status !== 'dismissed' && !m.blockTaker),
     [members]
   );
 
@@ -111,7 +113,7 @@ export function AttendanceLogTab({ academyId, members }: { academyId: string; me
               return (
                 <tr key={m.id}>
                   <td className="px-2 py-1.5 tabular-nums text-slate-500">{m.no}</td>
-                  <td className="px-2 py-1.5 font-medium text-watch-900">{m.fullName}</td>
+                  <td className="px-2 py-1.5 font-medium text-watch-900">{lastFirst(m.fullName)}</td>
                   <td className="px-2 py-1.5">
                     <Select value={e?.status ?? ''} onChange={(ev) => setEntry(m.id, { status: ev.target.value as AttendanceStatus })}>
                       <option value="">— not recorded —</option>

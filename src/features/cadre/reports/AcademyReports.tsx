@@ -16,6 +16,7 @@ import { Button, Field, Input, Select, TextArea } from '../../../components/ui';
 import { Modal } from '../../../components/Modal';
 import { getReportType, REPORT_TYPES, type ReportField, type ReportType } from './reportTypes';
 import { offeredLetterForms, libraryFormToReportType, useOrgLibraryForms } from './documentLibrary';
+import { lastFirst } from '../roster/rosterShared';
 
 const today = () => {
   const d = new Date();
@@ -290,7 +291,7 @@ function ReportFormModal({
               <Field label="Cadet (from roster)">
                 <Select value={cadetId} onChange={(e) => pickCadet(e.target.value)}>
                   <option value="">— select / type name —</option>
-                  {roster.map((m) => <option key={m.id} value={m.id}>{m.fullName}</option>)}
+                  {roster.map((m) => <option key={m.id} value={m.id}>{lastFirst(m.fullName)}</option>)}
                 </Select>
               </Field>
               <Field label="Cadet name (To)">
@@ -321,7 +322,7 @@ function ReportFormModal({
               ) : f.type === 'cadet' ? (
                 <Select value={values[f.key] ?? ''} onChange={(e) => set(f.key, e.target.value)}>
                   <option value="">— select cadet —</option>
-                  {roster.map((m) => <option key={m.id} value={m.fullName}>{m.fullName}</option>)}
+                  {roster.map((m) => <option key={m.id} value={m.fullName}>{lastFirst(m.fullName)}</option>)}
                 </Select>
               ) : f.type === 'select' ? (
                 <Select value={values[f.key] ?? ''} onChange={(e) => set(f.key, e.target.value)}>

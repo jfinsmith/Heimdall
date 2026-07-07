@@ -266,8 +266,9 @@ export function HowToPage() {
         <Section id="roster" title="Roster: intake, import & lifecycle" role="Staff">
           <Sub title="Adding cadets">
             <Steps items={[
-              <>Open the academy → <B>Roster</B>. Use <B>+ Add member</B> for the guided intake (name, agency, CJIS, student ID, contacts, emergency contact) — roster numbers assign automatically.</>,
-              <>Use <B>Bulk import</B> to paste or upload a CSV (Name, Agency, CJIS, Student ID, Email, Phone — header order-tolerant). Rows are validated and previewed first; invalid rows are skipped with reasons.</>,
+              <>Open the academy → <B>Roster</B>. Use <B>+ Add member</B> for the guided intake (name, agency, CJIS, student ID, date of birth, contacts, emergency contact) — roster numbers assign automatically.</>,
+              <>Use <B>Bulk import</B> to paste or upload a CSV (Name, Agency, CJIS, Student ID, DOB, Email, Phone — header order-tolerant). Rows are validated and previewed first; invalid rows are skipped with reasons.</>,
+              <>Names display <B>Last, First</B> and every roster list sorts alphabetically by last name — a new cadet slots straight into place, and withdrawn/dismissed cadets fall to the bottom.</>,
               <>Mark <B>block takers</B> for people taking only specific blocks — they print in the separate Additional Course Takers section, not the main roster.</>,
             ]} />
           </Sub>
