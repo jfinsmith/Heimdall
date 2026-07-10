@@ -40,7 +40,6 @@ export function PastSessionModal({ session, onClose }: { session: WithId<Session
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [addPick, setAddPick] = useState<Record<string, string>>({}); // slotId → uid
   const [wName, setWName] = useState('');
   const [wRole, setWRole] = useState<SlotRole>('lead');
 
@@ -53,7 +52,10 @@ export function PastSessionModal({ session, onClose }: { session: WithId<Session
     try {
       await fn();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'The correction could not be saved.');
+      const msg = err instanceof Error ? err.message : 'The correction could not be saved.';
+      setError(msg);
+      // Loud on purpose: a silently-failed ATMS correction is worse than a nag.
+      window.alert(`Correction NOT saved: ${msg}`);
     } finally {
       setBusy(false);
     }
@@ -70,9 +72,10 @@ export function PastSessionModal({ session, onClose }: { session: WithId<Session
     });
   }
 
-  /** Add the instructor who actually taught: fill the slot + create their signup/assignment. */
-  function addUid(slotId: string) {
-    const uid = addPick[slotId];
+  /** Add the instructor who actually taught: fill the slot + create their
+   *  signup/assignment. Fires IMMEDIATELY on dropdown selection — no second
+   *  "Add" click to forget. */
+  function addUid(slotId: string, uid: string) {
     if (!uid || !firebaseUser) return;
     const slot = s.roleSlots.find((sl) => sl.slotId === slotId);
     if (!slot || slot.filledBy.includes(uid)) return;
@@ -82,7 +85,7 @@ export function PastSessionModal({ session, onClose }: { session: WithId<Session
       const now = Timestamp.now();
       await setDoc(doc(db, 'sessions', s.id, 'signups', uid), {
         uid,
-        orgId: s.orgId,
+        ...(s.orgId ? { orgId: s.orgId } : {}),
         displayName: nameOf(uid),
         role: slot.role,
         slotId,
@@ -91,7 +94,7 @@ export function PastSessionModal({ session, onClose }: { session: WithId<Session
       });
       await setDoc(doc(db, 'assignments', `${s.id}_${uid}`), {
         uid,
-        orgId: s.orgId,
+        ...(s.orgId ? { orgId: s.orgId } : {}),
         sessionId: s.id,
         academyId: s.academyId,
         role: slot.role,
@@ -104,7 +107,6 @@ export function PastSessionModal({ session, onClose }: { session: WithId<Session
         reminderSent: true, // the day already happened — never remind
         createdAt: now,
       });
-      setAddPick((p) => ({ ...p, [slotId]: '' }));
       await logAudit(firebaseUser.uid, 'session.correction', 'session', s.id, `As-taught correction: added ${nameOf(uid)} (${SLOT_ROLE_LABELS[slot.role]}) — ${s.courseName} ${when}`);
     });
   }
@@ -178,20 +180,20 @@ export function PastSessionModal({ session, onClose }: { session: WithId<Session
               ))}
             </div>
             <div className="mt-2 flex items-center gap-2">
+              {/* Selecting a name RECORDS them immediately — the badge appearing
+                  above is the save confirmation. */}
               <Select
-                value={addPick[slot.slotId] ?? ''}
-                onChange={(e) => setAddPick((p) => ({ ...p, [slot.slotId]: e.target.value }))}
+                value=""
+                disabled={busy}
+                onChange={(e) => { if (e.target.value) addUid(slot.slotId, e.target.value); }}
                 className="max-w-xs"
                 aria-label={`Add ${SLOT_ROLE_LABELS[slot.role]}`}
               >
-                <option value="">— add who taught —</option>
+                <option value="">— add who taught (saves instantly) —</option>
                 {sortedUsers
                   .filter((u) => !slot.filledBy.includes(u.id))
                   .map((u) => <option key={u.id} value={u.id}>{lastFirst(u.displayName)}</option>)}
               </Select>
-              <Button variant="ghost" disabled={busy || !addPick[slot.slotId]} onClick={() => addUid(slot.slotId)}>
-                Add
-              </Button>
             </div>
           </div>
         ))}
@@ -234,7 +236,18 @@ export function PastSessionModal({ session, onClose }: { session: WithId<Session
         </div>
 
         <div className="flex justify-end">
-          <Button variant="primary" onClick={onClose}>Done</Button>
+          <Button
+            variant="primary"
+            disabled={busy}
+            onClick={async () => {
+              // A typed-but-unadded write-in on Done is clear intent — save it
+              // rather than silently discarding it.
+              if (wName.trim()) await addWriteIn();
+              onClose();
+            }}
+          >
+            Done
+          </Button>
         </div>
       </div>
     </Modal>
