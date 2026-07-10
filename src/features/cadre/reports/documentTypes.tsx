@@ -24,20 +24,24 @@ export const DOCUMENT_TYPES: ReportType[] = [
   {
     id: 'crossover_transfer',
     name: 'Crossover / Blackbird Transfer Memo',
-    purpose: 'Certifies that a cadet completed a specific course of training (hours + passing written-exam score) in one class, so the credit can transfer (crossover / blackbird) to the cadet\'s file or another program.',
+    purpose: 'Certifies a cadet completed a course (hours + passing written-exam score) with THIS class, addressed to the cadet\'s ORIGINAL class, so the credit transfers (crossover / blackbird) to their file.',
     reSubject: 'Crossover / Blackbird Transfer — {cadetName}',
+    // Field order mirrors the printed memo top-to-bottom. The form offers a
+    // class → cadet picker that auto-fills toSequence + the cadet name; every
+    // field stays manually editable.
     fields: [
-      { key: 'fromSequence', label: 'From (Sequence No.)', type: 'text', required: true, hint: "The issuing academy's Sequence No. (the From line)" },
+      { key: 'toSequence', label: "To — cadet's ORIGINAL class Sequence No.", type: 'text', required: true, hint: 'The Sequence Number of the class the cadet belongs to — auto-fills from the class picker above, or type it' },
+      { key: 'fromSequence', label: "From — THIS class's Sequence No.", type: 'text', required: true, defaultFrom: 'sequenceNo', hint: 'The class the cadet took the course with (defaults to this class)' },
       { key: 'course', label: 'Course (CJK)', type: 'course', required: true, hint: 'CJK number + course name as it appears with CJSTC' },
-      { key: 'className', label: 'Class completed in', type: 'text', required: true, defaultFrom: 'className', hint: 'e.g. LE 131' },
-      { key: 'classSequence', label: 'Class Sequence No.', type: 'text', required: true, hint: 'Sequence No. of the class where the training was completed' },
+      { key: 'className', label: 'Class the training was completed with', type: 'text', required: true, defaultFrom: 'className', hint: 'e.g. LE 132 — reads "…completed the listed training with LE 132"' },
+      { key: 'classSequence', label: "That class's Sequence No.", type: 'text', required: true, defaultFrom: 'sequenceNo', hint: 'Prints in parentheses after the class: (Sequence No. …)' },
       { key: 'hours', label: 'Hours of training completed', type: 'number', required: true },
       { key: 'score', label: 'Written exam score (%)', type: 'number', required: true },
     ],
     document: {
       appliesTo: 'cadet',
       headerFields: [
-        { label: 'To:', value: '{directorName}, Director' },
+        { label: 'To:', value: '{toSequence}' },
         { label: 'CC:', value: 'Personnel File' },
         { label: 'From:', value: '{fromSequence}' },
         { label: 'Date:', value: '{memoDate}' },

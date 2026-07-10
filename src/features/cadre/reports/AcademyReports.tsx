@@ -16,7 +16,7 @@ import { Button, Field, Input, Select, TextArea } from '../../../components/ui';
 import { Modal } from '../../../components/Modal';
 import { getReportType, REPORT_TYPES, type ReportField, type ReportType } from './reportTypes';
 import { offeredLetterForms, libraryFormToReportType, useOrgLibraryForms } from './documentLibrary';
-import { lastFirst } from '../roster/rosterShared';
+import { lastFirst, rosterCompare } from '../roster/rosterShared';
 
 const today = () => {
   const d = new Date();
@@ -225,6 +225,38 @@ function ReportFormModal({
   const [error, setError] = useState<string | null>(null);
 
   const set = (k: string, v: string) => setValues((p) => ({ ...p, [k]: v }));
+
+  // Crossover memo helper: the cadet belongs to ANOTHER class — pick their
+  // ORIGINAL class, then the cadet. The class fills the To line (its Sequence
+  // No.), the cadet fills the Re line; every field stays manually editable.
+  const isCrossover = type.id === 'crossover_transfer';
+  const { data: allAcademies } = useCollection<AcademyDoc>(isCrossover ? 'academies' : null);
+  const [xClassId, setXClassId] = useState('');
+  const [xCadetId, setXCadetId] = useState('');
+  const { data: xRoster } = useCollection<RosterMemberDoc>(
+    isCrossover && xClassId ? `academies/${xClassId}/roster` : null,
+    [],
+    [xClassId]
+  );
+  const xClasses = useMemo(
+    () =>
+      allAcademies
+        .filter((a) => !a.isTemplate && a.id !== academy.id)
+        .sort((a, b) => (a.shortName || a.name).localeCompare(b.shortName || b.name)),
+    [allAcademies, academy.id]
+  );
+  const xRosterSorted = useMemo(() => [...xRoster].sort(rosterCompare), [xRoster]);
+  function pickXClass(id: string) {
+    setXClassId(id);
+    setXCadetId('');
+    const c = allAcademies.find((a) => a.id === id);
+    if (c?.sequenceNo) set('toSequence', c.sequenceNo);
+  }
+  function pickXCadet(id: string) {
+    setXCadetId(id);
+    const m = xRoster.find((r) => r.id === id);
+    if (m) { setCadetName(m.fullName); setCadetId(''); }
+  }
   const missing =
     (appliesTo === 'cadet' && !cadetName.trim()) || type.fields.some((f) => f.required && !values[f.key]?.trim());
 
@@ -288,13 +320,43 @@ function ReportFormModal({
         <div className="grid gap-4 sm:grid-cols-2">
           {appliesTo === 'cadet' && (
             <>
-              <Field label="Cadet (from roster)">
-                <Select value={cadetId} onChange={(e) => pickCadet(e.target.value)}>
-                  <option value="">— select / type name —</option>
-                  {roster.map((m) => <option key={m.id} value={m.id}>{lastFirst(m.fullName)}</option>)}
-                </Select>
-              </Field>
-              <Field label="Cadet name (To)">
+              {isCrossover ? (
+                <div className="rounded-md border border-bifrost-200 bg-bifrost-50/50 p-3 sm:col-span-2">
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-watch-600">
+                    Step 1 — find the cadet: pick their original class, then the cadet
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label="Cadet's original class">
+                      <Select value={xClassId} onChange={(e) => pickXClass(e.target.value)}>
+                        <option value="">— select class —</option>
+                        {xClasses.map((c) => (
+                          <option key={c.id} value={c.id}>{[c.shortName, c.name].filter(Boolean).join(' — ')}</option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Field label="Cadet">
+                      <Select value={xCadetId} onChange={(e) => pickXCadet(e.target.value)} disabled={!xClassId}>
+                        <option value="">{xClassId ? '— select cadet —' : 'pick a class first'}</option>
+                        {xRosterSorted.map((m) => (
+                          <option key={m.id} value={m.id}>{lastFirst(m.fullName)}</option>
+                        ))}
+                      </Select>
+                    </Field>
+                  </div>
+                  <p className="mt-2 text-[11px] text-slate-500">
+                    The class fills the <strong>To</strong> line with its Sequence No.; the cadet fills the{' '}
+                    <strong>Re</strong> line. Everything below stays editable if you need to enter it manually.
+                  </p>
+                </div>
+              ) : (
+                <Field label="Cadet (from roster)">
+                  <Select value={cadetId} onChange={(e) => pickCadet(e.target.value)}>
+                    <option value="">— select / type name —</option>
+                    {roster.map((m) => <option key={m.id} value={m.id}>{lastFirst(m.fullName)}</option>)}
+                  </Select>
+                </Field>
+              )}
+              <Field label={isCrossover ? 'Cadet name (Re line)' : 'Cadet name (To)'}>
                 <Input value={cadetName} onChange={(e) => { setCadetName(e.target.value); setCadetId(''); }} required />
               </Field>
             </>

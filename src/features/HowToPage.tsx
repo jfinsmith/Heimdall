@@ -330,6 +330,7 @@ export function HowToPage() {
             <Tips items={[
               <>Each academy&apos;s <B>Reports</B> tab offers the document library: the four FDLE academic-action letters (exam failure, re-exam failure, proficiency failure, dismissal — with verified F.A.C. citations) plus conduct/general documents (counseling, incident, injury/illness, training use-of-force, disciplinary action, conduct dismissal, acknowledgment, crossover transfer memo, general memo).</>,
               <>Forms pre-fill what HEIMDALL already knows (cadet, class designation, program dates, failed course/score from the gradebook). Filed reports are saved per academy and reprintable/editable.</>,
+              <>The <B>crossover/blackbird memo</B> starts with a class → cadet picker: choose the cadet&apos;s <B>original</B> class and the To line fills with its Sequence No.; choose the cadet and the Re line fills — the From line defaults to the class you&apos;re writing from.</>,
               <>The conduct-dismissal notice requires concrete <B>appeal authority and deadline</B> at issue time.</>,
               <>Printed documents carry your <B>organization&apos;s letterhead</B> (logo, name, address) — configure it under Admin → Settings and per-discipline overrides in Curriculum &amp; Hours.</>,
             ]} />
