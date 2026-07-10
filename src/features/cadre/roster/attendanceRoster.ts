@@ -41,6 +41,10 @@ export interface DayRoster {
   lunch: string;
   leadUids: string[];
   additionalUids: string[];
+  /** As-taught write-ins (people without accounts) recorded via the past-session
+   *  correction modal — printed alongside the resolved uid names. */
+  writeInLeads: string[];
+  writeInAdditional: string[];
 }
 
 // Instructor roles that print on the "Additional Instructors" line (lead has its
@@ -92,12 +96,20 @@ export function buildDayRosters(
 
     const leadSet = new Set<string>();
     const addSet = new Set<string>();
-    for (const s of run)
+    const wLeadSet = new Set<string>();
+    const wAddSet = new Set<string>();
+    for (const s of run) {
       for (const slot of s.roleSlots ?? []) {
         if (slot.role === 'lead') (slot.filledBy ?? []).forEach((u) => leadSet.add(u));
         else if (ADDITIONAL_INSTRUCTOR_ROLES.includes(slot.role)) (slot.filledBy ?? []).forEach((u) => addSet.add(u));
       }
+      for (const w of s.writeInInstructors ?? []) {
+        if (w.role === 'lead') wLeadSet.add(w.name);
+        else if (ADDITIONAL_INSTRUCTOR_ROLES.includes(w.role)) wAddSet.add(w.name);
+      }
+    }
     leadSet.forEach((u) => addSet.delete(u)); // never list someone twice
+    wLeadSet.forEach((n) => wAddSet.delete(n));
 
     return {
       courseName: run[0].courseName,
@@ -108,6 +120,8 @@ export function buildDayRosters(
       lunch,
       leadUids: [...leadSet],
       additionalUids: [...addSet],
+      writeInLeads: [...wLeadSet],
+      writeInAdditional: [...wAddSet],
     };
   });
 }

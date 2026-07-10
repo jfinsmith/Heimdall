@@ -28,6 +28,7 @@ import { QUALIFICATION_LABELS } from '../../types';
 import { Badge, Button, Field, Input, PageHeader, Select } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import { SessionFormModal } from './SessionFormModal';
+import { PastSessionModal } from './PastSessionModal';
 import { LunchBlockModal } from './LunchBlockModal';
 import { RecurringGeneratorModal } from './RecurringGeneratorModal';
 import { RoomSelect } from './rooms/RoomSelect';
@@ -72,6 +73,8 @@ export function AcademyBuilderPage() {
 
   const [formSession, setFormSession] = useState<WithId<SessionDoc> | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  // A past session opens the as-taught corrections modal, never the editor.
+  const [pastSession, setPastSession] = useState<WithId<SessionDoc> | null>(null);
   const [formDate, setFormDate] = useState<string | undefined>(undefined);
   const [recurringOpen, setRecurringOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -304,6 +307,14 @@ export function AcademyBuilderPage() {
   async function onEventChange(arg: EventDropArg | EventResizeDoneArg) {
     const s = arg.event.extendedProps.session as WithId<SessionDoc> | undefined;
     if (!s) return;
+    // FINALIZED: once a session's day has passed, its details are locked — the
+    // record must reflect what happened (ATMS). Corrections go through the
+    // "Record who taught" modal, not reschedules.
+    if (s.end.toMillis() < Date.now()) {
+      arg.revert();
+      window.alert('This day has passed — the class details are finalized. Open the session to record who actually taught.');
+      return;
+    }
     const start = arg.event.start!;
     const end = arg.event.end ?? new Date(start.getTime() + (s.end.toMillis() - s.start.toMillis()));
     // A resize/drag that inverts the times (end <= start) would persist a
@@ -380,7 +391,9 @@ export function AcademyBuilderPage() {
     for (const s of liveSessions) {
       const label = s.title || s.courseName;
       if (label !== courseLabel) continue;
-      if (open && s.status === 'scheduled') {
+      // Never open sign-ups for a day that already happened — those sessions are
+      // finalized; staffing corrections go through the past-session modal.
+      if (open && s.status === 'scheduled' && s.end.toMillis() >= Date.now()) {
         batch.update(doc(db, 'sessions', s.id), { status: 'open', updatedAt: serverTimestamp() });
         n++;
       }
@@ -829,11 +842,17 @@ export function AcademyBuilderPage() {
           onClose={() => setDetailSession(null)}
           onEdit={(s) => {
             setDetailSession(null);
-            setFormSession(s);
-            setFormOpen(true);
+            // Past day → corrections only (record who taught); future → editor.
+            if (s.end.toMillis() < Date.now()) {
+              setPastSession(s);
+            } else {
+              setFormSession(s);
+              setFormOpen(true);
+            }
           }}
         />
       )}
+      {pastSession && <PastSessionModal session={pastSession} onClose={() => setPastSession(null)} />}
       {signupModal && (
         <OpenSignupsModal
           courseLabel={signupModal.label}

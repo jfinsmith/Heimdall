@@ -48,13 +48,18 @@ export function DayRosterPrintPage() {
     const map = new Map(users.map((u) => [u.id, u.displayName]));
     return (uid: string) => map.get(uid) ?? '—';
   }, [users]);
-  // Instructors assigned to a session = the filled lead/assistant/safety slots
-  // (coordinators/role-players excluded), lead first.
-  const instructorsFor = (s: SessionDoc) =>
-    s.roleSlots
+  // Instructors on a session = the filled lead/assistant/safety slots
+  // (coordinators/role-players excluded), lead first — PLUS any as-taught
+  // write-ins recorded via the past-session correction modal.
+  const instructorsFor = (s: SessionDoc) => [
+    ...s.roleSlots
       .filter((sl) => sl.role === 'lead' || sl.role === 'assistant' || sl.role === 'safety_officer')
       .flatMap((sl) => sl.filledBy)
-      .map(nameFor);
+      .map(nameFor),
+    ...(s.writeInInstructors ?? [])
+      .filter((w) => w.role === 'lead' || w.role === 'assistant' || w.role === 'safety_officer')
+      .map((w) => w.name),
+  ];
 
   if (aLoading || rLoading) return <div className="flex h-screen items-center justify-center"><Spinner className="text-bifrost-400" /></div>;
   if (!academy) return <p className="p-8 text-sm text-slate-500">Academy not found.</p>;

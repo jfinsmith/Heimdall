@@ -60,6 +60,24 @@ describe('buildDayRosters', () => {
     expect(r.additionalUids).toEqual(['asst1']); // lead1 not double-listed; rp1 excluded
   });
 
+  it('as-taught write-ins print with the signed-up instructors (lead vs additional)', () => {
+    const sessions = [
+      sess({
+        id: 'i1', courseName: 'Intro', start: ts(9), end: ts(12), hours: 3,
+        roleSlots: [{ slotId: 's1', role: 'lead', count: 1, filledBy: [] }],
+        writeInInstructors: [
+          { name: 'Sgt. Dana Cole (HCSO)', role: 'lead' },
+          { name: 'B. Ortiz', role: 'assistant' },
+          { name: 'R. Player', role: 'role_player' }, // not a roster instructor
+        ],
+      }),
+    ];
+    const [r] = buildDayRosters(sessions, DAY, new Set(['Intro']));
+    expect(r.leadUids).toEqual([]);
+    expect(r.writeInLeads).toEqual(['Sgt. Dana Cole (HCSO)']);
+    expect(r.writeInAdditional).toEqual(['B. Ortiz']); // role player excluded
+  });
+
   it('rosters ONLY official curriculum courses — custom/agency blocks excluded', () => {
     const sessions = [
       sess({ id: 'pso', courseName: 'PSO Assignment', countsTowardFdle: false, start: ts(8), end: ts(9), hours: 1 }),

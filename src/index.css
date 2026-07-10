@@ -127,6 +127,12 @@ body {
 .fc-event.hd-flagged--test .hd-event-notes { color: #fecaca; }      /* red-200 */
 .fc-event.hd-flagged--scenario .hd-event-notes { color: #bbf7d0; }  /* green-200 */
 .fc-event.hd-flagged--pt .hd-event-notes { color: #fef08a; }        /* yellow-200 */
+/* Past session with no lead instructor recorded — an ATMS gap that must be
+   resolved. Red dashed ring so it stands out among finished days. */
+.fc-event.hd-unrecorded {
+  outline: 2px dashed #dc2626;
+  outline-offset: 1px;
+}
 .hd-event {
   position: relative;
   height: 100%;

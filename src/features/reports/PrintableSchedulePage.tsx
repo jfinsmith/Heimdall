@@ -90,7 +90,10 @@ export function PrintableSchedulePage() {
     return (uid: string) => m.get(uid) ?? 'Unassigned';
   }, [users]);
   const leadOf = (s: WithId<SessionDoc>) =>
-    s.roleSlots.filter((sl) => sl.role === 'lead').flatMap((sl) => sl.filledBy).map(nameFor).join(', ');
+    [
+      ...s.roleSlots.filter((sl) => sl.role === 'lead').flatMap((sl) => sl.filledBy).map(nameFor),
+      ...(s.writeInInstructors ?? []).filter((w) => w.role === 'lead').map((w) => w.name),
+    ].join(', ');
 
   const disabledHolidays = useMemo(() => new Set(settings?.disabledHolidays ?? []), [settings]);
 
@@ -337,6 +340,12 @@ export function PrintableSchedulePage() {
                               {s.highLiability && <span className="ml-2 align-middle text-[10px] font-bold" style={{ color: amber }}>▲</span>}
                               {flagStyle && <span className="ml-2 rounded px-1 align-middle text-[9px] font-bold uppercase text-white" style={{ backgroundColor: flagStyle.color }}>{flagStyle.label}</span>}
                               {mode === 'cadet' && lead && <div className="mt-0.5 text-[11px] text-slate-500">Instructor: {lead}</div>}
+                              {mode === 'staff' && (s.writeInInstructors ?? []).length > 0 && (
+                                <div className="mt-0.5 text-[11px] leading-tight text-slate-600">
+                                  <span className="font-semibold text-slate-500">Write-in:</span>{' '}
+                                  {(s.writeInInstructors ?? []).map((w) => `${w.name} (${w.role.replace('_', ' ')})`).join(', ')}
+                                </div>
+                              )}
                               {mode === 'staff' && (
                                 <div className="mt-0.5 space-y-0.5">
                                   {s.roleSlots.map((sl) => {

@@ -776,6 +776,13 @@ export interface SessionDoc {
   countsTowardFdle?: boolean;
   status: SessionStatus;
   roleSlots: RoleSlot[];
+  /**
+   * As-taught corrections for people WITHOUT accounts (a helper from another
+   * agency, a guest instructor). Recorded after the day has passed via the
+   * past-session correction modal; printed alongside signed-up instructors on
+   * every ATMS surface (attendance roster, day sign-in roster, schedules).
+   */
+  writeInInstructors?: { name: string; role: SlotRole }[];
   notes?: string;
   createdBy: string;
   updatedAt: Timestamp;

@@ -63,6 +63,23 @@ export function sessionFlag(s: SessionDoc): SessionFlag | null {
   return null;
 }
 
+/**
+ * A PAST instructional session with no lead recorded — neither a signed-up/
+ * corrected lead nor a lead write-in. These must be resolved for ATMS: the
+ * record has to reflect who actually taught. Sessions without a lead slot
+ * (coordinator-run / custom blocks) never flag.
+ */
+export function missingInstructorRecord(s: SessionDoc, now = Date.now()): boolean {
+  if (s.kind === 'lunch' || s.status === 'cancelled' || s.status === 'draft') return false;
+  if (!s.end || s.end.toMillis() >= now) return false;
+  const leadSlots = (s.roleSlots ?? []).filter((sl) => sl.role === 'lead');
+  if (leadSlots.length === 0) return false;
+  const hasLead =
+    leadSlots.some((sl) => (sl.filledBy ?? []).length > 0) ||
+    (s.writeInInstructors ?? []).some((w) => w.role === 'lead');
+  return !hasLead;
+}
+
 export function sessionToEvent(s: WithId<SessionDoc>, opts: SessionEventOpts = {}): EventInput {
   const status = sessionColor(s);
   const bg = opts.academyColor ?? status;
@@ -78,7 +95,9 @@ export function sessionToEvent(s: WithId<SessionDoc>, opts: SessionEventOpts = {
     borderColor: opts.academyColor ? status : bg,
     classNames: (() => {
       const flag = sessionFlag(s);
-      return flag ? ['hd-flagged', `hd-flagged--${flag}`] : [];
+      const cls = flag ? ['hd-flagged', `hd-flagged--${flag}`] : [];
+      if (missingInstructorRecord(s)) cls.push('hd-unrecorded');
+      return cls;
     })(),
     editable: opts.editable ?? false,
     extendedProps: { session: s, academyPrefix: opts.academyPrefix, coverage: opts.coverage },
@@ -190,6 +209,11 @@ export function renderEventContent(arg: EventContentArg): React.ReactNode | unde
       {coverage && (
         <div className="hd-event-room" style={{ fontWeight: 600 }} title="Cumulative hours scheduled for this course so far">
           {coverage} hrs
+        </div>
+      )}
+      {missingInstructorRecord(s) && (
+        <div className="hd-event-room" style={{ fontWeight: 700, color: '#fecaca' }} title="This day has passed with no lead instructor recorded — open the session to record who taught (ATMS).">
+          ⚠ No instructor recorded
         </div>
       )}
     </div>

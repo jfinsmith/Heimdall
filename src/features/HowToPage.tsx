@@ -244,6 +244,16 @@ export function HowToPage() {
               high-liability day is below its FDLE instructor ratio.
             </p>
           </Sub>
+          <Sub title="After the day has passed — record who taught">
+            <p>
+              Once a session&apos;s day is over it is <B>finalized</B>: times, course, and rooms lock, and sign-ups close.
+              Clicking the session now opens <B>Record who taught</B> — remove a no-show, add the instructor who stepped
+              in, or add a <B>write-in</B> for someone without an account. Corrections update the instructor&apos;s own
+              records, print on the attendance and sign-in rosters, and are audit-logged — so the record matches what
+              actually happened (ATMS). A past session with <B>no lead recorded</B> shows a red dashed ring on the
+              calendar until someone records who taught it.
+            </p>
+          </Sub>
           <Sub title="Opening sign-ups">
             <Steps items={[
               <>After publishing, open each course for sign-ups from the builder&apos;s course panel — choose which instructor groups get the announcement email.</>,

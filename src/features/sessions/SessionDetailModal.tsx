@@ -49,6 +49,9 @@ export function SessionDetailModal({ sessionId, onClose, onEdit }: Props) {
   if (!session) return null;
 
   const mySignup = signups.find((s) => s.uid === firebaseUser?.uid);
+  // A concluded session is FINALIZED: no sign-ups/withdrawals — staffing
+  // corrections go through the builder's "Record who taught" flow.
+  const concluded = session.end.toMillis() < Date.now();
 
   const classSize = roster.filter((m) => m.status === 'active' && !m.blockTaker).length;
   const ratioCourse = (curriculum?.courses ?? []).find((c) => c.name === session.courseName);
@@ -253,10 +256,13 @@ export function SessionDetailModal({ sessionId, onClose, onEdit }: Props) {
                 {slot.role === 'coordinator' && (
                   <span className="text-xs text-slate-400">Assigned by coordinator</span>
                 )}
-                {slot.role !== 'coordinator' && firebaseUser && session.status === 'scheduled' && !can.buildSchedules(role) && (
+                {slot.role !== 'coordinator' && concluded && (
+                  <span className="text-xs text-slate-400">Session concluded</span>
+                )}
+                {slot.role !== 'coordinator' && !concluded && firebaseUser && session.status === 'scheduled' && !can.buildSchedules(role) && (
                   <span className="text-xs text-slate-400">Sign-up not open yet</span>
                 )}
-                {slot.role !== 'coordinator' && firebaseUser && can.signUp(role) && (session.status === 'open' || session.status === 'fully_staffed') && (
+                {slot.role !== 'coordinator' && !concluded && firebaseUser && can.signUp(role) && (session.status === 'open' || session.status === 'fully_staffed') && (
                   mineHere ? (
                     <Button variant="danger" disabled={busy} onClick={doWithdraw}>
                       Withdraw
@@ -341,7 +347,11 @@ export function SessionDetailModal({ sessionId, onClose, onEdit }: Props) {
               Duplicate to next day
             </Button>
           )}
-          {onEdit && <Button onClick={() => onEdit(session as WithId<SessionDoc>)}>Edit session</Button>}
+          {onEdit && (
+            <Button onClick={() => onEdit(session as WithId<SessionDoc>)}>
+              {concluded ? 'Record who taught' : 'Edit session'}
+            </Button>
+          )}
           {session.status !== 'cancelled' && session.status !== 'completed' && (
             <Button variant="danger" disabled={busy} onClick={deleteSession}>
               Delete
