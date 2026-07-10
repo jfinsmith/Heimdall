@@ -127,6 +127,12 @@ export interface AcademyDoc {
   coordinatorIds: string[];
   status: string;
   isTemplate?: boolean;
+  fdleProgram?: string;
+  discipline?: string;
+  startDate?: Timestamp;
+  endDate?: Timestamp;
+  /** Public class portal (see web types) — token link + tier passwords. */
+  portal?: { enabled: boolean; token: string; academicHash?: string };
   approval?: {
     state: ApprovalState;
     sergeantId?: string;

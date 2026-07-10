@@ -26,3 +26,5 @@ export { setUserRole, bootstrapFirstDirector, createUserAccount, createOrg, acad
 export { rosterCreateMember } from './admin/roster';
 // Billing (Phase 14) — Stripe subscriptions (checkout, portal, webhook)
 export { createCheckoutSession, createBillingPortalSession, stripeWebhook } from './billing/stripe';
+// Public class portal — the only unauthenticated read surface (token link + tiered passwords)
+export { getPublicClassPortal } from './public/portal';

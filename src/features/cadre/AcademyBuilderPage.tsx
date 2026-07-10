@@ -29,6 +29,7 @@ import { Badge, Button, Field, Input, PageHeader, Select } from '../../component
 import { Modal } from '../../components/Modal';
 import { SessionFormModal } from './SessionFormModal';
 import { PastSessionModal } from './PastSessionModal';
+import { PublicLinkSection } from './PublicLinkSection';
 import { LunchBlockModal } from './LunchBlockModal';
 import { RecurringGeneratorModal } from './RecurringGeneratorModal';
 import { RoomSelect } from './rooms/RoomSelect';
@@ -702,6 +703,8 @@ export function AcademyBuilderPage() {
             </ul>
           )}
         </section>
+
+        <PublicLinkSection academy={academy} />
       </div>
 
       <div id="builder-calendar" className="rounded-lg border border-watch-100 bg-white p-4 shadow-sm">

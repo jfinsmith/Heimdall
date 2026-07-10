@@ -54,6 +54,7 @@ const OwnerAuditPage = lazy(() => import('../features/admin/OwnerAuditPage').the
 const BillingPage = lazy(() => import('../features/admin/BillingPage').then((m) => ({ default: m.BillingPage })));
 const CompliancePage = lazy(() => import('../features/admin/CompliancePage').then((m) => ({ default: m.CompliancePage })));
 const MarketingPage = lazy(() => import('../features/marketing/MarketingPage').then((m) => ({ default: m.MarketingPage })));
+const PublicClassPage = lazy(() => import('../features/public/PublicClassPage').then((m) => ({ default: m.PublicClassPage })));
 
 function RouteFallback() {
   return (
@@ -96,6 +97,9 @@ export function AppRouter() {
               host skips straight to sign-in, same as RootGate. */}
           <Route path="/pricing" element={isMarketingHost() ? <MarketingPage /> : <Navigate to="/signin" replace />} />
           <Route path="/signin" element={<SignInPage />} />
+          {/* Public class portal — token + tiered passwords validated by the
+              getPublicClassPortal callable; no sign-in, rules stay closed. */}
+          <Route path="/class/:academyId/:token" element={<PublicClassPage />} />
           <Route path="/pending" element={<PendingApprovalPage />} />
           <Route path="/awaiting-org" element={<AwaitingOrgPage />} />
           <Route path="/org-suspended" element={<OrgSuspendedPage />} />

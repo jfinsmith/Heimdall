@@ -205,6 +205,16 @@ export function HowToPage() {
             <>Deleting an academy requires typing <B>DELETE</B> — it removes the class and its sessions permanently.</>,
             <>The Academies list shows live cadet headcounts per class.</>,
           ]} />
+          <Sub title="Public class link">
+            <p>
+              In the builder, the <B>Public class link</B> panel creates a view-only link for cadets and other
+              interested parties. The link opens behind a simple access code — the digits of the class (LE 132 → <B>132</B>) —
+              and shows the printable training schedule. Optionally set an <B>academic password</B> to enable an
+              &quot;Academic information&quot; section with the read-only gradebook and discipline (only cadets with actual
+              entries are listed). Everything is read-only, the link can be regenerated or disabled anytime, and no
+              contact info, IDs, or dates of birth are ever exposed.
+            </p>
+          </Sub>
         </Section>
 
         <Section id="approval" title="The approval & publishing workflow" role="Staff">

@@ -399,6 +399,19 @@ export interface AcademyDoc {
   /** Class/course sequence number (e.g. FDLE CSN "65-2026-2010-2"). Set at
    *  creation or in the builder; prefills the attendance roster's Seq # field. */
   sequenceNo?: string;
+  /**
+   * Public class portal (coordinator-managed). The link is /class/{id}/{token};
+   * tier 1 (schedule) is gated by the digits of shortName ("LE 132" → "132"),
+   * tier 2 (academic: gradebook + discipline) by a coordinator-set password
+   * stored ONLY as a SHA-256 hex hash. All public reads are served by the
+   * getPublicClassPortal callable (Admin SDK) — security rules stay closed.
+   */
+  portal?: {
+    enabled: boolean;
+    token: string;
+    /** SHA-256 hex of the academic-tier password; absent = academic tier off. */
+    academicHash?: string;
+  };
   startDate: Timestamp;
   endDate: Timestamp;
   location: string;
