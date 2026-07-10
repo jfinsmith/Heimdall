@@ -115,32 +115,37 @@ export function AcademiesPage() {
             <tr>
               <th className="px-4 py-3">Academy</th>
               <th className="px-4 py-3">Discipline</th>
-              <th className="px-4 py-3">Dates</th>
+              <th className="whitespace-nowrap px-4 py-3">Dates</th>
               <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Target hrs</th>
+              <th className="whitespace-nowrap px-4 py-3">Hours</th>
               <th className="px-4 py-3" />
             </tr>
           </thead>
           <tbody className="divide-y divide-watch-50">
             {academies.map((a) => (
               <tr key={a.id} className="hover:bg-watch-50/50">
-                <td className="px-4 py-3 font-medium text-watch-900">
-                  <Link to={`/cadre/academies/${a.id}`} className="hover:underline">
-                    {a.shortName ? <span className="mr-2 font-bold text-bifrost-700">{a.shortName}</span> : null}
-                    {a.name}
+                <td className="min-w-[11rem] px-4 py-3 font-medium text-watch-900">
+                  {/* Short designation stacked over the class name — reads cleanly
+                      instead of running together and wrapping mid-title. */}
+                  <Link to={`/cadre/academies/${a.id}`} className="group block">
+                    {a.shortName ? <span className="block font-bold text-bifrost-700 group-hover:underline">{a.shortName}</span> : null}
+                    <span className="block group-hover:underline">{a.name}</span>
                   </Link>
                 </td>
-                <td className="px-4 py-3">{a.fdleProgram?.replace(/^FDLE\s*/, '') || a.discipline}</td>
+                <td className="px-4 py-3 text-slate-600">{a.fdleProgram?.replace(/^FDLE\s*/, '') || a.discipline}</td>
                 <td className="px-4 py-3 text-slate-500">
-                  {fmtDate(a.startDate)} → {fmtDate(a.endDate)}
+                  {/* Wrap only at the arrow — never mid-date. */}
+                  <span className="whitespace-nowrap">{fmtDate(a.startDate)}</span>{' '}
+                  <span className="text-slate-300">→</span>{' '}
+                  <span className="whitespace-nowrap">{fmtDate(a.endDate)}</span>
                 </td>
                 <td className="px-4 py-3">
                   <Badge tone={a.status === 'published' || a.status === 'in_progress' ? 'green' : a.status === 'draft' ? 'slate' : 'navy'}>
                     {a.status.replace('_', ' ')}
                   </Badge>
                 </td>
-                <td className="px-4 py-3">{a.targetTotalHours}</td>
-                <td className="px-4 py-3 text-right">
+                <td className="px-4 py-3 tabular-nums">{a.targetTotalHours}</td>
+                <td className="whitespace-nowrap px-4 py-3 text-right">
                   <Button
                     variant="ghost"
                     onClick={() => setCloneSource(a)}
@@ -199,16 +204,18 @@ export function AcademiesPage() {
                   <tbody className="divide-y divide-watch-50">
                     {group.items.map((t) => (
                       <tr key={t.id} className="hover:bg-watch-50/50">
-                        <td className="px-4 py-3 font-medium text-watch-900">
-                          <Link to={`/cadre/academies/${t.id}`} className="hover:underline">
-                            {t.shortName ? <span className="mr-2 font-bold text-bifrost-700">{t.shortName}</span> : null}
-                            {t.name}
+                        <td className="min-w-[11rem] px-4 py-3 font-medium text-watch-900">
+                          <Link to={`/cadre/academies/${t.id}`} className="group block">
+                            {t.shortName ? <span className="block font-bold text-bifrost-700 group-hover:underline">{t.shortName}</span> : null}
+                            <span className="block group-hover:underline">{t.name}</span>
                           </Link>
                         </td>
                         <td className="px-4 py-3 text-slate-500">
-                          {fmtDate(t.startDate)} → {fmtDate(t.endDate)}
+                          <span className="whitespace-nowrap">{fmtDate(t.startDate)}</span>{' '}
+                          <span className="text-slate-300">→</span>{' '}
+                          <span className="whitespace-nowrap">{fmtDate(t.endDate)}</span>
                         </td>
-                        <td className="px-4 py-3 text-right">
+                        <td className="whitespace-nowrap px-4 py-3 text-right">
                           <Button
                             variant="primary"
                             onClick={() => setCloneSource(t)}
