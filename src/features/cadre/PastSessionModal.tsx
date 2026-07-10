@@ -160,7 +160,12 @@ export function PastSessionModal({ session, onClose }: { session: WithId<Session
           <div key={slot.slotId} className="rounded-md border border-watch-100 p-3">
             <div className="mb-2 flex items-center gap-2">
               <span className="font-medium text-watch-900">{SLOT_ROLE_LABELS[slot.role]}</span>
-              <span className="text-xs text-slate-400">{slot.filledBy.length} recorded (planned {slot.count})</span>
+              <span className="text-xs text-slate-400">
+                {slot.filledBy.length} recorded
+                {(s.writeInInstructors ?? []).filter((w) => w.role === slot.role).length > 0 &&
+                  ` + ${(s.writeInInstructors ?? []).filter((w) => w.role === slot.role).length} write-in`}
+                {' '}(planned {slot.count})
+              </span>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {slot.filledBy.length === 0 && <span className="text-xs text-slate-400">no one recorded</span>}

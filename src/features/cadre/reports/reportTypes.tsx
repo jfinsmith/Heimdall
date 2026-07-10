@@ -19,8 +19,9 @@ export interface ReportField {
   type: 'text' | 'date' | 'number' | 'course' | 'textarea' | 'time' | 'select' | 'cadet';
   required?: boolean;
   /** Pre-fill the field from data the academy already knows (item 17):
-   *  className = "{shortName} {sequenceNo}", sequenceNo, or program start–end dates. */
-  defaultFrom?: 'className' | 'sequenceNo' | 'programDates';
+   *  className = "{shortName} {sequenceNo}", shortName = the bare designation
+   *  (e.g. "LE 132"), sequenceNo, or program start–end dates. */
+  defaultFrom?: 'className' | 'shortName' | 'sequenceNo' | 'programDates';
   hint?: string;
   /** Choices for type 'select'. */
   options?: string[];

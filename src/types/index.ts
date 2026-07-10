@@ -929,7 +929,18 @@ export function isAdmin(role: Role | undefined | null): boolean {
 
 /** A session is understaffed if any role slot has fewer filled than required. */
 export function unfilledSlots(session: SessionDoc): RoleSlot[] {
-  return session.roleSlots.filter((s) => s.filledBy.length < s.count);
+  // As-taught WRITE-INS (people without accounts, recorded post-day) credit
+  // their role's slots — a written-in lead reconciles the planned lead slot,
+  // so the day reads fully staffed instead of permanently short.
+  const spare: Partial<Record<SlotRole, number>> = {};
+  for (const w of session.writeInInstructors ?? []) spare[w.role] = (spare[w.role] ?? 0) + 1;
+  return session.roleSlots.filter((s) => {
+    const need = s.count - s.filledBy.length;
+    if (need <= 0) return false;
+    const use = Math.min(need, spare[s.role] ?? 0);
+    if (use > 0) spare[s.role] = (spare[s.role] ?? 0) - use;
+    return need - use > 0;
+  });
 }
 
 export function isFullyStaffed(session: SessionDoc): boolean {

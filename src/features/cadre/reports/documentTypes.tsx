@@ -33,7 +33,7 @@ export const DOCUMENT_TYPES: ReportType[] = [
       { key: 'toSequence', label: "To — cadet's ORIGINAL class Sequence No.", type: 'text', required: true, hint: 'The Sequence Number of the class the cadet belongs to — auto-fills from the class picker above, or type it' },
       { key: 'fromSequence', label: "From — THIS class's Sequence No.", type: 'text', required: true, defaultFrom: 'sequenceNo', hint: 'The class the cadet took the course with (defaults to this class)' },
       { key: 'course', label: 'Course (CJK)', type: 'course', required: true, hint: 'CJK number + course name as it appears with CJSTC' },
-      { key: 'className', label: 'Class the training was completed with', type: 'text', required: true, defaultFrom: 'className', hint: 'e.g. LE 132 — reads "…completed the listed training with LE 132"' },
+      { key: 'className', label: 'Class the training was completed with', type: 'text', required: true, defaultFrom: 'shortName', hint: 'Just the class designation, e.g. LE 132 — the sequence number goes in the next field and prints in parentheses' },
       { key: 'classSequence', label: "That class's Sequence No.", type: 'text', required: true, defaultFrom: 'sequenceNo', hint: 'Prints in parentheses after the class: (Sequence No. …)' },
       { key: 'hours', label: 'Hours of training completed', type: 'number', required: true },
       { key: 'score', label: 'Written exam score (%)', type: 'number', required: true },
