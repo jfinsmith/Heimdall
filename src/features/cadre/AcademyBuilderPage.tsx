@@ -278,17 +278,25 @@ export function AcademyBuilderPage() {
    * mirrors curriculum coverage.
    */
   const courseGroups = useMemo(() => {
-    const map = new Map<string, { scheduled: number; open: number; total: number; firstStart: number }>();
+    const now = Date.now();
+    const map = new Map<string, { scheduled: number; upcomingScheduled: number; open: number; total: number; firstStart: number; lastEnd: number }>();
     for (const s of liveSessions) {
       if (s.status === 'completed') continue;
       // Skip blocks that only have pre-assigned coordinator slots.
       const needsSignup = s.roleSlots.some((slot) => slot.role !== 'coordinator');
       if (!needsSignup) continue;
       const key = s.courseName;
-      const g = map.get(key) ?? { scheduled: 0, open: 0, total: 0, firstStart: Infinity };
+      const g = map.get(key) ?? { scheduled: 0, upcomingScheduled: 0, open: 0, total: 0, firstStart: Infinity, lastEnd: 0 };
       g.total++;
       g.firstStart = Math.min(g.firstStart, s.start.toMillis());
-      if (s.status === 'scheduled') g.scheduled++;
+      g.lastEnd = Math.max(g.lastEnd, s.end.toMillis());
+      if (s.status === 'scheduled') {
+        g.scheduled++;
+        // Only sessions that haven't happened yet can be opened — past days are
+        // finalized (setCourseSignups skips them), so don't offer an Open button
+        // that would flip nothing.
+        if (s.end.toMillis() >= now) g.upcomingScheduled++;
+      }
       if (s.status === 'open' || s.status === 'fully_staffed') g.open++;
       map.set(key, g);
     }
@@ -439,6 +447,13 @@ export function AcademyBuilderPage() {
     const { label, group, mode } = signupModal;
     if (mode === 'open') {
       const opened = await setCourseSignups(label, true);
+      // Belt-and-braces: past days are skipped, so a fully-passed course opens
+      // nothing — say so instead of silently doing nothing.
+      if (opened === 0) {
+        window.alert('Nothing to open — every remaining session of this course has already passed. Past days are finalized; record who taught from the calendar instead.');
+        setSignupModal(null);
+        return;
+      }
       if (emailTarget) await announceCourse(label, emailTarget, group.open + opened);
     } else if (emailTarget) {
       await announceCourse(label, emailTarget, group.open);
@@ -665,8 +680,11 @@ export function AcademyBuilderPage() {
                     <span className="text-xs text-slate-400">
                       {g.open}/{g.total} open
                     </span>
-                    {g.scheduled > 0 && (
+                    {g.upcomingScheduled > 0 && (
                       <Button onClick={() => setSignupModal({ label, mode: 'open', group: g })}>Open sign-ups</Button>
+                    )}
+                    {g.upcomingScheduled === 0 && g.lastEnd < Date.now() && g.open === 0 && (
+                      <Badge tone="slate">Concluded</Badge>
                     )}
                     {g.open > 0 && (
                       <>
