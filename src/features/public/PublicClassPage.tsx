@@ -176,7 +176,9 @@ export function PublicClassPage() {
   return (
     <div className="min-h-screen bg-watch-50">
       {/* Screen-only header */}
-      <header className="no-print sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-watch-800 bg-watch-950 px-5 py-3">
+      {/* z-30 keeps this bar above the gradebook's sticky name column (z-10),
+          which otherwise paints over it on scroll (it comes later in the DOM). */}
+      <header className="no-print sticky top-0 z-30 flex flex-wrap items-center justify-between gap-3 border-b border-watch-800 bg-watch-950 px-5 py-3">
         <div className="flex items-center gap-2 text-watch-50">
           <GjallarhornGlyph size={22} className="text-bifrost-400" title="HEIMDALL" />
           <span className="font-display font-bold">{schedule.className}</span>
