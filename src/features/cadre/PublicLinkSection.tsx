@@ -15,7 +15,7 @@ import type { WithId } from '../../lib/firestore';
 import { Badge, Button, Input } from '../../components/ui';
 import { logAudit } from '../sessions/audit';
 
-export function PublicLinkSection({ academy }: { academy: WithId<AcademyDoc> }) {
+export function PublicLinkSection({ academy, className = '' }: { academy: WithId<AcademyDoc>; className?: string }) {
   const { firebaseUser } = useAuth();
   const [pw, setPw] = useState('');
   const [busy, setBusy] = useState(false);
@@ -48,15 +48,14 @@ export function PublicLinkSection({ academy }: { academy: WithId<AcademyDoc> }) 
   }
 
   return (
-    <section className="rounded-lg border border-watch-100 bg-white p-4 shadow-sm">
+    <section className={`rounded-lg border border-watch-100 bg-white p-4 shadow-sm ${className}`}>
       <div className="mb-1 flex items-center gap-2">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-watch-600">Public class link</h2>
         {portal?.enabled ? <Badge tone="green">live</Badge> : <Badge tone="slate">off</Badge>}
       </div>
-      <p className="mb-3 text-xs text-slate-500">
-        Share a view-only link with cadets and other interested parties: the training schedule behind a simple
-        access code, and (optionally) the gradebook + discipline behind a password you set. Everything is
-        read-only, served without touching your records&apos; security.
+      <p className="mb-2 text-xs text-slate-500">
+        View-only link for cadets and interested parties: the schedule behind a simple access code, plus an
+        optional gradebook + discipline view behind a password you set.
       </p>
 
       {!portal?.enabled ? (
@@ -69,7 +68,7 @@ export function PublicLinkSection({ academy }: { academy: WithId<AcademyDoc> }) 
           Create public link
         </Button>
       ) : (
-        <div className="space-y-3 text-sm">
+        <div className="space-y-2 text-sm">
           <div className="flex flex-wrap items-center gap-2">
             <code className="max-w-full truncate rounded bg-watch-50 px-2 py-1 text-xs text-watch-800">{link}</code>
             <Button
@@ -87,14 +86,14 @@ export function PublicLinkSection({ academy }: { academy: WithId<AcademyDoc> }) 
             Access code: <strong className="tabular-nums text-watch-900">{codeDigits}</strong> (the digits of {academy.shortName})
           </div>
 
-          <div className="rounded-md border border-watch-100 bg-watch-50/50 p-3">
+          <div className="rounded-md border border-watch-100 bg-watch-50/50 p-2.5">
             <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-watch-600">
               Academic information (tier 2)
               {portal.academicHash ? <Badge tone="green">enabled</Badge> : <Badge tone="slate">off</Badge>}
             </div>
             <p className="mb-2 text-xs text-slate-500">
-              Grants the gradebook + discipline view behind a second password. Pick something stronger than the
-              access code; share it only with people who should see grades.
+              Gradebook + discipline behind a second, stronger password — share it only with people who should
+              see grades.
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <Input

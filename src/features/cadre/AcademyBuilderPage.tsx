@@ -632,7 +632,9 @@ export function AcademyBuilderPage() {
         </section>
       )}
 
-      <div className="mb-4 grid gap-4 lg:grid-cols-2">
+      {/* One row on wide screens: coverage needs the most width (CJK + hours +
+          badge), sign-ups a bit less, the public link the least. */}
+      <div className="mb-4 grid gap-4 lg:grid-cols-2 xl:grid-cols-[1.25fr_1.1fr_0.85fr]">
         {/* Per-course hours vs curriculum minimums */}
         <section className="rounded-lg border border-watch-100 bg-white p-4 shadow-sm">
           <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-watch-600">
@@ -704,7 +706,7 @@ export function AcademyBuilderPage() {
           )}
         </section>
 
-        <PublicLinkSection academy={academy} />
+        <PublicLinkSection academy={academy} className="lg:col-span-2 xl:col-span-1" />
       </div>
 
       <div id="builder-calendar" className="rounded-lg border border-watch-100 bg-white p-4 shadow-sm">
