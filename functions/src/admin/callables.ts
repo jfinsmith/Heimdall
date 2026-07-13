@@ -1427,3 +1427,116 @@ export const listAllAuditLog = onCall<{ limit?: number }>(async (request) => {
   });
   return { entries };
 });
+
+/**
+ * adminUpdateUser — directors/lieutenants edit a member's profile and login
+ * credentials in one atomic call. Firestore-only fields (rank/agency/phone)
+ * ride along with the Auth-backed ones (name, email, password) so the admin's
+ * "Save" either fully lands or fully fails. Email and password MUST go through
+ * here (never a client doc write): the Auth record is the login identity and
+ * has to stay in sync with the profile doc. A password set by an admin is
+ * always temporary — mustChangePassword forces the member to pick their own on
+ * next sign-in, and existing sessions are revoked so the old holder is out.
+ */
+export const adminUpdateUser = onCall<{
+  uid: string;
+  displayName?: string;
+  email?: string;
+  rank?: string;
+  agency?: string;
+  phone?: string;
+  newPassword?: string;
+}>(async (request) => {
+  const caller = request.auth;
+  if (!caller) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = getFirestore();
+  const callerDoc = await db.doc(`users/${caller.uid}`).get();
+  const callerRole = callerDoc.exists ? (callerDoc.data()!.role as Role) : null;
+  if (!callerRole || !ADMIN_ROLES.includes(callerRole)) {
+    throw new HttpsError('permission-denied', 'Only directors and lieutenants may edit member profiles.');
+  }
+  assertActiveCaller(callerDoc.data());
+  const callerOrgId = callerDoc.data()!.orgId as string | undefined;
+  const callerIsOwner = callerDoc.data()!.platformOwner === true;
+
+  const uid = (request.data.uid ?? '').trim();
+  if (!uid) throw new HttpsError('invalid-argument', 'Missing user.');
+
+  const targetSnap = await db.doc(`users/${uid}`).get();
+  if (!targetSnap.exists) throw new HttpsError('not-found', 'User not found.');
+  const target = targetSnap.data() as {
+    displayName?: string; email?: string; rank?: string; agency?: string;
+    phone?: string; orgId?: string; platformOwner?: boolean;
+  };
+  if (!callerIsOwner && target.orgId && target.orgId !== callerOrgId) {
+    throw new HttpsError('permission-denied', 'That member belongs to another organization.');
+  }
+  if (target.platformOwner === true && !callerIsOwner) {
+    throw new HttpsError('permission-denied', 'The platform owner account cannot be edited here.');
+  }
+
+  // Undefined field = leave alone. Provided = validate, and only write when it
+  // actually differs so `changed` reflects real edits (audit + UI messaging).
+  const docPatch: Record<string, unknown> = {};
+  const authPatch: { displayName?: string; email?: string; password?: string } = {};
+  const changed: string[] = [];
+
+  if (request.data.displayName !== undefined) {
+    const displayName = String(request.data.displayName).trim();
+    if (!displayName) throw new HttpsError('invalid-argument', 'Name cannot be empty.');
+    if (displayName !== (target.displayName ?? '')) {
+      docPatch.displayName = displayName;
+      authPatch.displayName = displayName;
+      changed.push('name');
+    }
+  }
+  if (request.data.email !== undefined) {
+    const email = String(request.data.email).trim().toLowerCase();
+    if (!email || !email.includes('@')) throw new HttpsError('invalid-argument', 'A valid email is required.');
+    if (email !== (target.email ?? '').toLowerCase()) {
+      docPatch.email = email;
+      authPatch.email = email;
+      changed.push('email');
+    }
+  }
+  for (const field of ['rank', 'agency', 'phone'] as const) {
+    const raw = request.data[field];
+    if (raw === undefined) continue;
+    const value = String(raw).trim();
+    if (value !== (target[field] ?? '')) {
+      docPatch[field] = value;
+      changed.push(field);
+    }
+  }
+  if (request.data.newPassword !== undefined && String(request.data.newPassword).trim() !== '') {
+    const newPassword = String(request.data.newPassword);
+    if (newPassword.length < 8) throw new HttpsError('invalid-argument', 'Password must be at least 8 characters.');
+    authPatch.password = newPassword;
+    docPatch.mustChangePassword = true;
+    changed.push('password');
+  }
+
+  if (changed.length === 0) return { ok: true, changed };
+
+  // Auth first: if the login-identity update fails (email taken, invalid),
+  // nothing lands and the profile doc never drifts from the Auth record.
+  if (Object.keys(authPatch).length > 0) {
+    try {
+      await getAuth().updateUser(uid, authPatch);
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code === 'auth/email-already-exists') {
+        throw new HttpsError('already-exists', `Another account already uses ${authPatch.email}.`);
+      }
+      if (code === 'auth/invalid-email') {
+        throw new HttpsError('invalid-argument', `"${authPatch.email}" is not a valid email address.`);
+      }
+      throw new HttpsError('internal', (err as Error).message || 'Failed to update the account.');
+    }
+  }
+  docPatch.updatedAt = FieldValue.serverTimestamp();
+  await db.doc(`users/${uid}`).set(docPatch, { merge: true });
+  if (authPatch.password) await getAuth().revokeRefreshTokens(uid);
+
+  return { ok: true, changed };
+});

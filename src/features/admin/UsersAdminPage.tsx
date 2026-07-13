@@ -29,6 +29,10 @@ const sendActivationEmail = httpsCallable<{ uid: string; password: string }, { o
 const setUserSuspension = httpsCallable<{ uid: string; suspended: boolean; reason?: string }, { ok: boolean }>(functions, 'setUserSuspension');
 const setUserActive = httpsCallable<{ uid: string; active: boolean }, { ok: boolean }>(functions, 'setUserActive');
 const denyUser = httpsCallable<{ uid: string }, { ok: boolean }>(functions, 'denyUser');
+const adminUpdateUser = httpsCallable<
+  { uid: string; displayName?: string; email?: string; rank?: string; agency?: string; phone?: string; newPassword?: string },
+  { ok: boolean; changed: string[] }
+>(functions, 'adminUpdateUser');
 
 // Memorable temp passwords in the style "Forest-Tango-Beacon-656": three distinct
 // words plus a 3-digit number, dash-separated — easy to read aloud or type.
@@ -98,6 +102,7 @@ export function UsersAdminPage() {
   // from the single RANKS registry so it never drifts from the rest of the app.
   const GROUP_ORDER: Role[] = RANK_ORDER_ASC;
   const [qualUser, setQualUser] = useState<WithId<UserDoc> | null>(null);
+  const [editTarget, setEditTarget] = useState<WithId<UserDoc> | null>(null);
   const [suspendTarget, setSuspendTarget] = useState<WithId<UserDoc> | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -310,6 +315,11 @@ export function UsersAdminPage() {
                         </button>
                       </td>
                       <td className="px-4 py-3 text-right">
+                        {/* Edit is status-independent — a suspended member's
+                            email or name may be exactly what needs fixing. */}
+                        <Button variant="ghost" disabled={busy === u.id} onClick={() => setEditTarget(u)}>
+                          Edit
+                        </Button>
                         {u.status === 'suspended' ? (
                           <Button variant="ghost" disabled={busy === u.id} onClick={() => liftSuspension(u)}>
                             Lift suspension
@@ -337,6 +347,7 @@ export function UsersAdminPage() {
       </div>
 
       {qualUser && <QualificationsModal user={qualUser} onClose={() => setQualUser(null)} />}
+      {editTarget && <EditUserModal user={editTarget} onClose={() => setEditTarget(null)} />}
       {addOpen && <AddUserModal onClose={() => setAddOpen(false)} />}
       {bulkOpen && (
         <BulkImportModal
@@ -396,6 +407,216 @@ function SuspendUserModal({ user, onClose }: { user: WithId<UserDoc>; onClose: (
           </Button>
           <Button type="submit" variant="danger" disabled={busy || !reason.trim()}>
             {busy ? 'Suspending…' : 'Suspend account'}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+/**
+ * Edit a member's profile and credentials (admin only). Deliberately gated:
+ * Save first shows a review screen listing exactly what will change (old → new)
+ * and needs a second confirmation, so an admin can't wreck an account with a
+ * stray keystroke. Everything lands through the adminUpdateUser callable —
+ * email and password live on the Firebase Auth record (the login identity), so
+ * a plain profile-doc write could never change them and would only cause drift.
+ * An admin-set password is temporary: the member must pick their own at next
+ * sign-in, and their existing sessions are signed out.
+ */
+function EditUserModal({ user, onClose }: { user: WithId<UserDoc>; onClose: () => void }) {
+  const { firebaseUser } = useAuth();
+  const [displayName, setDisplayName] = useState(user.displayName ?? '');
+  const [email, setEmail] = useState(user.email ?? '');
+  const [rank, setRank] = useState(user.rank ?? '');
+  const [agency, setAgency] = useState(user.agency ?? '');
+  const [phone, setPhone] = useState(user.phone ?? '');
+  const [resetPw, setResetPw] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [reviewing, setReviewing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [savedPw, setSavedPw] = useState<string | null>(null);
+
+  // Normalized diff against the current doc — only what changed is sent, and
+  // the review screen is rendered from this same list so it can't disagree
+  // with the request.
+  const next = {
+    displayName: displayName.trim(),
+    email: email.trim().toLowerCase(),
+    rank: rank.trim(),
+    agency: agency.trim(),
+    phone: formatPhone(phone.trim()),
+  };
+  const changes: { field: string; label: string; from: string; to: string }[] = [];
+  if (next.displayName && next.displayName !== (user.displayName ?? '')) changes.push({ field: 'displayName', label: 'Name', from: user.displayName ?? '—', to: next.displayName });
+  if (next.email && next.email !== (user.email ?? '').toLowerCase()) changes.push({ field: 'email', label: 'Sign-in email', from: user.email ?? '—', to: next.email });
+  if (next.rank !== (user.rank ?? '')) changes.push({ field: 'rank', label: 'Rank', from: user.rank || '—', to: next.rank || '—' });
+  if (next.agency !== (user.agency ?? '')) changes.push({ field: 'agency', label: 'Agency', from: user.agency || '—', to: next.agency || '—' });
+  if (next.phone !== (user.phone ?? '')) changes.push({ field: 'phone', label: 'Phone', from: user.phone || '—', to: next.phone || '—' });
+  const pwChange = resetPw && newPassword.trim().length > 0;
+  const pwTooShort = pwChange && newPassword.length < 8;
+  const hasChanges = changes.length > 0 || pwChange;
+
+  async function confirm() {
+    setBusy(true);
+    setError(null);
+    try {
+      const payload: { uid: string } & Record<string, string> = { uid: user.id };
+      for (const c of changes) payload[c.field] = next[c.field as keyof typeof next];
+      if (pwChange) payload.newPassword = newPassword;
+      await adminUpdateUser(payload);
+      const summary = [...changes.map((c) => `${c.label.toLowerCase()} → ${c.to}`), ...(pwChange ? ['password reset'] : [])].join(', ');
+      await logAudit(firebaseUser!.uid, 'user.edit', 'user', user.id, `Edited ${user.displayName}: ${summary}`);
+      if (pwChange) {
+        // Keep the modal up so the admin can hand the credentials over.
+        setSavedPw(newPassword);
+      } else {
+        onClose();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save the changes.');
+      setReviewing(false);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (savedPw) {
+    return (
+      <Modal open onClose={onClose} title={`Edit — ${user.displayName}`}>
+        <div className="space-y-4 text-sm">
+          <div className="rounded-md bg-green-50 px-3 py-2 text-green-800">Saved. Share the new sign-in details:</div>
+          <dl className="rounded-md border border-watch-100 bg-watch-50 px-3 py-2">
+            <div className="flex justify-between py-0.5">
+              <dt className="text-slate-500">Email</dt>
+              <dd className="font-medium text-watch-900">{next.email || user.email}</dd>
+            </div>
+            <div className="flex justify-between py-0.5">
+              <dt className="text-slate-500">Temporary password</dt>
+              <dd className="font-mono font-medium text-watch-900">{savedPw}</dd>
+            </div>
+          </dl>
+          <p className="text-xs text-slate-500">
+            They were signed out everywhere and must set their own password at next sign-in.
+          </p>
+          <div className="flex justify-end">
+            <Button variant="primary" onClick={onClose}>Done</Button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
+  if (reviewing) {
+    return (
+      <Modal open onClose={busy ? () => {} : onClose} title={`Confirm changes — ${user.displayName}`}>
+        <div className="space-y-4 text-sm">
+          {error && <div className="rounded-md bg-red-50 px-3 py-2 text-red-800">{error}</div>}
+          <div className="rounded-md bg-amber-50 px-3 py-2 text-amber-800">
+            Review carefully — these changes apply to <strong>{user.displayName}</strong>'s account immediately.
+          </div>
+          <ul className="divide-y divide-watch-50 rounded-md border border-watch-100">
+            {changes.map((c) => (
+              <li key={c.field} className="flex flex-wrap items-baseline justify-between gap-2 px-3 py-2">
+                <span className="text-slate-500">{c.label}</span>
+                <span className="text-watch-900">
+                  <span className="text-slate-400 line-through">{c.from}</span>
+                  <span className="mx-2 text-slate-400">→</span>
+                  <strong>{c.to}</strong>
+                </span>
+              </li>
+            ))}
+            {pwChange && (
+              <li className="px-3 py-2">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="text-slate-500">New temporary password</span>
+                  <strong className="font-mono text-watch-900">{newPassword}</strong>
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  Their current sessions are signed out, and they must set their own password at next sign-in.
+                </p>
+              </li>
+            )}
+          </ul>
+          {changes.some((c) => c.field === 'email') && (
+            <p className="text-xs text-amber-700">
+              The old email stops working for sign-in the moment you confirm — make sure they know the new one.
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={() => setReviewing(false)} disabled={busy}>
+              Back
+            </Button>
+            <Button type="button" variant="primary" onClick={confirm} disabled={busy}>
+              {busy ? 'Saving…' : 'Confirm and save'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal open onClose={onClose} title={`Edit — ${user.displayName}`}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (pwTooShort) {
+            setError('The new password must be at least 8 characters.');
+            return;
+          }
+          setError(null);
+          setReviewing(true);
+        }}
+        className="space-y-4"
+      >
+        {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
+        <Field label="Full name">
+          <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
+        </Field>
+        <Field label="Sign-in email" hint="Changing this changes how they log in.">
+          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        </Field>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Rank" hint='e.g. "Deputy"'>
+            <Input value={rank} onChange={(e) => setRank(e.target.value)} />
+          </Field>
+          <Field label="Agency">
+            <Input value={agency} onChange={(e) => setAgency(e.target.value)} />
+          </Field>
+        </div>
+        <Field label="Phone">
+          <Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} onBlur={() => setPhone(formatPhone(phone))} />
+        </Field>
+
+        <div className="rounded-md border border-watch-100 bg-watch-50 px-3 py-3">
+          <label className="flex items-center gap-2 text-sm font-medium text-watch-800">
+            <input type="checkbox" checked={resetPw} onChange={(e) => { setResetPw(e.target.checked); if (!e.target.checked) setNewPassword(''); }} />
+            Reset their password
+          </label>
+          {resetPw && (
+            <div className="mt-2">
+              <div className="flex gap-2">
+                <Input value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="New temporary password" className="flex-1" />
+                <Button type="button" variant="secondary" onClick={() => setNewPassword(randomPassword())}>
+                  Generate
+                </Button>
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                At least 8 characters. They're signed out everywhere and must choose their own at next sign-in.
+              </p>
+            </div>
+          )}
+        </div>
+
+        <p className="text-xs text-slate-500">
+          Role is changed from the table's Role column; qualifications are verified from the Qualifications column.
+        </p>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button type="submit" variant="primary" disabled={!hasChanges}>
+            Review changes
           </Button>
         </div>
       </form>
