@@ -636,7 +636,7 @@ export function AcademyBuilderPage() {
           badge), sign-ups a bit less, the public link the least. */}
       <div className="mb-4 grid gap-4 lg:grid-cols-2 xl:grid-cols-[1.25fr_1.1fr_0.85fr]">
         {/* Per-course hours vs curriculum minimums */}
-        <section className="rounded-lg border border-watch-100 bg-white p-4 shadow-sm">
+        <section className="min-w-0 rounded-lg border border-watch-100 bg-white p-4 shadow-sm">
           <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-watch-600">
             Curriculum coverage{curriculum ? ` — ${curriculum.label}` : ''}
           </h2>
@@ -661,7 +661,7 @@ export function AcademyBuilderPage() {
         </section>
 
         {/* Per-course sign-up publishing */}
-        <section className="rounded-lg border border-watch-100 bg-white p-4 shadow-sm">
+        <section className="min-w-0 rounded-lg border border-watch-100 bg-white p-4 shadow-sm">
           <h2 className="mb-1 text-sm font-semibold uppercase tracking-wider text-watch-600">Course sign-ups</h2>
           <p className="mb-2 text-xs text-slate-500">
             Publishing the academy puts sessions on the calendar; instructors can only register once you

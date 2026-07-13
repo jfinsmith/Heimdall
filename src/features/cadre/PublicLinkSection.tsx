@@ -48,7 +48,9 @@ export function PublicLinkSection({ academy, className = '' }: { academy: WithId
   }
 
   return (
-    <section className={`rounded-lg border border-watch-100 bg-white p-4 shadow-sm ${className}`}>
+    // min-w-0 lets the grid track shrink below the URL's natural width —
+    // without it the unbreakable link string forces the row off-screen.
+    <section className={`min-w-0 rounded-lg border border-watch-100 bg-white p-4 shadow-sm ${className}`}>
       <div className="mb-1 flex items-center gap-2">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-watch-600">Public class link</h2>
         {portal?.enabled ? <Badge tone="green">live</Badge> : <Badge tone="slate">off</Badge>}
@@ -70,7 +72,7 @@ export function PublicLinkSection({ academy, className = '' }: { academy: WithId
       ) : (
         <div className="space-y-2 text-sm">
           <div className="flex flex-wrap items-center gap-2">
-            <code className="max-w-full truncate rounded bg-watch-50 px-2 py-1 text-xs text-watch-800">{link}</code>
+            <code className="min-w-0 flex-1 truncate rounded bg-watch-50 px-2 py-1 text-xs text-watch-800">{link}</code>
             <Button
               variant="ghost"
               onClick={async () => {
