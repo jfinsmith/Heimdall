@@ -199,6 +199,17 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // ── remediation tracker — cadets returning with a later class after a
+    //    block failure or injury. STAFF-ONLY INCLUDING READS: these docs hold
+    //    injury / workers'-comp and agency-assignment details that instructors
+    //    must never see. ──
+    match /remediations/{id} {
+      allow read: if isStaff() && inOrg(resource.data);
+      allow create: if isStaff() && inOrg(request.resource.data);
+      allow update: if isStaff() && inOrg(resource.data) && unchanged('orgId');
+      allow delete: if isStaff() && inOrg(resource.data);
+    }
+
     // ── defaultCurricula (platform-level FDLE programs) ───────────────────
     // The five owner-managed FDLE programs are the single source of truth shown
     // read-only across EVERY org, so any signed-in user may read them; only the

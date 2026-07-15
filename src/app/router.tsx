@@ -29,6 +29,7 @@ const AcademyBuilderPage = lazy(() => import('../features/cadre/AcademyBuilderPa
 const AcademyRosterPage = lazy(() => import('../features/cadre/roster/RosterPage').then((m) => ({ default: m.RosterPage })));
 const StaffingBoardPage = lazy(() => import('../features/cadre/StaffingBoardPage').then((m) => ({ default: m.StaffingBoardPage })));
 const RoomsPage = lazy(() => import('../features/cadre/rooms/RoomsPage').then((m) => ({ default: m.RoomsPage })));
+const RemediationPage = lazy(() => import('../features/cadre/RemediationPage').then((m) => ({ default: m.RemediationPage })));
 const BrowseOpenSessionsPage = lazy(() => import('../features/instructor/BrowseOpenSessionsPage').then((m) => ({ default: m.BrowseOpenSessionsPage })));
 const MySchedulePage = lazy(() => import('../features/instructor/MySchedulePage').then((m) => ({ default: m.MySchedulePage })));
 const ProfilePage = lazy(() => import('../features/instructor/ProfilePage').then((m) => ({ default: m.ProfilePage })));
@@ -133,6 +134,7 @@ export function AppRouter() {
                 <Route path="/cadre/academies/:academyId/roster" element={<AcademyRosterPage />} />
                 <Route path="/cadre/staffing" element={<StaffingBoardPage />} />
                 <Route path="/cadre/rooms" element={<RoomsPage />} />
+                <Route path="/cadre/remediation" element={<RemediationPage />} />
                 <Route path="/cadet-reports" element={<CadetReportsPage />} />
                 <Route path="/reports" element={<ReportsPage />} />
               </Route>

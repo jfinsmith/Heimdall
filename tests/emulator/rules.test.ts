@@ -80,6 +80,9 @@ beforeEach(async () => {
     await setDoc(doc(db, 'documentLibrary/genA'), { name: 'General A', availability: 'general', kind: 'letter', active: true });
     await setDoc(doc(db, 'documentLibrary/specOrg'), { name: 'Spec ORG', availability: 'specialized', kind: 'letter', orgIds: [ORG], active: true });
     await setDoc(doc(db, 'documentLibrary/specBeta'), { name: 'Spec BETA', availability: 'specialized', kind: 'letter', orgIds: [BETA], active: true });
+    // remediations — staff-only (holds injury/assignment details).
+    await setDoc(doc(db, 'remediations/remA'), { orgId: ORG, personName: 'Case A', originalClass: 'LE 132', reason: 'injury', blocks: [], status: 'awaiting' });
+    await setDoc(doc(db, 'remediations/remB'), { orgId: BETA, personName: 'Case B', originalClass: 'LE 900', reason: 'block_failure', blocks: [], status: 'awaiting' });
   });
 });
 
@@ -436,6 +439,27 @@ describe('rooms + roomCategories — org isolation (staff-managed)', () => {
     await assertFails(setDoc(doc(as('carol', 'coordinator'), 'roomReservations/newA'), { orgId: ORG, roomId: 'roomA', title: 'X', start: new Date(), end: new Date() }));
     await assertFails(updateDoc(doc(as('carol', 'coordinator'), 'roomReservations/resA'), { title: 'Z' }));
     await assertFails(setDoc(doc(as('alice', 'instructor'), 'roomReservations/nope'), { orgId: ORG, roomId: 'roomA', title: 'X', start: new Date(), end: new Date() }));
+  });
+});
+
+describe('remediations — staff-only (instructors blocked), org isolation', () => {
+  it('instructor CANNOT read remediations, even in their own org', async () => {
+    await assertFails(getDoc(doc(as('alice', 'instructor'), 'remediations/remA')));
+    await assertFails(getDocs(query(collection(as('alice', 'instructor'), 'remediations'), where('orgId', '==', ORG))));
+  });
+  it('coordinator reads OWN-org cases, NOT another tenant\'s', async () => {
+    await assertSucceeds(getDoc(doc(as('carol', 'coordinator'), 'remediations/remA')));
+    await assertFails(getDoc(doc(as('carol', 'coordinator'), 'remediations/remB')));
+    const mine = await assertSucceeds(getDocs(query(collection(as('carol', 'coordinator'), 'remediations'), where('orgId', '==', ORG))));
+    expect((mine as { docs: { id: string }[] }).docs.map((d) => d.id)).toEqual(['remA']);
+  });
+  it('staff create/update/delete in OWN org; orgId immutable; instructor blocked', async () => {
+    await assertSucceeds(setDoc(doc(as('carol', 'coordinator'), 'remediations/newA'), { orgId: ORG, personName: 'New', originalClass: 'LE 133', reason: 'block_failure', blocks: [], status: 'awaiting' }));
+    await assertFails(setDoc(doc(as('carol', 'coordinator'), 'remediations/newB'), { orgId: BETA, personName: 'X', originalClass: 'LE 900', reason: 'injury', blocks: [], status: 'awaiting' }));
+    await assertFails(updateDoc(doc(as('carol', 'coordinator'), 'remediations/remA'), { orgId: BETA }));
+    await assertSucceeds(updateDoc(doc(as('carol', 'coordinator'), 'remediations/remA'), { notes: 'updated' }));
+    await assertFails(setDoc(doc(as('alice', 'instructor'), 'remediations/nope'), { orgId: ORG, personName: 'X', originalClass: 'LE 132', reason: 'injury', blocks: [], status: 'awaiting' }));
+    await assertSucceeds(deleteDoc(doc(as('carol', 'coordinator'), 'remediations/newA')));
   });
 });
 

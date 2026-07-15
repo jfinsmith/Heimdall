@@ -153,6 +153,7 @@ export function AppShell() {
       {staff && <NavItem to="/cadre/academies" label="Academies" />}
       {staff && <NavItem to="/cadre/staffing" label="Staffing Board" />}
       {staff && <NavItem to="/cadre/rooms" label="Room Reservations" />}
+      {staff && <NavItem to="/cadre/remediation" label="Remediation" />}
       {/* Cadet Reports hidden from nav — duplicative of the per-academy Reports tab. Route still works; re-enable by uncommenting.
       {staff && <NavItem to="/cadet-reports" label="Cadet Reports" />} */}
       {staff && <NavItem to="/reports" label="Exports" />}

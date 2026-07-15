@@ -959,3 +959,47 @@ export function unfilledSlots(session: SessionDoc): RoleSlot[] {
 export function isFullyStaffed(session: SessionDoc): boolean {
   return unfilledSlots(session).length === 0;
 }
+
+/* ── Remediation tracker (staff-only) ─────────────────────────────────────
+ * One doc per cadet who left an academy class incomplete (block failure or
+ * injury) and must return with a later class to finish. Contains injury /
+ * workers'-comp and agency-assignment details, so reads are STAFF-ONLY in
+ * firestore.rules — instructors never see this collection. All date fields
+ * are yyyy-mm-dd strings (date-only; no timezone ambiguity). Optional groups
+ * (assignment, injury) are stored as null when absent — never undefined.
+ */
+export type RemediationStatus = 'awaiting' | 'scheduled' | 'completed' | 'separated';
+
+/** A block/course the cadet still owes. */
+export interface RemediationBlock {
+  course: string;
+  /** Hours to make up, when known. */
+  hours?: number;
+  note?: string;
+}
+
+export interface RemediationDoc {
+  orgId: string;
+  personName: string;
+  /** Link back to the roster record in the original class (manual entries allowed). */
+  sourceAcademyId?: string | null;
+  sourceMemberId?: string | null;
+  /** Designation of the class they started with, e.g. "LE 132". */
+  originalClass: string;
+  reason: 'block_failure' | 'injury';
+  /** Blocks/courses still owed. */
+  blocks: RemediationBlock[];
+  /** Class they will return with — unset while awaiting placement. */
+  makeupAcademyId?: string | null;
+  makeupClass?: string;
+  status: RemediationStatus;
+  /** Where the sponsoring agency has them working in the meantime (optional). */
+  assignment?: { location: string; assignedOn?: string; supervisor?: string } | null;
+  /** Workers'-comp details (reason === 'injury'). */
+  injury?: { injuredOn?: string; nextFollowUp?: string; restrictions?: string; expectedReturn?: string } | null;
+  /** Free-form at-a-glance notes. */
+  notes?: string;
+  createdBy: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}

@@ -40,6 +40,7 @@ const TOC: { group: string; items: { id: string; title: string }[] }[] = [
       { id: 'attendance', title: 'Attendance rosters & the attendance log' },
       { id: 'gradebook', title: 'Gradebook & FDLE exam rules' },
       { id: 'discipline', title: 'Discipline tracker' },
+      { id: 'remediation', title: 'Remediation & Returns (returning cadets)' },
       { id: 'documents', title: 'Documents, letters & reports' },
       { id: 'printing', title: 'Printing guide' },
     ],
@@ -343,6 +344,15 @@ export function HowToPage() {
             dismissal</B> (a D alone triggers it). Note violations with type, level, date, and notes; the history shows as chips.
             At the dismissal threshold a <B>✉ Letter</B> shortcut appears for the dismissal paperwork.
           </p>
+        </Section>
+
+        <Section id="remediation" title="Remediation & Returns (returning cadets)" role="Staff">
+          <Tips items={[
+            <><B>Cadre → Remediation</B> tracks cadets who left a class incomplete — a <B>block failure</B> or an <B>injury</B> — and must return with a later class to finish. Coordinators and above only; instructors cannot see this module at all.</>,
+            <>Adding a cadet: pick their original class to load its roster, or type the name for classes that predate HEIMDALL. List each <B>block/course still owed</B> with hours, then set the <B>return class</B> once they&apos;re placed (the status flips to &quot;Return scheduled&quot; automatically).</>,
+            <>For injuries, record the <B>date injured</B>, the <B>next workers&apos;-comp follow-up</B> (overdue follow-ups flag red in the list), the <B>restrictions</B> given, and the <B>expected return date</B>.</>,
+            <>If the sponsoring agency has them working elsewhere in the meantime, check <B>Currently assigned within the agency</B> and record where, since when, and their immediate supervisor. A free-form notes field covers everything else at a glance.</>,
+          ]} />
         </Section>
 
         <Section id="documents" title="Documents, letters & reports" role="Staff">
