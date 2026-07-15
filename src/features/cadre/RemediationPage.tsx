@@ -18,6 +18,7 @@ import { Badge, Button, Field, Input, PageHeader, Select, TextArea } from '../..
 import { Modal } from '../../components/Modal';
 import { logAudit } from '../sessions/audit';
 import { lastFirst, rosterCompare } from './roster/rosterShared';
+import { useCurriculum } from '../../lib/curricula';
 
 const STATUS_META: Record<RemediationStatus, { label: string; tone: 'slate' | 'amber' | 'green' | 'red' | 'navy' }> = {
   awaiting: { label: 'Awaiting placement', tone: 'amber' },
@@ -115,7 +116,10 @@ export function RemediationPage() {
             <tbody className="divide-y divide-watch-50">
               {rows.map((r) => {
                 const open = r.status === 'awaiting' || r.status === 'scheduled';
-                const followUpOverdue = open && !!r.injury?.nextFollowUp && r.injury.nextFollowUp < today;
+                // A set return date means the WC track has an answer — the
+                // follow-up date stops counting as overdue.
+                const followUpOverdue =
+                  open && !!r.injury?.nextFollowUp && r.injury.nextFollowUp < today && !r.injury?.expectedReturn;
                 const totalHours = r.blocks.reduce((sum, b) => sum + (b.hours ?? 0), 0);
                 return (
                   <tr key={r.id} className={open ? '' : 'opacity-60'}>
@@ -135,7 +139,7 @@ export function RemediationPage() {
                                 {followUpOverdue ? ' — overdue' : ''}
                               </div>
                             )}
-                            {r.injury?.expectedReturn && <div>Expected return {fmtDay(r.injury.expectedReturn)}</div>}
+                            {r.injury?.expectedReturn && <div>Return date {fmtDay(r.injury.expectedReturn)}</div>}
                           </div>
                         </div>
                       ) : (
@@ -201,8 +205,9 @@ export function RemediationPage() {
   );
 }
 
-/** Blank editable block row. */
-const emptyBlock = (): { course: string; hours: string; note: string } => ({ course: '', hours: '', note: '' });
+/** Blank editable block row. `custom` = the coordinator chose "Custom…" over a curriculum course. */
+type BlockRow = { course: string; hours: string; custom: boolean };
+const emptyBlock = (): BlockRow => ({ course: '', hours: '', custom: false });
 
 function RemediationModal({ existing, onClose }: { existing: WithId<RemediationDoc> | null; onClose: () => void }) {
   const { firebaseUser, orgId } = useAuth();
@@ -213,9 +218,9 @@ function RemediationModal({ existing, onClose }: { existing: WithId<RemediationD
   const [personName, setPersonName] = useState(existing?.personName ?? '');
   const [originalClass, setOriginalClass] = useState(existing?.originalClass ?? '');
   const [reason, setReason] = useState<RemediationDoc['reason']>(existing?.reason ?? 'block_failure');
-  const [blocks, setBlocks] = useState<{ course: string; hours: string; note: string }[]>(
+  const [blocks, setBlocks] = useState<BlockRow[]>(
     existing?.blocks.length
-      ? existing.blocks.map((b) => ({ course: b.course, hours: b.hours != null ? String(b.hours) : '', note: b.note ?? '' }))
+      ? existing.blocks.map((b) => ({ course: b.course, hours: b.hours != null ? String(b.hours) : '', custom: false }))
       : [emptyBlock()]
   );
   const [makeupAcademyId, setMakeupAcademyId] = useState(existing?.makeupAcademyId ?? '');
@@ -246,6 +251,11 @@ function RemediationModal({ existing, onClose }: { existing: WithId<RemediationD
     [academies]
   );
   const rosterSorted = useMemo(() => [...sourceRoster].sort(rosterCompare), [sourceRoster]);
+  // The original class's curriculum drives the blocks dropdown (hours pre-fill
+  // from the FDLE minimums). Manual/pre-HEIMDALL entries fall back to free text.
+  const sourceAcademy = academies.find((a) => a.id === sourceClassId);
+  const { data: curriculum } = useCurriculum(sourceAcademy?.discipline ?? null);
+  const curriculumCourses = curriculum?.courses ?? [];
 
   function pickSourceClass(id: string) {
     setSourceClassId(id);
@@ -268,8 +278,18 @@ function RemediationModal({ existing, onClose }: { existing: WithId<RemediationD
     if (!id && status === 'scheduled') setStatus('awaiting');
   }
 
-  const setBlock = (i: number, patch: Partial<{ course: string; hours: string; note: string }>) =>
+  const setBlock = (i: number, patch: Partial<BlockRow>) =>
     setBlocks((prev) => prev.map((b, idx) => (idx === i ? { ...b, ...patch } : b)));
+
+  /** Dropdown choice for a row: a curriculum course by name, Custom, or empty. */
+  function pickBlockCourse(i: number, value: string) {
+    if (value === '__custom__') {
+      setBlock(i, { custom: true });
+      return;
+    }
+    const c = curriculumCourses.find((x) => x.name === value);
+    setBlock(i, { custom: false, course: value, hours: c ? String(c.minHours) : '' });
+  }
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -280,7 +300,6 @@ function RemediationModal({ existing, onClose }: { existing: WithId<RemediationD
       .map((b) => ({
         course: b.course.trim(),
         ...(b.hours.trim() && !Number.isNaN(Number(b.hours)) ? { hours: Number(b.hours) } : {}),
-        ...(b.note.trim() ? { note: b.note.trim() } : {}),
       }));
     setBusy(true);
     setError(null);
@@ -410,7 +429,7 @@ function RemediationModal({ existing, onClose }: { existing: WithId<RemediationD
               <Field label="Next WC follow-up">
                 <Input type="date" value={nextFollowUp} onChange={(e) => setNextFollowUp(e.target.value)} />
               </Field>
-              <Field label="Expected return">
+              <Field label="Return date" hint="Setting this clears the overdue follow-up flag.">
                 <Input type="date" value={expectedReturn} onChange={(e) => setExpectedReturn(e.target.value)} />
               </Field>
             </div>
@@ -424,34 +443,59 @@ function RemediationModal({ existing, onClose }: { existing: WithId<RemediationD
         <div className="rounded-md border border-watch-100 bg-watch-50/50 p-3">
           <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-watch-600">Blocks / courses to make up</div>
           <div className="space-y-2">
-            {blocks.map((b, i) => (
-              <div key={i} className="flex flex-wrap items-center gap-2">
-                <Input
-                  className="min-w-0 flex-1"
-                  placeholder="Course / block (e.g. Criminal Justice Defensive Tactics)"
-                  value={b.course}
-                  onChange={(e) => setBlock(i, { course: e.target.value })}
-                />
-                <Input
-                  type="number"
-                  min={0}
-                  step="0.5"
-                  className="w-24"
-                  placeholder="Hours"
-                  value={b.hours}
-                  onChange={(e) => setBlock(i, { hours: e.target.value })}
-                />
-                <Input
-                  className="w-40"
-                  placeholder="Note (optional)"
-                  value={b.note}
-                  onChange={(e) => setBlock(i, { note: e.target.value })}
-                />
-                <Button type="button" variant="ghost" className="text-red-700" onClick={() => setBlocks((p) => p.filter((_, idx) => idx !== i))}>
-                  ✕
-                </Button>
-              </div>
-            ))}
+            {blocks.map((b, i) => {
+              // A stored course that isn't in the curriculum (or an explicit
+              // "Custom…" choice) renders as free text.
+              const isCustom = b.custom || (!!b.course && !curriculumCourses.some((c) => c.name === b.course));
+              return (
+                <div key={i} className="flex flex-wrap items-center gap-2">
+                  {curriculumCourses.length > 0 ? (
+                    <>
+                      <Select
+                        className="min-w-0 flex-1"
+                        value={isCustom ? '__custom__' : b.course}
+                        onChange={(e) => pickBlockCourse(i, e.target.value)}
+                      >
+                        <option value="">— select a course —</option>
+                        {curriculumCourses.map((c) => (
+                          <option key={c.name} value={c.name}>
+                            {c.cjk ? `${c.cjk} — ` : ''}{c.name} ({c.minHours} hrs)
+                          </option>
+                        ))}
+                        <option value="__custom__">Custom…</option>
+                      </Select>
+                      {isCustom && (
+                        <Input
+                          className="min-w-0 flex-1"
+                          placeholder="Custom course / block name"
+                          value={b.course}
+                          onChange={(e) => setBlock(i, { course: e.target.value })}
+                        />
+                      )}
+                    </>
+                  ) : (
+                    <Input
+                      className="min-w-0 flex-1"
+                      placeholder="Course / block (pick the original class above to choose from its curriculum)"
+                      value={b.course}
+                      onChange={(e) => setBlock(i, { course: e.target.value })}
+                    />
+                  )}
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.5"
+                    className="w-24"
+                    placeholder="Hours"
+                    value={b.hours}
+                    onChange={(e) => setBlock(i, { hours: e.target.value })}
+                  />
+                  <Button type="button" variant="ghost" className="text-red-700" onClick={() => setBlocks((p) => p.filter((_, idx) => idx !== i))}>
+                    ✕
+                  </Button>
+                </div>
+              );
+            })}
           </div>
           <Button type="button" variant="ghost" className="mt-2" onClick={() => setBlocks((p) => [...p, emptyBlock()])}>
             + Add block

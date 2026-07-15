@@ -349,8 +349,8 @@ export function HowToPage() {
         <Section id="remediation" title="Remediation & Returns (returning cadets)" role="Staff">
           <Tips items={[
             <><B>Cadre → Remediation</B> tracks cadets who left a class incomplete — a <B>block failure</B> or an <B>injury</B> — and must return with a later class to finish. Coordinators and above only; instructors cannot see this module at all.</>,
-            <>Adding a cadet: pick their original class to load its roster, or type the name for classes that predate HEIMDALL. List each <B>block/course still owed</B> with hours, then set the <B>return class</B> once they&apos;re placed (the status flips to &quot;Return scheduled&quot; automatically).</>,
-            <>For injuries, record the <B>date injured</B>, the <B>next workers&apos;-comp follow-up</B> (overdue follow-ups flag red in the list), the <B>restrictions</B> given, and the <B>expected return date</B>.</>,
+            <>Adding a cadet: pick their original class to load its roster, or type the name for classes that predate HEIMDALL. Blocks still owed are picked <B>from that class&apos;s curriculum</B> (hours pre-fill from the FDLE minimums; a Custom option covers anything else); set the <B>return class</B> once they&apos;re placed (the status flips to &quot;Return scheduled&quot; automatically).</>,
+            <>For injuries, record the <B>date injured</B>, the <B>next workers&apos;-comp follow-up</B>, the <B>restrictions</B> given, and the <B>return date</B>. An overdue follow-up flags red in the list — until a return date is set, which clears it.</>,
             <>If the sponsoring agency has them working elsewhere in the meantime, check <B>Currently assigned within the agency</B> and record where, since when, and their immediate supervisor. A free-form notes field covers everything else at a glance.</>,
           ]} />
         </Section>
