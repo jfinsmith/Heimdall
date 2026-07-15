@@ -194,6 +194,9 @@ export function RemediationPage() {
                               </div>
                             )}
                             {r.injury?.expectedReturn && <div>Return date {fmtDay(r.injury.expectedReturn)}</div>}
+                            {r.injury?.restrictions && (
+                              <div className="max-w-[18rem] text-red-700">{r.injury.restrictions}</div>
+                            )}
                           </div>
                         </div>
                       ) : (
