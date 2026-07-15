@@ -352,6 +352,7 @@ export function HowToPage() {
             <>Adding a cadet: pick their original class to load its roster, or type the name for classes that predate HEIMDALL. Blocks still owed are picked <B>from that class&apos;s curriculum</B> (hours pre-fill from the FDLE minimums; a Custom option covers anything else); set the <B>return class</B> once they&apos;re placed (the status flips to &quot;Return scheduled&quot; automatically).</>,
             <>For injuries, record the <B>date injured</B>, the <B>next workers&apos;-comp follow-up</B>, the <B>restrictions</B> given, and the <B>return date</B>. An overdue follow-up flags red in the list — until a return date is set, which clears it.</>,
             <>If the sponsoring agency has them working elsewhere in the meantime, check <B>Currently assigned within the agency</B> and record where, since when, and their immediate supervisor. A free-form notes field covers everything else at a glance.</>,
+            <>Done with a case? <B>Resolve</B> archives it — out of the working list (under the <B>Archived</B> filter), no more follow-up flags, restorable any time. <B>Delete</B> (on archived rows, or inside Edit) permanently removes a case that shouldn&apos;t have been tracked.</>,
           ]} />
         </Section>
 

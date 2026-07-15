@@ -999,6 +999,9 @@ export interface RemediationDoc {
   injury?: { injuredOn?: string; nextFollowUp?: string; restrictions?: string; expectedReturn?: string } | null;
   /** Free-form at-a-glance notes. */
   notes?: string;
+  /** Resolved cases are archived: hidden from the working list (own filter),
+   *  no longer flag overdue follow-ups, restorable any time. */
+  archived?: boolean;
   createdBy: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;

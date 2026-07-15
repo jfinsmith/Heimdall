@@ -41,22 +41,26 @@ function todayStr(): string {
 }
 
 export function RemediationPage() {
+  const { firebaseUser } = useAuth();
   const { data: cases, loading } = useCollection<RemediationDoc>('remediations');
-  const [statusFilter, setStatusFilter] = useState<RemediationStatus | 'all'>('all');
+  const [statusFilter, setStatusFilter] = useState<RemediationStatus | 'all' | 'archived'>('all');
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<WithId<RemediationDoc> | 'new' | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
 
   const today = todayStr();
+  const active = useMemo(() => cases.filter((r) => !r.archived), [cases]);
+  const archivedCount = cases.length - active.length;
   const counts = useMemo(() => {
     const c: Record<string, number> = {};
-    for (const r of cases) c[r.status] = (c[r.status] ?? 0) + 1;
+    for (const r of active) c[r.status] = (c[r.status] ?? 0) + 1;
     return c;
-  }, [cases]);
+  }, [active]);
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
     return cases
-      .filter((r) => (statusFilter === 'all' ? true : r.status === statusFilter))
+      .filter((r) => (statusFilter === 'archived' ? !!r.archived : !r.archived && (statusFilter === 'all' || r.status === statusFilter)))
       .filter((r) => !q || r.personName.toLowerCase().includes(q) || (r.originalClass ?? '').toLowerCase().includes(q) || (r.makeupClass ?? '').toLowerCase().includes(q))
       .sort((a, b) => {
         // Open cases first (awaiting, then scheduled), closed at the bottom;
@@ -66,6 +70,51 @@ export function RemediationPage() {
         return lastFirst(a.personName).localeCompare(lastFirst(b.personName));
       });
   }, [cases, statusFilter, search]);
+
+  /** Resolve = archive: out of the working list, no more follow-up flags. An
+   *  open status is stamped completed so the record reads correctly later. */
+  async function resolve(r: WithId<RemediationDoc>) {
+    if (!window.confirm(`Mark ${r.personName} as resolved and archive the case? It moves under the Archived filter and stops flagging follow-ups. You can restore it any time.`)) return;
+    setBusy(r.id);
+    try {
+      const open = r.status === 'awaiting' || r.status === 'scheduled';
+      await updateDoc(doc(db, 'remediations', r.id), {
+        archived: true,
+        ...(open ? { status: 'completed' } : {}),
+        updatedAt: serverTimestamp(),
+      });
+      await logAudit(firebaseUser!.uid, 'remediation.resolve', 'remediation', r.id, `Resolved & archived remediation case for ${r.personName}`);
+    } catch (err) {
+      window.alert(`Could not resolve: ${err instanceof Error ? err.message : 'unknown error'}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function restore(r: WithId<RemediationDoc>) {
+    setBusy(r.id);
+    try {
+      await updateDoc(doc(db, 'remediations', r.id), { archived: false, updatedAt: serverTimestamp() });
+      await logAudit(firebaseUser!.uid, 'remediation.restore', 'remediation', r.id, `Restored remediation case for ${r.personName}`);
+    } catch (err) {
+      window.alert(`Could not restore: ${err instanceof Error ? err.message : 'unknown error'}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function deleteCase(r: WithId<RemediationDoc>) {
+    if (!window.confirm(`Permanently delete ${r.personName}'s case? This cannot be undone (their academy records are untouched). Use Resolve instead if you just want it out of the way.`)) return;
+    setBusy(r.id);
+    try {
+      await deleteDoc(doc(db, 'remediations', r.id));
+      await logAudit(firebaseUser!.uid, 'remediation.delete', 'remediation', r.id, `Deleted remediation case for ${r.personName}`);
+    } catch (err) {
+      window.alert(`Could not delete: ${err instanceof Error ? err.message : 'unknown error'}`);
+    } finally {
+      setBusy(null);
+    }
+  }
 
   return (
     <div>
@@ -77,13 +126,16 @@ export function RemediationPage() {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <Button variant={statusFilter === 'all' ? 'secondary' : 'ghost'} onClick={() => setStatusFilter('all')}>
-            All ({cases.length})
+            All ({active.length})
           </Button>
           {STATUS_ORDER.map((s) => (
             <Button key={s} variant={statusFilter === s ? 'secondary' : 'ghost'} onClick={() => setStatusFilter(s)}>
               {STATUS_META[s].label} ({counts[s] ?? 0})
             </Button>
           ))}
+          <Button variant={statusFilter === 'archived' ? 'secondary' : 'ghost'} onClick={() => setStatusFilter('archived')}>
+            Archived ({archivedCount})
+          </Button>
         </div>
         <div className="flex items-center gap-2">
           <Input type="search" placeholder="Search name or class…" value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -97,7 +149,9 @@ export function RemediationPage() {
         <div className="rounded-lg border border-watch-100 bg-white p-8 text-center text-sm text-slate-500 shadow-sm">
           {cases.length === 0
             ? 'No cadets are being tracked yet. Add one when a block failure or injury sends someone home to return with a later class.'
-            : 'Nothing matches the current filter.'}
+            : statusFilter === 'archived'
+              ? 'No archived cases yet — Resolve a case to move it here.'
+              : 'Nothing matches the current filter.'}
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-watch-100 bg-white shadow-sm">
@@ -180,15 +234,26 @@ export function RemediationPage() {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <Badge tone={STATUS_META[r.status].tone}>{STATUS_META[r.status].label}</Badge>
+                      <span className="inline-flex flex-wrap gap-1">
+                        <Badge tone={STATUS_META[r.status].tone}>{STATUS_META[r.status].label}</Badge>
+                        {r.archived && <Badge tone="slate">Archived</Badge>}
+                      </span>
                       {r.notes?.trim() && (
                         <div className="mt-1 max-w-[16rem] truncate text-xs text-slate-500" title={r.notes}>
                           {r.notes}
                         </div>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      <Button variant="ghost" onClick={() => setEditing(r)}>Edit</Button>
+                    <td className="whitespace-nowrap px-4 py-3 text-right">
+                      {r.archived ? (
+                        <>
+                          <Button variant="ghost" disabled={busy === r.id} onClick={() => restore(r)}>Restore</Button>
+                          <Button variant="ghost" className="text-red-700" disabled={busy === r.id} onClick={() => deleteCase(r)}>Delete</Button>
+                        </>
+                      ) : (
+                        <Button variant="ghost" className="text-green-700" disabled={busy === r.id} onClick={() => resolve(r)}>Resolve</Button>
+                      )}
+                      <Button variant="ghost" disabled={busy === r.id} onClick={() => setEditing(r)}>Edit</Button>
                     </td>
                   </tr>
                 );
