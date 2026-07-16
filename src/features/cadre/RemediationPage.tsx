@@ -1,14 +1,16 @@
 /**
  * Remediation tracker — STAFF-ONLY (coordinator and up; instructors can't
  * even read the collection, see firestore.rules /remediations). Tracks cadets
- * who left an academy class incomplete — a block failure or an injury — and
- * must return with a later class to finish. Per case: the blocks still owed,
- * the class they'll return with, an optional agency assignment in the
- * meantime (location / date / supervisor), workers'-comp details for
- * injuries (injury date, next follow-up, restrictions, expected return),
- * and free-form notes.
+ * who left an academy class incomplete — a block failure or an injury — or
+ * are crossing over between disciplines, and must attend a later class to
+ * finish. Per case: the blocks still owed (check-off pills; crossovers
+ * auto-fill from the FDLE crossover program), the class they'll return with,
+ * an optional agency assignment in the meantime (location / date /
+ * supervisor), workers'-comp details for injuries (injury date, next
+ * follow-up, restrictions, return date), free-form notes, and a resolve
+ * outcome (full duty / resigned / transferred) that archives the case.
  */
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { addDoc, collection, deleteDoc, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useCollection, type WithId } from '../../lib/firestore';
@@ -28,6 +30,23 @@ const STATUS_META: Record<RemediationStatus, { label: string; tone: 'slate' | 'a
 };
 const STATUS_ORDER: RemediationStatus[] = ['awaiting', 'scheduled', 'completed', 'separated'];
 
+const REASON_META: Record<RemediationDoc['reason'], { label: string; tone: 'slate' | 'amber' | 'green' | 'red' | 'navy' }> = {
+  block_failure: { label: 'Block failure', tone: 'amber' },
+  injury: { label: 'Injury', tone: 'red' },
+  crossover: { label: 'Crossover', tone: 'navy' },
+};
+
+const OUTCOME_META: Record<NonNullable<RemediationDoc['outcome']>, { label: string; tone: 'slate' | 'amber' | 'green' | 'red' | 'navy'; hint: string }> = {
+  full_duty: { label: 'Returned to full duty', tone: 'green', hint: 'Finished their make-up work (or recovered) — back on the job.' },
+  resigned: { label: 'Resigned', tone: 'slate', hint: 'Left the agency; no return expected.' },
+  transferred: { label: 'Transferred', tone: 'navy', hint: 'Moved to another agency or program.' },
+};
+
+const DIRECTION_LABEL: Record<'co_to_le' | 'le_to_co', string> = {
+  co_to_le: 'Corrections → Law Enforcement',
+  le_to_co: 'Law Enforcement → Corrections',
+};
+
 /** yyyy-mm-dd → M/D/YYYY without Date() timezone pitfalls. */
 function fmtDay(s?: string): string {
   if (!s) return '—';
@@ -46,6 +65,7 @@ export function RemediationPage() {
   const [statusFilter, setStatusFilter] = useState<RemediationStatus | 'all' | 'archived'>('all');
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<WithId<RemediationDoc> | 'new' | null>(null);
+  const [resolving, setResolving] = useState<WithId<RemediationDoc> | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
   const today = todayStr();
@@ -71,21 +91,23 @@ export function RemediationPage() {
       });
   }, [cases, statusFilter, search]);
 
-  /** Resolve = archive: out of the working list, no more follow-up flags. An
-   *  open status is stamped completed so the record reads correctly later. */
-  async function resolve(r: WithId<RemediationDoc>) {
-    if (!window.confirm(`Mark ${r.personName} as resolved and archive the case? It moves under the Archived filter and stops flagging follow-ups. You can restore it any time.`)) return;
+  /** Check a block off (or back on) straight from the list. */
+  async function toggleBlock(r: WithId<RemediationDoc>, index: number) {
     setBusy(r.id);
     try {
-      const open = r.status === 'awaiting' || r.status === 'scheduled';
-      await updateDoc(doc(db, 'remediations', r.id), {
-        archived: true,
-        ...(open ? { status: 'completed' } : {}),
-        updatedAt: serverTimestamp(),
+      const next = r.blocks.map((b, i) => {
+        if (i !== index) return b;
+        const { completed: _drop, ...rest } = b;
+        return b.completed ? rest : { ...rest, completed: true };
       });
-      await logAudit(firebaseUser!.uid, 'remediation.resolve', 'remediation', r.id, `Resolved & archived remediation case for ${r.personName}`);
+      await updateDoc(doc(db, 'remediations', r.id), { blocks: next, updatedAt: serverTimestamp() });
+      const b = r.blocks[index];
+      await logAudit(
+        firebaseUser!.uid, 'remediation.update', 'remediation', r.id,
+        `${b.completed ? 'Un-checked' : 'Completed'} ${b.course} for ${r.personName}`
+      );
     } catch (err) {
-      window.alert(`Could not resolve: ${err instanceof Error ? err.message : 'unknown error'}`);
+      window.alert(`Could not update the block: ${err instanceof Error ? err.message : 'unknown error'}`);
     } finally {
       setBusy(null);
     }
@@ -120,8 +142,9 @@ export function RemediationPage() {
     <div>
       <PageHeader kicker="Cadre" title="Remediation & Returns" />
       <p className="-mt-4 mb-4 text-sm text-slate-500">
-        Cadets who left a class with a block failure or injury and are returning with a later class to
-        finish. Visible to coordinators and above only — instructors never see this page.
+        Cadets finishing with a later class — after a block failure, an injury, or a crossover between
+        disciplines. Click a block pill to check it off. Visible to coordinators and above only —
+        instructors never see this page.
       </p>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
@@ -182,25 +205,24 @@ export function RemediationPage() {
                       <div className="text-xs text-slate-500">from {r.originalClass || '—'}</div>
                     </td>
                     <td className="px-4 py-3">
-                      {r.reason === 'injury' ? (
-                        <div>
-                          <Badge tone="red">Injury</Badge>
-                          <div className="mt-1 space-y-0.5 text-xs text-slate-500">
-                            {r.injury?.injuredOn && <div>Injured {fmtDay(r.injury.injuredOn)}</div>}
-                            {r.injury?.nextFollowUp && (
-                              <div className={followUpOverdue ? 'font-semibold text-red-700' : ''}>
-                                WC follow-up {fmtDay(r.injury.nextFollowUp)}
-                                {followUpOverdue ? ' — overdue' : ''}
-                              </div>
-                            )}
-                            {r.injury?.expectedReturn && <div>Return date {fmtDay(r.injury.expectedReturn)}</div>}
-                            {r.injury?.restrictions && (
-                              <div className="max-w-[18rem] text-red-700">{r.injury.restrictions}</div>
-                            )}
-                          </div>
+                      <Badge tone={REASON_META[r.reason].tone}>{REASON_META[r.reason].label}</Badge>
+                      {r.reason === 'crossover' && r.crossoverDirection && (
+                        <div className="mt-1 text-xs text-slate-500">{DIRECTION_LABEL[r.crossoverDirection]}</div>
+                      )}
+                      {r.reason === 'injury' && (
+                        <div className="mt-1 space-y-0.5 text-xs text-slate-500">
+                          {r.injury?.injuredOn && <div>Injured {fmtDay(r.injury.injuredOn)}</div>}
+                          {r.injury?.nextFollowUp && (
+                            <div className={followUpOverdue ? 'font-semibold text-red-700' : ''}>
+                              WC follow-up {fmtDay(r.injury.nextFollowUp)}
+                              {followUpOverdue ? ' — overdue' : ''}
+                            </div>
+                          )}
+                          {r.injury?.expectedReturn && <div>Return date {fmtDay(r.injury.expectedReturn)}</div>}
+                          {r.injury?.restrictions && (
+                            <div className="max-w-[18rem] text-red-700">{r.injury.restrictions}</div>
+                          )}
                         </div>
-                      ) : (
-                        <Badge tone="amber">Block failure</Badge>
                       )}
                     </td>
                     <td className="px-4 py-3">
@@ -208,10 +230,35 @@ export function RemediationPage() {
                         <span className="text-slate-400">—</span>
                       ) : (
                         <div>
-                          <div className="text-watch-800">
-                            {r.blocks.map((b) => b.course).join(', ')}
+                          {/* One pill per block — click to check it off. ▲ red =
+                              high-liability, green ✓ = completed. */}
+                          <div className="flex max-w-lg flex-wrap gap-1.5">
+                            {r.blocks.map((b, i) => (
+                              <button
+                                key={i}
+                                type="button"
+                                disabled={!!r.archived || busy === r.id}
+                                onClick={() => toggleBlock(r, i)}
+                                title={r.archived ? undefined : b.completed ? 'Completed — click to un-check' : 'Click when the block is completed'}
+                                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset transition ${
+                                  b.completed
+                                    ? 'bg-green-50 text-green-700 ring-green-300'
+                                    : b.highLiability
+                                      ? 'bg-red-50 text-red-700 ring-red-200'
+                                      : 'bg-watch-50 text-watch-700 ring-watch-200'
+                                } ${r.archived ? '' : 'hover:ring-2'}`}
+                              >
+                                {b.completed ? '✓' : b.highLiability ? '▲' : null}
+                                <span className={b.completed ? 'line-through opacity-70' : ''}>{b.course}</span>
+                              </button>
+                            ))}
                           </div>
-                          {totalHours > 0 && <div className="text-xs text-slate-500">{totalHours} hrs total</div>}
+                          <div className="mt-1.5 text-xs text-slate-500">
+                            {r.blocks.some((b) => b.completed) && (
+                              <>{r.blocks.filter((b) => b.completed).length}/{r.blocks.length} done · </>
+                            )}
+                            {totalHours > 0 && <>{totalHours} hrs total</>}
+                          </div>
                         </div>
                       )}
                     </td>
@@ -239,6 +286,7 @@ export function RemediationPage() {
                     <td className="px-4 py-3">
                       <span className="inline-flex flex-wrap gap-1">
                         <Badge tone={STATUS_META[r.status].tone}>{STATUS_META[r.status].label}</Badge>
+                        {r.outcome && <Badge tone={OUTCOME_META[r.outcome].tone}>{OUTCOME_META[r.outcome].label}</Badge>}
                         {r.archived && <Badge tone="slate">Archived</Badge>}
                       </span>
                       {r.notes?.trim() && (
@@ -254,7 +302,7 @@ export function RemediationPage() {
                           <Button variant="ghost" className="text-red-700" disabled={busy === r.id} onClick={() => deleteCase(r)}>Delete</Button>
                         </>
                       ) : (
-                        <Button variant="ghost" className="text-green-700" disabled={busy === r.id} onClick={() => resolve(r)}>Resolve</Button>
+                        <Button variant="ghost" className="text-green-700" disabled={busy === r.id} onClick={() => setResolving(r)}>Resolve</Button>
                       )}
                       <Button variant="ghost" disabled={busy === r.id} onClick={() => setEditing(r)}>Edit</Button>
                     </td>
@@ -269,13 +317,79 @@ export function RemediationPage() {
       {editing && (
         <RemediationModal existing={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />
       )}
+      {resolving && <ResolveModal caseDoc={resolving} onClose={() => setResolving(null)} />}
     </div>
   );
 }
 
-/** Blank editable block row. `custom` = the coordinator chose "Custom…" over a curriculum course. */
-type BlockRow = { course: string; hours: string; custom: boolean };
-const emptyBlock = (): BlockRow => ({ course: '', hours: '', custom: false });
+/**
+ * Resolving asks HOW the case ended — the outcome drives the final status
+ * (full duty → Completed, resigned/transferred → Separated) and shows as a
+ * badge on the archived row.
+ */
+function ResolveModal({ caseDoc, onClose }: { caseDoc: WithId<RemediationDoc>; onClose: () => void }) {
+  const { firebaseUser } = useAuth();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function finish(outcome: NonNullable<RemediationDoc['outcome']>) {
+    setBusy(true);
+    setError(null);
+    try {
+      await updateDoc(doc(db, 'remediations', caseDoc.id), {
+        archived: true,
+        outcome,
+        status: outcome === 'full_duty' ? 'completed' : 'separated',
+        updatedAt: serverTimestamp(),
+      });
+      await logAudit(
+        firebaseUser!.uid, 'remediation.resolve', 'remediation', caseDoc.id,
+        `Resolved ${caseDoc.personName}: ${OUTCOME_META[outcome].label} (archived)`
+      );
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not resolve.');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open onClose={busy ? () => {} : onClose} title={`Resolve — ${caseDoc.personName}`}>
+      <div className="space-y-4 text-sm">
+        {error && <div className="rounded-md bg-red-50 px-3 py-2 text-red-800">{error}</div>}
+        <p className="text-slate-600">
+          How did this case end? The case is archived (under the Archived filter, restorable any time) and
+          stops flagging follow-ups.
+        </p>
+        <div className="space-y-2">
+          {(Object.keys(OUTCOME_META) as NonNullable<RemediationDoc['outcome']>[]).map((o) => (
+            <button
+              key={o}
+              type="button"
+              disabled={busy}
+              onClick={() => finish(o)}
+              className="flex w-full items-center justify-between gap-3 rounded-md border border-watch-100 bg-white px-3 py-2.5 text-left hover:border-bifrost-300 hover:bg-watch-50 disabled:opacity-50"
+            >
+              <span>
+                <span className="font-medium text-watch-900">{OUTCOME_META[o].label}</span>
+                <span className="block text-xs text-slate-500">{OUTCOME_META[o].hint}</span>
+              </span>
+              <Badge tone={OUTCOME_META[o].tone}>{o === 'full_duty' ? 'Completed' : 'Separated'}</Badge>
+            </button>
+          ))}
+        </div>
+        <div className="flex justify-end">
+          <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/** Blank editable block row. `custom` = the coordinator chose "Custom…" over a curriculum course.
+ *  Hours ride along invisibly (stamped from the curriculum) — shown only on the list. */
+type BlockRow = { course: string; hours: string; custom: boolean; highLiability: boolean; completed: boolean };
+const emptyBlock = (): BlockRow => ({ course: '', hours: '', custom: false, highLiability: false, completed: false });
 
 function RemediationModal({ existing, onClose }: { existing: WithId<RemediationDoc> | null; onClose: () => void }) {
   const { firebaseUser, orgId } = useAuth();
@@ -286,9 +400,16 @@ function RemediationModal({ existing, onClose }: { existing: WithId<RemediationD
   const [personName, setPersonName] = useState(existing?.personName ?? '');
   const [originalClass, setOriginalClass] = useState(existing?.originalClass ?? '');
   const [reason, setReason] = useState<RemediationDoc['reason']>(existing?.reason ?? 'block_failure');
+  const [direction, setDirection] = useState<'co_to_le' | 'le_to_co'>(existing?.crossoverDirection ?? 'co_to_le');
   const [blocks, setBlocks] = useState<BlockRow[]>(
     existing?.blocks.length
-      ? existing.blocks.map((b) => ({ course: b.course, hours: b.hours != null ? String(b.hours) : '', custom: false }))
+      ? existing.blocks.map((b) => ({
+          course: b.course,
+          hours: b.hours != null ? String(b.hours) : '',
+          custom: false,
+          highLiability: !!b.highLiability,
+          completed: !!b.completed,
+        }))
       : [emptyBlock()]
   );
   const [makeupAcademyId, setMakeupAcademyId] = useState(existing?.makeupAcademyId ?? '');
@@ -319,11 +440,36 @@ function RemediationModal({ existing, onClose }: { existing: WithId<RemediationD
     [academies]
   );
   const rosterSorted = useMemo(() => [...sourceRoster].sort(rosterCompare), [sourceRoster]);
-  // The original class's curriculum drives the blocks dropdown (hours pre-fill
-  // from the FDLE minimums). Manual/pre-HEIMDALL entries fall back to free text.
+  // The original class's curriculum drives the blocks dropdown (hours + the
+  // high-liability flag ride along from the FDLE course). Crossover cases use
+  // the FDLE crossover program for the chosen direction instead. Manual /
+  // pre-HEIMDALL entries fall back to free text.
   const sourceAcademy = academies.find((a) => a.id === sourceClassId);
-  const { data: curriculum } = useCurriculum(sourceAcademy?.discipline ?? null);
-  const curriculumCourses = curriculum?.courses ?? [];
+  const { data: sourceCurriculum } = useCurriculum(sourceAcademy?.discipline ?? null);
+  const { data: coToLe } = useCurriculum('co_to_le');
+  const { data: leToCo } = useCurriculum('le_to_co');
+  const crossoverCurriculum = direction === 'co_to_le' ? coToLe : leToCo;
+  const curriculum = reason === 'crossover' ? crossoverCurriculum : sourceCurriculum;
+  const curriculumCourses = useMemo(() => curriculum?.courses ?? [], [curriculum]);
+
+  // Crossover auto-population: whenever the reason is crossover and the rows
+  // are still blank (fresh pick, direction change, or the program doc just
+  // arrived), load the FDLE crossover course list. Never clobbers rows the
+  // coordinator has already filled in (e.g. editing a saved case).
+  useEffect(() => {
+    if (reason !== 'crossover' || !crossoverCurriculum) return;
+    setBlocks((prev) =>
+      prev.some((b) => b.course.trim())
+        ? prev
+        : crossoverCurriculum.courses.map((c) => ({
+            course: c.name,
+            hours: String(c.minHours),
+            custom: false,
+            highLiability: !!c.highLiability,
+            completed: false,
+          }))
+    );
+  }, [reason, direction, crossoverCurriculum]);
 
   function pickSourceClass(id: string) {
     setSourceClassId(id);
@@ -352,11 +498,27 @@ function RemediationModal({ existing, onClose }: { existing: WithId<RemediationD
   /** Dropdown choice for a row: a curriculum course by name, Custom, or empty. */
   function pickBlockCourse(i: number, value: string) {
     if (value === '__custom__') {
-      setBlock(i, { custom: true });
+      setBlock(i, { custom: true, highLiability: false });
       return;
     }
     const c = curriculumCourses.find((x) => x.name === value);
-    setBlock(i, { custom: false, course: value, hours: c ? String(c.minHours) : '' });
+    setBlock(i, {
+      custom: false,
+      course: value,
+      hours: c ? String(c.minHours) : '',
+      highLiability: !!c?.highLiability,
+    });
+  }
+
+  /** Switching reason to/from crossover resets blank-slate rows so the
+   *  crossover effect (or a fresh manual list) can take over. */
+  function pickReason(next: RemediationDoc['reason']) {
+    setReason(next);
+    if (next === 'crossover' || reason === 'crossover') setBlocks([emptyBlock()]);
+  }
+  function pickDirection(next: 'co_to_le' | 'le_to_co') {
+    setDirection(next);
+    setBlocks([emptyBlock()]); // repopulated by the crossover effect
   }
 
   async function save(e: React.FormEvent) {
@@ -368,6 +530,8 @@ function RemediationModal({ existing, onClose }: { existing: WithId<RemediationD
       .map((b) => ({
         course: b.course.trim(),
         ...(b.hours.trim() && !Number.isNaN(Number(b.hours)) ? { hours: Number(b.hours) } : {}),
+        ...(b.highLiability ? { highLiability: true } : {}),
+        ...(b.completed ? { completed: true } : {}),
       }));
     setBusy(true);
     setError(null);
@@ -380,6 +544,7 @@ function RemediationModal({ existing, onClose }: { existing: WithId<RemediationD
       sourceMemberId: sourceMemberId || null,
       originalClass: originalClass.trim(),
       reason,
+      crossoverDirection: reason === 'crossover' ? direction : null,
       blocks: cleanBlocks,
       makeupAcademyId: makeupAcademyId || null,
       makeupClass: makeupClass.trim(),
@@ -412,7 +577,7 @@ function RemediationModal({ existing, onClose }: { existing: WithId<RemediationD
           createdBy: firebaseUser!.uid,
           createdAt: serverTimestamp(),
         });
-        await logAudit(firebaseUser!.uid, 'remediation.create', 'remediation', ref.id, `Started tracking ${name} (${originalClass || 'no class'}, ${reason === 'injury' ? 'injury' : 'block failure'})`);
+        await logAudit(firebaseUser!.uid, 'remediation.create', 'remediation', ref.id, `Started tracking ${name} (${originalClass || 'no class'}, ${REASON_META[reason].label.toLowerCase()})`);
       }
       onClose();
     } catch (err) {
@@ -472,9 +637,10 @@ function RemediationModal({ existing, onClose }: { existing: WithId<RemediationD
         {/* Why they're here */}
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Reason">
-            <Select value={reason} onChange={(e) => setReason(e.target.value as RemediationDoc['reason'])}>
+            <Select value={reason} onChange={(e) => pickReason(e.target.value as RemediationDoc['reason'])}>
               <option value="block_failure">Block failure</option>
               <option value="injury">Injury</option>
+              <option value="crossover">Crossover</option>
             </Select>
           </Field>
           <Field label="Status">
@@ -484,6 +650,18 @@ function RemediationModal({ existing, onClose }: { existing: WithId<RemediationD
               ))}
             </Select>
           </Field>
+          {reason === 'crossover' && (
+            <Field
+              label="Crossover direction"
+              hint="Auto-fills the blocks below with the FDLE crossover program's courses."
+              className="sm:col-span-2"
+            >
+              <Select value={direction} onChange={(e) => pickDirection(e.target.value as 'co_to_le' | 'le_to_co')}>
+                <option value="co_to_le">{DIRECTION_LABEL.co_to_le}</option>
+                <option value="le_to_co">{DIRECTION_LABEL.le_to_co} (rare)</option>
+              </Select>
+            </Field>
+          )}
         </div>
 
         {/* Injury / workers' comp — only when the reason is an injury */}
@@ -527,7 +705,7 @@ function RemediationModal({ existing, onClose }: { existing: WithId<RemediationD
                         <option value="">— select a course —</option>
                         {curriculumCourses.map((c) => (
                           <option key={c.name} value={c.name}>
-                            {c.cjk ? `${c.cjk} — ` : ''}{c.name} ({c.minHours} hrs)
+                            {c.highLiability ? '▲ ' : ''}{c.cjk ? `${c.cjk} — ` : ''}{c.name}
                           </option>
                         ))}
                         <option value="__custom__">Custom…</option>
@@ -549,15 +727,10 @@ function RemediationModal({ existing, onClose }: { existing: WithId<RemediationD
                       onChange={(e) => setBlock(i, { course: e.target.value })}
                     />
                   )}
-                  <Input
-                    type="number"
-                    min={0}
-                    step="0.5"
-                    className="w-24"
-                    placeholder="Hours"
-                    value={b.hours}
-                    onChange={(e) => setBlock(i, { hours: e.target.value })}
-                  />
+                  <label className="flex shrink-0 items-center gap-1.5 text-xs text-slate-600">
+                    <input type="checkbox" checked={b.completed} onChange={(e) => setBlock(i, { completed: e.target.checked })} />
+                    Done
+                  </label>
                   <Button type="button" variant="ghost" className="text-red-700" onClick={() => setBlocks((p) => p.filter((_, idx) => idx !== i))}>
                     ✕
                   </Button>

@@ -976,6 +976,10 @@ export interface RemediationBlock {
   /** Hours to make up, when known. */
   hours?: number;
   note?: string;
+  /** Stamped from the curriculum course when picked — drives the red pill. */
+  highLiability?: boolean;
+  /** Checked off as the cadet completes each block. */
+  completed?: boolean;
 }
 
 export interface RemediationDoc {
@@ -986,7 +990,9 @@ export interface RemediationDoc {
   sourceMemberId?: string | null;
   /** Designation of the class they started with, e.g. "LE 132". */
   originalClass: string;
-  reason: 'block_failure' | 'injury';
+  reason: 'block_failure' | 'injury' | 'crossover';
+  /** Crossover cases only: which FDLE crossover program applies. */
+  crossoverDirection?: 'co_to_le' | 'le_to_co' | null;
   /** Blocks/courses still owed. */
   blocks: RemediationBlock[];
   /** Class they will return with — unset while awaiting placement. */
@@ -1002,6 +1008,8 @@ export interface RemediationDoc {
   /** Resolved cases are archived: hidden from the working list (own filter),
    *  no longer flag overdue follow-ups, restorable any time. */
   archived?: boolean;
+  /** How the case ended — recorded when resolving. */
+  outcome?: 'full_duty' | 'resigned' | 'transferred' | null;
   createdBy: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
