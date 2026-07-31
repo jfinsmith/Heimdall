@@ -110,5 +110,4 @@ export const PERMISSION_MATRIX: { capability: string; roles: Record<Role, boolea
   { capability: 'Assign roles (writes the auth claim)', roles: { director: true, lieutenant: true, sergeant: true, coordinator: false, instructor: false, guest: false } },
   { capability: 'Org settings, branding & allowed domains', roles: { director: true, lieutenant: true, sergeant: true, coordinator: false, instructor: false, guest: false } },
   { capability: 'Gjallarhorn settings & email automations', roles: { director: true, lieutenant: true, sergeant: true, coordinator: false, instructor: false, guest: false } },
-  { capability: 'View audit log', roles: { director: true, lieutenant: true, sergeant: true, coordinator: false, instructor: false, guest: false } },
 ];

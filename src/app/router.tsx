@@ -151,12 +151,13 @@ export function AppRouter() {
                 <Route path="/admin/gjallarhorn" element={<GjallarhornSettingsPage />} />
                 <Route path="/admin/billing" element={<BillingPage />} />
                 <Route path="/admin/compliance" element={<CompliancePage />} />
-                <Route path="/admin/audit" element={<AuditLogPage />} />
               </Route>
 
               {/* Platform owner only — cross-org HEIMDALL operator console */}
               <Route element={<RequirePlatformOwner />}>
                 <Route path="/owner" element={<OwnerConsolePage />} />
+                {/* Org-scoped audit view — pulled from the Admin section (owner-only now). */}
+                <Route path="/admin/audit" element={<AuditLogPage />} />
                 <Route path="/owner/curricula" element={<CurriculumAdminPage scope="defaults" />} />
                 <Route path="/owner/report-forms" element={<ReportFormsAdminPage />} />
                 <Route path="/owner/feedback" element={<FeedbackAdminPage />} />
