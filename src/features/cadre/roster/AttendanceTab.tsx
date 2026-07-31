@@ -97,8 +97,9 @@ function PrintSheet({
     // Tight 0.4in page margins (overriding the browser's ~1in default) put more
     // ink on paper AND are what lets a ~30-cadet sheet + signatures fit one
     // page — the fit target (10in) assumes them.
-    <FitToPage maxHeightIn={10}>
-    <style>{'@media print { @page { margin: 0.4in; } }'}</style>
+    // @page must sit at the TOP level — Chrome ignores it inside @media print.
+    <FitToPage maxHeightIn={9.8}>
+    <style>{'@page { margin: 0.4in; }'}</style>
     <div className={`mx-auto max-w-[8.5in] bg-white p-4 text-black print:p-0 ${pageBreak ? 'print:break-before-page' : ''}`}>
       <DocumentHeader
         curriculum={curriculum}
@@ -151,7 +152,7 @@ function PrintSheet({
         </>
       )}
 
-      <div className="mt-8 flex items-end justify-between gap-10 text-xs">
+      <div className="mt-8 flex items-end justify-between gap-10 text-xs print:mt-4">
         <div className="flex flex-1 items-end gap-3">
           <div className="flex-1 border-t border-black pt-1">Instructor&apos;s Signature</div>
           <div className="w-24 border-t border-black pt-1">Date</div>

@@ -90,8 +90,9 @@ export function DayRosterPrintPage() {
       {/* Tight 0.4in page margins (overriding the browser default) + a fit
           target that assumes them — more ink on paper, one page. print:p-0
           because the page margins already frame the sheet. */}
-      <FitToPage maxHeightIn={10}>
-      <style>{'@media print { @page { margin: 0.4in; } }'}</style>
+      {/* @page must sit at the TOP level — Chrome ignores it inside @media print. */}
+      <FitToPage maxHeightIn={9.8}>
+      <style>{'@page { margin: 0.4in; }'}</style>
       <div className="mx-auto max-w-[8.5in] bg-white p-6 text-black print:p-0">
         <DocumentHeader curriculum={curriculum} settings={settings} documentTitle="Training Roster" classLine={classLine} />
 
