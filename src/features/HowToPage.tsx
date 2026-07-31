@@ -166,7 +166,7 @@ export function HowToPage() {
         {/* ── Instructors ────────────────────────────────────────────────── */}
         <Section id="signups" title="Finding & signing up for sessions" role="Instructors">
           <Steps items={[
-            <>Open <B>Browse Open Sessions</B>. Sessions are grouped by day (Today/Tomorrow called out); flip to the <B>Calendar</B> view for a month at a glance, colored by academy — your choice is remembered. Filter by academy or show your unavailable days.</>,
+            <>Open <B>Browse Open Sessions</B>. The <B>Calendar</B> view opens first — each block shows its start time, hours (e.g. 0700–1230), class, instructor-slot fill, and room, colored by academy. Flip to <B>List</B> for a day-grouped list (Today/Tomorrow called out) — your choice is remembered. Filter by academy or show your unavailable days.</>,
             <>Pick a session and <B>Sign up</B> for an open slot. Slots that require a qualification you don&apos;t hold (verified + unexpired) are blocked.</>,
             <>If the slot is full, you can <B>join the waitlist</B> — when someone withdraws you&apos;re promoted automatically (re-checked for conflicts and certification at that moment) and notified.</>,
             <>Withdraw from a session from the session detail or <B>My Schedule</B>. Lead-instructor withdrawals alert command.</>,

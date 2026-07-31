@@ -11,7 +11,7 @@ import { Button, Field, Input } from '../components/ui';
 type Mode = 'signin' | 'register' | 'reset';
 
 export function SignInPage() {
-  const { firebaseUser, profile, signInWithGoogle, signInWithEmail, registerWithEmail, resetPassword, signOut } =
+  const { firebaseUser, profile, signInWithGoogle, signInWithApple, signInWithEmail, registerWithEmail, resetPassword, signOut } =
     useAuth();
   const location = useLocation() as { state?: { from?: { pathname: string } } };
   const [mode, setMode] = useState<Mode>('signin');
@@ -127,6 +127,14 @@ export function SignInPage() {
                 onClick={() => signInWithGoogle().catch((e) => setError(e.message))}
               >
                 Continue with Google
+              </Button>
+              <Button
+                variant="secondary"
+                className="mt-2 w-full"
+                disabled={busy}
+                onClick={() => signInWithApple().catch((e) => setError(e.message))}
+              >
+                 Continue with Apple
               </Button>
             </>
           )}

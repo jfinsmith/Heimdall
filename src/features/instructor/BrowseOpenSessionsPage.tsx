@@ -52,9 +52,9 @@ export function BrowseOpenSessionsPage() {
   ]);
   const [academyFilter, setAcademyFilter] = useState('all');
   const [showUnavailable, setShowUnavailable] = useState(false);
-  // List vs calendar — remembered across visits.
+  // Calendar vs list — calendar is the default; the choice is remembered.
   const [view, setView] = useState<'list' | 'calendar'>(() => {
-    try { return localStorage.getItem('hd-browse-view') === 'calendar' ? 'calendar' : 'list'; } catch { return 'list'; }
+    try { return localStorage.getItem('hd-browse-view') === 'list' ? 'list' : 'calendar'; } catch { return 'calendar'; }
   });
   const pickView = (v: 'list' | 'calendar') => {
     setView(v);
@@ -110,10 +110,17 @@ export function BrowseOpenSessionsPage() {
   }, [matches]);
 
   // Calendar view: one event per signable session, colored by its academy.
+  // extendedProps carry everything the custom card renders: military time
+  // range, class label, instructor-slot fill, and the room.
   const calEvents = useMemo(
     () =>
       matches.map(({ session }) => {
         const color = academyMeta.get(session.academyId)?.color || '#374b78';
+        const mil = (d: Date) => `${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
+        // "Instructor slots" = teaching roles; if a session staffs only other
+        // roles (e.g. role players), count those so the tally is never 0/0.
+        const teaching = session.roleSlots.filter((sl) => sl.role === 'lead' || sl.role === 'assistant' || sl.role === 'safety_officer');
+        const counted = teaching.length > 0 ? teaching : session.roleSlots;
         return {
           id: session.id,
           title: `${session.highLiability ? '▲ ' : ''}${session.title || session.courseName}`,
@@ -121,6 +128,16 @@ export function BrowseOpenSessionsPage() {
           end: session.end.toDate(),
           backgroundColor: color,
           borderColor: color,
+          display: 'block',
+          extendedProps: {
+            hl: !!session.highLiability,
+            name: session.title || session.courseName,
+            startMil: mil(session.start.toDate()),
+            range: `${mil(session.start.toDate())}–${mil(session.end.toDate())} hrs`,
+            academy: academyMeta.get(session.academyId)?.label ?? 'Academy',
+            slots: `${counted.reduce((n, sl) => n + sl.filledBy.length, 0)}/${counted.reduce((n, sl) => n + sl.count, 0)}`,
+            room: session.room || '',
+          },
         };
       }),
     [matches, academyMeta]
@@ -150,17 +167,17 @@ export function BrowseOpenSessionsPage() {
             <div className="inline-flex rounded-md border border-watch-200 p-0.5 text-sm">
               <button
                 type="button"
-                className={view === 'list' ? 'rounded bg-watch-800 px-3 py-1 text-white' : 'rounded px-3 py-1 text-watch-700'}
-                onClick={() => pickView('list')}
-              >
-                List
-              </button>
-              <button
-                type="button"
                 className={view === 'calendar' ? 'rounded bg-watch-800 px-3 py-1 text-white' : 'rounded px-3 py-1 text-watch-700'}
                 onClick={() => pickView('calendar')}
               >
                 Calendar
+              </button>
+              <button
+                type="button"
+                className={view === 'list' ? 'rounded bg-watch-800 px-3 py-1 text-white' : 'rounded px-3 py-1 text-watch-700'}
+                onClick={() => pickView('list')}
+              >
+                List
               </button>
             </div>
             <label className="flex items-center gap-2 text-sm text-watch-800">
@@ -208,6 +225,18 @@ export function BrowseOpenSessionsPage() {
             events={calEvents}
             dayMaxEvents
             eventClick={(arg) => setDetailId(arg.event.id)}
+            eventContent={(arg) => {
+              const p = arg.event.extendedProps as {
+                hl: boolean; name: string; startMil: string; range: string; academy: string; slots: string; room: string;
+              };
+              return (
+                <div className="hd-browse-event" title={`${p.range} · ${p.academy} · ${p.slots} instructors${p.room ? ` · ${p.room}` : ''}`}>
+                  <div className="hd-browse-event-title">{p.startMil} {p.hl ? '▲ ' : ''}{p.name}</div>
+                  <div className="hd-browse-event-sub">{p.range} · {p.academy}</div>
+                  <div className="hd-browse-event-sub">{p.slots} instructors{p.room ? ` · ${p.room}` : ''}</div>
+                </div>
+              );
+            }}
             height="auto"
           />
         </div>

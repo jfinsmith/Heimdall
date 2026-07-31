@@ -3,7 +3,7 @@
  * Config values come from Vite env vars — see .env.example.
  */
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, OAuthProvider } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getFunctions } from 'firebase/functions';
 import { getStorage } from 'firebase/storage';
@@ -26,3 +26,9 @@ export const db = getFirestore(app);
 export const functions = getFunctions(app, 'us-east1');
 export const storage = getStorage(app);
 export const googleProvider = new GoogleAuthProvider();
+// Sign in with Apple — same popup flow as Google. Requires the Apple provider
+// to be enabled in Firebase Console → Authentication (needs an Apple Developer
+// Services ID + key). Apple only shares name/email on the FIRST sign-in.
+export const appleProvider = new OAuthProvider('apple.com');
+appleProvider.addScope('email');
+appleProvider.addScope('name');

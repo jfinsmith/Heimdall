@@ -20,7 +20,7 @@ import {
   User as FirebaseUser,
 } from 'firebase/auth';
 import { doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
-import { auth, db, googleProvider } from '../lib/firebase';
+import { auth, db, googleProvider, appleProvider } from '../lib/firebase';
 import { setAuditOrgId } from '../features/sessions/audit';
 import type { Role, UserDoc } from '../types';
 
@@ -35,6 +35,7 @@ interface AuthState {
   platformOwner: boolean;
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
+  signInWithApple: () => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
   registerWithEmail: (email: string, password: string, displayName: string) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
@@ -122,6 +123,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loading,
     signInWithGoogle: async () => {
       const cred = await signInWithPopup(auth, googleProvider);
+      await ensureUserDoc(cred.user);
+    },
+    signInWithApple: async () => {
+      const cred = await signInWithPopup(auth, appleProvider);
       await ensureUserDoc(cred.user);
     },
     signInWithEmail: async (email, password) => {

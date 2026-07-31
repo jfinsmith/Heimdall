@@ -127,6 +127,29 @@ body {
 .fc-event.hd-flagged--test .hd-event-notes { color: #fecaca; }      /* red-200 */
 .fc-event.hd-flagged--scenario .hd-event-notes { color: #bbf7d0; }  /* green-200 */
 .fc-event.hd-flagged--pt .hd-event-notes { color: #fef08a; }        /* yellow-200 */
+/* Browse Open Sessions month-view card: three compact lines (start+block,
+   military range+class, slot fill+room) on the academy-colored block. */
+.hd-browse-event {
+  padding: 1px 4px;
+  font-size: 10px;
+  line-height: 1.3;
+  color: #fff;
+  overflow: hidden;
+  cursor: pointer;
+}
+.hd-browse-event-title {
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hd-browse-event-sub {
+  opacity: 0.9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Past session with no lead instructor recorded — an ATMS gap that must be
    resolved. Red dashed ring so it stands out among finished days. */
 .fc-event.hd-unrecorded {
