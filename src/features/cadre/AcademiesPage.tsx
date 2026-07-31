@@ -193,18 +193,21 @@ export function AcademiesPage() {
                     {group.items.length} template{group.items.length === 1 ? '' : 's'}
                   </span>
                 </div>
-                <table className="w-full text-left text-sm">
+                {/* table-fixed + shared column widths: every discipline group is
+                    its own table, so without this each group sizes its columns
+                    to content and nothing lines up group-to-group. */}
+                <table className="w-full table-fixed text-left text-sm">
                   <thead className="text-xs uppercase tracking-wider text-watch-500">
                     <tr>
-                      <th className="px-4 py-2 font-medium">Template</th>
-                      <th className="px-4 py-2 font-medium">Sessions span</th>
-                      <th className="px-4 py-2" />
+                      <th className="w-[30%] px-4 py-2 font-medium">Template</th>
+                      <th className="w-[42%] px-4 py-2 font-medium">Sessions span</th>
+                      <th className="w-[28%] px-4 py-2" />
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-watch-50">
                     {group.items.map((t) => (
                       <tr key={t.id} className="hover:bg-watch-50/50">
-                        <td className="min-w-[11rem] px-4 py-3 font-medium text-watch-900">
+                        <td className="px-4 py-3 font-medium text-watch-900">
                           <Link to={`/cadre/academies/${t.id}`} className="group block">
                             {t.shortName ? <span className="block font-bold text-bifrost-700 group-hover:underline">{t.shortName}</span> : null}
                             <span className="block group-hover:underline">{t.name}</span>
