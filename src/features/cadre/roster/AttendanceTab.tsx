@@ -21,6 +21,13 @@ import { fmtDate } from '../../../lib/time';
 import { useGlobalSettings } from '../../../app/providers';
 import { DocumentHeader } from '../reports/DocumentHeader';
 import { FitToPage } from '../../../components/FitToPage';
+
+/** "Jul 7, 2026" — no weekday, so the Program Dates box never wraps and the
+ *  info grid's first row stays one line tall. */
+function progDate(ts: Parameters<typeof fmtDate>[0]): string {
+  const d = ts instanceof Date ? ts : ts.toDate();
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
 import { buildDayRosters, localDateStr } from './attendanceRoster';
 import { lastFirst } from './rosterShared';
 import { Button, Field, Input, Select, TextArea } from '../../../components/ui';
@@ -87,8 +94,12 @@ function PrintSheet({
   pageBreak?: boolean;
 }) {
   return (
-    <FitToPage>
-    <div className={`mx-auto max-w-[8.5in] bg-white p-4 text-black ${pageBreak ? 'print:break-before-page' : ''}`}>
+    // Tight 0.4in page margins (overriding the browser's ~1in default) put more
+    // ink on paper AND are what lets a ~30-cadet sheet + signatures fit one
+    // page — the fit target (10in) assumes them.
+    <FitToPage maxHeightIn={10}>
+    <style>{'@media print { @page { margin: 0.4in; } }'}</style>
+    <div className={`mx-auto max-w-[8.5in] bg-white p-4 text-black print:p-0 ${pageBreak ? 'print:break-before-page' : ''}`}>
       <DocumentHeader
         curriculum={curriculum}
         settings={settings}
@@ -219,7 +230,7 @@ function SheetEditor({
     return courseName && !names.includes(courseName) ? [courseName, ...names] : names;
   }, [courses, courseName]);
 
-  const programDates = `${fmtDate(academy.startDate)} - ${fmtDate(academy.endDate)}`;
+  const programDates = `${progDate(academy.startDate)} – ${progDate(academy.endDate)}`;
   const extraTakers = useMemo<Extra[]>(
     () => additionalTakers.split('\n').map((s) => s.trim()).filter(Boolean).map((name, i) => ({ id: `extra-${i}`, no: 0, fullName: name, status: '' })),
     [additionalTakers]
@@ -358,7 +369,7 @@ export function AttendanceTab({
           layout={layout}
           fields={{
             courseTitle: '',
-            programDates: `${fmtDate(academy.startDate)} - ${fmtDate(academy.endDate)}`,
+            programDates: `${progDate(academy.startDate)} – ${progDate(academy.endDate)}`,
             classTime: '',
             classHours: '',
             classDate: '',

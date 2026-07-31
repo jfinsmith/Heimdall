@@ -87,9 +87,11 @@ export function DayRosterPrintPage() {
         <Button variant="primary" onClick={() => window.print()}>Print</Button>
       </div>
 
-      <FitToPage>
-      {/* print:p-0 — the printer's own margins frame the sheet; keeping the
-          screen padding in print wastes height and can spill a blank page 2. */}
+      {/* Tight 0.4in page margins (overriding the browser default) + a fit
+          target that assumes them — more ink on paper, one page. print:p-0
+          because the page margins already frame the sheet. */}
+      <FitToPage maxHeightIn={10}>
+      <style>{'@media print { @page { margin: 0.4in; } }'}</style>
       <div className="mx-auto max-w-[8.5in] bg-white p-6 text-black print:p-0">
         <DocumentHeader curriculum={curriculum} settings={settings} documentTitle="Training Roster" classLine={classLine} />
 

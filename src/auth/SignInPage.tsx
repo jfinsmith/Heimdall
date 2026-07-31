@@ -10,6 +10,10 @@ import { Button, Field, Input } from '../components/ui';
 
 type Mode = 'signin' | 'register' | 'reset';
 
+/** Apple sign-in needs an Apple Developer account + the Apple provider enabled
+ *  in Firebase Console. The code path is ready — flip this once that's set up. */
+const APPLE_SIGNIN_ENABLED = false;
+
 export function SignInPage() {
   const { firebaseUser, profile, signInWithGoogle, signInWithApple, signInWithEmail, registerWithEmail, resetPassword, signOut } =
     useAuth();
@@ -128,14 +132,19 @@ export function SignInPage() {
               >
                 Continue with Google
               </Button>
-              <Button
-                variant="secondary"
-                className="mt-2 w-full"
-                disabled={busy}
-                onClick={() => signInWithApple().catch((e) => setError(e.message))}
-              >
-                 Continue with Apple
-              </Button>
+              {/* Apple sign-in is fully wired (lib/firebase appleProvider +
+                  signInWithApple) but HIDDEN until the Apple Developer account
+                  + Firebase Apple provider are configured — flip to true then. */}
+              {APPLE_SIGNIN_ENABLED && (
+                <Button
+                  variant="secondary"
+                  className="mt-2 w-full"
+                  disabled={busy}
+                  onClick={() => signInWithApple().catch((e) => setError(e.message))}
+                >
+                   Continue with Apple
+                </Button>
+              )}
             </>
           )}
 
