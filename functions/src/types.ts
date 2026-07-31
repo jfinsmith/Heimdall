@@ -150,6 +150,9 @@ export interface SignupDoc {
   slotId: string;
   status: SignupStatus;
   signedUpAt: Timestamp;
+  /** Coordinator reservation (see src/types) — pending until confirmed. */
+  reservedBy?: string;
+  reservationState?: 'pending' | 'accepted';
 }
 
 export interface AssignmentDoc {

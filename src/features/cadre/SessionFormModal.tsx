@@ -450,6 +450,13 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
 
         for (const [uid, info] of desired) {
           if (prevUids.has(uid)) continue; // unchanged
+          // A coordinator reserving an INSTRUCTOR is an offer, not a commitment
+          // — stamped 'pending' so My Schedule asks them to confirm or decline.
+          // Coordinator-role pre-assignments stay unconditional.
+          const reservation =
+            info.role !== 'coordinator' && firebaseUser.uid !== uid
+              ? { reservedBy: firebaseUser.uid, reservationState: 'pending' as const }
+              : {};
           await setDoc(doc(db, 'sessions', sessionId, 'signups', uid), {
             uid,
             orgId: academy.orgId,
@@ -458,6 +465,7 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
             slotId: info.slotId,
             status: 'confirmed',
             signedUpAt: now,
+            ...reservation,
           });
           await setDoc(doc(db, 'assignments', `${sessionId}_${uid}`), {
             uid,
@@ -473,6 +481,7 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
             status: 'confirmed',
             reminderSent: false,
             createdAt: now,
+            ...reservation,
           });
         }
         // Remove people who were un-reserved.

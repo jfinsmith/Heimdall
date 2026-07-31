@@ -864,6 +864,11 @@ export interface SignupDoc {
   slotId: string;
   status: SignupStatus;
   signedUpAt: Timestamp;
+  /** Set when a coordinator reserved this person (vs self sign-up). */
+  reservedBy?: string;
+  /** 'pending' until the instructor confirms availability ('accepted');
+   *  declining is a normal withdrawal. */
+  reservationState?: 'pending' | 'accepted';
 }
 
 /** Denormalized mirror powering "My Schedule" and Gjallarhorn reminders. */
@@ -881,6 +886,9 @@ export interface AssignmentDoc {
   end: Timestamp;
   status: SignupStatus;
   reminderSent: boolean;
+  /** Mirrors the signup's reservation fields (see SignupDoc). */
+  reservedBy?: string;
+  reservationState?: 'pending' | 'accepted';
   createdAt: Timestamp;
 }
 

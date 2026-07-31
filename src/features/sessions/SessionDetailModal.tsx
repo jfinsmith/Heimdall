@@ -4,7 +4,8 @@
  */
 import React, { useState } from 'react';
 import { addDoc, collection, deleteDoc, doc, getDocs, query, serverTimestamp, Timestamp, updateDoc, where } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions } from '../../lib/firebase';
 import { shortId, useCollection, useDoc, type WithId } from '../../lib/firestore';
 import { useCurriculum } from '../../lib/curricula';
 import { instructorCount, requiredInstructors } from '../cadre/instructorRatio';
@@ -98,6 +99,19 @@ export function SessionDetailModal({ sessionId, onClose, onEdit, variant = 'staf
       await withdrawFromSession(firebaseUser.uid, sessionId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Withdrawal failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Accept a slot a coordinator reserved for me (see confirmReservation fn). */
+  async function doConfirmReservation() {
+    setError(null);
+    setBusy(true);
+    try {
+      await httpsCallable<{ sessionId: string }, { ok: boolean }>(functions, 'confirmReservation')({ sessionId });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not confirm.');
     } finally {
       setBusy(false);
     }
@@ -272,9 +286,14 @@ export function SessionDetailModal({ sessionId, onClose, onEdit, variant = 'staf
                 {/* Withdraw is available whenever YOU hold the slot and the
                     session hasn't concluded — even after sign-ups close.
                     (My Schedule offers withdraw; this modal must match.) */}
+                {slot.role !== 'coordinator' && !concluded && firebaseUser && mineHere && mySignup?.reservationState === 'pending' && (
+                  <Button variant="primary" disabled={busy} onClick={doConfirmReservation}>
+                    I&apos;m available ✓
+                  </Button>
+                )}
                 {slot.role !== 'coordinator' && !concluded && firebaseUser && mineHere && (
                   <Button variant="danger" disabled={busy} onClick={doWithdraw}>
-                    Withdraw
+                    {mySignup?.reservationState === 'pending' ? 'Not available' : 'Withdraw'}
                   </Button>
                 )}
                 {slot.role !== 'coordinator' && !concluded && firebaseUser && !mySignup && session.status === 'scheduled' && !can.buildSchedules(role) && (

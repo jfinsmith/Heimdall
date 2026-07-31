@@ -16,6 +16,7 @@ import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
 import type { AssignmentDoc, SessionDoc, SignupDoc, UserDoc } from '../types';
 import { STAFF_ROLES } from '../types';
 import { overlaps, qualifies, certBlocks, recomputeStatus } from './validation';
+import { notify } from '../gjallarhorn/notify';
 
 export const submitSignup = onCall<{ sessionId: string; slotId: string; allowWaitlist?: boolean }>(async (request) => {
   const uid = request.auth?.uid;
@@ -180,4 +181,44 @@ export const checkInstructorConflict = onCall<{ uid: string; startMs: number; en
     }
   }
   return { conflict: false };
+});
+
+/**
+ * confirmReservation — an instructor accepts a slot a coordinator RESERVED for
+ * them (SessionFormModal stamps those signups/assignments with
+ * reservationState:'pending'). Declining is just withdrawSignup — it frees the
+ * slot, notifies command, and promotes the waitlist like any withdrawal.
+ */
+export const confirmReservation = onCall<{ sessionId: string }>(async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = getFirestore();
+  const sessionId = (request.data.sessionId ?? '').trim();
+  if (!sessionId) throw new HttpsError('invalid-argument', 'Missing session.');
+
+  const signupRef = db.doc(`sessions/${sessionId}/signups/${uid}`);
+  const signupSnap = await signupRef.get();
+  if (!signupSnap.exists) throw new HttpsError('not-found', 'You are not signed up for this session.');
+  const signup = signupSnap.data() as SignupDoc & { reservationState?: string; reservedBy?: string };
+  if (signup.reservationState !== 'pending') {
+    throw new HttpsError('failed-precondition', 'This assignment has no pending reservation to confirm.');
+  }
+
+  await signupRef.set({ reservationState: 'accepted' }, { merge: true });
+  await db.doc(`assignments/${sessionId}_${uid}`).set({ reservationState: 'accepted' }, { merge: true });
+
+  // Tell the coordinator who reserved them — closing the loop they started.
+  if (signup.reservedBy) {
+    const sessionSnap = await db.doc(`sessions/${sessionId}`).get();
+    const session = sessionSnap.exists ? (sessionSnap.data() as SessionDoc) : null;
+    const when = session ? session.start.toDate().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
+    await notify({
+      uid: signup.reservedBy,
+      type: 'reservation_confirmed',
+      title: `${signup.displayName} confirmed availability`,
+      body: `${signup.displayName} confirmed they are available for ${session?.title || session?.courseName || 'the session'}${when ? ` on ${when}` : ''}.`,
+      dedupeKey: `resconf_${sessionId}_${uid}`,
+    });
+  }
+  return { ok: true };
 });

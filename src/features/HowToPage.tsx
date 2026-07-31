@@ -170,6 +170,7 @@ export function HowToPage() {
             <>Pick a session and <B>Sign up</B> for an open slot. Slots that require a qualification you don&apos;t hold (verified + unexpired) are blocked.</>,
             <>If the slot is full, you can <B>join the waitlist</B> — when someone withdraws you&apos;re promoted automatically (re-checked for conflicts and certification at that moment) and notified.</>,
             <>Withdraw from a session from the session detail or <B>My Schedule</B>. Lead-instructor withdrawals alert command.</>,
+            <>If a coordinator <B>reserves</B> you into a slot, it appears in My Schedule highlighted amber with two buttons: <B>I&apos;m available ✓</B> (confirms — the coordinator is notified) or <B>Not available</B> (removes you from the slot and notifies them). No hunting for the course to sign yourself up.</>,
           ]} />
           <Tips items={[
             <>Sign-ups only open when the coordinator opens the course — <B>Scheduled</B> means visible but not yet open.</>,

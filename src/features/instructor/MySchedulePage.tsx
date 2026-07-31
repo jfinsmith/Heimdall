@@ -9,7 +9,8 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import listPlugin from '@fullcalendar/list';
 import { doc, orderBy, serverTimestamp, updateDoc, where } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions } from '../../lib/firebase';
 import { useCollection } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import { downloadIcs } from '../../lib/ics';
@@ -24,6 +25,8 @@ import { holidayBackgroundEvents } from '../../lib/holidays';
 
 // TODO(setup): update if you change Firebase project or move regions.
 const FEED_BASE = 'https://us-east1-heimdall-e1f03.cloudfunctions.net/calendarFeed';
+
+const confirmReservation = httpsCallable<{ sessionId: string }, { ok: boolean }>(functions, 'confirmReservation');
 
 export function MySchedulePage() {
   const { firebaseUser, profile } = useAuth();
@@ -74,12 +77,26 @@ export function MySchedulePage() {
     return [...assignmentEvents, ...holidayBackgroundEvents(disabledHolidays, observedHolidays, range)];
   }, [assignments, disabledHolidays, observedHolidays, academyLabel]);
 
-  async function withdraw(sessionId: string) {
+  async function withdraw(sessionId: string, declineReservation = false) {
     if (!firebaseUser) return;
-    if (!window.confirm('Withdraw from this session? The coordinators will be notified.')) return;
+    const msg = declineReservation
+      ? "Tell the coordinator you're NOT available? You'll be removed from this session and they'll be notified."
+      : 'Withdraw from this session? The coordinators will be notified.';
+    if (!window.confirm(msg)) return;
     setBusy(sessionId);
     try {
       await withdrawFromSession(firebaseUser.uid, sessionId);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function confirmAvailable(sessionId: string) {
+    setBusy(sessionId);
+    try {
+      await confirmReservation({ sessionId });
+    } catch (err) {
+      window.alert(`Could not confirm: ${err instanceof Error ? err.message : 'unknown error'}`);
     } finally {
       setBusy(null);
     }
@@ -154,32 +171,59 @@ export function MySchedulePage() {
         <EmptyState title="No upcoming assignments" body="Sign up for sessions under Browse Open Sessions." />
       ) : (
         <ul className="space-y-3">
-          {upcoming.map((a) => (
-            <li key={a.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-watch-100 bg-white p-4 shadow-sm">
-              <div>
-                <button className="text-left font-semibold text-watch-900 hover:underline" onClick={() => setDetailId(a.sessionId)}>
-                  {academyLabel(a.academyId) && (
-                    <span className="mr-2 rounded bg-watch-100 px-1.5 py-0.5 text-xs font-bold text-watch-800">
-                      {academyLabel(a.academyId)}
-                    </span>
+          {upcoming.map((a) => {
+            const pendingReservation = a.reservationState === 'pending';
+            return (
+            <li
+              key={a.id}
+              className={`rounded-lg border bg-white p-4 shadow-sm ${
+                pendingReservation ? 'border-amber-300 ring-1 ring-inset ring-amber-200' : 'border-watch-100'
+              }`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <button className="text-left font-semibold text-watch-900 hover:underline" onClick={() => setDetailId(a.sessionId)}>
+                    {academyLabel(a.academyId) && (
+                      <span className="mr-2 rounded bg-watch-100 px-1.5 py-0.5 text-xs font-bold text-watch-800">
+                        {academyLabel(a.academyId)}
+                      </span>
+                    )}
+                    {a.courseName}
+                  </button>
+                  <div className="text-sm text-slate-500">
+                    {fmtRange(a.start, a.end)} · {a.location}
+                    {a.room ? ` — ${a.room}` : ''} · {SLOT_ROLE_LABELS[a.role]}
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button onClick={() => downloadIcs(`heimdall-${a.courseName.toLowerCase().replace(/\W+/g, '-')}`, [a])}>
+                    .ics
+                  </Button>
+                  {pendingReservation ? (
+                    <>
+                      <Button variant="primary" disabled={busy === a.sessionId} onClick={() => confirmAvailable(a.sessionId)}>
+                        I&apos;m available ✓
+                      </Button>
+                      <Button variant="danger" disabled={busy === a.sessionId} onClick={() => withdraw(a.sessionId, true)}>
+                        Not available
+                      </Button>
+                    </>
+                  ) : (
+                    <Button variant="danger" disabled={busy === a.sessionId} onClick={() => withdraw(a.sessionId)}>
+                      Withdraw
+                    </Button>
                   )}
-                  {a.courseName}
-                </button>
-                <div className="text-sm text-slate-500">
-                  {fmtRange(a.start, a.end)} · {a.location}
-                  {a.room ? ` — ${a.room}` : ''} · {SLOT_ROLE_LABELS[a.role]}
                 </div>
               </div>
-              <div className="flex gap-2">
-                <Button onClick={() => downloadIcs(`heimdall-${a.courseName.toLowerCase().replace(/\W+/g, '-')}`, [a])}>
-                  .ics
-                </Button>
-                <Button variant="danger" disabled={busy === a.sessionId} onClick={() => withdraw(a.sessionId)}>
-                  Withdraw
-                </Button>
-              </div>
+              {pendingReservation && (
+                <p className="mt-2 rounded-md bg-amber-50 px-3 py-1.5 text-xs text-amber-800">
+                  A coordinator reserved this slot for you — please confirm whether you&apos;re available.
+                  &quot;Not available&quot; removes you and notifies them.
+                </p>
+              )}
             </li>
-          ))}
+          );
+          })}
         </ul>
       )}
 
