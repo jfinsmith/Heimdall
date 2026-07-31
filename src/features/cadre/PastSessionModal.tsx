@@ -199,6 +199,9 @@ export function PastSessionModal({ session, onClose }: { session: WithId<Session
                   .filter((u) => !slot.filledBy.includes(u.id))
                   .map((u) => <option key={u.id} value={u.id}>{lastFirst(u.displayName)}</option>)}
               </Select>
+              <span className="text-xs text-slate-400">
+                Not in the list? Type their name under <strong className="text-slate-500">Write-in instructors</strong> below.
+              </span>
             </div>
           </div>
         ))}

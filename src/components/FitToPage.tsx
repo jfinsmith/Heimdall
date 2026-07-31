@@ -13,9 +13,11 @@ const MIN_ZOOM = 0.5;
  * right before printing, so the measurement reflects the final rendered height.
  *
  * `maxHeightIn` is the usable page height (letter minus margins); the default is
- * deliberately conservative so a sheet fits across common browser margin settings.
+ * deliberately conservative so a sheet fits across common browser margin
+ * settings. (9.4 rather than 9.7 — real printers reported a blank second page
+ * at 9.7 when their unprintable area + margins left less room than Chrome's.)
  */
-export function FitToPage({ children, maxHeightIn = 9.7 }: { children: ReactNode; maxHeightIn?: number }) {
+export function FitToPage({ children, maxHeightIn = 9.4 }: { children: ReactNode; maxHeightIn?: number }) {
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const el = ref.current;

@@ -608,6 +608,8 @@ export interface FeedbackReportDoc {
   // Triage (admins)
   status: FeedbackStatus;
   adminNotes?: string;
+  /** Owner's comment from the most recent status change (also emailed to the reporter). */
+  statusComment?: string;
   resolvedByUid?: string;
   resolvedAt?: Timestamp;
   createdAt: Timestamp;

@@ -1540,3 +1540,72 @@ export const adminUpdateUser = onCall<{
 
   return { ok: true, changed };
 });
+
+/**
+ * setFeedbackStatus — platform-owner triage of bug/feature reports, INCLUDING
+ * other tenants' (rules block cross-org client writes, so this runs on the
+ * Admin SDK). Changing the status emails the reporter, with the owner's
+ * optional comment included — closing the loop that used to be silent.
+ */
+export const setFeedbackStatus = onCall<{ id: string; status: string; comment?: string }>(async (request) => {
+  const caller = request.auth;
+  if (!caller) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = getFirestore();
+  const callerDoc = await db.doc(`users/${caller.uid}`).get();
+  if (!callerDoc.exists || callerDoc.data()!.platformOwner !== true) {
+    throw new HttpsError('permission-denied', 'Only the platform owner may triage feedback.');
+  }
+
+  const id = (request.data.id ?? '').trim();
+  const status = (request.data.status ?? '').trim();
+  const comment = (request.data.comment ?? '').trim();
+  const LABELS: Record<string, string> = { new: 'New', in_progress: 'In progress', resolved: 'Resolved', wont_fix: "Won't fix" };
+  if (!id || !(status in LABELS)) throw new HttpsError('invalid-argument', 'Provide a report and a valid status.');
+
+  const snap = await db.doc(`feedbackReports/${id}`).get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Report not found.');
+  const report = snap.data() as {
+    title?: string; kind?: string; orgId?: string;
+    submittedByEmail?: string; submittedByName?: string;
+  };
+
+  await db.doc(`feedbackReports/${id}`).set(
+    {
+      status,
+      ...(comment ? { statusComment: comment } : {}),
+      ...(status === 'resolved' || status === 'wont_fix'
+        ? { resolvedByUid: caller.uid, resolvedAt: FieldValue.serverTimestamp() }
+        : { resolvedAt: null }),
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  // Email the reporter — best effort; the status change stands without an address.
+  const email = (report.submittedByEmail ?? '').trim();
+  let emailed = false;
+  if (email) {
+    const kindLabel = report.kind === 'bug' ? 'bug report' : 'feature request';
+    const safeName = escapeHtml((report.submittedByName ?? '').trim() || 'there');
+    const safeTitle = escapeHtml(report.title ?? 'your report');
+    const plainComment = comment ? `\n\nNote from the developer:\n${comment}` : '';
+    const content = renderEmail({
+      subject: `[HEIMDALL] Update on your ${kindLabel}: ${report.title ?? ''}`.trim(),
+      heading: `Your ${kindLabel} was updated`,
+      bodyHtml:
+        `Hi ${safeName},<br/><br/>` +
+        `The status of &ldquo;${safeTitle}&rdquo; is now <strong>${LABELS[status]}</strong>.` +
+        (comment ? `<br/><br/><em>Note from the developer:</em><br/>${escapeHtml(comment)}` : '') +
+        `<br/><br/>Thank you for helping improve HEIMDALL.`,
+      bodyText: `Hi ${(report.submittedByName ?? '').trim() || 'there'},\n\nThe status of "${report.title ?? 'your report'}" is now ${LABELS[status]}.${plainComment}\n\nThank you for helping improve HEIMDALL.`,
+    });
+    await db.collection('mail').add({
+      to: [email],
+      message: { subject: content.subject, html: content.html, text: content.text },
+      ...(report.orgId ? { orgId: report.orgId } : {}),
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    emailed = true;
+  }
+  return { ok: true, emailed };
+});

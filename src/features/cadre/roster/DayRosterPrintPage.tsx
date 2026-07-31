@@ -88,7 +88,9 @@ export function DayRosterPrintPage() {
       </div>
 
       <FitToPage>
-      <div className="mx-auto max-w-[8.5in] bg-white p-6 text-black">
+      {/* print:p-0 — the printer's own margins frame the sheet; keeping the
+          screen padding in print wastes height and can spill a blank page 2. */}
+      <div className="mx-auto max-w-[8.5in] bg-white p-6 text-black print:p-0">
         <DocumentHeader curriculum={curriculum} settings={settings} documentTitle="Training Roster" classLine={classLine} />
 
         <div className="mt-3 flex items-end justify-between text-xs">
@@ -98,12 +100,14 @@ export function DayRosterPrintPage() {
 
         {/* The day's course load (the "above listed training") */}
         <div className="mt-3 bg-black px-1 py-0.5 text-[10px] font-bold uppercase text-white">Topics covered</div>
+        {/* Instructor column gets the most room (42%) and rows a minimum height,
+            so there's space to hand-write additional instructors on the sheet. */}
         <table className="w-full border-collapse text-[11px]">
           <thead>
             <tr className="bg-watch-100/60">
-              <th className="w-[24%] border border-black px-2 py-0.5 text-left">Time</th>
+              <th className="w-[17%] border border-black px-2 py-0.5 text-left">Time</th>
               <th className="border border-black px-2 py-0.5 text-left">Topic</th>
-              <th className="w-[32%] border border-black px-2 py-0.5 text-left">Instructor(s)</th>
+              <th className="w-[42%] border border-black px-2 py-0.5 text-left">Instructor(s)</th>
             </tr>
           </thead>
           <tbody>
@@ -111,9 +115,9 @@ export function DayRosterPrintPage() {
               const instructors = instructorsFor(t);
               return (
                 <tr key={t.id}>
-                  <td className="w-[24%] border border-black px-2 py-1 align-top tabular-nums">{fmtTime(t.start.toDate())} – {fmtTime(t.end.toDate())}</td>
-                  <td className="border border-black px-2 py-1">{t.title || t.courseName}{t.highLiability ? ' ▲' : ''}</td>
-                  <td className="w-[32%] border border-black px-2 py-1 align-top">{instructors.length ? instructors.join(', ') : <span className="text-slate-400">—</span>}</td>
+                  <td className="h-9 w-[17%] border border-black px-2 py-1 align-top tabular-nums">{fmtTime(t.start.toDate())} – {fmtTime(t.end.toDate())}</td>
+                  <td className="border border-black px-2 py-1 align-top">{t.title || t.courseName}{t.highLiability ? ' ▲' : ''}</td>
+                  <td className="w-[42%] border border-black px-2 py-1 align-top">{instructors.length ? instructors.join(', ') : null}</td>
                 </tr>
               );
             })}
