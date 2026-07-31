@@ -22,8 +22,15 @@ export const ACADEMY_COLORS: AcademyColor[] = [
 
 export const DEFAULT_ACADEMY_COLOR = ACADEMY_COLORS[0].value;
 
-export function academyColorFor(academy?: { color?: string } | null): string {
-  return academy?.color || DEFAULT_ACADEMY_COLOR;
+export function academyColorFor(academy?: { id?: string; color?: string } | null): string {
+  if (academy?.color) return academy.color;
+  // No assigned color: derive a STABLE palette pick from the academy id so
+  // concurrent unassigned cohorts still read as distinct colors everywhere
+  // (calendar, browse, rooms) instead of all collapsing to navy.
+  if (!academy?.id) return DEFAULT_ACADEMY_COLOR;
+  let h = 0;
+  for (let i = 0; i < academy.id.length; i++) h = (h * 31 + academy.id.charCodeAt(i)) >>> 0;
+  return ACADEMY_COLORS[h % ACADEMY_COLORS.length].value;
 }
 
 /** Pick the first palette color not already used by another academy. */

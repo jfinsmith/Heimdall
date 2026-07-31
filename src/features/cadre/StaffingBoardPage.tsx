@@ -40,6 +40,13 @@ export function StaffingBoardPage() {
     [where('status', '==', 'confirmed')],
     []
   );
+  // Concluded sessions from the past 12 months — the recruitment-difficulty
+  // history (same orgId+start index shape as the upcoming query).
+  const { data: pastSessionsRaw } = useCollection<SessionDoc>(
+    'sessions',
+    [where('start', '>=', Timestamp.fromMillis(Date.now() - 365 * 864e5)), where('start', '<', Timestamp.now()), orderBy('start')],
+    []
+  );
 
   const columns = useMemo(() => {
     const cols: Record<Column, WithId<SessionDoc>[]> = { draft: [], scheduled: [], understaffed: [], fully_staffed: [] };
@@ -84,20 +91,32 @@ export function StaffingBoardPage() {
     return map;
   }, [assignments]);
 
-  /** Per-course coverage across upcoming sessions. */
-  const courseCoverage = useMemo(() => {
-    const map = new Map<string, { total: number; filled: number }>();
-    for (const s of sessions) {
-      if (s.status === 'cancelled' || s.status === 'completed') continue;
-      const cur = map.get(s.courseName) ?? { total: 0, filled: 0 };
-      for (const slot of s.roleSlots) {
-        cur.total += slot.count;
-        cur.filled += Math.min(slot.filledBy.length, slot.count);
-      }
+  /**
+   * Recruitment focus: which courses HISTORICALLY struggle to attract sign-ups.
+   * Concluded sessions only (past 12 months); "filled" counts actual sign-ups
+   * (filledBy), NOT as-taught write-ins — needing to pull in outside help IS
+   * the recruiting gap this surfaces. Lowest fill rate first.
+   */
+  const recruitment = useMemo(() => {
+    const map = new Map<string, { sessions: number; seats: number; filled: number; short: number }>();
+    for (const s of pastSessionsRaw) {
+      if (s.status === 'cancelled' || s.kind === 'lunch') continue;
+      if (templateIds.has(s.academyId)) continue;
+      const slots = s.roleSlots.filter((sl) => sl.role !== 'coordinator');
+      const seats = slots.reduce((n, sl) => n + sl.count, 0);
+      if (seats === 0) continue;
+      const filled = slots.reduce((n, sl) => n + Math.min(sl.filledBy.length, sl.count), 0);
+      const cur = map.get(s.courseName) ?? { sessions: 0, seats: 0, filled: 0, short: 0 };
+      cur.sessions += 1;
+      cur.seats += seats;
+      cur.filled += filled;
+      if (filled < seats) cur.short += 1;
       map.set(s.courseName, cur);
     }
-    return [...map.entries()].sort((a, b) => a[1].filled / a[1].total - b[1].filled / b[1].total);
-  }, [sessions]);
+    return [...map.entries()]
+      .sort((a, b) => a[1].filled / a[1].seats - b[1].filled / b[1].seats)
+      .slice(0, 10);
+  }, [pastSessionsRaw, templateIds]);
 
   const colMeta: Record<Column, { title: string; tone: string }> = {
     draft: { title: 'Draft', tone: 'border-t-status-draft' },
@@ -185,27 +204,41 @@ export function StaffingBoardPage() {
       {/* Load + coverage */}
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <section className="rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-watch-600">Per-course coverage</h2>
-          {courseCoverage.length === 0 ? (
-            <EmptyState title="No upcoming sessions" />
+          <h2 className="mb-1 text-sm font-semibold uppercase tracking-wider text-watch-600">
+            Hardest to staff — recruitment focus
+          </h2>
+          <p className="mb-3 text-xs text-slate-500">
+            Concluded sessions from the past 12 months, lowest sign-up fill first. Courses that consistently
+            run short are where instructor recruitment (and certification pushes) will pay off most.
+          </p>
+          {recruitment.length === 0 ? (
+            <EmptyState title="No history yet" body="This fills in as classes run — it tracks how well each course attracted sign-ups." />
           ) : (
-            <ul className="space-y-2">
-              {courseCoverage.map(([course, { total, filled }]) => (
-                <li key={course} className="text-sm">
-                  <div className="mb-0.5 flex justify-between">
-                    <span className="text-watch-800">{course}</span>
-                    <span className="text-slate-500">
-                      {filled}/{total} slots
-                    </span>
-                  </div>
-                  <div className="h-1.5 overflow-hidden rounded-full bg-watch-100">
-                    <div
-                      className={filled === total ? 'h-full bg-status-staffed' : 'h-full bg-status-open'}
-                      style={{ width: `${total ? (filled / total) * 100 : 0}%` }}
-                    />
-                  </div>
-                </li>
-              ))}
+            <ul className="space-y-2.5">
+              {recruitment.map(([course, r]) => {
+                const pct = r.seats ? (r.filled / r.seats) * 100 : 0;
+                return (
+                  <li key={course} className="text-sm">
+                    <div className="mb-0.5 flex items-baseline justify-between gap-2">
+                      <span className="min-w-0 truncate text-watch-800">{course}</span>
+                      <span className="shrink-0 text-xs text-slate-500">
+                        {r.filled}/{r.seats} sign-ups
+                        {r.short > 0 && (
+                          <span className={pct < 60 ? 'ml-1.5 font-semibold text-red-700' : 'ml-1.5 text-amber-700'}>
+                            · short in {r.short}/{r.sessions} session{r.sessions === 1 ? '' : 's'}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-watch-100">
+                      <div
+                        className={`h-full ${pct < 60 ? 'bg-red-500' : pct < 90 ? 'bg-amber-400' : 'bg-status-staffed'}`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>

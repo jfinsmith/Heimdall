@@ -123,6 +123,41 @@ export function RoomsPage() {
   }, [reservations, roomById, roomFilter, categoryFilter]);
   const reservationById = useMemo(() => new Map(reservations.map((r) => [r.id, r])), [reservations]);
 
+  // ── Day availability: the at-a-glance answer to "what's free on this day?" ──
+  const [availDate, setAvailDate] = useState(() => toDateInputValue(new Date()));
+  const dayAvailability = useMemo(() => {
+    const dayStart = new Date(`${availDate}T00:00:00`).getTime();
+    const dayEnd = new Date(`${availDate}T23:59:59`).getTime();
+    const t = (ms: number) => {
+      const d = new Date(ms);
+      return `${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
+    };
+    const busy = new Map<string, { startMs: number; label: string }[]>();
+    const push = (rid: string, startMs: number, endMs: number, what: string) => {
+      const list = busy.get(rid) ?? busy.set(rid, []).get(rid)!;
+      list.push({ startMs, label: `${t(startMs)}–${t(endMs)} ${what}` });
+    };
+    for (const s of sessions) {
+      if (s.status === 'cancelled' || templateIds.has(s.academyId)) continue;
+      const sMs = s.start.toMillis();
+      const eMs = s.end.toMillis();
+      if (eMs <= dayStart || sMs >= dayEnd) continue;
+      const acad = academyById.get(s.academyId);
+      const what = `${acad?.shortName ? `${acad.shortName} — ` : ''}${s.title || s.courseName}`;
+      for (const rid of new Set(s.roomIds?.length ? s.roomIds : s.roomId ? [s.roomId] : [])) {
+        if (roomById.has(rid)) push(rid, sMs, eMs, what);
+      }
+    }
+    for (const r of reservations) {
+      const sMs = r.start.toMillis();
+      const eMs = r.end.toMillis();
+      if (eMs <= dayStart || sMs >= dayEnd) continue;
+      if (roomById.has(r.roomId)) push(r.roomId, sMs, eMs, `🔒 ${r.title}`);
+    }
+    for (const list of busy.values()) list.sort((a, b) => a.startMs - b.startMs);
+    return busy;
+  }, [availDate, sessions, reservations, roomById, templateIds, academyById]);
+
   async function addCategory() {
     const name = newCat.trim();
     if (!name || !orgId) return;
@@ -219,6 +254,50 @@ export function RoomsPage() {
             </div>
           ))}
         </div>
+          </div>
+        )}
+      </section>
+
+      {/* ── Day availability — what's free vs booked on a given day ────────── */}
+      <section className="mb-6 rounded-lg border border-watch-100 bg-white p-4 shadow-sm">
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <h2 className="mr-auto text-sm font-semibold uppercase tracking-wider text-watch-600">Day availability</h2>
+          <Input type="date" value={availDate} onChange={(e) => setAvailDate(e.target.value)} className="w-auto" />
+          <Button variant="ghost" onClick={() => setAvailDate(toDateInputValue(new Date()))}>Today</Button>
+        </div>
+        {rooms.length === 0 ? (
+          <p className="text-sm text-slate-500">Add locations and rooms above — this shows what&apos;s free vs booked per day.</p>
+        ) : (
+          <div className="grid gap-x-6 gap-y-1.5 lg:grid-cols-2">
+            {sortedCats.map((c) =>
+              (roomsByCat.get(c.id) ?? [])
+                .filter((r) => r.active !== false)
+                .map((r) => {
+                  const blocks = dayAvailability.get(r.id) ?? [];
+                  return (
+                    <div key={r.id} className="flex items-start justify-between gap-3 rounded-md border border-watch-50 px-3 py-2 text-sm">
+                      <span className="flex shrink-0 items-center gap-2 pt-0.5">
+                        <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: r.color || catColor.get(c.id) }} />
+                        <span className="font-medium text-watch-900">{r.name}</span>
+                        <span className="text-xs text-slate-400">{c.name}</span>
+                      </span>
+                      {blocks.length === 0 ? (
+                        <span className="rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-200">
+                          Free all day
+                        </span>
+                      ) : (
+                        <span className="flex min-w-0 flex-wrap justify-end gap-1">
+                          {blocks.map((b, i) => (
+                            <span key={i} className="max-w-full truncate rounded-full bg-red-50 px-2 py-0.5 text-xs text-red-700 ring-1 ring-inset ring-red-200" title={b.label}>
+                              {b.label}
+                            </span>
+                          ))}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })
+            )}
           </div>
         )}
       </section>

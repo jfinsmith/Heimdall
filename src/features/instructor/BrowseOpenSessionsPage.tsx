@@ -16,6 +16,7 @@ import type { AcademyDoc, SessionDoc } from '../../types';
 import { SLOT_ROLE_LABELS, QUALIFICATION_LABELS, activeVerifiedQualKeys } from '../../types';
 import { Badge, Button, EmptyState, HighLiabilityBadge, PageHeader } from '../../components/ui';
 import { SessionDetailModal } from '../sessions/SessionDetailModal';
+import { academyColorFor } from '../../lib/academyColors';
 import { signUpForSlot, SignupError } from '../sessions/useSignup';
 
 const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -64,7 +65,9 @@ export function BrowseOpenSessionsPage() {
   const blackout = useMemo(() => new Set(profile?.unavailableDates ?? []), [profile]);
   const academyMeta = useMemo(() => {
     const m = new Map<string, { label: string; color?: string }>();
-    for (const a of academies) m.set(a.id, { label: a.shortName || a.name, color: a.color });
+    // academyColorFor: assigned color, else a stable per-academy palette pick —
+    // matches the master calendar so a cohort is the SAME color everywhere.
+    for (const a of academies) m.set(a.id, { label: a.shortName || a.name, color: academyColorFor(a) });
     return m;
   }, [academies]);
 

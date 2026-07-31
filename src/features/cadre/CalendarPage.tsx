@@ -48,6 +48,7 @@ export function CalendarPage() {
   );
 
   const [search, setSearch] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [academyFilter, setAcademyFilter] = useState('all');
   const [disciplineFilter, setDisciplineFilter] = useState('all');
   const [courseFilter, setCourseFilter] = useState('all');
@@ -177,7 +178,51 @@ export function CalendarPage() {
         )}
       </div>
 
-      <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+      {/* One-click cohort isolation — the fastest way to un-clutter a calendar
+          carrying several concurrent academies. Detailed filters collapse below. */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setAcademyFilter('all')}
+          className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset transition ${
+            academyFilter === 'all' ? 'bg-watch-800 text-white ring-watch-800' : 'bg-white text-watch-700 ring-watch-200 hover:ring-watch-400'
+          }`}
+        >
+          All classes
+        </button>
+        {[...visibleAcademies]
+          .sort((a, b) => (a.shortName || a.name).localeCompare(b.shortName || b.name))
+          .map((a) => {
+            const active = academyFilter === a.id;
+            const color = academyColorFor(a);
+            return (
+              <button
+                key={a.id}
+                type="button"
+                onClick={() => setAcademyFilter(active ? 'all' : a.id)}
+                title={a.name}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset transition ${
+                  active ? 'text-white' : 'bg-white text-watch-700 ring-watch-200 hover:ring-watch-400'
+                }`}
+                style={active ? { backgroundColor: color, borderColor: color } : undefined}
+              >
+                {!active && <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: color }} />}
+                {a.shortName || a.name}
+              </button>
+            );
+          })}
+        <button
+          type="button"
+          onClick={() => setFiltersOpen((o) => !o)}
+          className="ml-auto text-xs font-medium text-bifrost-700 hover:underline"
+        >
+          {filtersOpen ? '▾ Hide filters' : '▸ More filters'}
+          {[disciplineFilter, courseFilter, roomFilter, staffingFilter].filter((f) => f !== 'all').length + (qualifiedOnly ? 1 : 0) > 0 &&
+            ` (${[disciplineFilter, courseFilter, roomFilter, staffingFilter].filter((f) => f !== 'all').length + (qualifiedOnly ? 1 : 0)} active)`}
+        </button>
+      </div>
+
+      <div className={`mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6 ${filtersOpen ? '' : 'hidden'}`}>
         <Field label="Academy">
           <Select value={academyFilter} onChange={(e) => setAcademyFilter(e.target.value)}>
             <option value="all">All</option>

@@ -252,8 +252,13 @@ export function HowToPage() {
             <p>
               Each session carries role slots (lead, assistant, role player, coordinator) with counts and optional qualification requirements.
               You can <B>reserve</B> specific instructors into slots from the session editor — the picker excludes expired certifications and
-              warns on double-bookings. Coordinator slots are pre-assigned (no open registration). An advisory badge shows when a
+              warns on double-bookings. A reservation asks the instructor to <B>confirm availability</B> from My Schedule.
+              Coordinator slots are pre-assigned (no open registration). An advisory badge shows when a
               high-liability day is below its FDLE instructor ratio.
+            </p>
+            <p className="mt-2">
+              The Staffing Board&apos;s <B>Hardest to staff</B> panel ranks courses by how well they attracted sign-ups over the past
+              year — the courses that consistently ran short are where to focus instructor recruitment and certification pushes.
             </p>
           </Sub>
           <Sub title="After the day has passed — record who taught">
@@ -278,6 +283,7 @@ export function HowToPage() {
         <Section id="rooms" title="Room reservations" role="Staff">
           <Tips items={[
             <><B>CADRE → Room Reservations</B> manages locations (College, Range…) and their rooms (capacity, color, floor-plan image). Locations can be renamed anytime.</>,
+            <><B>Day availability</B> answers &quot;what&apos;s free?&quot; at a glance: pick a date and every room shows <B>Free all day</B> or its booked blocks (times + class, 🔒 for holds).</>,
             <>Bookings are automatic: assigning a room to a session reserves it. Conflicts are <B>hard-blocked</B> everywhere (create, edit, drag, duplicate, recurring, multi-room).</>,
             <>Use <B>+ Reservation</B> for ad-hoc holds (maintenance, outside groups) — they block the calendar like classes and show with a 🔒.</>,
             <>The booking calendar shows every room a session holds; filter by location or room. Capacity warnings appear when a class exceeds a room&apos;s seats.</>,
@@ -423,7 +429,7 @@ export function HowToPage() {
             <><B>Something looks stale or a button is missing?</B> Hard-refresh (Cmd/Ctrl+Shift+R) — you&apos;re likely on an older cached version after an update.</>,
             <><B>&quot;Site can&apos;t be reached&quot; on one device</B> while others work: quit and reopen the browser — it&apos;s a local network/browser cache issue, not an outage.</>,
             <><B>A list looks empty that shouldn&apos;t be:</B> check your filters first; then hard-refresh.</>,
-            <><B>Found a bug or want a feature?</B> Use <B>Feedback</B> in the sidebar — screenshots attach directly and reports go straight to the developers with your page context.</>,
+            <><B>Found a bug or want a feature?</B> Use <B>Feedback</B> in the sidebar — screenshots attach directly and reports go straight to the developers with your page context. <B>Your reports</B> at the bottom of that page shows each submission&apos;s current status (and any note from the developer); status changes also email you.</>,
             <>Anything else: contact your Academy Director or coordinator; platform issues reach HEIMDALL through the feedback channel.</>,
           ]} />
         </Section>

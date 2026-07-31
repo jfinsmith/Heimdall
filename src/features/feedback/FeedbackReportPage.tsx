@@ -4,13 +4,14 @@
  * uploads to Cloud Storage) into `feedbackReports`; an onCreate Cloud Function
  * notifies the admins (Gjallarhorn).
  */
-import React, { useState } from 'react';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import React, { useMemo, useState } from 'react';
+import { addDoc, collection, serverTimestamp, where } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../lib/firebase';
+import { useCollection } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
-import type { FeedbackKind, FeedbackSeverity } from '../../types';
-import { Button, Field, Input, PageHeader } from '../../components/ui';
+import type { FeedbackKind, FeedbackReportDoc, FeedbackSeverity } from '../../types';
+import { Badge, Button, Field, Input, PageHeader } from '../../components/ui';
 
 const SEVERITIES: { value: FeedbackSeverity; bug: string; feature: string }[] = [
   { value: 'low', bug: 'Low — minor annoyance', feature: 'Nice to have' },
@@ -20,6 +21,61 @@ const SEVERITIES: { value: FeedbackSeverity; bug: string; feature: string }[] = 
 ];
 
 const ta = 'w-full rounded-md border border-watch-200 px-3 py-2 text-sm focus:border-bifrost-400 focus:outline-none focus:ring-1 focus:ring-bifrost-400';
+
+const STATUS_META: Record<string, { label: string; tone: 'amber' | 'navy' | 'green' | 'slate' }> = {
+  new: { label: 'Received', tone: 'amber' },
+  in_progress: { label: 'In progress', tone: 'navy' },
+  resolved: { label: 'Resolved', tone: 'green' },
+  wont_fix: { label: 'Closed — not planned', tone: 'slate' },
+};
+
+/**
+ * The member's own submissions with their current status — so nobody has to
+ * email to ask "did anyone see my report?". Status changes also email them
+ * (setFeedbackStatus), with the developer's note shown here too.
+ */
+function MyReports() {
+  const { firebaseUser } = useAuth();
+  const { data: reports } = useCollection<FeedbackReportDoc>(
+    firebaseUser ? 'feedbackReports' : null,
+    [where('submittedByUid', '==', firebaseUser?.uid ?? '')],
+    [firebaseUser?.uid]
+  );
+  const sorted = useMemo(
+    () => [...reports].sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0)),
+    [reports]
+  );
+  if (sorted.length === 0) return null;
+  return (
+    <section className="mt-8">
+      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-watch-600">Your reports</h2>
+      <ul className="divide-y divide-watch-50 rounded-lg border border-watch-100 bg-white shadow-sm">
+        {sorted.map((r) => {
+          const meta = STATUS_META[r.status] ?? { label: r.status, tone: 'slate' as const };
+          return (
+            <li key={r.id} className="px-4 py-3 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="min-w-0 flex-1">
+                  <span className="mr-1.5">{r.kind === 'bug' ? '🐞' : '💡'}</span>
+                  <span className="font-medium text-watch-900">{r.title}</span>
+                  {r.createdAt?.toDate && (
+                    <span className="ml-2 text-xs text-slate-400">{r.createdAt.toDate().toLocaleDateString()}</span>
+                  )}
+                </span>
+                <Badge tone={meta.tone}>{meta.label}</Badge>
+              </div>
+              {r.statusComment && (
+                <p className="mt-1.5 rounded-md bg-watch-50 px-3 py-1.5 text-xs text-slate-600">
+                  <span className="font-semibold text-watch-700">Note from the developer:</span> {r.statusComment}
+                </p>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
 
 export function FeedbackReportPage() {
   const { firebaseUser, profile, role, orgId } = useAuth();
@@ -115,6 +171,7 @@ export function FeedbackReportPage() {
             Submit another
           </Button>
         </div>
+        <MyReports />
       </div>
     );
   }
@@ -200,6 +257,8 @@ export function FeedbackReportPage() {
           </Button>
         </div>
       </div>
+
+      <MyReports />
     </div>
   );
 }
