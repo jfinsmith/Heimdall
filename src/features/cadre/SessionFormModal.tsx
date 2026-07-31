@@ -105,7 +105,7 @@ interface Props {
 }
 
 export function SessionFormModal({ academy, session, defaultDate, defaultTime, onSwitchToLunch, onClose }: Props) {
-  const { firebaseUser } = useAuth();
+  const { firebaseUser, orgId } = useAuth();
   // The course picker comes entirely from THIS academy's discipline — its
   // curriculum (Admin → Curriculum & Hours), which carries the hours,
   // high-liability flag, lead qualification, and default staffing slots. There's
@@ -459,7 +459,9 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
               : {};
           await setDoc(doc(db, 'sessions', sessionId, 'signups', uid), {
             uid,
-            orgId: academy.orgId,
+            // academy.orgId is optional on legacy docs; undefined would abort
+            // the whole save mid-way (Firestore rejects undefined values).
+            ...(academy.orgId ?? orgId ? { orgId: academy.orgId ?? orgId } : {}),
             displayName: userName(uid),
             role: info.role,
             slotId: info.slotId,
@@ -469,7 +471,7 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
           });
           await setDoc(doc(db, 'assignments', `${sessionId}_${uid}`), {
             uid,
-            orgId: academy.orgId,
+            ...(academy.orgId ?? orgId ? { orgId: academy.orgId ?? orgId } : {}),
             sessionId,
             academyId: academy.id,
             role: info.role,

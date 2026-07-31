@@ -17,7 +17,7 @@
  * no student IDs, no emergency contacts.
  */
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
-import { getFirestore } from 'firebase-admin/firestore';
+import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { createHash } from 'crypto';
 import type { AcademyDoc, UserDoc } from '../types';
 
@@ -40,8 +40,25 @@ export const getPublicClassPortal = onCall<PortalRequest>(async (request) => {
   const snap = await db.doc(`academies/${academyId}`).get();
   if (!snap.exists) throw new HttpsError('not-found', 'This class link is not available.');
   const a = snap.data() as AcademyDoc;
-  if (!a.portal?.enabled || a.portal.token !== token || a.isTemplate) {
+  // Portal secrets live in a STAFF-ONLY subdoc (academies/{id}/private/portal):
+  // the parent academy doc is readable by every org member once published, so
+  // keeping the token + password hash there handed instructors the material
+  // for an offline crack of the grades gate. Legacy links created before the
+  // move still resolve from the academy doc until the coordinator next saves.
+  const privRef = db.doc(`academies/${academyId}/private/portal`);
+  const privSnap = await privRef.get();
+  type PortalCfg = NonNullable<AcademyDoc['portal']> & { acadFails?: number; acadFailsAt?: Timestamp };
+  const portal: PortalCfg | null = privSnap.exists ? (privSnap.data() as PortalCfg) : (a.portal as PortalCfg | undefined) ?? null;
+  if (!portal?.enabled || portal.token !== token || a.isTemplate) {
     throw new HttpsError('permission-denied', 'This class link is not available.');
+  }
+
+  // A suspended organization's public surface goes dark with it.
+  if (a.orgId) {
+    const orgSnap = await db.doc(`orgs/${a.orgId}`).get();
+    if (orgSnap.exists && orgSnap.data()?.status === 'suspended') {
+      throw new HttpsError('permission-denied', 'This class link is not available.');
+    }
   }
 
   // Tier 1: the digits of the class designation ("LE 132" → "132").
@@ -52,11 +69,30 @@ export const getPublicClassPortal = onCall<PortalRequest>(async (request) => {
   }
 
   if (tier === 'academic') {
-    if (!a.portal.academicHash) {
+    if (!portal.academicHash) {
       throw new HttpsError('failed-precondition', 'Academic information is not enabled for this class.');
     }
+    // Online brute-force guard: 30 bad passwords per rolling hour, per class.
+    const HOUR = 3600_000;
+    const fails = portal.acadFails ?? 0;
+    const failsAtMs = portal.acadFailsAt?.toMillis?.() ?? 0;
+    const inWindow = Date.now() - failsAtMs < HOUR;
+    if (inWindow && fails >= 30) {
+      throw new HttpsError('resource-exhausted', 'Too many incorrect attempts — try again later.');
+    }
     const hash = createHash('sha256').update(academicPassword ?? '', 'utf8').digest('hex');
-    if (hash !== a.portal.academicHash) throw new HttpsError('permission-denied', 'Incorrect academic password.');
+    if (hash !== portal.academicHash) {
+      await privRef.set(
+        {
+          ...(a.orgId ? { orgId: a.orgId } : {}),
+          acadFails: inWindow ? fails + 1 : 1,
+          ...(inWindow && failsAtMs ? {} : { acadFailsAt: FieldValue.serverTimestamp() }),
+        },
+        { merge: true }
+      );
+      throw new HttpsError('permission-denied', 'Incorrect academic password.');
+    }
+    if (fails > 0) await privRef.set({ acadFails: 0 }, { merge: true }).catch(() => {});
 
     const rosterSnap = await db.collection(`academies/${academyId}/roster`).get();
     const members = rosterSnap.docs.map((d) => {
@@ -148,7 +184,7 @@ export const getPublicClassPortal = onCall<PortalRequest>(async (request) => {
     program: a.fdleProgram ?? '',
     startMs: a.startDate?.toMillis?.() ?? null,
     endMs: a.endDate?.toMillis?.() ?? null,
-    academicAvailable: !!a.portal.academicHash,
+    academicAvailable: !!portal.academicHash,
     sessions,
   };
 });

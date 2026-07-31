@@ -126,7 +126,29 @@ export const onSignupWritten = onDocumentWritten('sessions/{sessionId}/signups/{
   const becameConfirmed = after.status === 'confirmed' && before?.status !== 'confirmed';
   const becameWithdrawn = after.status === 'withdrawn' && before?.status !== 'withdrawn';
 
-  if (becameConfirmed) {
+  // A coordinator RESERVATION is an offer, not a confirmation — the instructor
+  // still has to accept it on My Schedule. Sending "Assignment confirmed" here
+  // would contradict the pending-offer UI they're about to see.
+  if (becameConfirmed && after.reservationState === 'pending') {
+    const details = sessionDetails(session);
+    await notify({
+      uid,
+      dedupeKey: `${event.id}_reserved`,
+      type: 'reservation_offer',
+      title: `Reserved for you: ${session.title || session.courseName}`,
+      body: `A coordinator reserved you as ${after.role.replace('_', ' ')} — confirm whether you're available on My Schedule.`,
+      link: `/my-schedule`,
+      emailContent: renderEmail({
+        subject: `[HEIMDALL] Are you available? ${session.title || session.courseName}`,
+        heading: 'A coordinator reserved you for a session',
+        bodyHtml: `<p>${escapeHtml(after.displayName)}, you've been reserved as <strong>${escapeHtml(after.role.replace('_', ' '))}</strong>. Please open <strong>My Schedule</strong> and confirm whether you're available — "Not available" frees the slot.</p>${details.html}`,
+        bodyText: `${after.displayName}, you've been reserved as ${after.role.replace('_', ' ')}. Open My Schedule and confirm whether you're available — "Not available" frees the slot.\n\n${details.text}`,
+        orgName: settings?.orgName,
+        logoUrl: settings?.logoUrl,
+      }),
+      attachments: [{ filename: 'session.ics', content: sessionIcs(sessionId, session) }],
+    });
+  } else if (becameConfirmed) {
     // 1) Confirmation to the instructor, with session details + .ics
     const details = sessionDetails(session);
     await notify({

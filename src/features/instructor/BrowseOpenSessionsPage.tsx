@@ -88,12 +88,15 @@ export function BrowseOpenSessionsPage() {
           }
           return true;
         })
+        // Already holding ANY slot in a session removes it from Browse — the
+        // server enforces one-slot-per-session, so offering its other slots
+        // would just be a Sign up button that always errors.
+        .filter((s) => !s.roleSlots.some((slot) => slot.filledBy.includes(firebaseUser?.uid ?? '')))
         .map((s) => ({
           session: s,
           openSlots: s.roleSlots.filter(
             (slot) =>
               slot.filledBy.length < slot.count &&
-              !slot.filledBy.includes(firebaseUser?.uid ?? '') &&
               (!slot.requiredQualificationKey || myQuals.has(slot.requiredQualificationKey))
           ),
         }))

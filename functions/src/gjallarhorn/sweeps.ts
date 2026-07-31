@@ -59,7 +59,10 @@ export const gjallarhornDailySweep = onSchedule(
       .get();
 
     for (const doc of upcoming.docs) {
-      const a = doc.data() as AssignmentDoc & { orgId?: string };
+      const a = doc.data() as AssignmentDoc & { orgId?: string; reservationState?: string };
+      // An unanswered reservation isn't an accepted assignment — don't send
+      // "you teach X" reminders for an offer the instructor never confirmed.
+      if (a.reservationState === 'pending') continue;
       const orgSettings = a.orgId ? settingsByOrg.get(a.orgId) ?? null : null;
       const defaultLead = orgSettings?.reminderDefaultLeadHours ?? 48;
       const userSnap = await db().doc(`users/${a.uid}`).get();

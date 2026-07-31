@@ -95,7 +95,11 @@ export function FeedbackAdminPage() {
       ),
     [ownerReports, statusFilter, kindFilter]
   );
-  const openCount = reports.filter((r) => r.status === 'new' || r.status === 'in_progress').length;
+  // Count whichever list is actually displayed — the all-orgs view otherwise
+  // shows the current org's count over a cross-org list.
+  const openCount = (allOrgs && platformOwner ? (ownerReports ?? []) : reports).filter(
+    (r) => r.status === 'new' || r.status === 'in_progress'
+  ).length;
 
   async function saveNotes(r: WithId<FeedbackReportDoc>, adminNotes: string) {
     await updateDoc(doc(db, 'feedbackReports', r.id), { adminNotes, updatedAt: serverTimestamp() });

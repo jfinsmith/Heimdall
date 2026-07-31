@@ -6,31 +6,46 @@
  * academic password here — stored only as a SHA-256 hash, never plaintext.
  */
 import React, { useState } from 'react';
-import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { deleteField, doc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../auth/AuthContext';
 import { sha256Hex, randomToken } from '../../lib/hash';
 import type { AcademyDoc } from '../../types';
-import type { WithId } from '../../lib/firestore';
+import { useDoc, type WithId } from '../../lib/firestore';
 import { Badge, Button, Input } from '../../components/ui';
 import { logAudit } from '../sessions/audit';
 
 export function PublicLinkSection({ academy, className = '' }: { academy: WithId<AcademyDoc>; className?: string }) {
-  const { firebaseUser } = useAuth();
+  const { firebaseUser, orgId } = useAuth();
   const [pw, setPw] = useState('');
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  // Portal secrets live in a STAFF-ONLY subdoc — the academy doc itself is
+  // readable by every org member once published, which would expose the token
+  // and password hash. Legacy configs (pre-move) fall back to academy.portal
+  // and migrate on the next save.
+  const { data: privatePortal } = useDoc<NonNullable<AcademyDoc['portal']> & { orgId: string }>(
+    `academies/${academy.id}/private/portal`
+  );
 
   if (academy.isTemplate) return null;
 
-  const portal = academy.portal;
+  const portal = privatePortal ?? academy.portal;
   const codeDigits = (academy.shortName ?? '').replace(/\D+/g, '');
   const link = portal?.token ? `${window.location.origin}/class/${academy.id}/${portal.token}` : '';
 
   async function save(next: NonNullable<AcademyDoc['portal']>, summary: string) {
     setBusy(true);
     try {
-      await updateDoc(doc(db, 'academies', academy.id), { portal: next, updatedAt: serverTimestamp() });
+      await setDoc(doc(db, 'academies', academy.id, 'private', 'portal'), {
+        ...next,
+        orgId: academy.orgId ?? orgId, // non-null orgId on every create (tenant rules)
+        updatedAt: serverTimestamp(),
+      });
+      // Scrub the legacy copy off the world-readable academy doc.
+      if (academy.portal) {
+        await updateDoc(doc(db, 'academies', academy.id), { portal: deleteField(), updatedAt: serverTimestamp() });
+      }
       if (firebaseUser) await logAudit(firebaseUser.uid, 'academy.portal', 'academy', academy.id, summary);
     } catch (err) {
       window.alert(`Could not update the public link: ${err instanceof Error ? err.message : 'unknown error'}`);

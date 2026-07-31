@@ -8,7 +8,7 @@
  */
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { renderEmail, detailRows, escapeHtml, EmailContent } from './templates';
-import { emailAllowed, GlobalSettings, Role, SessionDoc, UserDoc } from '../types';
+import { emailAllowed, ADMIN_ROLES, GlobalSettings, Role, SessionDoc, UserDoc } from '../types';
 
 const db = () => getFirestore();
 
@@ -173,7 +173,7 @@ const keyFor = (base: string | undefined, uid: string) => (base ? `${base}_${uid
 export async function notifyAdmins(payload: Omit<NotifyOptions, 'uid' | 'email'>, orgId?: string): Promise<void> {
   let q: FirebaseFirestore.Query = db()
     .collection('users')
-    .where('role', 'in', ['director', 'lieutenant'])
+    .where('role', 'in', ADMIN_ROLES)
     .where('status', '==', 'active');
   if (orgId) q = q.where('orgId', '==', orgId);
   const admins = await q.get();

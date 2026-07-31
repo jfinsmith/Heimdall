@@ -114,7 +114,10 @@ service cloud.firestore {
       }
       allow update: if unchanged('orgId') && unchanged('platformOwner')
         && unchanged('homeOrgId') && unchanged('homeRole') && (
-        (isAdmin() && inOrg(resource.data))
+        // Admins may edit others freely, but never their OWN role field — the
+        // callables authorize from this doc, so a self-write of role:'director'
+        // would be real vertical escalation (found in the sergeant-tier audit).
+        (isAdmin() && inOrg(resource.data) && (request.auth.uid != uid || unchanged('role')))
         // Staff (coordinator/sergeant) may approve accounts and verify quals on
         // OTHER same-tenant users, but may not change roles, and may NOT
         // self-grant their own status / verifiedQualKeys (no self-escalation;
@@ -158,7 +161,13 @@ service cloud.firestore {
         && request.resource.data.kind in ['bug', 'feature']
         && request.resource.data.title is string
         && request.resource.data.description is string;
-      allow update, delete: if isAdmin() && inOrg(resource.data);
+      // Client updates are TRIAGE-NOTE-ONLY: status/statusComment/resolvedBy
+      // flow through the setFeedbackStatus callable (which also emails the
+      // reporter); orgId/submitter fields are immutable (cross-tenant guard).
+      allow update: if isAdmin() && inOrg(resource.data)
+        && unchanged('orgId') && unchanged('submittedByUid') && unchanged('submittedByEmail')
+        && unchanged('status') && unchanged('statusComment') && unchanged('resolvedByUid');
+      allow delete: if isAdmin() && inOrg(resource.data);
     }
 
     // ── courseCatalog ──────────────────────────────────────────────────────
@@ -329,6 +338,17 @@ service cloud.firestore {
         allow update: if isStaff() && inOrg(resource.data) && unchanged('orgId');
         allow delete: if isStaff() && inOrg(resource.data);
       }
+
+      // ── portal secrets (public-link token + academic password hash) ──
+      // STAFF-ONLY: the parent academy doc is readable by any org member once
+      // published, so these must never live there — an instructor could crack
+      // the unsalted hash offline and reach the grades tier.
+      match /private/{docId} {
+        allow read: if isStaff() && inOrg(resource.data);
+        allow create: if isStaff() && inOrg(request.resource.data);
+        allow update: if isStaff() && inOrg(resource.data) && unchanged('orgId');
+        allow delete: if isStaff() && inOrg(resource.data);
+      }
     }
 
     // ── sessions ───────────────────────────────────────────────────────────
@@ -361,7 +381,7 @@ service cloud.firestore {
       match /signups/{uid} {
         allow read: if signedIn() && inOrg(resource.data);
         allow create: if isStaff() && inOrg(request.resource.data);
-        allow update: if isStaff() && inOrg(resource.data);
+        allow update: if isStaff() && inOrg(resource.data) && unchanged('orgId');
         allow delete: if isStaff() && inOrg(resource.data);
       }
     }
@@ -410,7 +430,9 @@ service cloud.firestore {
     // ── auditLog ───────────────────────────────────────────────────────────
     // Append-only from clients (must stamp own uid + own org); same-tenant admin read.
     match /auditLog/{logId} {
-      allow read: if isAdmin() && inOrg(resource.data);
+      // Owner-only read — matches the nav/route move (0e4ff7d); org admins
+      // lost the page, so the raw collection shouldn't stay readable either.
+      allow read: if isPlatformOwner() && inOrg(resource.data);
       allow create: if signedIn()
         && request.resource.data.actorUid == request.auth.uid
         && inOrg(request.resource.data);

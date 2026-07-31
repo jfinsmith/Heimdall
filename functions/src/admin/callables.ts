@@ -26,6 +26,24 @@ function assertActiveCaller(data: { status?: unknown } | undefined): void {
   }
 }
 
+/**
+ * Admin-on-admin authority ladder. Lieutenant and director are intentionally
+ * EQUAL at the top (rank 4 — never gate one above the other); sergeant sits
+ * below them. A non-top admin may only act on members STRICTLY below their own
+ * rank — without this, adding sergeant to ADMIN_ROLES would let a sergeant
+ * reset a director's password or promote themselves (vertical escalation).
+ */
+const ROLE_RANK: Record<Role, number> = { guest: 0, instructor: 1, coordinator: 2, sergeant: 3, lieutenant: 4, director: 4 };
+const TOP_RANK = 4;
+function assertMayActOn(callerRole: Role, targetRole: Role | null | undefined, what: string): void {
+  const caller = ROLE_RANK[callerRole] ?? 0;
+  if (caller >= TOP_RANK) return; // lieutenant/director may act on anyone (but never themselves — callers check that separately)
+  const target = targetRole ? ROLE_RANK[targetRole] ?? 0 : 0;
+  if (target >= caller) {
+    throw new HttpsError('permission-denied', `You may not ${what} a member at or above your own rank.`);
+  }
+}
+
 /** Production sign-in URL used in account emails. */
 const SITE_URL = 'https://heimdallscheduling.com';
 
@@ -77,9 +95,13 @@ export const setUserRole = onCall<{ uid: string; role: Role }>(async (request) =
   if (!uid || !VALID_ROLES.includes(role)) {
     throw new HttpsError('invalid-argument', 'Provide a uid and a valid role.');
   }
-  // Lieutenant and director are intentionally equal in authority (both in
-  // ADMIN_ROLES), so either may assign any role — including director. No
-  // director-only restriction here, by design.
+  // No self-service promotions — role changes always come from someone else.
+  if (uid === caller.uid) {
+    throw new HttpsError('failed-precondition', 'You cannot change your own role — ask another administrator.');
+  }
+  // Lieutenant and director are intentionally equal in authority (top tier),
+  // so either may assign any role — including director. Sergeants may only
+  // act on (and assign) roles BELOW their own rank (see assertMayActOn).
 
   // Preserve the user's tenant + platform claims — setCustomUserClaims REPLACES
   // all claims, so a role change must not drop orgId / platformOwner. When the
@@ -96,6 +118,12 @@ export const setUserRole = onCall<{ uid: string; role: Role }>(async (request) =
   const callerIsPlatformOwner = callerDoc.data()?.platformOwner === true;
   if (!callerIsPlatformOwner && tdata.orgId && tdata.orgId !== callerOrgId) {
     throw new HttpsError('permission-denied', 'That user belongs to another organization.');
+  }
+  if (!callerIsPlatformOwner) {
+    assertMayActOn(callerRole, (tdata.role as Role) ?? null, 'change the role of');
+    if (ROLE_RANK[callerRole] < TOP_RANK && (ROLE_RANK[role] ?? 0) >= ROLE_RANK[callerRole]) {
+      throw new HttpsError('permission-denied', 'You may only assign roles below your own rank.');
+    }
   }
   const effectiveOrgId = (tdata.orgId as string | undefined) ?? callerOrgId;
   const claims: Record<string, unknown> = { role };
@@ -391,6 +419,12 @@ export const sendActivationEmail = onCall<{ uid: string; password: string }>(asy
   const userSnap = await db.doc(`users/${uid}`).get();
   if (!userSnap.exists) throw new HttpsError('not-found', 'User not found.');
   const user = userSnap.data() as { email?: string; displayName?: string; orgId?: string };
+  // Cross-tenant guard: without it, this is a phishing primitive — a branded
+  // "activation" email with an attacker-chosen "password" sent to any user.
+  const callerIsOwnerAct = callerDoc.data()?.platformOwner === true;
+  if (!callerIsOwnerAct && user.orgId && user.orgId !== callerDoc.data()?.orgId) {
+    throw new HttpsError('permission-denied', 'That user belongs to another organization.');
+  }
   const email = (user.email ?? '').trim();
   const displayName = (user.displayName ?? '').trim() || 'there';
   if (!email) throw new HttpsError('failed-precondition', 'That user has no email on file.');
@@ -1461,12 +1495,17 @@ export const adminUpdateUser = onCall<{
 
   const uid = (request.data.uid ?? '').trim();
   if (!uid) throw new HttpsError('invalid-argument', 'Missing user.');
+  // Never yourself through this callable — your own profile/password have
+  // their own (re-authenticated) flows, and self-edits here would dodge them.
+  if (uid === caller.uid) {
+    throw new HttpsError('failed-precondition', 'Edit your own profile from the Profile page.');
+  }
 
   const targetSnap = await db.doc(`users/${uid}`).get();
   if (!targetSnap.exists) throw new HttpsError('not-found', 'User not found.');
   const target = targetSnap.data() as {
     displayName?: string; email?: string; rank?: string; agency?: string;
-    phone?: string; orgId?: string; platformOwner?: boolean;
+    phone?: string; orgId?: string; platformOwner?: boolean; role?: Role;
   };
   if (!callerIsOwner && target.orgId && target.orgId !== callerOrgId) {
     throw new HttpsError('permission-denied', 'That member belongs to another organization.');
@@ -1474,6 +1513,9 @@ export const adminUpdateUser = onCall<{
   if (target.platformOwner === true && !callerIsOwner) {
     throw new HttpsError('permission-denied', 'The platform owner account cannot be edited here.');
   }
+  // Rank ladder: a sergeant must never reset a lieutenant's/director's (or
+  // another sergeant's) password or email — that's account takeover upward.
+  if (!callerIsOwner) assertMayActOn(callerRole, target.role ?? null, 'edit');
 
   // Undefined field = leave alone. Provided = validate, and only write when it
   // actually differs so `changed` reflects real edits (audit + UI messaging).
@@ -1537,6 +1579,18 @@ export const adminUpdateUser = onCall<{
   docPatch.updatedAt = FieldValue.serverTimestamp();
   await db.doc(`users/${uid}`).set(docPatch, { merge: true });
   if (authPatch.password) await getAuth().revokeRefreshTokens(uid);
+
+  // Email + password changes are the most sensitive admin action in this file
+  // — they must never be silent. (Values are not logged; fields are.)
+  await db.collection('auditLog').add({
+    actorUid: caller.uid,
+    action: 'user.admin_edit',
+    targetType: 'user',
+    targetId: uid,
+    summary: `Admin edited ${target.displayName ?? 'member'}: ${changed.join(', ')}`,
+    ...(target.orgId ?? callerOrgId ? { orgId: target.orgId ?? callerOrgId } : {}),
+    createdAt: FieldValue.serverTimestamp(),
+  });
 
   return { ok: true, changed };
 });

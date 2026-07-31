@@ -112,6 +112,7 @@ export const withdrawSignup = onCall<{ sessionId: string }>(async (request) => {
   if (!sessionId) throw new HttpsError('invalid-argument', 'Missing session.');
 
   let auditOrgId: string | null = null;
+  let declined: { reservedBy: string; displayName: string; courseLabel: string; whenMs: number } | null = null;
   await db.runTransaction(async (tx) => {
     const sessionRef = db.doc(`sessions/${sessionId}`);
     const sessionSnap = await tx.get(sessionRef);
@@ -123,6 +124,17 @@ export const withdrawSignup = onCall<{ sessionId: string }>(async (request) => {
     const signupSnap = await tx.get(signupRef);
     if (!signupSnap.exists) throw new HttpsError('failed-precondition', 'No sign-up found to withdraw.');
     const signup = signupSnap.data() as SignupDoc;
+    // Withdrawing a PENDING reservation = declining the coordinator's offer —
+    // tell the person who made it (the generic slot-reopened alert is skipped
+    // whenever a waitlisted member auto-promotes, so it can't be relied on).
+    if (signup.reservationState === 'pending' && signup.reservedBy) {
+      declined = {
+        reservedBy: signup.reservedBy,
+        displayName: signup.displayName,
+        courseLabel: session.title || session.courseName,
+        whenMs: session.start.toMillis(),
+      };
+    }
     const assignmentRef = db.doc(`assignments/${sessionId}_${uid}`);
     const assignmentSnap = await tx.get(assignmentRef);
     const now = Timestamp.now();
@@ -140,6 +152,18 @@ export const withdrawSignup = onCall<{ sessionId: string }>(async (request) => {
     ...(auditOrgId ? { orgId: auditOrgId } : {}),
     summary: 'Withdrew from session', createdAt: FieldValue.serverTimestamp(),
   });
+  if (declined) {
+    const d = declined as { reservedBy: string; displayName: string; courseLabel: string; whenMs: number };
+    const when = new Date(d.whenMs).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    await notify({
+      uid: d.reservedBy,
+      type: 'reservation_declined',
+      title: `${d.displayName} is NOT available`,
+      body: `${d.displayName} declined the reservation for ${d.courseLabel} on ${when} — the slot is open again.`,
+      link: '/cadre/staffing',
+      dedupeKey: `resdecl_${sessionId}_${uid}`,
+    });
+  }
   return { ok: true };
 });
 
@@ -196,6 +220,11 @@ export const confirmReservation = onCall<{ sessionId: string }>(async (request) 
   const sessionId = (request.data.sessionId ?? '').trim();
   if (!sessionId) throw new HttpsError('invalid-argument', 'Missing session.');
 
+  // Suspended/inactive members can't accept work assignments.
+  const callerSnap = await db.doc(`users/${uid}`).get();
+  const callerStatus = callerSnap.exists ? (callerSnap.data() as UserDoc).status : null;
+  if (callerStatus !== 'active') throw new HttpsError('permission-denied', 'Your account is not active.');
+
   const signupRef = db.doc(`sessions/${sessionId}/signups/${uid}`);
   const signupSnap = await signupRef.get();
   if (!signupSnap.exists) throw new HttpsError('not-found', 'You are not signed up for this session.');
@@ -205,7 +234,10 @@ export const confirmReservation = onCall<{ sessionId: string }>(async (request) 
   }
 
   await signupRef.set({ reservationState: 'accepted' }, { merge: true });
-  await db.doc(`assignments/${sessionId}_${uid}`).set({ reservationState: 'accepted' }, { merge: true });
+  // Update-only on the mirror: a blind merge-set would CREATE an orphan
+  // assignment (no uid/start/orgId) if the mirror was ever deleted.
+  const assignRef = db.doc(`assignments/${sessionId}_${uid}`);
+  if ((await assignRef.get()).exists) await assignRef.set({ reservationState: 'accepted' }, { merge: true });
 
   // Tell the coordinator who reserved them — closing the loop they started.
   if (signup.reservedBy) {

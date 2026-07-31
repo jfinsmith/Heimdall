@@ -453,7 +453,9 @@ function EditUserModal({ user, onClose }: { user: WithId<UserDoc>; onClose: () =
   if (next.email && next.email !== (user.email ?? '').toLowerCase()) changes.push({ field: 'email', label: 'Sign-in email', from: user.email ?? '—', to: next.email });
   if (next.rank !== (user.rank ?? '')) changes.push({ field: 'rank', label: 'Rank', from: user.rank || '—', to: next.rank || '—' });
   if (next.agency !== (user.agency ?? '')) changes.push({ field: 'agency', label: 'Agency', from: user.agency || '—', to: next.agency || '—' });
-  if (next.phone !== (user.phone ?? '')) changes.push({ field: 'phone', label: 'Phone', from: user.phone || '—', to: next.phone || '—' });
+  // Compare like-for-like: a stored phone that predates formatPhone would
+  // otherwise show a phantom "(727)555-0100 → (727) 555-0100" diff every open.
+  if (next.phone !== formatPhone((user.phone ?? '').trim())) changes.push({ field: 'phone', label: 'Phone', from: user.phone || '—', to: next.phone || '—' });
   const pwChange = resetPw && newPassword.trim().length > 0;
   const pwTooShort = pwChange && newPassword.length < 8;
   const hasChanges = changes.length > 0 || pwChange;

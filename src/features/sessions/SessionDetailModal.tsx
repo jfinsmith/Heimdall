@@ -44,10 +44,13 @@ export function SessionDetailModal({ sessionId, onClose, onEdit, variant = 'staf
   // academy's curriculum) vs the academy's active cadet count. Advisory only.
   const { data: academy } = useDoc<AcademyDoc>(session ? `academies/${session.academyId}` : null);
   const { data: curriculum } = useCurriculum(academy?.discipline);
+  // Roster is STAFF-ONLY in the rules — querying it as an instructor gets the
+  // whole list denied (console noise on every modal open). The ratio badge is
+  // a staff advisory anyway, so skip the read entirely for non-staff.
   const { data: roster } = useCollection<RosterMemberDoc>(
-    session ? `academies/${session.academyId}/roster` : null,
+    session && can.buildSchedules(role) ? `academies/${session.academyId}/roster` : null,
     [],
-    [session?.academyId]
+    [session?.academyId, can.buildSchedules(role)]
   );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

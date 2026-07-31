@@ -911,7 +911,10 @@ export type NotificationType =
   | 'understaffing_alert'
   | 'digest'
   | 'message'
-  | 'feedback_submitted';
+  | 'feedback_submitted'
+  | 'reservation_offer'
+  | 'reservation_confirmed'
+  | 'reservation_declined';
 
 export interface NotificationDoc {
   uid: string; // recipient

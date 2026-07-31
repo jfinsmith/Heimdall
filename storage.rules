@@ -2,12 +2,12 @@ rules_version = '2';
 
 // HEIMDALL Cloud Storage rules. Role is carried on the auth custom claim
 // (request.auth.token.role), same as Firestore rules. ADMIN_ROLES = director,
-// lieutenant ([[lieutenant-equals-director]]).
+// lieutenant, sergeant — MUST match src/types + functions/src/types + firestore.rules.
 service firebase.storage {
   match /b/{bucket}/o {
     function signedIn() { return request.auth != null; }
     function isAdmin() {
-      return signedIn() && request.auth.token.role in ['director', 'lieutenant'];
+      return signedIn() && request.auth.token.role in ['director', 'lieutenant', 'sergeant'];
     }
     function isStaff() {
       return signedIn() && request.auth.token.role in ['director', 'lieutenant', 'sergeant', 'coordinator'];

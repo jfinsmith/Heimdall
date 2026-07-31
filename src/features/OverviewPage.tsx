@@ -36,8 +36,11 @@ export function OverviewPage() {
     [where('start', '>=', now), orderBy('start'), limit(100)],
     [staff]
   );
+  // Open/fully-staffed only, matching the Staffing Board — a draft academy
+  // under construction would otherwise flood the widget with slots nobody can
+  // act on yet.
   const understaffed = upcomingSessions.filter(
-    (s) => (s.status === 'open' || s.status === 'draft') && unfilledSlots(s).length > 0
+    (s) => (s.status === 'open' || s.status === 'fully_staffed') && unfilledSlots(s).length > 0
   );
 
   // Classes awaiting THIS user's sign-off in the approval chain.
@@ -150,7 +153,7 @@ export function OverviewPage() {
               Staffing board →
             </Link>
           </section>
-        ) : (
+        ) : role !== 'guest' ? (
           <section className="rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-watch-600">Get teaching</h2>
             <p className="text-sm text-slate-600">
@@ -163,6 +166,15 @@ export function OverviewPage() {
                 Profile
               </Link>
               .
+            </p>
+          </section>
+        ) : (
+          // Guests can't sign up and don't have the instructor nav — don't
+          // point them at pages they can't use.
+          <section className="rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-watch-600">Welcome</h2>
+            <p className="text-sm text-slate-600">
+              Your account has view access. Contact Academy Leadership if you need a teaching or staff role.
             </p>
           </section>
         )}

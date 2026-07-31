@@ -57,6 +57,7 @@ beforeEach(async () => {
     await setDoc(doc(db, 'academies/aB/roster/m1'), { orgId: BETA, fullName: 'Cadet B', status: 'active' });
     await setDoc(doc(db, 'sessions/sB'), { academyId: 'aB', status: 'open', roleSlots: [], start: new Date(), orgId: BETA });
     await setDoc(doc(db, 'settings/' + BETA), { orgName: 'Beta College' });
+    await setDoc(doc(db, 'auditLog/lA'), { actorUid: 'dave', action: 'x', summary: 's', orgId: ORG });
     await setDoc(doc(db, 'auditLog/lB'), { actorUid: 'erin', action: 'x', summary: 's', orgId: BETA });
     await setDoc(doc(db, 'orgs/' + ORG), { orgId: ORG, legalName: 'PHSC' });
     await setDoc(doc(db, 'orgs/' + BETA), { orgId: BETA, legalName: 'Beta College' });
@@ -83,6 +84,9 @@ beforeEach(async () => {
     // remediations — staff-only (holds injury/assignment details).
     await setDoc(doc(db, 'remediations/remA'), { orgId: ORG, personName: 'Case A', originalClass: 'LE 132', reason: 'injury', blocks: [], status: 'awaiting' });
     await setDoc(doc(db, 'remediations/remB'), { orgId: BETA, personName: 'Case B', originalClass: 'LE 900', reason: 'block_failure', blocks: [], status: 'awaiting' });
+    // portal secrets subdoc (staff-only) + a feedback report for the triage-lock suite.
+    await setDoc(doc(db, 'academies/acadA/private/portal'), { orgId: ORG, enabled: true, token: 'tok', academicHash: 'h' });
+    await setDoc(doc(db, 'feedbackReports/fbA'), { orgId: ORG, kind: 'bug', title: 'T', description: 'D', severity: 'low', submittedByUid: 'alice', submittedByName: 'Alice', status: 'new' });
   });
 });
 
@@ -460,6 +464,26 @@ describe('remediations — staff-only (instructors blocked), org isolation', () 
     await assertSucceeds(updateDoc(doc(as('carol', 'coordinator'), 'remediations/remA'), { notes: 'updated' }));
     await assertFails(setDoc(doc(as('alice', 'instructor'), 'remediations/nope'), { orgId: ORG, personName: 'X', originalClass: 'LE 132', reason: 'injury', blocks: [], status: 'awaiting' }));
     await assertSucceeds(deleteDoc(doc(as('carol', 'coordinator'), 'remediations/newA')));
+  });
+});
+
+describe('security-audit hardening (sergeant tier, portal secrets, feedback triage)', () => {
+  it('portal secrets subdoc: staff read OK, instructor DENIED', async () => {
+    await assertSucceeds(getDoc(doc(as('carol', 'coordinator'), 'academies/acadA/private/portal')));
+    await assertFails(getDoc(doc(as('alice', 'instructor'), 'academies/acadA/private/portal')));
+  });
+  it('admin cannot change their OWN role field on the user doc', async () => {
+    await assertFails(updateDoc(doc(as('dave', 'director'), 'users/dave'), { role: 'director', rank: 'Cpt.' }));
+    // Editing own NON-role fields still fine.
+    await assertSucceeds(updateDoc(doc(as('dave', 'director'), 'users/dave'), { rank: 'Cpt.' }));
+  });
+  it('feedbackReports: client admin may write triage notes but NOT status/orgId', async () => {
+    await assertSucceeds(updateDoc(doc(as('dave', 'director'), 'feedbackReports/fbA'), { adminNotes: 'looking' }));
+    await assertFails(updateDoc(doc(as('dave', 'director'), 'feedbackReports/fbA'), { status: 'resolved' }));
+    await assertFails(updateDoc(doc(as('dave', 'director'), 'feedbackReports/fbA'), { orgId: BETA }));
+  });
+  it('auditLog: org admin can no longer read (owner-only)', async () => {
+    await assertFails(getDoc(doc(as('dave', 'director'), 'auditLog/lA')));
   });
 });
 
