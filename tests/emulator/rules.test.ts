@@ -472,8 +472,10 @@ describe('security-audit hardening (sergeant tier, portal secrets, feedback tria
     await assertSucceeds(getDoc(doc(as('carol', 'coordinator'), 'academies/acadA/private/portal')));
     await assertFails(getDoc(doc(as('alice', 'instructor'), 'academies/acadA/private/portal')));
   });
-  it('admin cannot change their OWN role field on the user doc', async () => {
-    await assertFails(updateDoc(doc(as('dave', 'director'), 'users/dave'), { role: 'director', rank: 'Cpt.' }));
+  it('admin cannot CHANGE their OWN role field on the user doc', async () => {
+    // Writing a DIFFERENT role for yourself is blocked (self-escalation path);
+    // re-writing the same value is a no-op and passes unchanged().
+    await assertFails(updateDoc(doc(as('dave', 'director'), 'users/dave'), { role: 'lieutenant' }));
     // Editing own NON-role fields still fine.
     await assertSucceeds(updateDoc(doc(as('dave', 'director'), 'users/dave'), { rank: 'Cpt.' }));
   });
