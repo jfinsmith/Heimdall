@@ -14,7 +14,7 @@ import { useCollection } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import { downloadIcs } from '../../lib/ics';
 import { fmtRange } from '../../lib/time';
-import type { AssignmentDoc } from '../../types';
+import type { AcademyDoc, AssignmentDoc } from '../../types';
 import { SLOT_ROLE_LABELS } from '../../types';
 import { Button, EmptyState, PageHeader } from '../../components/ui';
 import { withdrawFromSession } from '../sessions/useSignup';
@@ -45,20 +45,30 @@ export function MySchedulePage() {
   const upcoming = assignments.filter((a) => a.end.toMillis() > Date.now());
   const past = assignments.filter((a) => a.end.toMillis() <= Date.now());
 
+  // Which class each assignment belongs to — "LE 132 · July Start".
+  const { data: academies } = useCollection<AcademyDoc>('academies');
+  const academyLabel = useMemo(() => {
+    const m = new Map(academies.map((a) => [a.id, [a.shortName, a.name].filter(Boolean).join(' · ')]));
+    return (id: string) => m.get(id) ?? '';
+  }, [academies]);
+
   const events = useMemo(() => {
-    const assignmentEvents = assignments.map((a) => ({
-      id: a.sessionId,
-      title: `${a.courseName} (${SLOT_ROLE_LABELS[a.role]})`,
-      start: a.start.toDate(),
-      end: a.end.toDate(),
-      backgroundColor: '#15803d',
-      borderColor: '#15803d',
-    }));
+    const assignmentEvents = assignments.map((a) => {
+      const label = academyLabel(a.academyId);
+      return {
+        id: a.sessionId,
+        title: `${label ? `${label} — ` : ''}${a.courseName} (${SLOT_ROLE_LABELS[a.role]})`,
+        start: a.start.toDate(),
+        end: a.end.toDate(),
+        backgroundColor: '#15803d',
+        borderColor: '#15803d',
+      };
+    });
     // Cover whatever years the assignments span so holidays always show.
     const years = assignments.map((a) => a.start.toDate().getFullYear());
     const range = years.length ? { fromYear: Math.min(...years), toYear: Math.max(...years) } : undefined;
     return [...assignmentEvents, ...holidayBackgroundEvents(disabledHolidays, observedHolidays, range)];
-  }, [assignments, disabledHolidays, observedHolidays]);
+  }, [assignments, disabledHolidays, observedHolidays, academyLabel]);
 
   async function withdraw(sessionId: string) {
     if (!firebaseUser) return;
@@ -144,6 +154,11 @@ export function MySchedulePage() {
             <li key={a.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-watch-100 bg-white p-4 shadow-sm">
               <div>
                 <button className="text-left font-semibold text-watch-900 hover:underline" onClick={() => setDetailId(a.sessionId)}>
+                  {academyLabel(a.academyId) && (
+                    <span className="mr-2 rounded bg-watch-100 px-1.5 py-0.5 text-xs font-bold text-watch-800">
+                      {academyLabel(a.academyId)}
+                    </span>
+                  )}
                   {a.courseName}
                 </button>
                 <div className="text-sm text-slate-500">
@@ -170,7 +185,10 @@ export function MySchedulePage() {
           <ul className="divide-y divide-watch-50 rounded-lg border border-watch-100 bg-white shadow-sm">
             {past.map((a) => (
               <li key={a.id} className="flex items-center justify-between px-4 py-3 text-sm">
-                <span className="text-watch-800">{a.courseName}</span>
+                <span className="text-watch-800">
+                  {a.courseName}
+                  {academyLabel(a.academyId) && <span className="ml-2 text-xs text-slate-400">{academyLabel(a.academyId)}</span>}
+                </span>
                 <span className="text-slate-400">{fmtRange(a.start, a.end)}</span>
               </li>
             ))}
@@ -178,7 +196,7 @@ export function MySchedulePage() {
         </>
       )}
 
-      {detailId && <SessionDetailModal sessionId={detailId} onClose={() => setDetailId(null)} />}
+      {detailId && <SessionDetailModal sessionId={detailId} variant="member" onClose={() => setDetailId(null)} />}
     </div>
   );
 }

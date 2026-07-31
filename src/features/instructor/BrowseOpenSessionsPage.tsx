@@ -302,7 +302,7 @@ export function BrowseOpenSessionsPage() {
         </div>
       )}
 
-      {detailId && <SessionDetailModal sessionId={detailId} onClose={() => setDetailId(null)} />}
+      {detailId && <SessionDetailModal sessionId={detailId} variant="member" onClose={() => setDetailId(null)} />}
     </div>
   );
 }

@@ -24,9 +24,14 @@ interface Props {
   onClose: () => void;
   /** Provided in staff contexts (builder) to jump into the editor. */
   onEdit?: (session: WithId<SessionDoc>) => void;
+  /** 'member' hides the staff action bar (open/close sign-ups, duplicate,
+   *  delete) even for admins — used on instructor surfaces (My Schedule,
+   *  Browse) where managing the session isn't the point. Default 'staff'
+   *  keeps the builder/calendar/staffing behavior. */
+  variant?: 'staff' | 'member';
 }
 
-export function SessionDetailModal({ sessionId, onClose, onEdit }: Props) {
+export function SessionDetailModal({ sessionId, onClose, onEdit, variant = 'staff' }: Props) {
   const { firebaseUser, profile, role, orgId } = useAuth();
   const { data: session } = useDoc<SessionDoc>(`sessions/${sessionId}`);
   const { data: signups } = useCollection<SignupDoc>(
@@ -221,6 +226,11 @@ export function SessionDetailModal({ sessionId, onClose, onEdit }: Props) {
       <div className="mb-4 flex flex-wrap items-center gap-2 text-sm text-slate-600">
         <StatusPill status={session.status} />
         {session.highLiability && <HighLiabilityBadge />}
+        {academy && (
+          <span className="rounded bg-watch-100 px-1.5 py-0.5 text-xs font-bold text-watch-800">
+            {[academy.shortName, academy.name].filter(Boolean).join(' · ')}
+          </span>
+        )}
         <span>{fmtRange(session.start, session.end)}</span>
         <span>· {session.location}{session.room ? ` — ${session.room}` : ''}</span>
         <span>· {session.hours} hrs</span>
@@ -259,24 +269,26 @@ export function SessionDetailModal({ sessionId, onClose, onEdit }: Props) {
                 {slot.role !== 'coordinator' && concluded && (
                   <span className="text-xs text-slate-400">Session concluded</span>
                 )}
-                {slot.role !== 'coordinator' && !concluded && firebaseUser && session.status === 'scheduled' && !can.buildSchedules(role) && (
+                {/* Withdraw is available whenever YOU hold the slot and the
+                    session hasn't concluded — even after sign-ups close.
+                    (My Schedule offers withdraw; this modal must match.) */}
+                {slot.role !== 'coordinator' && !concluded && firebaseUser && mineHere && (
+                  <Button variant="danger" disabled={busy} onClick={doWithdraw}>
+                    Withdraw
+                  </Button>
+                )}
+                {slot.role !== 'coordinator' && !concluded && firebaseUser && !mySignup && session.status === 'scheduled' && !can.buildSchedules(role) && (
                   <span className="text-xs text-slate-400">Sign-up not open yet</span>
                 )}
-                {slot.role !== 'coordinator' && !concluded && firebaseUser && can.signUp(role) && (session.status === 'open' || session.status === 'fully_staffed') && (
-                  mineHere ? (
-                    <Button variant="danger" disabled={busy} onClick={doWithdraw}>
-                      Withdraw
-                    </Button>
-                  ) : !mySignup ? (
-                    <Button
-                      variant="primary"
-                      disabled={busy || !qualified}
-                      title={!qualified ? 'You lack the verified qualification for this slot' : undefined}
-                      onClick={() => doSignup(slot.slotId, !open)}
-                    >
-                      {open ? 'Sign up' : 'Join waitlist'}
-                    </Button>
-                  ) : null
+                {slot.role !== 'coordinator' && !concluded && firebaseUser && !mySignup && can.signUp(role) && (session.status === 'open' || session.status === 'fully_staffed') && (
+                  <Button
+                    variant="primary"
+                    disabled={busy || !qualified}
+                    title={!qualified ? 'You lack the verified qualification for this slot' : undefined}
+                    onClick={() => doSignup(slot.slotId, !open)}
+                  >
+                    {open ? 'Sign up' : 'Join waitlist'}
+                  </Button>
                 )}
               </div>
               {(filled.length > 0 || waitlisted.length > 0) && (
@@ -294,7 +306,7 @@ export function SessionDetailModal({ sessionId, onClose, onEdit }: Props) {
         })}
       </ul>
 
-      {can.buildSchedules(role) && (
+      {variant === 'staff' && can.buildSchedules(role) && (
         <div className="mt-4 flex justify-end gap-2 border-t border-watch-50 pt-3">
           {session.status === 'scheduled' && session.roleSlots.some((sl) => sl.role !== 'coordinator') && (
             <Button
