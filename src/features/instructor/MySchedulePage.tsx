@@ -45,8 +45,12 @@ export function MySchedulePage() {
   const upcoming = assignments.filter((a) => a.end.toMillis() > Date.now());
   const past = assignments.filter((a) => a.end.toMillis() <= Date.now());
 
-  // Which class each assignment belongs to — "LE 132 · July Start".
-  const { data: academies } = useCollection<AcademyDoc>('academies');
+  // Which class each assignment belongs to — "LE 132 · July Start". The status
+  // constraint is REQUIRED for instructors: the academies list rule only lets
+  // non-staff read these statuses, and an unconstrained query is denied whole.
+  const { data: academies } = useCollection<AcademyDoc>('academies', [
+    where('status', 'in', ['published', 'in_progress', 'completed']),
+  ]);
   const academyLabel = useMemo(() => {
     const m = new Map(academies.map((a) => [a.id, [a.shortName, a.name].filter(Boolean).join(' · ')]));
     return (id: string) => m.get(id) ?? '';
