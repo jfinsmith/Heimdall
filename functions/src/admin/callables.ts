@@ -69,7 +69,7 @@ export const setUserRole = onCall<{ uid: string; role: Role }>(async (request) =
   const callerDoc = await getFirestore().doc(`users/${caller.uid}`).get();
   const callerRole = callerDoc.exists ? (callerDoc.data()!.role as Role) : null;
   if (!callerRole || !ADMIN_ROLES.includes(callerRole)) {
-    throw new HttpsError('permission-denied', 'Only directors and lieutenants may assign roles.');
+    throw new HttpsError('permission-denied', 'Only sergeants and above may assign roles.');
   }
   assertActiveCaller(callerDoc.data());
 
@@ -152,7 +152,7 @@ export const createUserAccount = onCall<{
   const callerDoc = await getFirestore().doc(`users/${caller.uid}`).get();
   const callerRole = callerDoc.exists ? (callerDoc.data()!.role as Role) : null;
   if (!callerRole || !ADMIN_ROLES.includes(callerRole)) {
-    throw new HttpsError('permission-denied', 'Only directors and lieutenants may add users.');
+    throw new HttpsError('permission-denied', 'Only sergeants and above may add users.');
   }
   assertActiveCaller(callerDoc.data());
   // New users inherit the creating admin's tenant (undefined pre-backfill — no change then).
@@ -379,7 +379,7 @@ export const sendActivationEmail = onCall<{ uid: string; password: string }>(asy
   const callerDoc = await db.doc(`users/${caller.uid}`).get();
   const callerRole = callerDoc.exists ? (callerDoc.data()!.role as Role) : null;
   if (!callerRole || !ADMIN_ROLES.includes(callerRole)) {
-    throw new HttpsError('permission-denied', 'Only directors and lieutenants may send activation emails.');
+    throw new HttpsError('permission-denied', 'Only sergeants and above may send activation emails.');
   }
   assertActiveCaller(callerDoc.data());
 
@@ -461,7 +461,7 @@ export const setUserActive = onCall<{ uid: string; active: boolean }>(async (req
   const callerDoc = await db.doc(`users/${caller.uid}`).get();
   const callerRole = callerDoc.exists ? (callerDoc.data()!.role as Role) : null;
   if (!callerRole || !ADMIN_ROLES.includes(callerRole)) {
-    throw new HttpsError('permission-denied', 'Only directors and lieutenants may activate or deactivate members.');
+    throw new HttpsError('permission-denied', 'Only sergeants and above may activate or deactivate members.');
   }
   assertActiveCaller(callerDoc.data());
 
@@ -511,7 +511,7 @@ export const setUserSuspension = onCall<{ uid: string; suspended: boolean; reaso
   const callerDoc = await db.doc(`users/${caller.uid}`).get();
   const callerRole = callerDoc.exists ? (callerDoc.data()!.role as Role) : null;
   if (!callerRole || !ADMIN_ROLES.includes(callerRole)) {
-    throw new HttpsError('permission-denied', 'Only directors and lieutenants may suspend members.');
+    throw new HttpsError('permission-denied', 'Only sergeants and above may suspend members.');
   }
   assertActiveCaller(callerDoc.data());
 
@@ -1453,7 +1453,7 @@ export const adminUpdateUser = onCall<{
   const callerDoc = await db.doc(`users/${caller.uid}`).get();
   const callerRole = callerDoc.exists ? (callerDoc.data()!.role as Role) : null;
   if (!callerRole || !ADMIN_ROLES.includes(callerRole)) {
-    throw new HttpsError('permission-denied', 'Only directors and lieutenants may edit member profiles.');
+    throw new HttpsError('permission-denied', 'Only sergeants and above may edit member profiles.');
   }
   assertActiveCaller(callerDoc.data());
   const callerOrgId = callerDoc.data()!.orgId as string | undefined;

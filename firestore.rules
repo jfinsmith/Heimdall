@@ -41,9 +41,10 @@ service cloud.firestore {
     function isStaff() {
       return signedIn() && activeStatus() && role() in ['director', 'lieutenant', 'sergeant', 'coordinator'];
     }
-    // Command: may manage users, roles, and org settings.
+    // Command: may manage users, roles, and org settings. Sergeant and above —
+    // MUST match ADMIN_ROLES in src/types and functions/src/types.
     function isAdmin() {
-      return signedIn() && activeStatus() && role() in ['director', 'lieutenant'];
+      return signedIn() && activeStatus() && role() in ['director', 'lieutenant', 'sergeant'];
     }
     function isOwner(uid) {
       return signedIn() && request.auth.uid == uid;

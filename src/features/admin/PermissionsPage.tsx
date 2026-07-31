@@ -132,8 +132,8 @@ export function PermissionsPage() {
 
       <p className="mt-4 max-w-2xl text-xs text-slate-500">
         {label('director')} and {label('lieutenant')} are intentionally identical full administrators.
-        {' '}{stripTitle(label('sergeant'))} has full authority over academies and scheduling but no site
-        administration. {label('coordinator')}s are the hands-on schedule builders. {label('instructor')}s
+        {' '}{stripTitle(label('sergeant'))} also holds site administration (Users &amp; Roles, settings) on
+        top of full academy and scheduling authority. {label('coordinator')}s are the hands-on schedule builders. {label('instructor')}s
         view and sign up. {label('guest')}s are read-only. Changing what a role can <em>do</em> requires a
         code/rules change — labels are editable above; people are assigned roles under Users &amp; Roles.
       </p>

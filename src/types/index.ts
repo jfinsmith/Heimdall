@@ -15,7 +15,7 @@ export type Role = 'director' | 'lieutenant' | 'sergeant' | 'coordinator' | 'ins
 /** Roles that can build schedules / approve sign-ups ("coordinator+"). */
 export const STAFF_ROLES: Role[] = ['director', 'lieutenant', 'sergeant', 'coordinator'];
 /** Roles that can manage users and org settings ("command"). */
-export const ADMIN_ROLES: Role[] = ['director', 'lieutenant'];
+export const ADMIN_ROLES: Role[] = ['director', 'lieutenant', 'sergeant'];
 
 export type UserStatus = 'pending' | 'active' | 'inactive' | 'suspended';
 

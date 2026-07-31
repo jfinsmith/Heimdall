@@ -48,7 +48,7 @@ export const RANKS: { key: Role; defaultLabel: string; summary: string }[] = [
     key: 'sergeant',
     defaultLabel: 'Sergeant (Supervisor)',
     summary:
-      'Academy administrator. Full control over academies, schedules, sessions, sign-ups, and qualification verification — no user/role management or site settings.',
+      'Site administrator. Manages users, roles, org settings, and email automations, plus full control over academies, schedules, sessions, sign-ups, and qualification verification.',
   },
   {
     key: 'lieutenant',
@@ -106,9 +106,9 @@ export const PERMISSION_MATRIX: { capability: string; roles: Record<Role, boolea
   { capability: 'Verify instructor qualifications', roles: { director: true, lieutenant: true, sergeant: true, coordinator: true, instructor: false, guest: false } },
   { capability: 'Send bulk messages (Gjallarhorn)', roles: { director: true, lieutenant: true, sergeant: true, coordinator: true, instructor: false, guest: false } },
   { capability: 'Receive escalation / understaffing alerts', roles: { director: true, lieutenant: true, sergeant: true, coordinator: true, instructor: false, guest: false } },
-  { capability: 'Approve pending users & deactivate accounts', roles: { director: true, lieutenant: true, sergeant: false, coordinator: false, instructor: false, guest: false } },
-  { capability: 'Assign roles (writes the auth claim)', roles: { director: true, lieutenant: true, sergeant: false, coordinator: false, instructor: false, guest: false } },
-  { capability: 'Org settings, branding & allowed domains', roles: { director: true, lieutenant: true, sergeant: false, coordinator: false, instructor: false, guest: false } },
-  { capability: 'Gjallarhorn settings & email automations', roles: { director: true, lieutenant: true, sergeant: false, coordinator: false, instructor: false, guest: false } },
-  { capability: 'View audit log', roles: { director: true, lieutenant: true, sergeant: false, coordinator: false, instructor: false, guest: false } },
+  { capability: 'Approve pending users & deactivate accounts', roles: { director: true, lieutenant: true, sergeant: true, coordinator: false, instructor: false, guest: false } },
+  { capability: 'Assign roles (writes the auth claim)', roles: { director: true, lieutenant: true, sergeant: true, coordinator: false, instructor: false, guest: false } },
+  { capability: 'Org settings, branding & allowed domains', roles: { director: true, lieutenant: true, sergeant: true, coordinator: false, instructor: false, guest: false } },
+  { capability: 'Gjallarhorn settings & email automations', roles: { director: true, lieutenant: true, sergeant: true, coordinator: false, instructor: false, guest: false } },
+  { capability: 'View audit log', roles: { director: true, lieutenant: true, sergeant: true, coordinator: false, instructor: false, guest: false } },
 ];

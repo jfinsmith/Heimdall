@@ -134,6 +134,9 @@ export function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const staff = can.buildSchedules(role);
   const admin = can.manageOrg(role);
+  // Instructor tools: anyone with a teaching-track role — guests see only
+  // Overview and How To.
+  const instructorTools = !!role && role !== 'guest';
   const { orgs: switchOrgs, switchTo, busy: switchBusy } = useOrgSwitch(platformOwner);
   const impersonating = platformOwner && !!profile?.homeOrgId && profile.orgId !== profile.homeOrgId;
   const activeOrgName = switchOrgs.find((o) => o.orgId === profile?.orgId)?.legalName ?? profile?.orgId ?? '';
@@ -145,23 +148,33 @@ export function AppShell() {
 
   const nav = (
     <nav aria-label="Main navigation" className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3">
+      {/* Visibility ladder: everyone → instructors (Instructor tools) →
+          coordinator+ (CADRE) → sergeant+ (Admin) → platform owner. */}
       <NavItem to="/overview" label="Overview" end />
       <NavItem to="/how-to" label="How To" />
-      {/* CADRE — Coordinated Academy Duty & Roster Engine */}
-      <SectionLabel title="CADRE — Coordinated Academy Duty & Roster Engine">CADRE</SectionLabel>
-      <NavItem to="/cadre/calendar" label="Calendar" />
-      {staff && <NavItem to="/cadre/academies" label="Academies" />}
-      {staff && <NavItem to="/cadre/staffing" label="Staffing Board" />}
-      {staff && <NavItem to="/cadre/rooms" label="Room Reservations" />}
-      {staff && <NavItem to="/cadre/remediation" label="Remediation" />}
-      {/* Cadet Reports hidden from nav — duplicative of the per-academy Reports tab. Route still works; re-enable by uncommenting.
-      {staff && <NavItem to="/cadet-reports" label="Cadet Reports" />} */}
-      {staff && <NavItem to="/reports" label="Exports" />}
-      <SectionLabel title="Instructor tools">Instructor</SectionLabel>
-      <NavItem to="/open-sessions" label="Browse Open Sessions" />
-      <NavItem to="/my-schedule" label="My Schedule" />
-      <NavItem to="/profile" label="Profile & Qualifications" />
-      <NavItem to="/feedback" label="Report a Problem" />
+      {instructorTools && (
+        <>
+          <SectionLabel title="Instructor tools">Instructor</SectionLabel>
+          <NavItem to="/open-sessions" label="Browse Open Sessions" />
+          <NavItem to="/my-schedule" label="My Schedule" />
+          <NavItem to="/profile" label="Profile & Qualifications" />
+          <NavItem to="/feedback" label="Report a Problem" />
+        </>
+      )}
+      {staff && (
+        <>
+          {/* CADRE — Coordinated Academy Duty & Roster Engine */}
+          <SectionLabel title="CADRE — Coordinated Academy Duty & Roster Engine">CADRE</SectionLabel>
+          <NavItem to="/cadre/calendar" label="Calendar" />
+          <NavItem to="/cadre/academies" label="Academies" />
+          <NavItem to="/cadre/staffing" label="Staffing Board" />
+          <NavItem to="/cadre/rooms" label="Room Reservations" />
+          <NavItem to="/cadre/remediation" label="Remediation" />
+          {/* Cadet Reports hidden from nav — duplicative of the per-academy Reports tab. Route still works; re-enable by uncommenting.
+          <NavItem to="/cadet-reports" label="Cadet Reports" /> */}
+          <NavItem to="/reports" label="Exports" />
+        </>
+      )}
       {admin && (
         <>
           <SectionLabel title="Administration">Admin</SectionLabel>

@@ -11,7 +11,7 @@ export type SessionStatus = 'draft' | 'open' | 'fully_staffed' | 'cancelled' | '
 export type SignupStatus = 'confirmed' | 'waitlist' | 'withdrawn';
 
 export const STAFF_ROLES: Role[] = ['director', 'lieutenant', 'sergeant', 'coordinator'];
-export const ADMIN_ROLES: Role[] = ['director', 'lieutenant'];
+export const ADMIN_ROLES: Role[] = ['director', 'lieutenant', 'sergeant'];
 
 export interface Qualification {
   key: string;

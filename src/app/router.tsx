@@ -122,13 +122,15 @@ export function AppRouter() {
               <Route path="/overview" element={<OverviewPage />} />
               <Route path="/how-to" element={<HowToPage />} />
               <Route path="/notifications" element={<NotificationsPage />} />
-              <Route path="/cadre/calendar" element={<CalendarPage />} />
               <Route path="/open-sessions" element={<BrowseOpenSessionsPage />} />
               <Route path="/my-schedule" element={<MySchedulePage />} />
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/feedback" element={<FeedbackReportPage />} />
 
               <Route element={<RequireStaff />}>
+                {/* Coordinator+ only — the master calendar exposes every
+                    academy's full schedule, not just open sign-ups. */}
+                <Route path="/cadre/calendar" element={<CalendarPage />} />
                 <Route path="/cadre/academies" element={<AcademiesPage />} />
                 <Route path="/cadre/academies/:academyId" element={<AcademyBuilderPage />} />
                 <Route path="/cadre/academies/:academyId/roster" element={<AcademyRosterPage />} />
