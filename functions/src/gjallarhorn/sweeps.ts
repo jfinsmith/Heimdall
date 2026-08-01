@@ -13,7 +13,7 @@
  */
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
-import { escalateToCommand, getSettings, notify, notifyCoordinators, sessionDetails } from './notify';
+import { getSettings, notify, sessionDetails } from './notify';
 import { renderEmail } from './templates';
 import type { AssignmentDoc, SessionDoc, UserDoc } from '../types';
 
@@ -125,27 +125,36 @@ export const gjallarhornDailySweep = onSchedule(
       });
       const body = `${understaffed.length} session(s) within ${alertDays} days are missing required staff:\n\n${lines.join('\n')}`;
 
-      // Coordinators of each affected academy + THIS org's command escalation
-      // list. dayKey makes a retried daily run on the same date idempotent.
+      // ONE alert per person per day. The body covers the whole org, so the
+      // recipient set is collected up front and de-duplicated: a coordinator
+      // of two affected academies (or a coordinator who is also on the command
+      // escalation list) previously received the identical email 2-3 times —
+      // once per academy plus once via escalation, each under its own dedupe
+      // key. Escalation entries keep force:true (bypass personal opt-out).
       const academyIds = [...new Set(understaffed.map(({ data }) => data.academyId))];
+      const recipients = new Map<string, { email?: string; force: boolean }>();
       for (const academyId of academyIds) {
-        await notifyCoordinators(academyId, {
-          dedupeKey: `understaff_${dayKey}_${academyId}`,
-          type: 'understaffing_alert',
-          title: `Understaffing alert — ${understaffed.length} session(s) inside ${alertDays} days`,
-          body,
-          link: '/cadre/staffing',
-        });
+        const academy = await db().doc(`academies/${academyId}`).get();
+        for (const uid of (academy.data()?.coordinatorIds ?? []) as string[]) {
+          if (!recipients.has(uid)) recipients.set(uid, { force: false });
+        }
       }
-      await escalateToCommand(
-        {
-          dedupeKey: `understaff_${dayKey}_${orgId}_cmd`,
-          type: 'understaffing_alert',
-          title: `Understaffing alert — ${understaffed.length} session(s) inside ${alertDays} days`,
-          body,
-          link: '/cadre/staffing',
-        },
-        orgId
+      for (const r of orgSettings?.escalationRecipients ?? []) {
+        if (r.includes('@')) recipients.set(`email:${r}`, { email: r, force: true });
+        else recipients.set(r, { force: true }); // upgrades a coordinator entry to forced
+      }
+      const payload = {
+        type: 'understaffing_alert',
+        title: `Understaffing alert — ${understaffed.length} session(s) inside ${alertDays} days`,
+        body,
+        link: '/cadre/staffing',
+      };
+      await Promise.all(
+        [...recipients.entries()].map(([key, r]) =>
+          r.email
+            ? notify({ ...payload, email: r.email, orgId, force: true, dedupeKey: `understaff_${dayKey}_${orgId}_${r.email}` })
+            : notify({ ...payload, uid: key, force: r.force, dedupeKey: `understaff_${dayKey}_${orgId}_${key}` })
+        )
       );
     }
   }

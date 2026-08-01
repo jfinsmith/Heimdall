@@ -159,6 +159,9 @@ export interface UserDoc {
 /** Every automated email Gjallarhorn can send. Keys match NotificationType. */
 export const EMAIL_AUTOMATIONS = [
   { key: 'signup_confirmed', label: 'Sign-up confirmation', description: 'Emails the instructor (with calendar invite) when they sign up for a slot.' },
+  { key: 'reservation_offer', label: 'Reservation — availability request', description: 'Emails an instructor when a coordinator reserves them into a slot, asking them to confirm or decline on My Schedule.' },
+  { key: 'reservation_confirmed', label: 'Reservation confirmed', description: 'Emails the reserving coordinator when the instructor confirms they are available.' },
+  { key: 'reservation_declined', label: 'Reservation declined', description: 'Emails the reserving coordinator when the instructor declines and the slot re-opens.' },
   { key: 'slot_reopened', label: 'Withdrawal / slot re-opened', description: 'Emails the academy coordinators when an instructor withdraws.' },
   { key: 'session_fully_staffed', label: 'Session fully staffed', description: 'Emails coordinators when the last required slot fills.' },
   { key: 'lead_withdrawal_escalation', label: 'Lead withdrawal escalation', description: 'Emails command when a lead withdraws inside the escalation window.' },
