@@ -263,27 +263,66 @@ export function RoomsPage() {
 
       {/* ── The week grid — rooms × days, the old spreadsheet made live ────── */}
       <section className="rounded-lg border border-watch-100 bg-white p-4 shadow-sm">
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-watch-600">
-            Week of{' '}
-            {weekStart.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
-          </h2>
-          <div className="ml-auto flex flex-wrap items-center gap-2">
-            <Button variant="ghost" aria-label="Previous week" onClick={() => setWeekStart((w) => { const d = new Date(w); d.setDate(d.getDate() - 7); return d; })}>←</Button>
-            <Button variant="ghost" onClick={() => setWeekStart(startOfWeek(new Date()))}>Today</Button>
-            <Button variant="ghost" aria-label="Next week" onClick={() => setWeekStart((w) => { const d = new Date(w); d.setDate(d.getDate() + 7); return d; })}>→</Button>
-            <Input
-              type="date"
-              value={toDateInputValue(weekStart)}
-              onChange={(e) => { if (e.target.value) setWeekStart(startOfWeek(new Date(`${e.target.value}T00:00:00`))); }}
-              className="w-auto"
-              aria-label="Jump to week"
-            />
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-display text-lg font-bold text-watch-900">
+              {weekStart.toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}
+              {' – '}
+              {weekDays[6].toLocaleDateString(
+                undefined,
+                weekDays[6].getMonth() === weekStart.getMonth()
+                  ? { day: 'numeric', year: 'numeric' }
+                  : { month: 'long', day: 'numeric', year: 'numeric' }
+              )}
+            </h2>
+            <p className="text-xs text-slate-400">
+              Classes book their rooms automatically — click any empty cell to hold a room.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Joined pager — one control, not three floating buttons. */}
+            <div className="inline-flex overflow-hidden rounded-md ring-1 ring-watch-200">
+              <button
+                type="button"
+                aria-label="Previous week"
+                className="px-2.5 py-1.5 text-sm text-watch-700 hover:bg-watch-50"
+                onClick={() => setWeekStart((w) => { const d = new Date(w); d.setDate(d.getDate() - 7); return d; })}
+              >
+                ←
+              </button>
+              <button
+                type="button"
+                className="border-x border-watch-200 px-3 py-1.5 text-sm font-medium text-watch-700 hover:bg-watch-50"
+                onClick={() => setWeekStart(startOfWeek(new Date()))}
+              >
+                Today
+              </button>
+              <button
+                type="button"
+                aria-label="Next week"
+                className="px-2.5 py-1.5 text-sm text-watch-700 hover:bg-watch-50"
+                onClick={() => setWeekStart((w) => { const d = new Date(w); d.setDate(d.getDate() + 7); return d; })}
+              >
+                →
+              </button>
+            </div>
+            {/* Fixed-width wrappers — the shared Input/Select are w-full and
+                would otherwise each claim a whole flex line. */}
+            <div className="w-40">
+              <Input
+                type="date"
+                value={toDateInputValue(weekStart)}
+                onChange={(e) => { if (e.target.value) setWeekStart(startOfWeek(new Date(`${e.target.value}T00:00:00`))); }}
+                aria-label="Jump to week"
+              />
+            </div>
             {sortedCats.length > 1 && (
-              <Select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} aria-label="Filter by location">
-                <option value="all">All locations</option>
-                {sortedCats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </Select>
+              <div className="w-44">
+                <Select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} aria-label="Filter by location">
+                  <option value="all">All locations</option>
+                  {sortedCats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </Select>
+              </div>
             )}
             <Button variant="primary" disabled={rooms.length === 0} onClick={() => setResModal({})}>+ Reservation</Button>
           </div>
@@ -292,23 +331,28 @@ export function RoomsPage() {
         {rooms.length === 0 ? (
           <p className="text-sm text-slate-500">Add locations and rooms above — the week grid shows every room&apos;s bookings at a glance.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full table-fixed border-collapse text-xs">
+          <div className="overflow-x-auto rounded-lg ring-1 ring-watch-100">
+            <table className="w-full table-fixed border-separate border-spacing-0 text-xs">
               <thead>
                 <tr>
-                  <th className="w-28 border border-watch-100 bg-watch-50 px-2 py-1.5 text-left text-[11px] font-bold uppercase tracking-wider text-watch-600">Room</th>
+                  <th className="sticky left-0 z-10 w-28 border-b border-watch-100 bg-watch-50 px-2.5 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-watch-500">
+                    Room
+                  </th>
                   {weekDays.map((d) => {
                     const key = toDateInputValue(d);
                     const weekend = d.getDay() === 0 || d.getDay() === 6;
+                    const today = key === todayKey;
                     return (
                       <th
                         key={key}
-                        className={`border border-watch-100 px-2 py-1.5 text-left text-[11px] font-bold uppercase tracking-wider ${
-                          key === todayKey ? 'bg-bifrost-100 text-watch-900' : weekend ? 'bg-watch-50/60 text-watch-400' : 'bg-watch-50 text-watch-600'
+                        className={`border-b border-l border-watch-100 px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-wider ${
+                          today ? 'bg-bifrost-50 text-bifrost-800' : weekend ? 'bg-watch-50/70 text-watch-400' : 'bg-watch-50 text-watch-500'
                         }`}
                       >
-                        {d.toLocaleDateString(undefined, { weekday: 'short' })}{' '}
-                        <span className="font-normal normal-case">{d.toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' })}</span>
+                        {d.toLocaleDateString(undefined, { weekday: 'short' })}
+                        <span className={`ml-1.5 rounded px-1 font-bold normal-case tabular-nums ${today ? 'bg-bifrost-500 text-white' : 'text-watch-400'}`}>
+                          {d.getDate()}
+                        </span>
                       </th>
                     );
                   })}
@@ -322,13 +366,20 @@ export function RoomsPage() {
                   return (
                     <tbody key={c.id}>
                       <tr>
-                        <td colSpan={8} className="border border-watch-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-white" style={{ backgroundColor: catColor.get(c.id) }}>
+                        <td
+                          colSpan={8}
+                          className="border-b border-watch-50 bg-watch-50/60 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-widest text-watch-600"
+                          style={{ borderLeft: `4px solid ${catColor.get(c.id)}` }}
+                        >
                           {c.name}
+                          <span className="ml-2 font-medium normal-case tracking-normal text-watch-400">
+                            {catRooms.length} room{catRooms.length === 1 ? '' : 's'}
+                          </span>
                         </td>
                       </tr>
                       {catRooms.map((r) => (
-                        <tr key={r.id}>
-                          <td className="border border-watch-100 bg-white px-2 py-1.5 align-top">
+                        <tr key={r.id} className="group/row">
+                          <td className="sticky left-0 z-10 border-b border-watch-50 bg-white px-2.5 py-2 align-top group-hover/row:bg-watch-50/50">
                             <span className="flex items-center gap-1.5 font-semibold text-watch-900">
                               <span className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: r.color || catColor.get(c.id) }} />
                               <span className="truncate" title={r.capacity ? `${r.name} — ${r.capacity} seats` : r.name}>{r.name}</span>
@@ -338,43 +389,37 @@ export function RoomsPage() {
                             const dayKey = toDateInputValue(d);
                             const chips = cellChips.get(`${r.id}_${dayKey}`) ?? [];
                             const weekend = d.getDay() === 0 || d.getDay() === 6;
+                            const today = dayKey === todayKey;
                             return (
                               <td
                                 key={dayKey}
-                                className={`group h-9 border border-watch-100 p-1 align-top ${weekend ? 'bg-watch-50/40' : 'bg-white'} ${dayKey === todayKey ? 'ring-1 ring-inset ring-bifrost-300' : ''}`}
+                                className={`group h-10 border-b border-l border-watch-50 p-1 align-top ${
+                                  today ? 'bg-bifrost-50/40' : weekend ? 'bg-watch-50/40' : 'bg-white'
+                                }`}
                               >
-                                <div className="flex flex-col gap-1">
-                                  {chips.map((chip) =>
-                                    chip.kind === 'hold' ? (
-                                      <button
-                                        key={chip.key}
-                                        type="button"
-                                        title={chip.title}
-                                        onClick={() => setResModal({ reservation: chip.reservation })}
-                                        className="block w-full truncate rounded px-1.5 py-0.5 text-left text-[11px] font-semibold text-white hover:opacity-85"
-                                        style={{ backgroundColor: chip.color }}
-                                      >
-                                        {chip.label}
-                                      </button>
-                                    ) : (
-                                      <button
-                                        key={chip.key}
-                                        type="button"
-                                        title={chip.title}
-                                        onClick={() => chip.academyId && navigate(`/cadre/academies/${chip.academyId}`)}
-                                        className="block w-full truncate rounded px-1.5 py-0.5 text-left text-[11px] font-semibold text-white hover:opacity-85"
-                                        style={{ backgroundColor: chip.color }}
-                                      >
-                                        {chip.label}
-                                      </button>
-                                    )
-                                  )}
+                                <div className="flex h-full flex-col gap-1">
+                                  {chips.map((chip) => (
+                                    <button
+                                      key={chip.key}
+                                      type="button"
+                                      title={chip.title}
+                                      onClick={() =>
+                                        chip.kind === 'hold'
+                                          ? setResModal({ reservation: chip.reservation })
+                                          : chip.academyId && navigate(`/cadre/academies/${chip.academyId}`)
+                                      }
+                                      className="block w-full truncate rounded-md px-2 py-1 text-left text-[11px] font-semibold text-white shadow-sm transition hover:shadow hover:brightness-110"
+                                      style={{ backgroundColor: chip.color }}
+                                    >
+                                      {chip.label}
+                                    </button>
+                                  ))}
                                   {/* Empty (or any) cell: one click starts a hold for THIS room+day. */}
                                   <button
                                     type="button"
                                     aria-label={`Reserve ${r.name} on ${dayKey}`}
                                     onClick={() => setResModal({ prefill: { roomId: r.id, date: dayKey } })}
-                                    className={`w-full rounded border border-dashed border-transparent px-1.5 text-left text-[11px] text-transparent transition group-hover:border-watch-200 group-hover:text-watch-400 ${chips.length === 0 ? 'py-0.5' : 'py-0'}`}
+                                    className={`w-full flex-1 rounded-md border border-dashed border-transparent px-2 text-left text-[11px] text-transparent transition group-hover:border-watch-200 group-hover:text-watch-400 group-hover:hover:border-bifrost-300 group-hover:hover:bg-bifrost-50 group-hover:hover:text-bifrost-700 ${chips.length === 0 ? 'py-1' : 'py-0.5'}`}
                                   >
                                     + hold
                                   </button>
