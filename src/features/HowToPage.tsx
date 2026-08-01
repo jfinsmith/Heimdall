@@ -282,11 +282,11 @@ export function HowToPage() {
 
         <Section id="rooms" title="Room reservations" role="Staff">
           <Tips items={[
-            <><B>CADRE → Room Reservations</B> manages locations (College, Range…) and their rooms (capacity, color, floor-plan image). Locations can be renamed anytime.</>,
-            <><B>Day availability</B> answers &quot;what&apos;s free?&quot; at a glance: pick a date and every room shows <B>Free all day</B> or its booked blocks (times + class, 🔒 for holds).</>,
-            <>Bookings are automatic: assigning a room to a session reserves it. Conflicts are <B>hard-blocked</B> everywhere (create, edit, drag, duplicate, recurring, multi-room).</>,
-            <>Use <B>+ Reservation</B> for ad-hoc holds (maintenance, outside groups) — they block the calendar like classes and show with a 🔒.</>,
-            <>The booking calendar shows every room a session holds; filter by location or room. Capacity warnings appear when a class exceeds a room&apos;s seats.</>,
+            <><B>CADRE → Room Reservations</B> is a <B>week grid</B> — rooms down the side, days across the top (like the old spreadsheet, but live). Colored blocks are classes, filled in <B>automatically</B> from their schedules; 🔒 blocks are manual holds. Empty cell = free room.</>,
+            <>Click any <B>empty cell</B> to hold that room on that day (renovations, outside groups, an event…) — or use <B>+ Reservation</B>. Click a class block to open its academy, a 🔒 to edit or delete the hold.</>,
+            <>Navigate with ← Today → or the date picker; filter by location. The legend below shows this week&apos;s classes in their colors. Today&apos;s column is highlighted.</>,
+            <>Conflicts are <B>hard-blocked</B> everywhere (session create/edit/drag/duplicate/recurring, multi-room, and ad-hoc holds) — a room physically can&apos;t be double-booked.</>,
+            <>Manage locations (College, Range…) and rooms (capacity, color, floor-plan image) under <B>Locations &amp; rooms</B> at the top. Capacity warnings appear when a class exceeds a room&apos;s seats.</>,
           ]} />
         </Section>
 

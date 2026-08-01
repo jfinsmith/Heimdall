@@ -10,8 +10,6 @@
  */
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import FullCalendar from '@fullcalendar/react';
-import dayGridPlugin from '@fullcalendar/daygrid';
 import { addDoc, collection, deleteDoc, deleteField, doc, orderBy, serverTimestamp, Timestamp, updateDoc, where } from 'firebase/firestore';
 import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
@@ -23,6 +21,7 @@ import type { AcademyDoc, RoomCategoryDoc, RoomDoc, RoomReservationDoc, SessionD
 import { Button, Field, Input, PageHeader, Select, TextArea } from '../../../components/ui';
 import { Modal } from '../../../components/Modal';
 import { RoomSelect } from './RoomSelect';
+import { academyColorFor } from '../../../lib/academyColors';
 
 // Ad-hoc reservations are SERVER-owned (transactional conflict check); the rules
 // forbid client writes to roomReservations.
@@ -30,6 +29,26 @@ const saveRoomReservationFn = httpsCallable<{ reservationId?: string; roomId: st
 const deleteRoomReservationFn = httpsCallable<{ reservationId: string }, { ok: boolean }>(functions, 'deleteRoomReservation');
 
 const PALETTE = ['#2563eb', '#16a34a', '#d97706', '#7c3aed', '#dc2626', '#0891b2', '#db2777', '#65a30d'];
+
+/** Monday-first week start (matches the old spreadsheet + org scheduling). */
+function startOfWeek(d: Date): Date {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
+  return x;
+}
+
+/** One colored block in a week-grid cell. */
+type GridChip = {
+  key: string;
+  kind: 'session' | 'hold';
+  label: string;
+  title: string;
+  color: string;
+  startMs: number;
+  academyId?: string;
+  reservation?: WithId<RoomReservationDoc>;
+};
 
 export function RoomsPage() {
   const { orgId } = useAuth();
@@ -46,9 +65,8 @@ export function RoomsPage() {
   const [newCat, setNewCat] = useState('');
   const [busy, setBusy] = useState(false);
   const [roomModal, setRoomModal] = useState<{ categoryId: string; room?: WithId<RoomDoc> } | null>(null);
-  const [resModal, setResModal] = useState<{ reservation?: WithId<RoomReservationDoc> } | null>(null);
+  const [resModal, setResModal] = useState<{ reservation?: WithId<RoomReservationDoc>; prefill?: { roomId?: string; date?: string } } | null>(null);
   const [categoryFilter, setCategoryFilter] = useState('all');
-  const [roomFilter, setRoomFilter] = useState('all');
   const [roomsOpen, setRoomsOpen] = useState(false); // top management section — collapsed by default
 
   const sortedCats = useMemo(
@@ -70,93 +88,78 @@ export function RoomsPage() {
   const academyById = useMemo(() => new Map(academies.map((a) => [a.id, a])), [academies]);
   const templateIds = useMemo(() => new Set(academies.filter((a) => a.isTemplate).map((a) => a.id)), [academies]);
 
-  // Rooms available in the room filter, narrowed by the chosen category.
-  const filterRooms = useMemo(
-    () => rooms.filter((r) => categoryFilter === 'all' || r.categoryId === categoryFilter).sort((a, b) => a.name.localeCompare(b.name)),
-    [rooms, categoryFilter]
+  // ── Week grid (the digital version of the old rooms×days spreadsheet) ────
+  const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date()));
+  const weekDays = useMemo(
+    () => Array.from({ length: 7 }, (_, i) => { const d = new Date(weekStart); d.setDate(d.getDate() + i); return d; }),
+    [weekStart]
   );
+  const todayKey = toDateInputValue(new Date());
 
-  // Bookings → calendar events (managed rooms only; skip cancelled + templates).
-  // A multi-room session (roomIds) fans out into one event PER room so every
-  // held room shows as booked — filtering by any of its rooms finds it.
-  const events = useMemo(() => {
-    return sessions
-      .filter((s) => s.status !== 'cancelled' && !templateIds.has(s.academyId))
-      .flatMap((s) => {
-        const held = [...new Set(s.roomIds?.length ? s.roomIds : s.roomId ? [s.roomId] : [])];
-        return held
-          .filter((rid) => roomById.has(rid))
-          .filter((rid) => roomFilter === 'all' || rid === roomFilter)
-          .filter((rid) => categoryFilter === 'all' || roomById.get(rid)?.categoryId === categoryFilter)
-          .map((rid) => {
-            const r = roomById.get(rid)!;
-            const acad = academyById.get(s.academyId);
-            const color = r.color || catColor.get(r.categoryId) || '#64748b';
-            return {
-              id: `${s.id}_${rid}`,
-              title: `${r.name} · ${acad?.shortName ?? ''} — ${s.title || s.courseName}`.replace(' ·  —', ' —'),
-              start: s.start.toDate(),
-              end: s.end.toDate(),
-              backgroundColor: color,
-              borderColor: color,
-              extendedProps: { academyId: s.academyId },
-            };
-          });
-      });
-  }, [sessions, roomById, templateIds, roomFilter, categoryFilter, academyById, catColor]);
-
-  // Ad-hoc reservations → calendar events (distinct slate style + lock icon).
-  const resEvents = useMemo(() => {
-    return reservations
-      .filter((r) => roomById.has(r.roomId))
-      .filter((r) => roomFilter === 'all' || r.roomId === roomFilter)
-      .filter((r) => categoryFilter === 'all' || roomById.get(r.roomId)?.categoryId === categoryFilter)
-      .map((r) => ({
-        id: `res-${r.id}`,
-        title: `🔒 ${roomById.get(r.roomId)!.name} · ${r.title}`,
-        start: r.start.toDate(),
-        end: r.end.toDate(),
-        backgroundColor: '#475569',
-        borderColor: '#475569',
-        extendedProps: { reservationId: r.id },
-      }));
-  }, [reservations, roomById, roomFilter, categoryFilter]);
-  const reservationById = useMemo(() => new Map(reservations.map((r) => [r.id, r])), [reservations]);
-
-  // ── Day availability: the at-a-glance answer to "what's free on this day?" ──
-  const [availDate, setAvailDate] = useState(() => toDateInputValue(new Date()));
-  const dayAvailability = useMemo(() => {
-    const dayStart = new Date(`${availDate}T00:00:00`).getTime();
-    const dayEnd = new Date(`${availDate}T23:59:59`).getTime();
-    const t = (ms: number) => {
+  /** Cell chips keyed `${roomId}_${dayKey}`. Sessions from the same academy in
+   *  the same room+day MERGE into one chip (like one cell entry on the old
+   *  spreadsheet); the tooltip lists every time block. */
+  const cellChips = useMemo(() => {
+    const dayKeys = new Set(weekDays.map((d) => toDateInputValue(d)));
+    const map = new Map<string, GridChip[]>();
+    const push = (cellKey: string, chip: GridChip) => (map.get(cellKey) ?? map.set(cellKey, []).get(cellKey)!).push(chip);
+    const mil = (ms: number) => {
       const d = new Date(ms);
       return `${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
     };
-    const busy = new Map<string, { startMs: number; label: string }[]>();
-    const push = (rid: string, startMs: number, endMs: number, what: string) => {
-      const list = busy.get(rid) ?? busy.set(rid, []).get(rid)!;
-      list.push({ startMs, label: `${t(startMs)}–${t(endMs)} ${what}` });
-    };
+
     for (const s of sessions) {
       if (s.status === 'cancelled' || templateIds.has(s.academyId)) continue;
-      const sMs = s.start.toMillis();
-      const eMs = s.end.toMillis();
-      if (eMs <= dayStart || sMs >= dayEnd) continue;
+      const dayKey = toDateInputValue(s.start.toDate());
+      if (!dayKeys.has(dayKey)) continue;
       const acad = academyById.get(s.academyId);
-      const what = `${acad?.shortName ? `${acad.shortName} — ` : ''}${s.title || s.courseName}`;
+      const timeLine = `${mil(s.start.toMillis())}–${mil(s.end.toMillis())} ${s.title || s.courseName}`;
       for (const rid of new Set(s.roomIds?.length ? s.roomIds : s.roomId ? [s.roomId] : [])) {
-        if (roomById.has(rid)) push(rid, sMs, eMs, what);
+        if (!roomById.has(rid)) continue;
+        const cellKey = `${rid}_${dayKey}`;
+        const existing = map.get(cellKey)?.find((c) => c.kind === 'session' && c.academyId === s.academyId);
+        if (existing) {
+          existing.title += `\n${timeLine}`;
+          existing.startMs = Math.min(existing.startMs, s.start.toMillis());
+        } else {
+          push(cellKey, {
+            key: `${s.id}_${rid}`,
+            kind: 'session',
+            academyId: s.academyId,
+            label: acad?.shortName || s.courseName,
+            title: `${acad ? `${acad.shortName || acad.name}\n` : ''}${timeLine}`,
+            color: academyColorFor(acad),
+            startMs: s.start.toMillis(),
+          });
+        }
       }
     }
     for (const r of reservations) {
-      const sMs = r.start.toMillis();
-      const eMs = r.end.toMillis();
-      if (eMs <= dayStart || sMs >= dayEnd) continue;
-      if (roomById.has(r.roomId)) push(r.roomId, sMs, eMs, `🔒 ${r.title}`);
+      const dayKey = toDateInputValue(r.start.toDate());
+      if (!dayKeys.has(dayKey) || !roomById.has(r.roomId)) continue;
+      push(`${r.roomId}_${dayKey}`, {
+        key: `res_${r.id}`,
+        kind: 'hold',
+        label: `🔒 ${r.title}`,
+        title: `${mil(r.start.toMillis())}–${mil(r.end.toMillis())} ${r.title}${r.notes ? `\n${r.notes}` : ''}`,
+        color: '#475569',
+        startMs: r.start.toMillis(),
+        reservation: r,
+      });
     }
-    for (const list of busy.values()) list.sort((a, b) => a.startMs - b.startMs);
-    return busy;
-  }, [availDate, sessions, reservations, roomById, templateIds, academyById]);
+    for (const list of map.values()) list.sort((a, b) => a.startMs - b.startMs);
+    return map;
+  }, [weekDays, sessions, reservations, roomById, templateIds, academyById]);
+
+  // Color legend: academies actually booked somewhere this week.
+  const weekAcademies = useMemo(() => {
+    const ids = new Set<string>();
+    for (const chips of cellChips.values()) for (const c of chips) if (c.academyId) ids.add(c.academyId);
+    return [...ids]
+      .map((id) => academyById.get(id))
+      .filter((a): a is NonNullable<typeof a> => !!a)
+      .sort((a, b) => (a.shortName || a.name).localeCompare(b.shortName || b.name));
+  }, [cellChips, academyById]);
 
   async function addCategory() {
     const name = newCat.trim();
@@ -258,84 +261,151 @@ export function RoomsPage() {
         )}
       </section>
 
-      {/* ── Day availability — what's free vs booked on a given day ────────── */}
-      <section className="mb-6 rounded-lg border border-watch-100 bg-white p-4 shadow-sm">
-        <div className="mb-3 flex flex-wrap items-center gap-3">
-          <h2 className="mr-auto text-sm font-semibold uppercase tracking-wider text-watch-600">Day availability</h2>
-          <Input type="date" value={availDate} onChange={(e) => setAvailDate(e.target.value)} className="w-auto" />
-          <Button variant="ghost" onClick={() => setAvailDate(toDateInputValue(new Date()))}>Today</Button>
-        </div>
-        {rooms.length === 0 ? (
-          <p className="text-sm text-slate-500">Add locations and rooms above — this shows what&apos;s free vs booked per day.</p>
-        ) : (
-          <div className="grid gap-x-6 gap-y-1.5 lg:grid-cols-2">
-            {sortedCats.map((c) =>
-              (roomsByCat.get(c.id) ?? [])
-                .filter((r) => r.active !== false)
-                .map((r) => {
-                  const blocks = dayAvailability.get(r.id) ?? [];
-                  return (
-                    <div key={r.id} className="flex items-start justify-between gap-3 rounded-md border border-watch-50 px-3 py-2 text-sm">
-                      <span className="flex shrink-0 items-center gap-2 pt-0.5">
-                        <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: r.color || catColor.get(c.id) }} />
-                        <span className="font-medium text-watch-900">{r.name}</span>
-                        <span className="text-xs text-slate-400">{c.name}</span>
-                      </span>
-                      {blocks.length === 0 ? (
-                        <span className="rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-200">
-                          Free all day
-                        </span>
-                      ) : (
-                        <span className="flex min-w-0 flex-wrap justify-end gap-1">
-                          {blocks.map((b, i) => (
-                            <span key={i} className="max-w-full truncate rounded-full bg-red-50 px-2 py-0.5 text-xs text-red-700 ring-1 ring-inset ring-red-200" title={b.label}>
-                              {b.label}
-                            </span>
-                          ))}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })
+      {/* ── The week grid — rooms × days, the old spreadsheet made live ────── */}
+      <section className="rounded-lg border border-watch-100 bg-white p-4 shadow-sm">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-watch-600">
+            Week of{' '}
+            {weekStart.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
+          </h2>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <Button variant="ghost" aria-label="Previous week" onClick={() => setWeekStart((w) => { const d = new Date(w); d.setDate(d.getDate() - 7); return d; })}>←</Button>
+            <Button variant="ghost" onClick={() => setWeekStart(startOfWeek(new Date()))}>Today</Button>
+            <Button variant="ghost" aria-label="Next week" onClick={() => setWeekStart((w) => { const d = new Date(w); d.setDate(d.getDate() + 7); return d; })}>→</Button>
+            <Input
+              type="date"
+              value={toDateInputValue(weekStart)}
+              onChange={(e) => { if (e.target.value) setWeekStart(startOfWeek(new Date(`${e.target.value}T00:00:00`))); }}
+              className="w-auto"
+              aria-label="Jump to week"
+            />
+            {sortedCats.length > 1 && (
+              <Select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} aria-label="Filter by location">
+                <option value="all">All locations</option>
+                {sortedCats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </Select>
             )}
+            <Button variant="primary" disabled={rooms.length === 0} onClick={() => setResModal({})}>+ Reservation</Button>
+          </div>
+        </div>
+
+        {rooms.length === 0 ? (
+          <p className="text-sm text-slate-500">Add locations and rooms above — the week grid shows every room&apos;s bookings at a glance.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full table-fixed border-collapse text-xs">
+              <thead>
+                <tr>
+                  <th className="w-28 border border-watch-100 bg-watch-50 px-2 py-1.5 text-left text-[11px] font-bold uppercase tracking-wider text-watch-600">Room</th>
+                  {weekDays.map((d) => {
+                    const key = toDateInputValue(d);
+                    const weekend = d.getDay() === 0 || d.getDay() === 6;
+                    return (
+                      <th
+                        key={key}
+                        className={`border border-watch-100 px-2 py-1.5 text-left text-[11px] font-bold uppercase tracking-wider ${
+                          key === todayKey ? 'bg-bifrost-100 text-watch-900' : weekend ? 'bg-watch-50/60 text-watch-400' : 'bg-watch-50 text-watch-600'
+                        }`}
+                      >
+                        {d.toLocaleDateString(undefined, { weekday: 'short' })}{' '}
+                        <span className="font-normal normal-case">{d.toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' })}</span>
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+              {sortedCats
+                .filter((c) => categoryFilter === 'all' || c.id === categoryFilter)
+                .map((c) => {
+                  const catRooms = (roomsByCat.get(c.id) ?? []).filter((r) => r.active !== false);
+                  if (catRooms.length === 0) return null;
+                  return (
+                    <tbody key={c.id}>
+                      <tr>
+                        <td colSpan={8} className="border border-watch-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-white" style={{ backgroundColor: catColor.get(c.id) }}>
+                          {c.name}
+                        </td>
+                      </tr>
+                      {catRooms.map((r) => (
+                        <tr key={r.id}>
+                          <td className="border border-watch-100 bg-white px-2 py-1.5 align-top">
+                            <span className="flex items-center gap-1.5 font-semibold text-watch-900">
+                              <span className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: r.color || catColor.get(c.id) }} />
+                              <span className="truncate" title={r.capacity ? `${r.name} — ${r.capacity} seats` : r.name}>{r.name}</span>
+                            </span>
+                          </td>
+                          {weekDays.map((d) => {
+                            const dayKey = toDateInputValue(d);
+                            const chips = cellChips.get(`${r.id}_${dayKey}`) ?? [];
+                            const weekend = d.getDay() === 0 || d.getDay() === 6;
+                            return (
+                              <td
+                                key={dayKey}
+                                className={`group h-9 border border-watch-100 p-1 align-top ${weekend ? 'bg-watch-50/40' : 'bg-white'} ${dayKey === todayKey ? 'ring-1 ring-inset ring-bifrost-300' : ''}`}
+                              >
+                                <div className="flex flex-col gap-1">
+                                  {chips.map((chip) =>
+                                    chip.kind === 'hold' ? (
+                                      <button
+                                        key={chip.key}
+                                        type="button"
+                                        title={chip.title}
+                                        onClick={() => setResModal({ reservation: chip.reservation })}
+                                        className="block w-full truncate rounded px-1.5 py-0.5 text-left text-[11px] font-semibold text-white hover:opacity-85"
+                                        style={{ backgroundColor: chip.color }}
+                                      >
+                                        {chip.label}
+                                      </button>
+                                    ) : (
+                                      <button
+                                        key={chip.key}
+                                        type="button"
+                                        title={chip.title}
+                                        onClick={() => chip.academyId && navigate(`/cadre/academies/${chip.academyId}`)}
+                                        className="block w-full truncate rounded px-1.5 py-0.5 text-left text-[11px] font-semibold text-white hover:opacity-85"
+                                        style={{ backgroundColor: chip.color }}
+                                      >
+                                        {chip.label}
+                                      </button>
+                                    )
+                                  )}
+                                  {/* Empty (or any) cell: one click starts a hold for THIS room+day. */}
+                                  <button
+                                    type="button"
+                                    aria-label={`Reserve ${r.name} on ${dayKey}`}
+                                    onClick={() => setResModal({ prefill: { roomId: r.id, date: dayKey } })}
+                                    className={`w-full rounded border border-dashed border-transparent px-1.5 text-left text-[11px] text-transparent transition group-hover:border-watch-200 group-hover:text-watch-400 ${chips.length === 0 ? 'py-0.5' : 'py-0'}`}
+                                  >
+                                    + hold
+                                  </button>
+                                </div>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  );
+                })}
+            </table>
           </div>
         )}
-      </section>
 
-      {/* ── Booking calendar ───────────────────────────────────────────────── */}
-      <section className="rounded-lg border border-watch-100 bg-white p-4 shadow-sm">
-        <div className="mb-3 flex flex-wrap items-end gap-3">
-          <h2 className="mr-auto text-sm font-semibold uppercase tracking-wider text-watch-600">Booking calendar</h2>
-          <Button variant="ghost" disabled={rooms.length === 0} onClick={() => setResModal({})}>+ Reservation</Button>
-          <Field label="Location">
-            <Select value={categoryFilter} onChange={(e) => { setCategoryFilter(e.target.value); setRoomFilter('all'); }}>
-              <option value="all">All locations</option>
-              {sortedCats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </Select>
-          </Field>
-          <Field label="Room">
-            <Select value={roomFilter} onChange={(e) => setRoomFilter(e.target.value)}>
-              <option value="all">All rooms</option>
-              {filterRooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-            </Select>
-          </Field>
+        {/* Legend — this week's classes in their colors + the manual-hold style */}
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-500">
+          <span className="font-semibold uppercase tracking-wider text-watch-500">This week:</span>
+          {weekAcademies.map((a) => (
+            <span key={a.id} className="inline-flex items-center gap-1.5">
+              <span className="inline-block h-3 w-3 rounded-sm" style={{ backgroundColor: academyColorFor(a) }} />
+              {a.shortName || a.name}
+            </span>
+          ))}
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block h-3 w-3 rounded-sm" style={{ backgroundColor: '#475569' }} />
+            🔒 manual hold
+          </span>
+          <span className="text-slate-400">· Classes fill in automatically from their schedules; click any empty cell to hold a room (renovations, outside groups, events…). Click a class to open it, a 🔒 to edit.</span>
         </div>
-        <FullCalendar
-          plugins={[dayGridPlugin]}
-          initialView="dayGridMonth"
-          firstDay={1}
-          headerToolbar={{ left: 'prev,next today', center: 'title', right: '' }}
-          events={[...events, ...resEvents]}
-          eventClick={(arg) => {
-            const resId = arg.event.extendedProps.reservationId as string | undefined;
-            if (resId) { const r = reservationById.get(resId); if (r) setResModal({ reservation: r }); return; }
-            const aid = arg.event.extendedProps.academyId as string | undefined;
-            if (aid) navigate(`/cadre/academies/${aid}`);
-          }}
-          dayMaxEvents={4}
-          height="auto"
-        />
-        <p className="mt-3 text-xs text-slate-400">Each block shows <strong>room · class · course</strong> (🔒 = an ad-hoc reservation). Filter by location or room to check availability. Click a booking to open its class, or a 🔒 to edit the reservation.</p>
       </section>
 
       {roomModal && (
@@ -350,6 +420,7 @@ export function RoomsPage() {
         <ReservationModal
           rooms={rooms.filter((r) => r.active !== false)}
           reservation={resModal.reservation}
+          prefill={resModal.prefill}
           onClose={() => setResModal(null)}
         />
       )}
@@ -360,17 +431,21 @@ export function RoomsPage() {
 function ReservationModal({
   rooms,
   reservation,
+  prefill,
   onClose,
 }: {
   rooms: WithId<RoomDoc>[];
   reservation?: WithId<RoomReservationDoc>;
+  /** Week-grid cell click: start the form on that room + day. */
+  prefill?: { roomId?: string; date?: string };
   onClose: () => void;
 }) {
-  const roomName = reservation ? rooms.find((r) => r.id === reservation.roomId)?.name ?? '' : '';
+  const initialRoomId = reservation?.roomId ?? prefill?.roomId;
+  const roomName = initialRoomId ? rooms.find((r) => r.id === initialRoomId)?.name ?? '' : '';
   const [room, setRoom] = useState(roomName);
-  const [roomId, setRoomId] = useState<string | undefined>(reservation?.roomId);
+  const [roomId, setRoomId] = useState<string | undefined>(initialRoomId);
   const [title, setTitle] = useState(reservation?.title ?? '');
-  const [date, setDate] = useState(reservation ? toDateInputValue(reservation.start.toDate()) : '');
+  const [date, setDate] = useState(reservation ? toDateInputValue(reservation.start.toDate()) : prefill?.date ?? '');
   const [startTime, setStartTime] = useState(reservation ? toTimeInputValue(reservation.start.toDate()) : '08:00');
   const [endTime, setEndTime] = useState(reservation ? toTimeInputValue(reservation.end.toDate()) : '17:00');
   const [notes, setNotes] = useState(reservation?.notes ?? '');
