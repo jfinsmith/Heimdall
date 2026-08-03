@@ -46,6 +46,22 @@ type Mode = 'cadet' | 'staff';
 type Day = { date: Date; sessions: WithId<SessionDoc>[]; holiday?: string };
 
 const t = (d: Date) => d.toLocaleTimeString('en-US', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false });
+
+/**
+ * A lunch CARVED OUT of a session (lunchStart + lunchMinutes on the session
+ * doc — the preferred way to give an all-day block its break) never appears
+ * as its own row, so the printout must surface it inside the session line.
+ * Returns "12:00–13:00" or null when the session has no carve-out.
+ */
+function lunchWindow(s: SessionDoc): string | null {
+  if (!s.lunchMinutes || !s.lunchStart) return null;
+  const [h, m] = s.lunchStart.split(':').map(Number);
+  if (!Number.isFinite(h)) return null;
+  const startMin = h * 60 + (Number.isFinite(m) ? m : 0);
+  const endMin = startMin + s.lunchMinutes;
+  const fmt = (min: number) => `${String(Math.floor(min / 60) % 24).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+  return `${fmt(startMin)}–${fmt(endMin)}`;
+}
 const localKey = (d: Date) => {
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
@@ -330,6 +346,7 @@ export function PrintableSchedulePage() {
                         const lead = leadOf(s);
                         const flag = sessionFlag(s);
                         const flagStyle = flag ? FLAG_STYLE[flag] : null;
+                        const lunch = lunchWindow(s);
                         return (
                           <tr key={s.id} className="border-t border-slate-100 align-top">
                             <td className="w-[5.4rem] whitespace-nowrap px-4 py-1.5 font-mono text-xs text-slate-500" style={flagStyle ? { borderLeft: `3px solid ${flagStyle.color}` } : undefined}>
@@ -339,6 +356,11 @@ export function PrintableSchedulePage() {
                               <span className="font-semibold text-[#1f2a45]">{s.title || s.courseName}</span>
                               {s.highLiability && <span className="ml-2 align-middle text-[10px] font-bold" style={{ color: amber }}>▲</span>}
                               {flagStyle && <span className="ml-2 rounded px-1 align-middle text-[9px] font-bold uppercase text-white" style={{ backgroundColor: flagStyle.color }}>{flagStyle.label}</span>}
+                              {lunch && (
+                                <div className="mt-0.5 text-[11px] leading-tight text-slate-500">
+                                  ○ Lunch {lunch}
+                                </div>
+                              )}
                               {mode === 'cadet' && lead && <div className="mt-0.5 text-[11px] text-slate-500">Instructor: {lead}</div>}
                               {mode === 'staff' && (s.writeInInstructors ?? []).length > 0 && (
                                 <div className="mt-0.5 text-[11px] leading-tight text-slate-600">
