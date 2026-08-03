@@ -12,6 +12,55 @@ import type { GlobalSettings } from '../../types';
 import { Button, Field, Input, PageHeader, Select, TextArea } from '../../components/ui';
 import { logAudit } from '../sessions/audit';
 
+/**
+ * TEMPORARY pre-launch switch (remove after go-live). ON = instructors and
+ * guests see only Overview, How To, and Profile & Qualifications — they can
+ * register and claim certs while staff finish building schedules. OFF = the
+ * whole site is live for everyone. Enforced in AppShell (nav) + the
+ * RequireLaunched route guard (direct URLs).
+ */
+function PreLaunchCard({ orgId, enabled, actorUid }: { orgId: string | null | undefined; enabled: boolean; actorUid: string }) {
+  const [busy, setBusy] = useState(false);
+
+  async function toggle() {
+    if (!orgId) return;
+    const next = !enabled;
+    const msg = next
+      ? 'Hide the site from instructors and guests? They will only see Overview, How To, and Profile & Qualifications until you flip this back.'
+      : 'GO LIVE for instructors and guests? Browse Open Sessions, My Schedule, and Report a Problem become visible to everyone immediately.';
+    if (!window.confirm(msg)) return;
+    setBusy(true);
+    try {
+      await setDoc(doc(db, orgConfigPath('settings', orgId)), { preLaunchHideInstructors: next }, { merge: true });
+      await logAudit(actorUid, 'settings.prelaunch', 'settings', orgId, next ? 'Pre-launch mode ON (instructor pages hidden)' : 'Pre-launch mode OFF — site LIVE for instructors');
+    } catch (err) {
+      window.alert(`Could not update: ${err instanceof Error ? err.message : 'unknown error'}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className={`mb-6 rounded-lg border p-5 shadow-sm ${enabled ? 'border-amber-300 bg-amber-50' : 'border-watch-100 bg-white'}`}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-bold uppercase tracking-wider text-watch-700">
+            Instructor access {enabled ? '— PRE-LAUNCH (hidden)' : '— LIVE'}
+          </h2>
+          <p className="mt-1 max-w-xl text-sm text-slate-600">
+            {enabled
+              ? 'Instructors and guests currently see only Overview, How To, and Profile & Qualifications — so they can register and claim certifications while your staff finish building. Staff see everything.'
+              : 'The full site is visible to instructors and guests. Turn this on to hide the instructor pages while your staff build out schedules.'}
+          </p>
+        </div>
+        <Button variant={enabled ? 'primary' : 'secondary'} disabled={busy || !orgId} onClick={toggle}>
+          {busy ? 'Saving…' : enabled ? '🚀 Go live' : 'Hide from instructors'}
+        </Button>
+      </div>
+    </section>
+  );
+}
+
 export function SettingsAdminPage() {
   const { firebaseUser, orgId } = useAuth();
   const { data: settings } = useDoc<GlobalSettings>(orgConfigPath('settings', orgId));
@@ -96,6 +145,9 @@ export function SettingsAdminPage() {
         and the allowed domains restrict who can self-register. If the defaults look right, there is
         nothing you need to do here.
       </p>
+      {/* TEMPORARY pre-launch switch — remove this whole card after go-live. */}
+      <PreLaunchCard orgId={orgId} enabled={settings?.preLaunchHideInstructors === true} actorUid={firebaseUser?.uid ?? ''} />
+
       <form onSubmit={save} className="space-y-4 rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
         <Field label="Organization name">
           <Input value={orgName} onChange={(e) => setOrgName(e.target.value)} required />

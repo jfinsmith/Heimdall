@@ -6,10 +6,12 @@
  * they navigate to it.
  */
 import React, { Suspense, lazy } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import { AppShell } from './AppShell';
 import { RequireAdmin, RequireAuth, RequireStaff, RequirePlatformOwner } from '../auth/guards';
 import { useAuth } from '../auth/AuthContext';
+import { useGlobalSettings } from './providers';
+import { can } from '../lib/rbac';
 import { Spinner } from '../components/ui';
 // Auth/entry pages stay eager — they're small and needed immediately on load.
 import { SignInPage } from '../auth/SignInPage';
@@ -63,6 +65,21 @@ function RouteFallback() {
       <Spinner className="text-bifrost-400" />
     </div>
   );
+}
+
+/**
+ * TEMPORARY pre-launch gate (remove after go-live): while Org Settings has
+ * preLaunchHideInstructors on, non-staff members are bounced from the
+ * instructor pages back to Overview — nav hides the links (AppShell), this
+ * closes the direct-URL path. Staff pass through untouched.
+ */
+function RequireLaunched() {
+  const { role } = useAuth();
+  const settings = useGlobalSettings();
+  if (can.buildSchedules(role)) return <Outlet />;
+  if (settings === null) return <RouteFallback />; // settings still loading — don't flash a gated page
+  if (settings.preLaunchHideInstructors === true) return <Navigate to="/overview" replace />;
+  return <Outlet />;
 }
 
 /** The public marketing site lives on the public domain (+ localhost for dev).
@@ -122,10 +139,14 @@ export function AppRouter() {
               <Route path="/overview" element={<OverviewPage />} />
               <Route path="/how-to" element={<HowToPage />} />
               <Route path="/notifications" element={<NotificationsPage />} />
-              <Route path="/open-sessions" element={<BrowseOpenSessionsPage />} />
-              <Route path="/my-schedule" element={<MySchedulePage />} />
+              {/* Profile stays OUTSIDE the pre-launch gate: instructors must be
+                  able to claim qualifications before go-live. */}
               <Route path="/profile" element={<ProfilePage />} />
-              <Route path="/feedback" element={<FeedbackReportPage />} />
+              <Route element={<RequireLaunched />}>
+                <Route path="/open-sessions" element={<BrowseOpenSessionsPage />} />
+                <Route path="/my-schedule" element={<MySchedulePage />} />
+                <Route path="/feedback" element={<FeedbackReportPage />} />
+              </Route>
 
               <Route element={<RequireStaff />}>
                 {/* Coordinator+ only — the master calendar exposes every

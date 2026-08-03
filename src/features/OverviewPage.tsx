@@ -6,6 +6,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { orderBy, where, Timestamp, limit } from 'firebase/firestore';
 import { useAuth } from '../auth/AuthContext';
+import { useGlobalSettings } from '../app/providers';
 import { useCollection } from '../lib/firestore';
 import { can } from '../lib/rbac';
 import { fmtRange } from '../lib/time';
@@ -17,6 +18,8 @@ import { WordmarkStacked } from '../brand/Logo';
 
 export function OverviewPage() {
   const { firebaseUser, profile, role } = useAuth();
+  // TEMPORARY pre-launch switch (remove after go-live) — see AppShell/router.
+  const preLaunchHidden = useGlobalSettings()?.preLaunchHideInstructors === true;
   const [detailId, setDetailId] = useState<string | null>(null);
   const now = Timestamp.now();
 
@@ -152,6 +155,20 @@ export function OverviewPage() {
             <Link to="/cadre/staffing" className="mt-3 inline-block text-sm text-bifrost-700 hover:underline">
               Staffing board →
             </Link>
+          </section>
+        ) : role !== 'guest' && preLaunchHidden ? (
+          // TEMPORARY pre-launch card (remove after go-live): point instructors
+          // at the one thing they CAN do now — set up their profile.
+          <section className="rounded-lg border border-bifrost-200 bg-bifrost-50/50 p-5 shadow-sm">
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-watch-600">Almost live</h2>
+            <p className="text-sm text-slate-700">
+              The academy is building out schedules right now — course sign-ups open soon. Get ahead of the
+              rush: make sure your{' '}
+              <Link to="/profile" className="font-medium text-bifrost-700 hover:underline">
+                Profile &amp; Qualifications
+              </Link>{' '}
+              are complete and your certifications are claimed, so you&apos;re eligible the moment invites go out.
+            </p>
           </section>
         ) : role !== 'guest' ? (
           <section className="rounded-lg border border-watch-100 bg-white p-5 shadow-sm">

@@ -183,6 +183,12 @@ export const EMAIL_AUTOMATIONS = [
 
 export type EmailAutomationKey = (typeof EMAIL_AUTOMATIONS)[number]['key'];
 
+// ── Pre-launch switch (TEMPORARY — remove after go-live) ───────────────────
+// When true, instructors/guests see ONLY Overview, How To, and Profile &
+// Qualifications (so they can register + claim certs ahead of launch) while
+// staff build out schedules. Flipped in Admin → Org Settings. Absent/false =
+// the site is fully live for everyone.
+
 // ── Org settings (settings/global singleton) ───────────────────────────────
 /**
  * A tenant (college/agency). Doc id == orgId. Isolation is enforced by an orgId
@@ -250,6 +256,8 @@ export interface GlobalSettings {
   brandPrimaryColor: string;
   brandAccentColor: string;
   logoUrl?: string;
+  /** TEMPORARY pre-launch switch — see the block comment above this interface. */
+  preLaunchHideInstructors?: boolean;
   /**
    * Document jurisdiction for academic-action letters. 'FL' renders the
    * Florida FDLE/CJSTC statutory clauses (F.A.C. rule citations); 'neutral'

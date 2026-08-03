@@ -11,7 +11,7 @@ import { useAuth } from '../auth/AuthContext';
 import { useOrg } from '../lib/useOrg';
 import { billingState } from '../lib/subscription';
 import { can } from '../lib/rbac';
-import { useRoleLabels } from './providers';
+import { useGlobalSettings, useRoleLabels } from './providers';
 import { useClickOutside } from '../lib/useClickOutside';
 import { PoweredByHeimdall } from '../brand/OrgLogo';
 import { WordmarkHorizontal } from '../brand/Logo';
@@ -130,6 +130,7 @@ function SectionLabel({ children, title }: { children?: React.ReactNode; title: 
 export function AppShell() {
   const { profile, role, platformOwner, signOut } = useAuth();
   const roleLabels = useRoleLabels();
+  const settings = useGlobalSettings();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const staff = can.buildSchedules(role);
@@ -137,6 +138,10 @@ export function AppShell() {
   // Instructor tools: anyone with a teaching-track role — guests see only
   // Overview and How To.
   const instructorTools = !!role && role !== 'guest';
+  // TEMPORARY pre-launch switch (remove after go-live): non-staff see only
+  // Overview, How To, and Profile & Qualifications while staff build out the
+  // schedules. Flipped in Admin → Org Settings.
+  const preLaunchHidden = !staff && settings?.preLaunchHideInstructors === true;
   const { orgs: switchOrgs, switchTo, busy: switchBusy } = useOrgSwitch(platformOwner);
   const impersonating = platformOwner && !!profile?.homeOrgId && profile.orgId !== profile.homeOrgId;
   const activeOrgName = switchOrgs.find((o) => o.orgId === profile?.orgId)?.legalName ?? profile?.orgId ?? '';
@@ -155,10 +160,12 @@ export function AppShell() {
       {instructorTools && (
         <>
           <SectionLabel title="Instructor tools">Instructor</SectionLabel>
-          <NavItem to="/open-sessions" label="Browse Open Sessions" />
-          <NavItem to="/my-schedule" label="My Schedule" />
+          {/* Pre-launch: only Profile shows — instructors register + claim
+              certs while staff finish building (TEMPORARY, see preLaunchHidden). */}
+          {!preLaunchHidden && <NavItem to="/open-sessions" label="Browse Open Sessions" />}
+          {!preLaunchHidden && <NavItem to="/my-schedule" label="My Schedule" />}
           <NavItem to="/profile" label="Profile & Qualifications" />
-          <NavItem to="/feedback" label="Report a Problem" />
+          {!preLaunchHidden && <NavItem to="/feedback" label="Report a Problem" />}
         </>
       )}
       {staff && (
