@@ -13,9 +13,12 @@ type Mode = 'signin' | 'register' | 'reset';
 /** Apple sign-in needs an Apple Developer account + the Apple provider enabled
  *  in Firebase Console. The code path is ready — flip this once that's set up. */
 const APPLE_SIGNIN_ENABLED = false;
+/** Microsoft sign-in needs the Azure app registration + the provider enabled in
+ *  Firebase Console (free). Flip once configured. */
+const MICROSOFT_SIGNIN_ENABLED = false;
 
 export function SignInPage() {
-  const { firebaseUser, profile, signInWithGoogle, signInWithApple, signInWithEmail, registerWithEmail, resetPassword, signOut } =
+  const { firebaseUser, profile, signInWithGoogle, signInWithApple, signInWithMicrosoft, signInWithEmail, registerWithEmail, resetPassword, signOut } =
     useAuth();
   const location = useLocation() as { state?: { from?: { pathname: string } } };
   const [mode, setMode] = useState<Mode>('signin');
@@ -132,6 +135,16 @@ export function SignInPage() {
               >
                 Continue with Google
               </Button>
+              {MICROSOFT_SIGNIN_ENABLED && (
+                <Button
+                  variant="secondary"
+                  className="mt-2 w-full"
+                  disabled={busy}
+                  onClick={() => signInWithMicrosoft().catch((e) => setError(e.message))}
+                >
+                  Continue with Microsoft
+                </Button>
+              )}
               {/* Apple sign-in is fully wired (lib/firebase appleProvider +
                   signInWithApple) but HIDDEN until the Apple Developer account
                   + Firebase Apple provider are configured — flip to true then. */}

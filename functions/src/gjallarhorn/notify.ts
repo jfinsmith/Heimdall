@@ -7,7 +7,7 @@
  * touching any trigger code — that's the extension point promised in §14.
  */
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
-import { renderEmail, detailRows, escapeHtml, EmailContent } from './templates';
+import { renderEmail, detailRows, escapeHtml, EmailContent, MAIL_FROM } from './templates';
 import { emailAllowed, ADMIN_ROLES, GlobalSettings, Role, SessionDoc, UserDoc } from '../types';
 
 const db = () => getFirestore();
@@ -136,6 +136,7 @@ export async function notify(opts: NotifyOptions): Promise<void> {
   // Stamp the recipient's tenant so the same-tenant admin read rule can scope it.
   const mailData = {
     to: [email],
+    from: MAIL_FROM,
     message: {
       subject: content.subject,
       html: content.html,

@@ -29,6 +29,13 @@ export function escapeHtml(s: string): string {
  * Wrap body content in the HEIMDALL chrome. `bodyHtml` may contain markup;
  * `bodyText` is the plaintext alternative.
  */
+/**
+ * Branded sender for every outbound email. The Trigger Email extension honors
+ * a per-document `from`, overriding its install-time default — the domain is
+ * verified in Resend (SPF/DKIM via Cloudflare), so this sends cleanly.
+ */
+export const MAIL_FROM = 'HEIMDALL Scheduling <no-reply@heimdallscheduling.com>';
+
 export function renderEmail(opts: {
   subject: string;
   heading: string;

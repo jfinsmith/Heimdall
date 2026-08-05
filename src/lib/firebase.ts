@@ -32,3 +32,8 @@ export const googleProvider = new GoogleAuthProvider();
 export const appleProvider = new OAuthProvider('apple.com');
 appleProvider.addScope('email');
 appleProvider.addScope('name');
+// Sign in with Microsoft — colleges/agencies live on Microsoft 365, so this is
+// the institutional sign-in. Requires the Microsoft provider enabled in
+// Firebase Console (Azure app registration: any org directory + personal).
+export const microsoftProvider = new OAuthProvider('microsoft.com');
+microsoftProvider.setCustomParameters({ prompt: 'select_account' });

@@ -16,7 +16,8 @@ import { Spinner } from '../components/ui';
 // Auth/entry pages stay eager — they're small and needed immediately on load.
 import { SignInPage } from '../auth/SignInPage';
 import { PendingApprovalPage } from '../auth/PendingApprovalPage';
-import { AwaitingOrgPage } from '../auth/AwaitingOrgPage';
+import { AwaitingOrgPage, JoinInvitePage } from '../auth/AwaitingOrgPage';
+import { VerifyEmailPage } from '../auth/VerifyEmailPage';
 import { OrgSuspendedPage } from '../auth/OrgSuspendedPage';
 import { CompleteProfilePage } from '../auth/CompleteProfilePage';
 import { ChangePasswordPage } from '../auth/ChangePasswordPage';
@@ -120,10 +121,13 @@ export function AppRouter() {
           <Route path="/class/:academyId/:token" element={<PublicClassPage />} />
           <Route path="/pending" element={<PendingApprovalPage />} />
           <Route path="/awaiting-org" element={<AwaitingOrgPage />} />
+          {/* Invite link: parks the join code, then routes into the funnel. */}
+          <Route path="/join/:code" element={<JoinInvitePage />} />
           <Route path="/org-suspended" element={<OrgSuspendedPage />} />
 
           <Route element={<RequireAuth />}>
             <Route path="/change-password" element={<ChangePasswordPage />} />
+            <Route path="/verify-email" element={<VerifyEmailPage />} />
             <Route path="/welcome" element={<CompleteProfilePage />} />
             {/* Print views render outside the shell for a clean sheet */}
             <Route path="/reports/print/:academyId" element={<PrintableSchedulePage />} />

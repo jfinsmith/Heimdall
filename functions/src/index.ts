@@ -20,6 +20,7 @@ export { saveRoomReservation, deleteRoomReservation } from './rooms/reservations
 export { calendarFeed } from './gjallarhorn/icsFeed';
 // Gjallarhorn — scheduled sweeps (2 Cloud Scheduler jobs, within the 3 free)
 export { gjallarhornDailySweep, gjallarhornWeeklyDigest } from './gjallarhorn/sweeps';
+export { accountPurgeDaily } from './admin/purge';
 // Admin callables
 export { setUserRole, bootstrapFirstDirector, createUserAccount, createOrg, academyApproval, sendActivationEmail, setUserSuspension, setUserActive, listAllFeedback, joinOrgByCode, assignUserToOrg, denyUser, listOwnerQueue, getOrgDetail, setOrgComplimentary, setOrgSuspension, createOrgAdmin, deleteUnassignedAccount, listAllAuditLog, ownerListOrgs, ownerSwitchOrg, importDefaultCurricula, acceptOrgDpa, adminUpdateUser, setFeedbackStatus } from './admin/callables';
 // Academy roster — member creation (no SSN stored; college holds SSNs locally)

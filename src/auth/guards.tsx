@@ -25,6 +25,18 @@ export function RequireAuth() {
   if (profile?.orgId && org?.status === 'suspended' && !platformOwner) {
     return <Navigate to="/org-suspended" replace />;
   }
+  // Email verification — SELF-SIGNUP funnel only (password accounts still
+  // outside any org). Proves deliverability before an organization relies on
+  // the address. Never applied once an org holds the account (admin-created
+  // members were provisioned deliberately) and never to OAuth sign-ins.
+  const passwordOnly =
+    firebaseUser.providerData.length === 1 && firebaseUser.providerData[0]?.providerId === 'password';
+  if (
+    profile && !profile.orgId && passwordOnly && !firebaseUser.emailVerified &&
+    location.pathname !== '/verify-email'
+  ) {
+    return <Navigate to="/verify-email" replace />;
+  }
   // No tenant yet (self-registered, domain didn't match an org). A graceful
   // holding screen — not a hard lockout — that auto-resolves once an org is
   // assigned. Checked before 'pending' so an orgless account sees "setting up"

@@ -13,14 +13,16 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
+  sendEmailVerification,
   reauthenticateWithCredential,
   updatePassword,
   EmailAuthProvider,
   signOut as fbSignOut,
   User as FirebaseUser,
+  type AuthProvider as FbAuthProvider,
 } from 'firebase/auth';
 import { doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
-import { auth, db, googleProvider, appleProvider } from '../lib/firebase';
+import { auth, db, googleProvider, appleProvider, microsoftProvider } from '../lib/firebase';
 import { setAuditOrgId } from '../features/sessions/audit';
 import type { Role, UserDoc } from '../types';
 
@@ -36,8 +38,11 @@ interface AuthState {
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
   signInWithApple: () => Promise<void>;
+  signInWithMicrosoft: () => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
   registerWithEmail: (email: string, password: string, displayName: string) => Promise<void>;
+  /** Re-send the address-verification email to the signed-in user. */
+  resendVerificationEmail: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   /** Reauthenticate with the current password, then set a new one. Clears any
    * forced-change flag. Throws Firebase auth errors (wrong-password, weak, etc.). */
@@ -46,6 +51,27 @@ interface AuthState {
 }
 
 const AuthContext = createContext<AuthState | null>(null);
+
+/**
+ * Shared OAuth popup flow. Maps the one collision every multi-provider setup
+ * hits — same email, different sign-in method — to a human answer instead of
+ * a Firebase error code (Firebase's one-account-per-email setting blocks the
+ * duplicate; we just explain it).
+ */
+async function oauthSignIn(provider: FbAuthProvider): Promise<void> {
+  try {
+    const cred = await signInWithPopup(auth, provider);
+    await ensureUserDoc(cred.user);
+  } catch (err) {
+    const code = (err as { code?: string }).code;
+    if (code === 'auth/account-exists-with-different-credential') {
+      throw new Error(
+        'An account with this email already exists using a different sign-in method. Sign in the way you first registered (email & password, or the original provider).'
+      );
+    }
+    throw err;
+  }
+}
 
 async function ensureUserDoc(user: FirebaseUser, displayName?: string): Promise<void> {
   const ref = doc(db, 'users', user.uid);
@@ -121,20 +147,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     orgId: profile?.orgId ?? null,
     platformOwner: profile?.platformOwner === true,
     loading,
-    signInWithGoogle: async () => {
-      const cred = await signInWithPopup(auth, googleProvider);
-      await ensureUserDoc(cred.user);
-    },
-    signInWithApple: async () => {
-      const cred = await signInWithPopup(auth, appleProvider);
-      await ensureUserDoc(cred.user);
-    },
+    signInWithGoogle: () => oauthSignIn(googleProvider),
+    signInWithApple: () => oauthSignIn(appleProvider),
+    signInWithMicrosoft: () => oauthSignIn(microsoftProvider),
     signInWithEmail: async (email, password) => {
       await signInWithEmailAndPassword(auth, email, password);
     },
     registerWithEmail: async (email, password, displayName) => {
       const cred = await createUserWithEmailAndPassword(auth, email, password);
       await ensureUserDoc(cred.user, displayName);
+      // Verification proves the address is deliverable BEFORE an org relies on
+      // it (RequireAuth gates un-verified self-signups at /verify-email).
+      // Best-effort — a send hiccup must not fail the registration.
+      await sendEmailVerification(cred.user).catch(() => {});
+    },
+    resendVerificationEmail: async () => {
+      if (!auth.currentUser) throw new Error('Not signed in.');
+      await sendEmailVerification(auth.currentUser);
     },
     resetPassword: (email) => sendPasswordResetEmail(auth, email),
     changePassword: async (currentPassword, newPassword) => {

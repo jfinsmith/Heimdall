@@ -10,7 +10,7 @@ import { randomBytes } from 'crypto';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { notify, notifyAdmins } from '../gjallarhorn/notify';
-import { renderEmail, detailRows, escapeHtml } from '../gjallarhorn/templates';
+import { renderEmail, detailRows, escapeHtml, MAIL_FROM } from '../gjallarhorn/templates';
 import type { AcademyDoc, Role } from '../types';
 import { ADMIN_ROLES, STAFF_ROLES } from '../types';
 
@@ -460,6 +460,7 @@ export const sendActivationEmail = onCall<{ uid: string; password: string }>(asy
 
   await db.collection('mail').add({
     to: [email],
+    from: MAIL_FROM,
     message: { subject: content.subject, html: content.html, text: content.text },
     ...(user.orgId ? { orgId: user.orgId } : {}),
     createdAt: FieldValue.serverTimestamp(),
@@ -1286,6 +1287,7 @@ export const createOrgAdmin = onCall<{ orgId: string; email: string; displayName
   });
   await db.collection('mail').add({
     to: [email],
+    from: MAIL_FROM,
     message: { subject: content.subject, html: content.html, text: content.text },
     orgId,
     createdAt: FieldValue.serverTimestamp(),
@@ -1655,6 +1657,7 @@ export const setFeedbackStatus = onCall<{ id: string; status: string; comment?: 
     });
     await db.collection('mail').add({
       to: [email],
+      from: MAIL_FROM,
       message: { subject: content.subject, html: content.html, text: content.text },
       ...(report.orgId ? { orgId: report.orgId } : {}),
       createdAt: FieldValue.serverTimestamp(),
