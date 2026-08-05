@@ -285,7 +285,7 @@ export function HowToPage() {
             <><B>CADRE → Room Reservations</B> is a <B>week grid</B> — rooms down the side, days across the top (like the old spreadsheet, but live). Colored blocks are classes, filled in <B>automatically</B> from their schedules; 🔒 blocks are manual holds. Empty cell = free room.</>,
             <>Click any <B>empty cell</B> to hold that room on that day (renovations, outside groups, an event…) — or use <B>+ Reservation</B>. Click a class block to open its academy, a 🔒 to edit or delete the hold.</>,
             <>Navigate with ← Today → or the date picker; filter by location. The legend below shows this week&apos;s classes in their colors. Today&apos;s column is highlighted.</>,
-            <>Conflicts are <B>hard-blocked</B> everywhere (session create/edit/drag/duplicate/recurring, multi-room, and ad-hoc holds) — a room physically can&apos;t be double-booked.</>,
+            <>Conflicts are <B>hard-blocked</B> everywhere (session create/edit/drag/duplicate/recurring, multi-room, and ad-hoc holds) — a room physically can&apos;t be double-booked. <B>Draft</B> classes hold their rooms too (two classes in planning can&apos;t grab the same room); <B>archived</B> classes release theirs.</>,
             <>Manage locations (College, Range…) and rooms (capacity, color, floor-plan image) under <B>Locations &amp; rooms</B> at the top. Capacity warnings appear when a class exceeds a room&apos;s seats.</>,
           ]} />
         </Section>

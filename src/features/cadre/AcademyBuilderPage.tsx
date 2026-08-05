@@ -33,7 +33,7 @@ import { PublicLinkSection } from './PublicLinkSection';
 import { LunchBlockModal } from './LunchBlockModal';
 import { RecurringGeneratorModal } from './RecurringGeneratorModal';
 import { RoomSelect } from './rooms/RoomSelect';
-import { findRoomConflict } from './rooms/roomBooking';
+import { findRoomConflict, roomExemptAcademy, academyHolderLabel } from './rooms/roomBooking';
 import { SessionDetailModal } from '../sessions/SessionDetailModal';
 import { sessionToEvent, renderEventContent } from './sessionEvents';
 import { ACADEMY_COLORS } from '../../lib/academyColors';
@@ -348,8 +348,7 @@ export function AcademyBuilderPage() {
     // Every managed room the session holds (multi-room scenario days included).
     const dragRoomIds = s.roomIds?.length ? s.roomIds : s.roomId ? [s.roomId] : [];
     if (dragRoomIds.length && acadOrgId && s.kind !== 'lunch') {
-      const templateIds = new Set(allAcademies.filter((a) => a.isTemplate).map((a) => a.id));
-      const acadName = (id: string) => allAcademies.find((a) => a.id === id)?.shortName || 'another class';
+      const acadById = new Map(allAcademies.map((a) => [a.id, a]));
       for (const rid of dragRoomIds) {
         const conflict = await findRoomConflict({
           orgId: acadOrgId,
@@ -357,8 +356,8 @@ export function AcademyBuilderPage() {
           start,
           end,
           excludeSessionId: s.id,
-          isTemplate: (id) => templateIds.has(id),
-          labelFor: (x) => `${acadName(x.academyId)} — ${x.title || x.courseName}`,
+          ignoreAcademy: (id) => roomExemptAcademy(acadById.get(id)),
+          labelFor: (x) => `${academyHolderLabel(acadById.get(x.academyId))} — ${x.title || x.courseName}`,
         });
         if (conflict) {
           arg.revert();

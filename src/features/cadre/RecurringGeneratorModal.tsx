@@ -18,7 +18,7 @@ import { Button, Field, Input, Select } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import { logAudit } from '../sessions/audit';
 import { RoomSelect } from './rooms/RoomSelect';
-import { loadRoomBookings, loadRoomReservations, overlaps } from './rooms/roomBooking';
+import { loadRoomBookings, loadRoomReservations, overlaps, roomExemptAcademy, academyHolderLabel } from './rooms/roomBooking';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const CUSTOM = '__custom__';
@@ -142,20 +142,19 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
     // Hard block: a managed room can't be double-booked. Check every generated
     // day against existing (non-cancelled, non-template) bookings for the room.
     if (roomId && academy.orgId) {
-      const templateIds = new Set(academies.filter((a) => a.isTemplate).map((a) => a.id));
-      const acadName = (id: string) => academies.find((a) => a.id === id)?.shortName || 'another class';
+      const acadById = new Map(academies.map((a) => [a.id, a]));
       const [bookings, reservations] = await Promise.all([
         loadRoomBookings(academy.orgId, roomId),
         loadRoomReservations(academy.orgId, roomId),
       ]);
-      const live = bookings.filter((b) => b.status !== 'cancelled' && !templateIds.has(b.academyId));
+      const live = bookings.filter((b) => b.status !== 'cancelled' && !roomExemptAcademy(acadById.get(b.academyId)));
       const hits: string[] = [];
       for (const date of matchingDates) {
         const ds = toDateInputValue(date);
         const s = combineDateTime(ds, startTime);
         const en = combineDateTime(ds, endTime);
         const c = live.find((b) => overlaps(s, en, b.start.toDate(), b.end.toDate()));
-        if (c) { hits.push(`${ds}: ${acadName(c.academyId)} — ${c.title || c.courseName}`); continue; }
+        if (c) { hits.push(`${ds}: ${academyHolderLabel(acadById.get(c.academyId))} — ${c.title || c.courseName}`); continue; }
         const r = reservations.find((rr) => overlaps(s, en, rr.start.toDate(), rr.end.toDate()));
         if (r) hits.push(`${ds}: 🔒 ${r.title || 'Reservation'}`);
       }

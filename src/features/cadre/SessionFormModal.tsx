@@ -23,7 +23,7 @@ import { BlockModeToggle } from './blockMode';
 import { instructorCount, requiredInstructors } from './instructorRatio';
 import { logAudit } from '../sessions/audit';
 import { RoomSelect } from './rooms/RoomSelect';
-import { findRoomConflict } from './rooms/roomBooking';
+import { findRoomConflict, roomExemptAcademy, academyHolderLabel } from './rooms/roomBooking';
 
 const CUSTOM = '__custom__';
 
@@ -352,8 +352,7 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
     // Hard block: EVERY managed room must be free over the overlapping time.
     // (Custom/free-text rooms carry no roomId and are not reserved.)
     if (allRoomIds.length && academy.orgId) {
-      const templateIds = new Set(academies.filter((a) => a.isTemplate).map((a) => a.id));
-      const acadName = (id: string) => academies.find((a) => a.id === id)?.shortName || 'another class';
+      const acadById = new Map(academies.map((a) => [a.id, a]));
       try {
         for (const rid of allRoomIds) {
           const conflict = await findRoomConflict({
@@ -362,8 +361,8 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
             start,
             end,
             excludeSessionId: session?.id,
-            isTemplate: (id) => templateIds.has(id),
-            labelFor: (s) => `${acadName(s.academyId)} — ${s.title || s.courseName}`,
+            ignoreAcademy: (id) => roomExemptAcademy(acadById.get(id)),
+            labelFor: (s) => `${academyHolderLabel(acadById.get(s.academyId))} — ${s.title || s.courseName}`,
           });
           if (conflict) {
             setBusy(false);

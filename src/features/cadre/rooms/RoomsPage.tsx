@@ -21,6 +21,7 @@ import type { AcademyDoc, RoomCategoryDoc, RoomDoc, RoomReservationDoc, SessionD
 import { Button, Field, Input, PageHeader, Select, TextArea } from '../../../components/ui';
 import { Modal } from '../../../components/Modal';
 import { RoomSelect } from './RoomSelect';
+import { roomExemptAcademy } from './roomBooking';
 import { academyColorFor } from '../../../lib/academyColors';
 
 // Ad-hoc reservations are SERVER-owned (transactional conflict check); the rules
@@ -86,7 +87,6 @@ export function RoomsPage() {
     return m;
   }, [rooms]);
   const academyById = useMemo(() => new Map(academies.map((a) => [a.id, a])), [academies]);
-  const templateIds = useMemo(() => new Set(academies.filter((a) => a.isTemplate).map((a) => a.id)), [academies]);
 
   // ── Week grid (the digital version of the old rooms×days spreadsheet) ────
   const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date()));
@@ -109,7 +109,9 @@ export function RoomsPage() {
     };
 
     for (const s of sessions) {
-      if (s.status === 'cancelled' || templateIds.has(s.academyId)) continue;
+      // Archived classes no longer hold their rooms — keep the grid consistent
+      // with the conflict rules (free on the grid = actually bookable).
+      if (s.status === 'cancelled' || roomExemptAcademy(academyById.get(s.academyId))) continue;
       const dayKey = toDateInputValue(s.start.toDate());
       if (!dayKeys.has(dayKey)) continue;
       const acad = academyById.get(s.academyId);
@@ -149,7 +151,7 @@ export function RoomsPage() {
     }
     for (const list of map.values()) list.sort((a, b) => a.startMs - b.startMs);
     return map;
-  }, [weekDays, sessions, reservations, roomById, templateIds, academyById]);
+  }, [weekDays, sessions, reservations, roomById, academyById]);
 
   // Color legend: academies actually booked somewhere this week.
   const weekAcademies = useMemo(() => {

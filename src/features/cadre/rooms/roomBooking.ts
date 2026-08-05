@@ -16,6 +16,29 @@ export function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date): bo
 }
 
 /**
+ * True when an academy's sessions should NOT count as room bookings:
+ * templates never really book, and ARCHIVED classes are abandoned schedules
+ * that must not keep blocking rooms forever. DRAFTS deliberately DO block —
+ * two real classes in planning must not grab the same room (that hard block
+ * is what catches a forgotten copy holding E-210).
+ */
+export function roomExemptAcademy(a?: { isTemplate?: boolean; status?: string } | null): boolean {
+  return !!a && (a.isTemplate === true || a.status === 'archived');
+}
+
+/**
+ * Conflict-holder label. shortName alone turns ambiguous the moment a copy
+ * exists (two "LE 133"s) — exactly when the label matters most — so the full
+ * name rides along, and non-running classes get their status appended:
+ * "LE 133 · OCT START (COPY) (draft) — Introduction to Law Enforcement".
+ */
+export function academyHolderLabel(a?: { shortName?: string; name?: string; status?: string } | null): string {
+  if (!a) return 'another class';
+  const base = [a.shortName, a.name].filter(Boolean).join(' · ') || 'another class';
+  return a.status === 'published' || a.status === 'in_progress' ? base : `${base} (${a.status ?? 'unknown'})`;
+}
+
+/**
  * All sessions that reference `roomId` (any status — caller filters), as either
  * the primary room (`roomId`) OR one of several reserved rooms (`roomIds`, e.g. a
  * scenario day). Two queries merged + de-duped. BOTH filter `orgId` — the sessions
@@ -59,15 +82,15 @@ export async function findRoomConflict(opts: {
   end: Date;
   excludeSessionId?: string;
   excludeReservationId?: string;
-  /** True if the session's academy is a template (excluded from conflicts). */
-  isTemplate: (academyId: string) => boolean;
+  /** True to skip this academy's sessions (template/archived — see roomExemptAcademy). */
+  ignoreAcademy: (academyId: string) => boolean;
   /** Builds the holder label for a conflicting session. */
   labelFor: (s: SessionDoc & { id: string }) => string;
 }): Promise<RoomConflict | null> {
   for (const s of await loadRoomBookings(opts.orgId, opts.roomId)) {
     if (s.id === opts.excludeSessionId) continue;
     if (s.status === 'cancelled') continue;
-    if (opts.isTemplate(s.academyId)) continue;
+    if (opts.ignoreAcademy(s.academyId)) continue;
     if (overlaps(opts.start, opts.end, s.start.toDate(), s.end.toDate())) {
       return { label: opts.labelFor(s), start: s.start.toDate(), end: s.end.toDate() };
     }

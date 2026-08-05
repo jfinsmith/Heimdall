@@ -9,7 +9,7 @@ import { db, functions } from '../../lib/firebase';
 import { shortId, useCollection, useDoc, type WithId } from '../../lib/firestore';
 import { useCurriculum } from '../../lib/curricula';
 import { instructorCount, requiredInstructors } from '../cadre/instructorRatio';
-import { findRoomConflict } from '../cadre/rooms/roomBooking';
+import { findRoomConflict, roomExemptAcademy, academyHolderLabel } from '../cadre/rooms/roomBooking';
 import { useAuth } from '../../auth/AuthContext';
 import { can } from '../../lib/rbac';
 import { fmtRange, isValidDuration } from '../../lib/time';
@@ -150,17 +150,15 @@ export function SessionDetailModal({ sessionId, onClose, onEdit, variant = 'staf
       const dupOrgId = session.orgId ?? orgId;
       if (dupRoomIds.length && dupOrgId) {
         const acadSnap = await getDocs(query(collection(db, 'academies'), where('orgId', '==', dupOrgId)));
-        const templateIds = new Set(acadSnap.docs.filter((d) => (d.data() as AcademyDoc).isTemplate).map((d) => d.id));
-        const acadName = (id: string) =>
-          (acadSnap.docs.find((x) => x.id === id)?.data() as AcademyDoc | undefined)?.shortName || 'another class';
+        const acadById = new Map(acadSnap.docs.map((d) => [d.id, d.data() as AcademyDoc]));
         for (const rid of dupRoomIds) {
           const conflict = await findRoomConflict({
             orgId: dupOrgId,
             roomId: rid,
             start: nextStart,
             end: nextEnd,
-            isTemplate: (id) => templateIds.has(id),
-            labelFor: (x) => `${acadName(x.academyId)} — ${x.title || x.courseName}`,
+            ignoreAcademy: (id) => roomExemptAcademy(acadById.get(id)),
+            labelFor: (x) => `${academyHolderLabel(acadById.get(x.academyId))} — ${x.title || x.courseName}`,
           });
           if (conflict) {
             setError(`Can't duplicate: ${session.room || 'the room'} is already booked on that day by ${conflict.label}. Reschedule or change rooms first.`);

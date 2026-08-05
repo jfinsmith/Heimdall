@@ -59,9 +59,14 @@ export const saveRoomReservation = onCall<{
   const startD = start.toDate();
   const endD = end.toDate();
 
-  // Template-academy sessions aren't real bookings — pre-read their ids.
-  const templSnap = await db.collection('academies').where('orgId', '==', orgId).where('isTemplate', '==', true).get();
-  const templateIds = new Set(templSnap.docs.map((d) => d.id));
+  // Template + ARCHIVED academies' sessions aren't real bookings (archived =
+  // abandoned schedules that must not keep blocking rooms) — pre-read ids.
+  // MUST mirror roomExemptAcademy in src/features/cadre/rooms/roomBooking.ts.
+  const [templSnap, archSnap] = await Promise.all([
+    db.collection('academies').where('orgId', '==', orgId).where('isTemplate', '==', true).get(),
+    db.collection('academies').where('orgId', '==', orgId).where('status', '==', 'archived').get(),
+  ]);
+  const templateIds = new Set([...templSnap.docs, ...archSnap.docs].map((d) => d.id));
 
   const id = reservationId || db.collection('roomReservations').doc().id;
   await db.runTransaction(async (tx) => {
