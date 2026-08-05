@@ -749,7 +749,11 @@ export function AcademyBuilderPage() {
           ref={calRef}
           plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
           initialView="twoWeek"
-          initialDate={academy.startDate.toDate() > new Date() ? academy.startDate.toDate() : new Date()}
+          // Aligned to the PAY-PERIOD Monday up front: the datesSet snap below
+          // can't fix the first render (the calendar ref isn't assigned yet, so
+          // its gotoDate no-ops) — which left the initial 2-week view straddling
+          // two pay periods until a view button was clicked.
+          initialDate={payPeriodStart(academy.startDate.toDate() > new Date() ? academy.startDate.toDate() : new Date())}
           firstDay={1}
           weekends={showWeekends}
           views={{ twoWeek: { type: 'timeGrid', duration: { weeks: 2 }, buttonText: '2 weeks' } }}
