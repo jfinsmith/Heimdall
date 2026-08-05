@@ -14,8 +14,8 @@ type Mode = 'signin' | 'register' | 'reset';
  *  in Firebase Console. The code path is ready — flip this once that's set up. */
 const APPLE_SIGNIN_ENABLED = false;
 /** Microsoft sign-in needs the Azure app registration + the provider enabled in
- *  Firebase Console (free). Flip once configured. */
-const MICROSOFT_SIGNIN_ENABLED = false;
+ *  Firebase Console (free). Configured 2026-08-05. */
+const MICROSOFT_SIGNIN_ENABLED = true;
 
 export function SignInPage() {
   const { firebaseUser, profile, signInWithGoogle, signInWithApple, signInWithMicrosoft, signInWithEmail, registerWithEmail, resetPassword, signOut } =
