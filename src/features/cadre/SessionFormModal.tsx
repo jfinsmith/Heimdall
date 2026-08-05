@@ -712,12 +712,18 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
                           })
                         }
                       >
+                        {/* General Instructor first (the usual pick), the rest
+                            A–Z, "none" demoted to the bottom. */}
+                        {(Object.keys(QUALIFICATION_LABELS) as QualificationKey[])
+                          .sort((a, b) =>
+                            a === 'general' ? -1 : b === 'general' ? 1 : QUALIFICATION_LABELS[a].localeCompare(QUALIFICATION_LABELS[b])
+                          )
+                          .map((k) => (
+                            <option key={k} value={k}>
+                              {QUALIFICATION_LABELS[k]}
+                            </option>
+                          ))}
                         <option value="">No qualification required</option>
-                        {(Object.keys(QUALIFICATION_LABELS) as QualificationKey[]).sort((a, b) => QUALIFICATION_LABELS[a].localeCompare(QUALIFICATION_LABELS[b])).map((k) => (
-                          <option key={k} value={k}>
-                            {QUALIFICATION_LABELS[k]}
-                          </option>
-                        ))}
                       </Select>
                     </>
                   )}
@@ -771,7 +777,18 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
             type="button"
             variant="ghost"
             className="mt-2"
-            onClick={() => setSlots((prev) => [...prev, { slotId: shortId(), role: 'assistant', count: 1, filledBy: [] }])}
+            onClick={() =>
+              setSlots((prev) => {
+                // First teaching slot = the LEAD; every one after defaults to
+                // assistant. Either way, General Instructor is the default
+                // required qualification (not "none").
+                const hasLead = prev.some((s) => s.role === 'lead');
+                return [
+                  ...prev,
+                  { slotId: shortId(), role: hasLead ? 'assistant' : 'lead', count: 1, requiredQualificationKey: 'general', filledBy: [] },
+                ];
+              })
+            }
           >
             + Add slot
           </Button>
