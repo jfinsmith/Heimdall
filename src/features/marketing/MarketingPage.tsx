@@ -621,6 +621,8 @@ export function MarketingPage() {
           <a href="#pricing" className="hover:text-watch-100">Pricing</a>
           <a href="#faq" className="hover:text-watch-100">FAQ</a>
           <Link to="/signin" className="hover:text-watch-100">Sign in</Link>
+          <Link to="/terms" className="hover:text-watch-100">Terms</Link>
+          <Link to="/privacy" className="hover:text-watch-100">Privacy</Link>
         </nav>
         <p className="mt-4">© HEIMDALL Scheduling. Watch staffing · Sound the alert.</p>
       </footer>

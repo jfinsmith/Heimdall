@@ -59,6 +59,8 @@ const BillingPage = lazy(() => import('../features/admin/BillingPage').then((m) 
 const CompliancePage = lazy(() => import('../features/admin/CompliancePage').then((m) => ({ default: m.CompliancePage })));
 const MarketingPage = lazy(() => import('../features/marketing/MarketingPage').then((m) => ({ default: m.MarketingPage })));
 const PublicClassPage = lazy(() => import('../features/public/PublicClassPage').then((m) => ({ default: m.PublicClassPage })));
+const TermsPage = lazy(() => import('../features/legal/LegalPages').then((m) => ({ default: m.TermsPage })));
+const PrivacyPage = lazy(() => import('../features/legal/LegalPages').then((m) => ({ default: m.PrivacyPage })));
 
 function RouteFallback() {
   return (
@@ -116,6 +118,9 @@ export function AppRouter() {
               host skips straight to sign-in, same as RootGate. */}
           <Route path="/pricing" element={isMarketingHost() ? <MarketingPage /> : <Navigate to="/signin" replace />} />
           <Route path="/signin" element={<SignInPage />} />
+          {/* Legal — public on every host (linked from marketing + signup). */}
+          <Route path="/terms" element={<TermsPage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
           {/* Public class portal — token + tiered passwords validated by the
               getPublicClassPortal callable; no sign-in, rules stay closed. */}
           <Route path="/class/:academyId/:token" element={<PublicClassPage />} />

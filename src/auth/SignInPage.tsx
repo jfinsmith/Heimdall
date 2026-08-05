@@ -117,6 +117,14 @@ export function SignInPage() {
                 />
               </Field>
             )}
+            {mode === 'register' && (
+              <p className="text-xs text-slate-500">
+                By creating an account you agree to the{' '}
+                <a href="/terms" target="_blank" rel="noopener" className="text-bifrost-700 underline">Terms of Service</a>{' '}
+                and{' '}
+                <a href="/privacy" target="_blank" rel="noopener" className="text-bifrost-700 underline">Privacy Policy</a>.
+              </p>
+            )}
             <Button type="submit" variant="primary" className="w-full" disabled={busy}>
               {mode === 'signin' ? 'Sign in' : mode === 'register' ? 'Create account' : 'Send reset email'}
             </Button>
