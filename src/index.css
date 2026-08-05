@@ -127,6 +127,37 @@ body {
 .fc-event.hd-flagged--test .hd-event-notes { color: #fecaca; }      /* red-200 */
 .fc-event.hd-flagged--scenario .hd-event-notes { color: #bbf7d0; }  /* green-200 */
 .fc-event.hd-flagged--pt .hd-event-notes { color: #fef08a; }        /* yellow-200 */
+/* ── Mobile-only calendar compaction (desktop untouched) ─────────────────
+   Phones: FullCalendar's toolbar wraps instead of overflowing, buttons and
+   title shrink, and the Browse month cards drop to title-only (details live
+   one tap away in the session modal). */
+@media (max-width: 639px) {
+  .fc .fc-toolbar.fc-header-toolbar {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.375rem;
+  }
+  .fc .fc-toolbar-title {
+    font-size: 1rem;
+  }
+  .fc .fc-button {
+    padding: 0.2rem 0.45rem;
+    font-size: 0.75rem;
+  }
+  /* The desktop 2.6em slot height turns a 05:00–23:00 time grid into a
+     ~4700px scroll on phones. */
+  .fc .fc-timegrid-slot {
+    height: 1.6em;
+  }
+  .hd-browse-event-sub {
+    display: none;
+  }
+  .hd-browse-event {
+    font-size: 9px;
+    padding: 0 2px;
+  }
+}
+
 /* Browse Open Sessions month-view card: three compact lines (start+block,
    military range+class, slot fill+room) on the academy-colored block. */
 .hd-browse-event {

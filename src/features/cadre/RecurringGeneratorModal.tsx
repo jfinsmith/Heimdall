@@ -311,7 +311,7 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
           </div>
         </fieldset>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="From">
             <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} required />
           </Field>
@@ -320,7 +320,7 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
           </Field>
         </div>
 
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:grid-cols-4">
           <Field label="Start">
             <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} required />
           </Field>

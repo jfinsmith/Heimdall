@@ -1188,7 +1188,7 @@ function EditAcademyModal({ academy, onClose }: { academy: WithId<AcademyDoc>; o
   return (
     <Modal open onClose={onClose} title="Edit academy">
       <form onSubmit={submit} className="space-y-4">
-        <div className="grid grid-cols-[1fr_2fr] gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_2fr]">
           <Field label="Class designation">
             <Input value={shortName} onChange={(e) => setShortName(e.target.value)} required />
           </Field>
@@ -1196,7 +1196,7 @@ function EditAcademyModal({ academy, onClose }: { academy: WithId<AcademyDoc>; o
             <Input value={name} onChange={(e) => setName(e.target.value)} required />
           </Field>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Discipline" hint="Drives curriculum coverage & default hours">
             <Select
               value={discipline}
@@ -1223,7 +1223,7 @@ function EditAcademyModal({ academy, onClose }: { academy: WithId<AcademyDoc>; o
             </div>
           </Field>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Default room" hint="Prefilled on new sessions">
             <RoomSelect value={defaultRoom} roomId={defaultRoomId} onChange={(name, id) => { setDefaultRoom(name); setDefaultRoomId(id); }} />
           </Field>
@@ -1231,12 +1231,12 @@ function EditAcademyModal({ academy, onClose }: { academy: WithId<AcademyDoc>; o
             <Input type="number" min={1} step="any" value={targetHours} onChange={(e) => setTargetHours(Number(e.target.value))} />
           </Field>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Sequence No." hint="FDLE class/course sequence — flows to the attendance roster">
             <Input value={sequenceNo} onChange={(e) => setSequenceNo(e.target.value)} placeholder="65-2026-2010-2" />
           </Field>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Primary coordinator" hint="Default owner for assigned blocks">
             <Select value={primary} onChange={(e) => setPrimary(e.target.value)}>
               <option value="">— none —</option>

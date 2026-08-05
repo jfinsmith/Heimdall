@@ -334,7 +334,7 @@ export function RoomsPage() {
           <p className="text-sm text-slate-500">Add locations and rooms above — the week grid shows every room&apos;s bookings at a glance.</p>
         ) : (
           <div className="overflow-x-auto rounded-lg ring-1 ring-watch-100">
-            <table className="w-full table-fixed border-separate border-spacing-0 text-xs">
+            <table className="w-full min-w-[52rem] table-fixed border-separate border-spacing-0 text-xs">
               <thead>
                 <tr>
                   <th className="sticky left-0 z-10 w-28 border-b border-watch-100 bg-watch-50 px-2.5 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-watch-500">
@@ -541,7 +541,7 @@ function ReservationModal({
         <Field label="Title" hint="e.g. Staff meeting, Maintenance, Outside agency">
           <Input value={title} onChange={(e) => setTitle(e.target.value)} required placeholder="Maintenance" />
         </Field>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <Field label="Date"><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} required /></Field>
           <Field label="Start"><Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} required /></Field>
           <Field label="End"><Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} required /></Field>

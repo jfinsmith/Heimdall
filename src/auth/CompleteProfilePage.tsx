@@ -80,7 +80,7 @@ export function CompleteProfilePage() {
         <Field label="Full name">
           <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
         </Field>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Rank" hint='e.g. "Deputy", "Sergeant"'>
             <Input value={rank} onChange={(e) => setRank(e.target.value)} required />
           </Field>

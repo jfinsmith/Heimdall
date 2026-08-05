@@ -378,7 +378,7 @@ function CurriculumEditorModal({
           <legend className="px-1 text-sm font-medium text-watch-800">
             Course blocks &amp; minimum hours — total <strong>{total}</strong> hrs
           </legend>
-          <div className="mb-1 grid grid-cols-[5.5rem_1fr_4rem_2rem_2.5rem_3.5rem_8.5rem_1.5rem] items-center gap-2 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+          <div className="mb-1 grid min-w-[34rem] grid-cols-[5.5rem_1fr_4rem_2rem_2.5rem_3.5rem_8.5rem_1.5rem] items-center gap-2 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
             <span title="FDLE/CJSTC course number">CJK #</span>
             <span>Course</span>
             <span>Hours</span>
@@ -390,7 +390,7 @@ function CurriculumEditorModal({
           </div>
           <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
             {courses.map((c, i) => (
-              <div key={i} className="grid grid-cols-[5.5rem_1fr_4rem_2rem_2.5rem_3.5rem_8.5rem_1.5rem] items-center gap-2">
+              <div key={i} className="grid min-w-[34rem] grid-cols-[5.5rem_1fr_4rem_2rem_2.5rem_3.5rem_8.5rem_1.5rem] items-center gap-2">
                 <Input
                   value={c.cjk ?? ''}
                   placeholder="CJK0040"

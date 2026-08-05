@@ -152,7 +152,15 @@ export function AppShell() {
   const showBillingBanner = billing.gated && (!billing.active || billing.inGrace);
 
   const nav = (
-    <nav aria-label="Main navigation" className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3">
+    <nav
+      aria-label="Main navigation"
+      className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3"
+      // Mobile: tapping any nav link must close the off-canvas sidebar —
+      // otherwise it stays covering the page you just navigated to. Event
+      // delegation beats threading a prop through 25 NavItems; a no-op on
+      // desktop (the sidebar ignores sidebarOpen at md+).
+      onClick={(e) => { if ((e.target as HTMLElement).closest('a')) setSidebarOpen(false); }}
+    >
       {/* Visibility ladder: everyone → instructors (Instructor tools) →
           coordinator+ (CADRE) → sergeant+ (Admin) → platform owner. */}
       <NavItem to="/overview" label="Overview" end />
@@ -333,7 +341,7 @@ export function AppShell() {
             <Outlet />
           </ErrorBoundary>
         </main>
-        <footer className="no-print px-8 py-4 text-center text-xs text-watch-300">
+        <footer className="no-print px-4 py-4 md:px-8 text-center text-xs text-watch-300">
           <div>CADRE — Coordinated Academy Duty &amp; Roster Engine · Sounded by Gjallarhorn</div>
           <div className="mt-1 flex justify-center"><PoweredByHeimdall className="!text-watch-400" /></div>
         </footer>

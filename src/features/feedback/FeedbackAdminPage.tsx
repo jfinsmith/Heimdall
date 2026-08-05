@@ -250,7 +250,7 @@ function OwnerFeedbackCard({ r, onStatusApplied }: { r: OwnerReport; onStatusApp
         <Badge tone={STATUS_TONE[r.status] ?? 'slate'}>{STATUS_LABEL[r.status] ?? r.status}</Badge>
         {r.area && <span className="text-xs text-slate-400">· {r.area}</span>}
       </div>
-      <div className="mb-2 text-xs text-slate-500">
+      <div className="mb-2 break-words text-xs text-slate-500">
         {r.submittedByName || 'Unknown'} {r.submittedByRole ? `(${r.submittedByRole})` : ''}
         {r.submittedByEmail ? ` · ${r.submittedByEmail}` : ''}
         {r.createdAtMs ? ` · ${new Date(r.createdAtMs).toLocaleString()}` : ''}
@@ -301,7 +301,7 @@ function FeedbackCard({
         <Badge tone={STATUS_TONE[r.status]}>{STATUS_LABEL[r.status]}</Badge>
         {r.area && <span className="text-xs text-slate-400">· {r.area}</span>}
       </div>
-      <div className="mb-2 text-xs text-slate-500">
+      <div className="mb-2 break-words text-xs text-slate-500">
         {r.submittedByName || 'Unknown'} {r.submittedByRole ? `(${r.submittedByRole})` : ''}
         {r.submittedByEmail ? ` · ${r.submittedByEmail}` : ''}
         {r.createdAt?.toDate ? ` · ${r.createdAt.toDate().toLocaleString()}` : ''}

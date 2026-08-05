@@ -103,7 +103,7 @@ export function OverviewPage() {
           ) : (
             <ul className="divide-y divide-watch-50">
               {upcoming.map((a) => (
-                <li key={a.id} className="flex items-center justify-between py-3 text-sm">
+                <li key={a.id} className="flex items-center justify-between gap-2 py-3 text-sm">
                   <div>
                     <button
                       className="text-left font-medium text-watch-900 hover:underline"
@@ -115,7 +115,7 @@ export function OverviewPage() {
                       {fmtRange(a.start, a.end)} · {a.room}
                     </div>
                   </div>
-                  <span className="text-xs uppercase tracking-wide text-watch-500">{a.role.replace('_', ' ')}</span>
+                  <span className="shrink-0 text-xs uppercase tracking-wide text-watch-500">{a.role.replace('_', ' ')}</span>
                 </li>
               ))}
             </ul>

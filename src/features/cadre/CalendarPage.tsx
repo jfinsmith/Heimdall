@@ -278,7 +278,7 @@ export function CalendarPage() {
       <div className="rounded-lg border border-watch-100 bg-white p-4 shadow-sm">
         <FullCalendar
           plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
-          initialView="timeGridWeek"
+          initialView={typeof window !== 'undefined' && window.innerWidth < 640 ? 'listMonth' : 'timeGridWeek'}
           firstDay={1}
           weekends={showWeekends}
           headerToolbar={{ left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay,listMonth' }}

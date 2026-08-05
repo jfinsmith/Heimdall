@@ -52,7 +52,7 @@ export function NotificationBell() {
       </button>
       {open && (
         <div
-          className="absolute right-0 z-40 mt-2 w-80 rounded-lg border border-watch-100 bg-white shadow-xl"
+          className="absolute right-0 z-40 mt-2 w-[calc(100vw-1.5rem)] rounded-lg border border-watch-100 bg-white shadow-xl sm:w-80"
           role="dialog"
           aria-label="Notifications"
         >

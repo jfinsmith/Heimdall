@@ -661,7 +661,7 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
           <div className="space-y-2">
             {slots.map((slot) => (
               <div key={slot.slotId} className="rounded-md border border-watch-100 p-2">
-                <div className="grid grid-cols-[1fr_5rem_1fr_2rem] items-center gap-2">
+                <div className="grid grid-cols-[1fr_2rem] items-center gap-2 sm:grid-cols-[1fr_5rem_1fr_2rem]">
                   <Select value={slot.role} onChange={(e) => changeSlotRole(slot, e.target.value as SlotRole)}>
                     {/* Retired roles (e.g. legacy Safety Officer) aren't offered, but a slot that
                         already holds one keeps it as an option so it still renders and can be changed. */}

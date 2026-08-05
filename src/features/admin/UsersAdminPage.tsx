@@ -580,7 +580,7 @@ function EditUserModal({ user, onClose }: { user: WithId<UserDoc>; onClose: () =
         <Field label="Sign-in email" hint="Changing this changes how they log in.">
           <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         </Field>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Rank" hint='e.g. "Deputy"'>
             <Input value={rank} onChange={(e) => setRank(e.target.value)} />
           </Field>
@@ -743,7 +743,7 @@ function AddUserModal({ onClose }: { onClose: () => void }) {
           <Field label="Email">
             <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
           </Field>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Role">
               <Select value={role} onChange={(e) => setRole(e.target.value as Role)}>
                 {(Object.keys(roleLabels) as Role[]).sort((a, b) => roleLabels[a].localeCompare(roleLabels[b])).map((r) => (
@@ -757,7 +757,7 @@ function AddUserModal({ onClose }: { onClose: () => void }) {
               <Input value={rank} onChange={(e) => setRank(e.target.value)} />
             </Field>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Agency">
               <Input value={agency} onChange={(e) => setAgency(e.target.value)} />
             </Field>

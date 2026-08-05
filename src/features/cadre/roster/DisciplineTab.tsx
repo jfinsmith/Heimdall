@@ -149,7 +149,7 @@ function ViolationModal({
   return (
     <Modal open onClose={onClose} title={`Note a violation — ${member.fullName}`}>
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Date"><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
           <Field label="Violation type">
             <Select value={type} onChange={(e) => setType(e.target.value as ViolationType)}>

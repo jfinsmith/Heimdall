@@ -327,7 +327,7 @@ export function SessionDetailModal({ sessionId, onClose, onEdit, variant = 'staf
       </ul>
 
       {variant === 'staff' && can.buildSchedules(role) && (
-        <div className="mt-4 flex justify-end gap-2 border-t border-watch-50 pt-3">
+        <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-watch-50 pt-3">
           {session.status === 'scheduled' && session.roleSlots.some((sl) => sl.role !== 'coordinator') && (
             <Button
               variant="primary"

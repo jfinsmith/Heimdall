@@ -186,7 +186,7 @@ export function AcademiesPage() {
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-watch-600">Schedule templates</h2>
           <div className="space-y-5">
             {templateGroups.map((group) => (
-              <div key={group.key} className="overflow-hidden rounded-lg border border-watch-100 bg-white shadow-sm">
+              <div key={group.key} className="overflow-x-auto rounded-lg border border-watch-100 bg-white shadow-sm">
                 <div className="flex items-center justify-between gap-2 border-b border-watch-100 bg-watch-50 px-4 py-2">
                   <h3 className="text-sm font-semibold text-watch-800">{group.label}</h3>
                   <span className="text-xs text-slate-500">
@@ -196,7 +196,7 @@ export function AcademiesPage() {
                 {/* table-fixed + shared column widths: every discipline group is
                     its own table, so without this each group sizes its columns
                     to content and nothing lines up group-to-group. */}
-                <table className="w-full table-fixed text-left text-sm">
+                <table className="w-full min-w-[36rem] table-fixed text-left text-sm">
                   <thead className="text-xs uppercase tracking-wider text-watch-500">
                     <tr>
                       <th className="w-[30%] px-4 py-2 font-medium">Template</th>
@@ -422,7 +422,7 @@ function CreateAcademyModal({
             create real academies from it later, shifting the dates.
           </p>
         )}
-        <div className="grid grid-cols-[1fr_2fr] gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_2fr]">
           <Field label="Class designation" hint='Short label, e.g. "LE 131", "CO 67" — leads calendar entries'>
             <Input value={shortName} onChange={(e) => setShortName(e.target.value)} required placeholder={isTemplate ? 'LE — Jan Start' : 'LE 133'} />
           </Field>
@@ -430,7 +430,7 @@ function CreateAcademyModal({
             <Input value={name} onChange={(e) => setName(e.target.value)} required />
           </Field>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Discipline" hint="Manage the list under Admin → Curriculum & Hours">
             <Select
               value={discipline}
@@ -453,7 +453,7 @@ function CreateAcademyModal({
             <Input type="number" min={1} step="any" value={targetHours} onChange={(e) => setTargetHours(Number(e.target.value))} required />
           </Field>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Start date">
             <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} required />
           </Field>
@@ -461,7 +461,7 @@ function CreateAcademyModal({
             <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} required />
           </Field>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Location">
             <Input value={location} onChange={(e) => setLocation(e.target.value)} required />
           </Field>
@@ -470,7 +470,7 @@ function CreateAcademyModal({
           </Field>
         </div>
         {!isTemplate && (
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Sequence No." hint="FDLE class/course sequence — flows to the attendance roster">
               <Input value={sequenceNo} onChange={(e) => setSequenceNo(e.target.value)} placeholder="65-2026-2010-2" />
             </Field>
@@ -486,7 +486,7 @@ function CreateAcademyModal({
             <span className="h-7 w-7 shrink-0 rounded-md ring-1 ring-watch-200" style={{ backgroundColor: defaultColor }} />
           </div>
         </Field>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Primary coordinator" hint="Default owner for assigned blocks">
             <Select value={primary} onChange={(e) => setPrimary(e.target.value)}>
               <option value="">— none —</option>
@@ -662,7 +662,7 @@ function CloneAcademyModal({
             : 'Copies the entire schedule and shifts every session by the same number of days to the new start date. '}
           Sign-ups are not copied. ({fmtDate(source.startDate)} → {fmtDate(source.endDate)})
         </p>
-        <div className="grid grid-cols-[1fr_2fr] gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_2fr]">
           <Field label="Class designation">
             <Input value={shortName} onChange={(e) => setShortName(e.target.value)} required placeholder="LE 133" />
           </Field>

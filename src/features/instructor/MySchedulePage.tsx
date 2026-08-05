@@ -152,7 +152,7 @@ export function MySchedulePage() {
         <div className="rounded-lg border border-watch-100 bg-white p-4 shadow-sm">
           <FullCalendar
             plugins={[dayGridPlugin, timeGridPlugin, listPlugin]}
-            initialView="dayGridMonth"
+            initialView={typeof window !== 'undefined' && window.innerWidth < 640 ? 'listMonth' : 'dayGridMonth'}
             firstDay={1}
             headerToolbar={{ left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,listMonth' }}
             events={events}
@@ -195,7 +195,7 @@ export function MySchedulePage() {
                     {a.room ? ` — ${a.room}` : ''} · {SLOT_ROLE_LABELS[a.role]}
                   </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Button onClick={() => downloadIcs(`heimdall-${a.courseName.toLowerCase().replace(/\W+/g, '-')}`, [a])}>
                     .ics
                   </Button>

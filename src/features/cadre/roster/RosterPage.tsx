@@ -138,12 +138,12 @@ export function RosterPage() {
         )}
 
         {/* Tabs */}
-        <div className="mb-5 flex gap-1 border-b border-watch-100">
+        <div className="mb-5 flex gap-1 overflow-x-auto border-b border-watch-100">
           {TABS.map((t) => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${
+              className={`-mb-px shrink-0 whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium ${
                 activeTab === t.key ? 'border-bifrost-500 text-bifrost-700' : 'border-transparent text-slate-500 hover:text-watch-800'
               }`}
             >

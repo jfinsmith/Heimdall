@@ -105,10 +105,10 @@ export function ProfilePage() {
       <PageHeader kicker="Instructor" title="Profile & Qualifications" />
 
       <form onSubmit={save} className="space-y-4 rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
-        <div className="text-sm text-slate-500">
+        <div className="break-words text-sm text-slate-500">
           {profile.displayName} · {profile.email}
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Rank">
             <Input value={rank} onChange={(e) => setRank(e.target.value)} />
           </Field>

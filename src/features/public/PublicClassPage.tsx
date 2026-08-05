@@ -228,7 +228,7 @@ export function PublicClassPage() {
                     <tbody>
                       {items.map((s, i) => (
                         <tr key={i} className="border-t border-watch-100 align-top first:border-t-0">
-                          <td className="w-[6.2rem] whitespace-nowrap px-3 py-2 font-mono text-xs text-slate-500">
+                          <td className="w-20 whitespace-nowrap sm:w-[6.2rem] px-3 py-2 font-mono text-xs text-slate-500">
                             {fmtTime(s.startMs)}–{fmtTime(s.endMs)}
                           </td>
                           <td className="px-2 py-2">

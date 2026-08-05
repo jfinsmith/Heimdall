@@ -53,9 +53,15 @@ export function BrowseOpenSessionsPage() {
   ]);
   const [academyFilter, setAcademyFilter] = useState('all');
   const [showUnavailable, setShowUnavailable] = useState(false);
-  // Calendar vs list — calendar is the default; the choice is remembered.
+  // Calendar vs list — the choice is remembered. Default: calendar on desktop,
+  // LIST on phones (a month grid at 375px can't carry the 3-line cards; the
+  // day-grouped list is the usable sign-up surface there).
   const [view, setView] = useState<'list' | 'calendar'>(() => {
-    try { return localStorage.getItem('hd-browse-view') === 'list' ? 'list' : 'calendar'; } catch { return 'calendar'; }
+    try {
+      const stored = localStorage.getItem('hd-browse-view');
+      if (stored === 'list' || stored === 'calendar') return stored;
+    } catch { /* private mode */ }
+    return typeof window !== 'undefined' && window.innerWidth < 640 ? 'list' : 'calendar';
   });
   const pickView = (v: 'list' | 'calendar') => {
     setView(v);

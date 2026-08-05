@@ -165,7 +165,8 @@ export function PageHeader({
           <h1 className="text-2xl font-bold text-watch-900">{title}</h1>
         </div>
       </div>
-      {actions && <div className="flex items-center gap-2">{actions}</div>}
+      {/* flex-wrap: multi-control header rows must stack on phones. */}
+      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </div>
   );
 }
