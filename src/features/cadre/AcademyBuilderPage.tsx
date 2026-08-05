@@ -1397,8 +1397,7 @@ function ApprovalPanel({ academy }: { academy: WithId<AcademyDoc> }) {
             approver — final sign-off is captain-only, by design. */}
         {!isActiveApprover && state === 'pending_captain' && (
           <p className="text-sm text-slate-500">
-            Waiting on the <strong className="text-watch-800">Captain</strong> — final approval is captain-only
-            {role === 'lieutenant' ? ' (lieutenants cannot give final sign-off)' : ''}.
+            Waiting on the <strong className="text-watch-800">Captain</strong> — final approval is captain-only.
           </p>
         )}
         {!isActiveApprover && state === 'pending_lieutenant' && role !== 'lieutenant' && (
