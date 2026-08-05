@@ -21,7 +21,7 @@ import { useCollection, useDoc, type WithId } from '../../lib/firestore';
 import { useCurriculum, useAllCurricula } from '../../lib/curricula';
 import { useAuth } from '../../auth/AuthContext';
 import { can } from '../../lib/rbac';
-import { hoursBetween, tsFromDate, toTimeInputValue, fmtDate, isValidDuration } from '../../lib/time';
+import { hoursBetween, tsFromDate, toTimeInputValue, fmtDate, isValidDuration, isSameLocalDay } from '../../lib/time';
 import { holidaysForYear, holidayBackgroundEvents, observedHolidayDatesInRange, HOLIDAY_PAY_HOURS } from '../../lib/holidays';
 import type { AcademyDoc, CoursePublishTarget, QualificationKey, RosterMemberDoc, SessionDoc, UserDoc } from '../../types';
 import { QUALIFICATION_LABELS } from '../../types';
@@ -331,6 +331,15 @@ export function AcademyBuilderPage() {
     if (!isValidDuration(start, end)) {
       arg.revert();
       window.alert('A session must end after it starts. Move blocked — pick a valid time span.');
+      return;
+    }
+    // Month-view RESIZE can stretch the end across days. A cross-day session
+    // silently blocks its room for the whole span — months of phantom
+    // "already booked" conflicts on every date in between. Sessions live on
+    // one calendar day; block the write.
+    if (!isSameLocalDay(start, end)) {
+      arg.revert();
+      window.alert('A session must start and end on the same day. To move it to another date, drag the whole block; to change its times, use the week or day view.');
       return;
     }
     // Block a drag/resize that double-books a managed room (the other save paths

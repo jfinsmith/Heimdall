@@ -38,6 +38,16 @@ export function isValidDuration(start: Date, end: Date): boolean {
 /** Standard message shown when a session's end isn't after its start. */
 export const END_BEFORE_START_MSG = 'The end time must be after the start time.';
 
+/**
+ * Sessions live on ONE calendar day (single date field — no overnight blocks).
+ * Guards the drag/resize path: a month-view resize can stretch an event's end
+ * across days, and a cross-day session silently blocks its room for the whole
+ * stretch (months of phantom "already booked" conflicts).
+ */
+export function isSameLocalDay(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
 export function addDays(d: Date, days: number): Date {
   const out = new Date(d);
   out.setDate(out.getDate() + days);

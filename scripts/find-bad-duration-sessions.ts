@@ -50,6 +50,12 @@ function describe(id: string, s: SessionLike): string {
   return `${id}  org=${s.orgId ?? '?'}  academy=${s.academyId ?? '?'}  "${s.courseName ?? ''}"${s.kind ? ` [${s.kind}]` : ''}  start=${start}  end=${end}  hours=${s.hours ?? '?'}`;
 }
 
+/** Sessions live on ONE calendar day. A cross-day span (classic cause: a
+ *  month-view resize dragging the end across days) silently blocks its room
+ *  for the whole stretch — months of phantom "already booked" conflicts. */
+const sameLocalDay = (a: Date, b: Date) =>
+  a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
 async function main() {
   const snap = await db.collection('sessions').get();
   const bad: { id: string; s: SessionLike }[] = [];
@@ -57,12 +63,17 @@ async function main() {
     const s = doc.data() as SessionLike;
     const startMs = s.start?.toMillis();
     const endMs = s.end?.toMillis();
-    if (typeof startMs !== 'number' || typeof endMs !== 'number' || endMs <= startMs) {
+    if (
+      typeof startMs !== 'number' ||
+      typeof endMs !== 'number' ||
+      endMs <= startMs ||
+      !sameLocalDay(new Date(startMs), new Date(endMs))
+    ) {
       bad.push({ id: doc.id, s });
     }
   }
 
-  console.log(`Scanned ${snap.size} sessions — ${bad.length} with a bad/zero/negative duration:\n`);
+  console.log(`Scanned ${snap.size} sessions — ${bad.length} with a bad duration (zero/negative OR spanning days):\n`);
   if (bad.length === 0) {
     console.log('None. Nothing to fix.');
     return;
