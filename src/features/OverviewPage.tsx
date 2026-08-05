@@ -51,11 +51,14 @@ export function OverviewPage() {
   const pendingMyApproval = academies.filter((a) => {
     if (a.isTemplate) return false;
     const st = a.approval?.state;
+    // MUST mirror the academyApproval callable: one role per stage — the
+    // lieutenant clears the lieutenant step, final approval is CAPTAIN-ONLY.
+    // (The old either-admin shortcut queued captain-stage classes on the
+    // lieutenant's overview, whose Approve the server then rejected.)
     return (
       (st === 'pending_sergeant' && a.approval?.sergeantId === firebaseUser?.uid) ||
-      // Lieutenant = director (identical rank): either clears either command
-      // stage — a lieutenant-led org has no 'director' user at all.
-      ((st === 'pending_lieutenant' || st === 'pending_captain') && (role === 'lieutenant' || role === 'director'))
+      (st === 'pending_lieutenant' && role === 'lieutenant') ||
+      (st === 'pending_captain' && role === 'director')
     );
   });
 

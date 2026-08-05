@@ -1292,10 +1292,14 @@ function ApprovalPanel({ academy }: { academy: WithId<AcademyDoc> }) {
   const [note, setNote] = useState('');
 
   const canSubmit = can.buildSchedules(role) && (state === 'not_submitted' || state === 'changes_requested');
+  // MUST mirror the academyApproval callable exactly: each stage has ONE
+  // authorized role — the lieutenant clears the lieutenant step, and final
+  // approval is CAPTAIN-ONLY. (An either-admin shortcut here showed lieutenants
+  // an Approve button the server then rejected.)
   const isActiveApprover =
     (state === 'pending_sergeant' && uid === ap?.sergeantId) ||
-    // Lieutenant = director (identical rank): either clears either command stage.
-    ((state === 'pending_lieutenant' || state === 'pending_captain') && (role === 'lieutenant' || role === 'director'));
+    (state === 'pending_lieutenant' && role === 'lieutenant') ||
+    (state === 'pending_captain' && role === 'director');
   // Fast-track: command can push the workflow up to the rank above them, skipping
   // the sergeant step, to speed things up. A lieutenant jumps to the captain; a
   // (non-assigned) sergeant pushes their step to the lieutenant.
@@ -1388,6 +1392,19 @@ function ApprovalPanel({ academy }: { academy: WithId<AcademyDoc> }) {
               Request changes
             </Button>
           </>
+        )}
+        {/* Make the hand-off unmistakable for the admins who AREN'T the current
+            approver — final sign-off is captain-only, by design. */}
+        {!isActiveApprover && state === 'pending_captain' && (
+          <p className="text-sm text-slate-500">
+            Waiting on the <strong className="text-watch-800">Captain</strong> — final approval is captain-only
+            {role === 'lieutenant' ? ' (lieutenants cannot give final sign-off)' : ''}.
+          </p>
+        )}
+        {!isActiveApprover && state === 'pending_lieutenant' && role !== 'lieutenant' && (
+          <p className="text-sm text-slate-500">
+            Waiting on the <strong className="text-watch-800">Lieutenant</strong> for this step.
+          </p>
         )}
         {canFastTrack && !noteOpen && (
           <Button
