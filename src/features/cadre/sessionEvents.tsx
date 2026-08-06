@@ -183,7 +183,7 @@ export function renderEventContent(arg: EventContentArg): React.ReactNode | unde
       const height = (s.lunchMinutes / durationMin) * 100;
       lunchBand = (
         <div className="hd-lunch" style={{ top: `${top}%`, height: `${height}%` }} aria-hidden>
-          <span>lunch</span>
+          <span>{s.lunchCountsTowardHours ? 'working lunch' : 'lunch'}</span>
         </div>
       );
     }
