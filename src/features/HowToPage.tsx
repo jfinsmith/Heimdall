@@ -251,7 +251,7 @@ export function HowToPage() {
             <Steps items={[
               <>Open the academy → the calendar. Click/drag a time range to create a session; drag or resize existing blocks to move them (room conflicts block the move).</>,
               <>Picking a <B>course from the curriculum</B> auto-fills hours, default role slots, and the lead-qualification requirement. A <B>custom block</B> (PSO assignment, formation, study hall…) never counts toward FDLE program hours.</>,
-              <>Set the <B>lunch break</B> (minutes + start). Lunch is carved out of instructional hours unless you explicitly check <B>lunch counts toward hours</B> — that&apos;s rare/case-by-case and shows a warning.</>,
+              <>Set the <B>lunch break</B> (minutes + start). Lunch is carved out of instructional hours unless you explicitly check <B>lunch counts toward hours</B> — that&apos;s rare/case-by-case and shows a warning, and the calendar and printouts label it <B>Working Lunch</B> so the paid break is unmistakable.</>,
               <>Pick a <B>room</B> — the location auto-fills from the room&apos;s location and locks (choose Custom room to type a free-text room/location). Use <B>+ Add room</B> for scenario days needing several rooms; every room is conflict-checked.</>,
             ]} />
           </Sub>

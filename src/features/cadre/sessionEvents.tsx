@@ -200,10 +200,11 @@ export function renderEventContent(arg: EventContentArg): React.ReactNode | unde
       </div>
       {s.notes && <div className="hd-event-notes">{s.notes}</div>}
       {s.room && <div className="hd-event-room">{s.room}</div>}
-      {/* Lunch line only when there's actually a lunch break. */}
+      {/* Lunch line only when there's actually a lunch break. "Working lunch"
+          = the rare FDLE-approved case where it counts toward hours. */}
       {s.lunchMinutes ? (
         <div className="hd-event-room">
-          lunch {s.lunchMinutes}m{s.lunchStart ? ` · ${s.lunchStart}` : ''}
+          {s.lunchCountsTowardHours ? 'working lunch' : 'lunch'} {s.lunchMinutes}m{s.lunchStart ? ` · ${s.lunchStart}` : ''}
         </div>
       ) : null}
       {coverage && (

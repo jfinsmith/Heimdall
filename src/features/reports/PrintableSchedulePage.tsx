@@ -358,7 +358,7 @@ export function PrintableSchedulePage() {
                               {flagStyle && <span className="ml-2 rounded px-1 align-middle text-[9px] font-bold uppercase text-white" style={{ backgroundColor: flagStyle.color }}>{flagStyle.label}</span>}
                               {lunch && (
                                 <div className="mt-0.5 text-[11px] leading-tight text-slate-500">
-                                  ○ Lunch {lunch}
+                                  ○ {s.lunchCountsTowardHours ? 'Working Lunch' : 'Lunch'} {lunch}
                                 </div>
                               )}
                               {mode === 'cadet' && lead && <div className="mt-0.5 text-[11px] text-slate-500">Instructor: {lead}</div>}

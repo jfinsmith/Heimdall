@@ -348,6 +348,7 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
                 <span>
                   Count lunch toward instructional hours
                   <span className="block text-xs text-amber-700">⚠ Rare — FDLE: lunch must NOT count toward instructional hours except in a separately-approved case. Leave unchecked unless you have approval.</span>
+                  <span className="block text-xs text-slate-500">When checked, schedules and printouts label it &ldquo;Working Lunch.&rdquo;</span>
                 </span>
               </label>
             </details>
