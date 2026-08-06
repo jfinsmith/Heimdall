@@ -338,3 +338,23 @@ body {
 .print-only {
   display: none;
 }
+
+/* Sidebar nav scrollbar — blend into the navy rail instead of the page.
+   Chrome ≥121 + Firefox use scrollbar-color; older WebKit uses the pseudos. */
+.hd-nav-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+}
+.hd-nav-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.hd-nav-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.hd-nav-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 4px;
+}
+.hd-nav-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.55);
+}

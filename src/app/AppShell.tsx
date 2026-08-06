@@ -154,7 +154,7 @@ export function AppShell() {
   const nav = (
     <nav
       aria-label="Main navigation"
-      className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3"
+      className="hd-nav-scroll flex-1 space-y-0.5 overflow-y-auto px-2 py-3"
       // Mobile: tapping any nav link must close the off-canvas sidebar —
       // otherwise it stays covering the page you just navigated to. Event
       // delegation beats threading a prop through 25 NavItems; a no-op on
