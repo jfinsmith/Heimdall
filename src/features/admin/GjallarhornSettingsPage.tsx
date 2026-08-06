@@ -169,7 +169,12 @@ export function GjallarhornSettingsPage() {
               <li key={a.key} className="py-2.5">
                 <div className="flex items-start justify-between gap-3">
                   <span>
-                    <span className="block text-sm font-medium text-watch-900">{a.label}</span>
+                    <span className="text-sm font-medium text-watch-900">{a.label}</span>
+                    {'priority' in a && a.priority === true && (
+                      // Members can't personally mute these (Profile shows them
+                      // locked) — this org-level toggle still can.
+                      <span className="ml-2 inline-flex align-middle"><Badge tone="navy">Priority</Badge></span>
+                    )}
                     <span className="block text-xs text-slate-500">{a.description}</span>
                   </span>
                   <input

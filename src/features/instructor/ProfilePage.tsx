@@ -7,11 +7,12 @@
 // (ChangePasswordCard is defined at the bottom of this file.)
 import React, { useEffect, useMemo, useState } from 'react';
 import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
-import { db, auth } from '../../lib/firebase';
+import { httpsCallable } from 'firebase/functions';
+import { db, auth, functions } from '../../lib/firebase';
 import { useAuth } from '../../auth/AuthContext';
 import { useOrg } from '../../lib/useOrg';
-import type { Qualification, QualificationKey } from '../../types';
-import { QUALIFICATION_LABELS, isInstructorQual } from '../../types';
+import type { Qualification, QualificationKey, Role } from '../../types';
+import { QUALIFICATION_LABELS, isInstructorQual, EMAIL_AUTOMATIONS, STAFF_ROLES, ADMIN_ROLES } from '../../types';
 import { certYearOf, march31, tsFromDate } from '../../lib/time';
 import { useAllCurricula, baseCurriculumKey } from '../../lib/curricula';
 import { formatPhone } from '../../lib/format';
@@ -27,9 +28,6 @@ export function ProfilePage() {
   useEffect(() => {
     if (org?.legalName && !profile?.agency) setAgency((a) => a || org.legalName);
   }, [org?.legalName, profile?.agency]);
-  const [emailOn, setEmailOn] = useState(profile?.notificationPrefs.email ?? true);
-  const [leadHours, setLeadHours] = useState(profile?.notificationPrefs.reminderLeadHours ?? 48);
-  const [digest, setDigest] = useState(profile?.notificationPrefs.digest ?? true);
   const [saved, setSaved] = useState(false);
   // Optional self-entered FDLE cert expiration year (3/31 of that year). A
   // coordinator confirms/sets it when verifying — it's not required to claim.
@@ -43,24 +41,14 @@ export function ProfilePage() {
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    // Guard against an empty/invalid number input persisting NaN — the reminder
-    // sweep does arithmetic on this value.
-    const safeLead = Number.isFinite(leadHours) ? Math.min(168, Math.max(1, leadHours)) : 48;
+    // Contact fields only — notification prefs live in EmailPreferencesCard
+    // (dotted-path writes), so this save can never clobber them.
     await updateDoc(doc(db, 'users', firebaseUser!.uid), {
       phone: formatPhone(phone),
       rank,
       agency,
-      // Preserve the curriculum mutes — this whole-object write would otherwise
-      // silently resubscribe the user to everything on every profile save.
-      notificationPrefs: {
-        email: emailOn,
-        reminderLeadHours: safeLead,
-        digest,
-        ...(profile?.notificationPrefs?.mutedCurricula?.length ? { mutedCurricula: profile.notificationPrefs.mutedCurricula } : {}),
-      },
       updatedAt: serverTimestamp(),
     });
-    setLeadHours(safeLead);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   }
@@ -120,39 +108,14 @@ export function ProfilePage() {
           <Input value={agency} onChange={(e) => setAgency(e.target.value)} />
         </Field>
 
-        <h2 className="pt-2 text-sm font-semibold uppercase tracking-wider text-watch-600">My email reminders</h2>
-        <p className="text-xs text-slate-500">
-          These control your <strong>personal reminder emails</strong> only. Operational notices
-          (confirmations, schedule changes, cancellations) are managed by the administrators.
-        </p>
-        <div className="space-y-2 text-sm">
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={emailOn} onChange={(e) => setEmailOn(e.target.checked)} />
-            Email me reminders before my assignments
-          </label>
-          <label className="flex items-center gap-2">
-            Reminder lead time:
-            <Input
-              type="number"
-              min={1}
-              max={168}
-              value={leadHours}
-              onChange={(e) => setLeadHours(Number(e.target.value))}
-              style={{ width: '5.5rem' }}
-            />
-            hours before a session
-          </label>
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={digest} onChange={(e) => setDigest(e.target.checked)} />
-            Weekly digest
-          </label>
-        </div>
         <div className="flex items-center gap-3">
           <Button type="submit" variant="primary">Save</Button>
           {saved && <span className="text-sm text-green-700">Saved.</span>}
         </div>
       </form>
 
+      <NotificationEmailCard />
+      <EmailPreferencesCard />
       <ChangePasswordCard />
 
       <section className="mt-6 rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
@@ -236,6 +199,224 @@ export function ProfilePage() {
       <UnavailableDatesCard />
       <CurriculumSubscriptionsCard />
     </div>
+  );
+}
+
+/**
+ * Secondary notification email — all schedule notifications route HERE instead
+ * of the sign-in email once verified (agency inboxes get firewalled; this is
+ * the fix). Verification is a 6-digit code emailed to the new address; the
+ * whole flow runs through callables (rules block client writes to the fields),
+ * so the verified flag can't be forged. Sign-in and account/security emails
+ * always keep using the sign-in address.
+ */
+function NotificationEmailCard() {
+  const { firebaseUser, profile } = useAuth();
+  const [emailInput, setEmailInput] = useState('');
+  const [codeInput, setCodeInput] = useState('');
+  const [changing, setChanging] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+  if (!firebaseUser || !profile) return null;
+
+  const pending = profile.notificationEmailPending;
+  const verified = profile.notificationEmailVerified ? profile.notificationEmail : undefined;
+
+  async function run(fn: () => Promise<void>) {
+    setError(null);
+    setInfo(null);
+    setBusy(true);
+    try {
+      await fn();
+    } catch (err) {
+      setError(err instanceof Error ? err.message.replace(/^Firebase: /, '') : 'Something went wrong.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const sendCode = (email: string) =>
+    run(async () => {
+      await httpsCallable<{ email: string }, { ok: boolean }>(functions, 'requestNotificationEmail')({ email });
+      setInfo('Code sent — check that inbox (and spam).');
+      setEmailInput('');
+      setChanging(false);
+    });
+  const confirm = () =>
+    run(async () => {
+      await httpsCallable<{ code: string }, { ok: boolean }>(functions, 'confirmNotificationEmail')({ code: codeInput });
+      setCodeInput('');
+      setInfo('Verified — your notifications now go to the new address.');
+    });
+  const clear = (pendingOnly: boolean) =>
+    run(async () => {
+      await httpsCallable<{ pendingOnly: boolean }, { ok: boolean }>(functions, 'clearNotificationEmail')({ pendingOnly });
+      setCodeInput('');
+    });
+
+  return (
+    <section className="mt-6 rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
+      <h2 className="mb-1 text-sm font-semibold uppercase tracking-wider text-watch-600">Notification email</h2>
+      <p className="mb-3 text-sm text-slate-500">
+        Schedule notifications go to <strong>one</strong> address. By default that&apos;s your sign-in email —
+        add a different one here (verified with a code) if, say, your agency inbox filters outside mail.
+        Sign-in and password emails always use your sign-in address.
+      </p>
+
+      {error && <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
+      {info && <div className="mb-3 rounded-md bg-green-50 px-3 py-2 text-sm text-green-800">{info}</div>}
+
+      <div className="mb-3 text-sm text-slate-600">
+        Currently delivering to:{' '}
+        <strong className="break-all text-watch-900">{verified ?? profile.email}</strong>{' '}
+        {verified ? <Badge tone="green">Verified</Badge> : <span className="text-xs text-slate-400">(sign-in email)</span>}
+      </div>
+
+      {pending ? (
+        <div className="rounded-md border border-bifrost-200 bg-bifrost-50 px-3 py-3">
+          <div className="text-sm text-watch-800">
+            Enter the 6-digit code we emailed to <strong className="break-all">{pending}</strong>:
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Input
+              value={codeInput}
+              onChange={(e) => setCodeInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              inputMode="numeric"
+              placeholder="123456"
+              style={{ width: '7rem', letterSpacing: '0.25em' }}
+            />
+            <Button variant="primary" disabled={busy || codeInput.length !== 6} onClick={confirm}>
+              Verify
+            </Button>
+            <Button variant="ghost" disabled={busy} onClick={() => sendCode(pending)}>
+              Resend code
+            </Button>
+            <Button variant="ghost" disabled={busy} onClick={() => clear(true)}>
+              Cancel change
+            </Button>
+          </div>
+        </div>
+      ) : verified && !changing ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="secondary" onClick={() => setChanging(true)}>Change address</Button>
+          <Button variant="ghost" disabled={busy} onClick={() => clear(false)}>
+            Remove — use my sign-in email
+          </Button>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-end gap-2">
+          <Field label="New notification email" className="min-w-[16rem] flex-1">
+            <Input
+              type="email"
+              value={emailInput}
+              onChange={(e) => setEmailInput(e.target.value)}
+              placeholder="you@example.com"
+            />
+          </Field>
+          <Button variant="primary" disabled={busy || !emailInput.includes('@')} onClick={() => sendCode(emailInput)}>
+            Send verification code
+          </Button>
+          {changing && (
+            <Button variant="ghost" disabled={busy} onClick={() => { setChanging(false); setEmailInput(''); }}>
+              Never mind
+            </Button>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Per-automation email preferences, filtered to what this member's rank can
+ * receive (audience tags on EMAIL_AUTOMATIONS). Muting stops the EMAIL only —
+ * the in-app bell still fires; priority automations are locked on. The admin
+ * org-level toggles sit above all of this.
+ */
+function EmailPreferencesCard() {
+  const { firebaseUser, profile } = useAuth();
+  const [leadHours, setLeadHours] = useState(profile?.notificationPrefs.reminderLeadHours ?? 48);
+  const [leadSaved, setLeadSaved] = useState(false);
+  if (!firebaseUser || !profile) return null;
+
+  const role: Role = profile.role;
+  const visible = EMAIL_AUTOMATIONS.filter((a) =>
+    a.audience === 'everyone' ? true : a.audience === 'staff' ? STAFF_ROLES.includes(role) : ADMIN_ROLES.includes(role)
+  );
+  const prefs = profile.notificationPrefs;
+  const muted = new Set(prefs.mutedTypes ?? []);
+  const isOn = (key: string) =>
+    key === 'reminder' ? prefs.email !== false : key === 'digest' ? prefs.digest !== false : !muted.has(key);
+
+  async function toggle(key: string) {
+    // reminder/digest keep their legacy booleans (the sweeps read them);
+    // everything else flips in the mutedTypes list. Dotted paths only — a
+    // whole-object write would clobber prefs saved elsewhere.
+    if (key === 'reminder') {
+      await updateDoc(doc(db, 'users', firebaseUser!.uid), { 'notificationPrefs.email': prefs.email === false, updatedAt: serverTimestamp() });
+    } else if (key === 'digest') {
+      await updateDoc(doc(db, 'users', firebaseUser!.uid), { 'notificationPrefs.digest': prefs.digest === false, updatedAt: serverTimestamp() });
+    } else {
+      const next = muted.has(key) ? [...muted].filter((k) => k !== key) : [...muted, key];
+      await updateDoc(doc(db, 'users', firebaseUser!.uid), { 'notificationPrefs.mutedTypes': next, updatedAt: serverTimestamp() });
+    }
+  }
+
+  async function saveLead() {
+    const safe = Number.isFinite(leadHours) ? Math.min(168, Math.max(1, leadHours)) : 48;
+    await updateDoc(doc(db, 'users', firebaseUser!.uid), { 'notificationPrefs.reminderLeadHours': safe, updatedAt: serverTimestamp() });
+    setLeadHours(safe);
+    setLeadSaved(true);
+    setTimeout(() => setLeadSaved(false), 2500);
+  }
+
+  return (
+    <section className="mt-6 rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
+      <h2 className="mb-1 text-sm font-semibold uppercase tracking-wider text-watch-600">Email preferences</h2>
+      <p className="mb-3 text-sm text-slate-500">
+        Un-check an email you don&apos;t want — the in-app bell still shows everything. Time-critical
+        emails are always on. Administrators can additionally disable automations org-wide.
+      </p>
+      <ul className="space-y-1.5">
+        {visible.map((a) => (
+          <li key={a.key} className="flex items-start gap-2 text-sm">
+            {'priority' in a && a.priority ? (
+              <>
+                <input type="checkbox" checked disabled className="mt-0.5 opacity-50" />
+                <span>
+                  <span className="text-watch-800">{a.label}</span>{' '}
+                  <Badge tone="slate">Always on</Badge>
+                  <span className="block text-xs text-slate-400">{a.description}</span>
+                </span>
+              </>
+            ) : (
+              <label className="flex items-start gap-2">
+                <input type="checkbox" checked={isOn(a.key)} onChange={() => toggle(a.key)} className="mt-0.5" />
+                <span>
+                  <span className={isOn(a.key) ? 'text-watch-800' : 'text-slate-400'}>{a.label}</span>
+                  <span className="block text-xs text-slate-400">{a.description}</span>
+                </span>
+              </label>
+            )}
+          </li>
+        ))}
+      </ul>
+      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-watch-100 pt-3 text-sm">
+        Reminder lead time:
+        <Input
+          type="number"
+          min={1}
+          max={168}
+          value={leadHours}
+          onChange={(e) => setLeadHours(Number(e.target.value))}
+          style={{ width: '5.5rem' }}
+        />
+        hours before a session
+        <Button variant="secondary" onClick={saveLead}>Save</Button>
+        {leadSaved && <span className="text-xs text-green-700">Saved.</span>}
+      </div>
+    </section>
   );
 }
 

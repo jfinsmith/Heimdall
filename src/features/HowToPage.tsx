@@ -156,6 +156,22 @@ export function HowToPage() {
               (a toggle shows them again). This is advisory — it never blocks staff from reserving you, so tell your coordinator too.
             </p>
           </Sub>
+          <Sub title="Notification email">
+            <p>
+              All schedule notifications go to <B>one</B> address — your sign-in email by default. If your agency inbox
+              filters outside mail, add a personal address under <B>Profile → Notification email</B>: we email a 6-digit
+              code to the new address, you enter it, and from then on notifications deliver there instead. Sign-in and
+              password emails always use your sign-in address.
+            </p>
+          </Sub>
+          <Sub title="Email preferences">
+            <p>
+              Under <B>Profile → Email preferences</B>, un-check any email category you don&apos;t want (sign-up
+              confirmations, course announcements, weekly digest…). Muting stops the email only — the in-app bell still
+              shows everything. Time-critical emails (schedule changes, reservation requests, account notices) are
+              always on, and the list only shows categories your rank can receive.
+            </p>
+          </Sub>
           <Sub title="Curriculum notifications">
             <p>
               You&apos;re subscribed to every discipline&apos;s course-opening call-outs by default. Under <B>Profile → Curriculum notifications</B>,

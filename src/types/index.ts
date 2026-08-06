@@ -94,6 +94,13 @@ export interface NotificationPrefs {
    * user's own assignments, reminders, and account notices always deliver.
    */
   mutedCurricula?: string[];
+  /**
+   * EMAIL_AUTOMATIONS keys the user muted for THEMSELVES. Mutes the EMAIL only —
+   * the in-app bell still fires. Priority automations (priority: true) can never
+   * be muted here; notify() ignores them in this list. 'reminder' and 'digest'
+   * keep using the legacy `email`/`digest` booleans above, not this list.
+   */
+  mutedTypes?: string[];
 }
 
 export interface UserDoc {
@@ -129,6 +136,19 @@ export interface UserDoc {
   /** Random token for the personal ICS calendar-feed URL (user-generated). */
   icsToken?: string;
   /**
+   * Verified secondary email that receives ALL notification mail INSTEAD of the
+   * sign-in email (single destination, never both). Set exclusively by the
+   * requestNotificationEmail → confirmNotificationEmail callable pair — rules
+   * forbid client writes to all three fields, so `notificationEmailVerified`
+   * can't be forged. Account/security mail (activation, password, purge
+   * warnings) always goes to the sign-in email regardless.
+   */
+  notificationEmail?: string;
+  notificationEmailVerified?: boolean;
+  /** Address awaiting its 6-digit code (display only; the code hash lives in
+   *  users/{uid}/private/notificationEmail, unreadable to clients). */
+  notificationEmailPending?: string;
+  /**
    * Set true when an admin creates the account with a temporary password.
    * The app forces a password change on first sign-in and clears this flag
    * once the user picks their own password.
@@ -157,31 +177,47 @@ export interface UserDoc {
 
 // ── Gjallarhorn email automations (admin-toggleable) ───────────────────────
 /** Every automated email Gjallarhorn can send. Keys match NotificationType. */
+/**
+ * Every email automation, with the metadata the Profile mute checklist needs:
+ * `audience` — which members see it in their personal email preferences
+ *   ('everyone' | 'staff' (coordinator+) | 'admin' (sergeant+));
+ * `priority` — can NEVER be personally muted (time-critical or account-level;
+ *   notify() ignores these keys in notificationPrefs.mutedTypes).
+ * The admin org-level toggles (Admin → Gjallarhorn & Email) sit ABOVE all of
+ * this and can still disable any automation org-wide.
+ * KEEP IN SYNC: the priority set is mirrored in functions/src/types.ts
+ * (PRIORITY_EMAIL_TYPES) — the server is what actually enforces it.
+ */
 export const EMAIL_AUTOMATIONS = [
-  { key: 'signup_confirmed', label: 'Sign-up confirmation', description: 'Emails the instructor (with calendar invite) when they sign up for a slot.' },
-  { key: 'reservation_offer', label: 'Reservation — availability request', description: 'Emails an instructor when a coordinator reserves them into a slot, asking them to confirm or decline on My Schedule.' },
-  { key: 'reservation_confirmed', label: 'Reservation confirmed', description: 'Emails the reserving coordinator when the instructor confirms they are available.' },
-  { key: 'reservation_declined', label: 'Reservation declined', description: 'Emails the reserving coordinator when the instructor declines and the slot re-opens.' },
-  { key: 'slot_reopened', label: 'Withdrawal / slot re-opened', description: 'Emails the academy coordinators when an instructor withdraws.' },
-  { key: 'session_fully_staffed', label: 'Session fully staffed', description: 'Emails coordinators when the last required slot fills.' },
-  { key: 'lead_withdrawal_escalation', label: 'Lead withdrawal escalation', description: 'Emails command when a lead withdraws inside the escalation window.' },
-  { key: 'schedule_change', label: 'Schedule change', description: 'Emails signed-up instructors when a session is moved, re-roomed, or cancelled.' },
-  { key: 'qualification_approved', label: 'Qualification verified', description: 'Emails the instructor when a coordinator verifies a qualification.' },
-  { key: 'course_published', label: 'Course opened for sign-up', description: 'Emails eligible instructors when coordinators open a course’s sessions for sign-up.' },
-  { key: 'account_approved', label: 'Account approved', description: 'Emails a new user when their account is activated.' },
-  { key: 'new_account_pending', label: 'New account request', description: 'Emails command when someone self-registers and is waiting for approval.' },
-  { key: 'account_suspended', label: 'Account suspended', description: 'Emails a member when an admin suspends their account, with the reason.' },
-  { key: 'account_reinstated', label: 'Account reinstated', description: 'Emails a member when their suspension is lifted and access is restored.' },
-  { key: 'approval_request', label: 'Schedule approval — your turn', description: 'Emails the next approver (sergeant → lieutenant → captain) when a class is awaiting their sign-off.' },
-  { key: 'approval_update', label: 'Schedule approval — decision', description: 'Emails the coordinator when their class is fully approved or sent back with changes.' },
-  { key: 'reminder', label: 'Assignment reminders', description: 'Daily sweep: emails instructors ahead of their upcoming assignments.' },
-  { key: 'understaffing_alert', label: 'Understaffing alerts', description: 'Daily sweep: emails coordinators + command about unfilled slots inside the alert window.' },
-  { key: 'digest', label: 'Weekly digest', description: 'Monday summary of staffing health for coordinators and command.' },
-  { key: 'message', label: 'Bulk messages', description: 'Manual broadcasts sent from the Staffing Board.' },
-  { key: 'feedback_submitted', label: 'Bug / feature report', description: 'Emails command when a member submits a bug report or feature request.' },
+  { key: 'signup_confirmed', label: 'Sign-up confirmation', description: 'Emails the instructor (with calendar invite) when they sign up for a slot.', audience: 'everyone' },
+  { key: 'reservation_offer', label: 'Reservation — availability request', description: 'Emails an instructor when a coordinator reserves them into a slot, asking them to confirm or decline on My Schedule.', audience: 'everyone', priority: true },
+  { key: 'reservation_confirmed', label: 'Reservation confirmed', description: 'Emails the reserving coordinator when the instructor confirms they are available.', audience: 'staff' },
+  { key: 'reservation_declined', label: 'Reservation declined', description: 'Emails the reserving coordinator when the instructor declines and the slot re-opens.', audience: 'staff' },
+  { key: 'slot_reopened', label: 'Withdrawal / slot re-opened', description: 'Emails the academy coordinators when an instructor withdraws.', audience: 'staff' },
+  { key: 'session_fully_staffed', label: 'Session fully staffed', description: 'Emails coordinators when the last required slot fills.', audience: 'staff' },
+  { key: 'lead_withdrawal_escalation', label: 'Lead withdrawal escalation', description: 'Emails command when a lead withdraws inside the escalation window.', audience: 'admin', priority: true },
+  { key: 'schedule_change', label: 'Schedule change', description: 'Emails signed-up instructors when a session is moved, re-roomed, or cancelled.', audience: 'everyone', priority: true },
+  { key: 'qualification_approved', label: 'Qualification verified', description: 'Emails the instructor when a coordinator verifies a qualification.', audience: 'everyone' },
+  { key: 'course_published', label: 'Course opened for sign-up', description: 'Emails eligible instructors when coordinators open a course’s sessions for sign-up.', audience: 'everyone' },
+  { key: 'account_approved', label: 'Account approved', description: 'Emails a new user when their account is activated.', audience: 'everyone', priority: true },
+  { key: 'new_account_pending', label: 'New account request', description: 'Emails command when someone self-registers and is waiting for approval.', audience: 'admin', priority: true },
+  { key: 'account_suspended', label: 'Account suspended', description: 'Emails a member when an admin suspends their account, with the reason.', audience: 'everyone', priority: true },
+  { key: 'account_reinstated', label: 'Account reinstated', description: 'Emails a member when their suspension is lifted and access is restored.', audience: 'everyone', priority: true },
+  { key: 'approval_request', label: 'Schedule approval — your turn', description: 'Emails the next approver (sergeant → lieutenant → captain) when a class is awaiting their sign-off.', audience: 'admin', priority: true },
+  { key: 'approval_update', label: 'Schedule approval — decision', description: 'Emails the coordinator when their class is fully approved or sent back with changes.', audience: 'staff', priority: true },
+  { key: 'reminder', label: 'Assignment reminders', description: 'Daily sweep: emails instructors ahead of their upcoming assignments.', audience: 'everyone' },
+  { key: 'understaffing_alert', label: 'Understaffing alerts', description: 'Daily sweep: emails coordinators + command about unfilled slots inside the alert window.', audience: 'staff' },
+  { key: 'digest', label: 'Weekly digest', description: 'Monday summary of staffing health for coordinators and command.', audience: 'staff' },
+  { key: 'message', label: 'Bulk messages', description: 'Manual broadcasts sent from the Staffing Board.', audience: 'everyone' },
+  { key: 'feedback_submitted', label: 'Bug / feature report', description: 'Emails command when a member submits a bug report or feature request.', audience: 'admin' },
 ] as const;
 
 export type EmailAutomationKey = (typeof EMAIL_AUTOMATIONS)[number]['key'];
+
+/** Automation keys that can never be personally muted (see EMAIL_AUTOMATIONS). */
+export const PRIORITY_EMAIL_TYPES: ReadonlySet<string> = new Set(
+  EMAIL_AUTOMATIONS.filter((a) => 'priority' in a && a.priority === true).map((a) => a.key)
+);
 
 // ── Pre-launch switch (TEMPORARY — remove after go-live) ───────────────────
 // When true, instructors/guests see ONLY Overview, How To, and Profile &

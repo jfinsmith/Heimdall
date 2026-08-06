@@ -113,7 +113,12 @@ service cloud.firestore {
           .hasAll(request.resource.data.get('verifiedQualKeys', []).toSet());
       }
       allow update: if unchanged('orgId') && unchanged('platformOwner')
-        && unchanged('homeOrgId') && unchanged('homeRole') && (
+        && unchanged('homeOrgId') && unchanged('homeRole')
+        // Notification-email fields are written ONLY by the notificationEmail
+        // callables (code-verified) — a client write here could forge
+        // notificationEmailVerified and route mail to an unproven inbox.
+        && unchanged('notificationEmail') && unchanged('notificationEmailVerified')
+        && unchanged('notificationEmailPending') && (
         // Admins may edit others freely, but never their OWN role field — the
         // callables authorize from this doc, so a self-write of role:'director'
         // would be real vertical escalation (found in the sergeant-tier audit).
@@ -133,6 +138,13 @@ service cloud.firestore {
             && verifiedQualsOnlyRemoved()
             && unchanged('email')));
       allow delete: if isAdmin() && inOrg(resource.data);
+
+      // Server-only secrets (e.g. the notification-email verification code
+      // hash). NO client access — not even the owner: if a member could read
+      // the code they could "verify" an inbox they don't control.
+      match /private/{docId} {
+        allow read, write: if false;
+      }
     }
 
     // ── settings/{orgId} (per-tenant config; doc id == orgId) ────────────────

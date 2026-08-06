@@ -25,6 +25,8 @@ export { accountPurgeDaily } from './admin/purge';
 export { setUserRole, bootstrapFirstDirector, createUserAccount, createOrg, academyApproval, sendActivationEmail, setUserSuspension, setUserActive, listAllFeedback, joinOrgByCode, assignUserToOrg, denyUser, listOwnerQueue, getOrgDetail, setOrgComplimentary, setOrgSuspension, createOrgAdmin, deleteUnassignedAccount, listAllAuditLog, ownerListOrgs, ownerSwitchOrg, importDefaultCurricula, acceptOrgDpa, adminUpdateUser, setFeedbackStatus } from './admin/callables';
 // Academy roster — member creation (no SSN stored; college holds SSNs locally)
 export { rosterCreateMember } from './admin/roster';
+
+export { requestNotificationEmail, confirmNotificationEmail, clearNotificationEmail } from './profile/notificationEmail';
 // Billing (Phase 14) — Stripe subscriptions (checkout, portal, webhook)
 export { createCheckoutSession, createBillingPortalSession, stripeWebhook } from './billing/stripe';
 // Public class portal — the only unauthenticated read surface (token link + tiered passwords)

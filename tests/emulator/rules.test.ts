@@ -163,6 +163,36 @@ describe('users — tenant/platform claims are server-only', () => {
   });
 });
 
+// The notification-email fields are written ONLY by the code-verified callables
+// (Admin SDK) — a client write could forge notificationEmailVerified and route
+// mail to an inbox the member never proved they control.
+describe('users — notification email is callable-only', () => {
+  it('instructor CANNOT self-set a verified notification email', async () => {
+    await assertFails(
+      updateDoc(doc(as('alice', 'instructor'), 'users/alice'), {
+        notificationEmail: 'attacker@evil.test',
+        notificationEmailVerified: true,
+      })
+    );
+  });
+  it('instructor CANNOT self-set the pending address either', async () => {
+    await assertFails(updateDoc(doc(as('alice', 'instructor'), 'users/alice'), { notificationEmailPending: 'x@y.test' }));
+  });
+  it('even a director CANNOT write another member\'s notification email', async () => {
+    await assertFails(
+      updateDoc(doc(as('dave', 'director'), 'users/bob'), { notificationEmail: 'x@y.test', notificationEmailVerified: true })
+    );
+  });
+  it('no client can read or write users/{uid}/private (the code hash lives there)', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'users/alice/private/notificationEmail'), { emailLower: 'a@b.c', codeHash: 'h' });
+    });
+    await assertFails(getDoc(doc(as('alice', 'instructor'), 'users/alice/private/notificationEmail')));
+    await assertFails(updateDoc(doc(as('alice', 'instructor'), 'users/alice/private/notificationEmail'), { codeHash: 'forged' }));
+    await assertFails(getDoc(doc(as('dave', 'director'), 'users/alice/private/notificationEmail')));
+  });
+});
+
 describe('users — reads', () => {
   it('instructor can read own doc, not another\'s', async () => {
     await assertSucceeds(getDoc(doc(as('alice', 'instructor'), 'users/alice')));

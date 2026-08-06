@@ -33,9 +33,25 @@ export interface UserDoc {
   qualifications: Qualification[];
   /** Staff-maintained authoritative verified keys (see web app types). */
   verifiedQualKeys: string[];
-  notificationPrefs: { email: boolean; reminderLeadHours: number; digest: boolean; mutedCurricula?: string[] };
+  notificationPrefs: {
+    email: boolean;
+    reminderLeadHours: number;
+    digest: boolean;
+    mutedCurricula?: string[];
+    /** Personally muted automation keys (email only; bell still fires).
+     *  Priority types (PRIORITY_EMAIL_TYPES) are ignored in this list. */
+    mutedTypes?: string[];
+  };
   /** Forces a password change on first sign-in (admin-created accounts). */
   mustChangePassword?: boolean;
+  /**
+   * Verified secondary destination — when verified, ALL notify() mail goes here
+   * INSTEAD of `email` (single destination). Written only by the
+   * notificationEmail callables; rules block client writes to all three fields.
+   */
+  notificationEmail?: string;
+  notificationEmailVerified?: boolean;
+  notificationEmailPending?: string;
   /** Tenant this user belongs to (orgs/{orgId}). */
   orgId?: string;
   /** Product owner — manages orgs/billing; NOT a tenant role. */
@@ -73,6 +89,24 @@ export interface GlobalSettings {
   /** Lead-withdrawal escalation window (days before a session) — default 7. */
   escalationWindowDays?: number;
 }
+
+/**
+ * Automation keys a member can NEVER personally mute (time-critical or
+ * account-level). KEEP IN SYNC with the `priority: true` entries of
+ * EMAIL_AUTOMATIONS in src/types/index.ts — the web app renders these locked;
+ * this set is what notify() actually enforces.
+ */
+export const PRIORITY_EMAIL_TYPES: ReadonlySet<string> = new Set([
+  'reservation_offer',
+  'lead_withdrawal_escalation',
+  'schedule_change',
+  'account_approved',
+  'new_account_pending',
+  'account_suspended',
+  'account_reinstated',
+  'approval_request',
+  'approval_update',
+]);
 
 /**
  * Email for a notification type is allowed unless the master switch is off, its

@@ -8,7 +8,7 @@
  */
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { renderEmail, detailRows, escapeHtml, EmailContent, MAIL_FROM } from './templates';
-import { emailAllowed, ADMIN_ROLES, GlobalSettings, Role, SessionDoc, UserDoc } from '../types';
+import { emailAllowed, ADMIN_ROLES, PRIORITY_EMAIL_TYPES, GlobalSettings, Role, SessionDoc, UserDoc } from '../types';
 
 const db = () => getFirestore();
 
@@ -98,14 +98,18 @@ export async function notify(opts: NotifyOptions): Promise<void> {
     if (opts.dedupeKey) await idempotentCreate(db().collection('notifications').doc(`n_${opts.dedupeKey}`), notifData);
     else await db().collection('notifications').add(notifData);
     if (user) {
-      email = email ?? user.email;
+      // Single destination: the verified notification email replaces the sign-in
+      // email for ALL notify() mail (never both). Unverified/pending = sign-in.
+      email = email ?? ((user.notificationEmail && user.notificationEmailVerified) ? user.notificationEmail : user.email);
       recipientRole = user.role;
       recipientOrgId = user.orgId ?? opts.orgId;
-      // Personal opt-outs apply ONLY to the user's own reminder/digest emails;
-      // operational and command emails are governed by the admin toggles.
+      // Personal opt-outs: reminder/digest keep their legacy booleans; every
+      // other automation honors the mutedTypes checklist EXCEPT priority types,
+      // which can never be personally muted (admin org toggles still apply below).
       if (opts.type === 'reminder') prefsAllowEmail = user.notificationPrefs?.email !== false;
       else if (opts.type === 'digest') prefsAllowEmail = user.notificationPrefs?.digest !== false;
-      else prefsAllowEmail = true;
+      else if (PRIORITY_EMAIL_TYPES.has(opts.type)) prefsAllowEmail = true;
+      else prefsAllowEmail = !(user.notificationPrefs?.mutedTypes ?? []).includes(opts.type);
     }
   }
 
