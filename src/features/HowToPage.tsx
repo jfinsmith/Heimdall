@@ -426,7 +426,7 @@ export function HowToPage() {
 
         <Section id="org-settings" title="Org settings, branding & emails" role="Admins">
           <Tips items={[
-            <><B>Admin → Settings</B>: org name, logo, letterhead tagline/address, brand colors (printed documents only), allowed email domains for self-registration, pay-period target hours, site code.</>,
+            <><B>Admin → Settings</B>: org name, logo, letterhead tagline/address, brand colors (printed documents only), allowed email domains for self-registration, pay-period target hours, site code. With a site code set, an <B>invite link</B> appears below it (heimdallscheduling.com/join/&lt;code&gt;) — share that instead of the code and it&apos;s applied automatically when the recipient registers or signs in.</>,
             <><B>Admin → Holidays</B>: toggle which holidays shade calendars, mark which are <B>observed</B> (paid day off — credits holiday pay hours), set the pay hours.</>,
             <><B>Admin → Gjallarhorn</B>: the email system — master switch, per-automation toggles (reminders, open-course announcements, waitlist promotions, understaffing alerts, weekly digest), default reminder lead time, escalation recipients.</>,
           ]} />

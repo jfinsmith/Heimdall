@@ -75,6 +75,7 @@ export function SettingsAdminPage() {
   const [addressLines, setAddressLines] = useState('');
   const [siteCode, setSiteCode] = useState('');
   const [saved, setSaved] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadErr, setUploadErr] = useState<string | null>(null);
 
@@ -212,6 +213,31 @@ export function SettingsAdminPage() {
         >
           <Input value={siteCode} onChange={(e) => setSiteCode(e.target.value)} placeholder="e.g. PHSC-CADRE-2026" />
         </Field>
+        {siteCode.trim() && (
+          // Shareable invite link for the code above — /join/:code parks the
+          // code and auto-applies it after sign-in/registration, so invitees
+          // never type it (they still land in the pending queue).
+          <div className="-mt-2 rounded-md border border-watch-100 bg-watch-50 px-3 py-2 text-sm">
+            <span className="mr-2 text-xs font-semibold uppercase tracking-wider text-watch-600">Invite link</span>
+            <code className="break-all text-watch-900">{`https://heimdallscheduling.com/join/${encodeURIComponent(siteCode.trim())}`}</code>
+            <Button
+              type="button"
+              variant="ghost"
+              className="ml-2"
+              onClick={() => {
+                void navigator.clipboard?.writeText(`https://heimdallscheduling.com/join/${encodeURIComponent(siteCode.trim())}`);
+                setLinkCopied(true);
+                setTimeout(() => setLinkCopied(false), 2000);
+              }}
+            >
+              {linkCopied ? 'Copied ✓' : 'Copy'}
+            </Button>
+            <span className="block text-xs text-slate-500">
+              Share this instead of the code — it applies the code automatically when someone registers or signs in.
+              {siteCode.trim() !== (settings?.siteCode ?? '').trim() && ' Save settings to activate the code shown.'}
+            </span>
+          </div>
+        )}
         <Field
           label="Auto-join email domains"
           hint="Comma-separated, e.g. sheriff.example.gov, statecollege.edu — new sign-ups from these domains are routed to this organization (still pending your approval). Blank = no auto-join (add members manually)."
