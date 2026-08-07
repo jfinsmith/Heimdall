@@ -25,7 +25,16 @@ import { logAudit } from '../sessions/audit';
 
 const WRITE_IN_ROLES: SlotRole[] = ['lead', 'assistant', 'safety_officer', 'role_player'];
 
-export function PastSessionModal({ session, onClose }: { session: WithId<SessionDoc>; onClose: () => void }) {
+export function PastSessionModal({
+  session,
+  onClose,
+  onEditDetails,
+}: {
+  session: WithId<SessionDoc>;
+  onClose: () => void;
+  /** Route to the warned, audit-logged full editor (PastEditGate → SessionFormModal). */
+  onEditDetails?: () => void;
+}) {
   const { firebaseUser } = useAuth();
   // Live subscription so each correction is reflected immediately.
   const { data: liveDoc } = useDoc<SessionDoc>(`sessions/${session.id}`);
@@ -147,6 +156,20 @@ export function PastSessionModal({ session, onClose }: { session: WithId<Session
             locked, and sign-ups are closed. What you record here is the official <strong>as-taught</strong> staffing
             for ATMS: remove anyone who didn&apos;t show, and add whoever actually taught.
           </div>
+          {onEditDetails && (
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+              <span className="text-slate-500">
+                Did the schedule that actually ran differ (times, lunch, room, hours)?
+              </span>
+              <Button
+                variant="ghost"
+                className="border border-red-200 !px-2.5 !py-1 text-xs text-red-700 hover:bg-red-50"
+                onClick={onEditDetails}
+              >
+                Correct class details…
+              </Button>
+            </div>
+          )}
         </div>
 
         {gap && (

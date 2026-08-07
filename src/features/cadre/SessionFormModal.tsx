@@ -101,10 +101,16 @@ interface Props {
   defaultTime?: string;
   /** Shown only when creating — switch this dialog to the Add-lunch form. */
   onSwitchToLunch?: () => void;
+  /**
+   * Editing a session whose day already passed (unlocked via PastEditGate).
+   * Shows the finalized-day banner and audit-logs the save as a past-day
+   * correction instead of a normal update.
+   */
+  finalizedEdit?: boolean;
   onClose: () => void;
 }
 
-export function SessionFormModal({ academy, session, defaultDate, defaultTime, onSwitchToLunch, onClose }: Props) {
+export function SessionFormModal({ academy, session, defaultDate, defaultTime, onSwitchToLunch, finalizedEdit, onClose }: Props) {
   const { firebaseUser, orgId } = useAuth();
   // The course picker comes entirely from THIS academy's discipline — its
   // curriculum (Admin → Curriculum & Hours), which carries the hours,
@@ -418,7 +424,13 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
       let sessionId = session?.id;
       if (session) {
         await updateDoc(doc(db, 'sessions', session.id), { ...payload, roomId: roomId ?? deleteField(), roomIds: allRoomIds.length ? allRoomIds : deleteField() });
-        await logAudit(firebaseUser.uid, 'session.update', 'session', session.id, `Updated ${courseName} on ${date}`);
+        await logAudit(
+          firebaseUser.uid,
+          finalizedEdit ? 'session.edit_past' : 'session.update',
+          'session',
+          session.id,
+          finalizedEdit ? `PAST-DAY correction: ${courseName} on ${date}` : `Updated ${courseName} on ${date}`
+        );
       } else {
         const ref = await addDoc(collection(db, 'sessions'), {
           ...payload,
@@ -545,9 +557,16 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
   }
 
   return (
-    <Modal open onClose={onClose} title={session ? 'Edit session' : 'Add to schedule'} wide>
+    <Modal open onClose={onClose} title={session ? (finalizedEdit ? 'Correct finalized session' : 'Edit session') : 'Add to schedule'} wide>
       {!session && onSwitchToLunch && <BlockModeToggle mode="session" onLunch={onSwitchToLunch} />}
       <form onSubmit={submit} className="space-y-4">
+        {finalizedEdit && (
+          <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900">
+            <strong>FINALIZED DAY</strong> — this session already happened. You&apos;re correcting the official
+            record, and FDLE requires it to match what was actually taught. Changes update printouts, exports,
+            and instructor hour records, and this save is audit-logged as a past-day correction.
+          </div>
+        )}
         {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Course (required)" hint="From this academy's discipline">

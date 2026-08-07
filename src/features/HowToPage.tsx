@@ -288,6 +288,12 @@ export function HowToPage() {
               actually happened (ATMS). A past session with <B>no lead recorded</B> shows a red dashed ring on the
               calendar until someone records who taught it.
             </p>
+            <p>
+              If the schedule that actually ran was different — an end time changed on the day, a lunch became a
+              working lunch — use <B>Correct class details</B> inside that dialog. It opens the full editor behind an
+              explicit warning: FDLE requires the record to reflect what <B>actually</B> happened, corrections update
+              printouts, exports, and instructor hour totals, and every past-day save is audit-logged under your name.
+            </p>
           </Sub>
           <Sub title="Opening sign-ups">
             <Steps items={[

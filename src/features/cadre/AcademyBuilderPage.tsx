@@ -29,6 +29,7 @@ import { Badge, Button, Field, Input, PageHeader, Select } from '../../component
 import { Modal } from '../../components/Modal';
 import { SessionFormModal } from './SessionFormModal';
 import { PastSessionModal } from './PastSessionModal';
+import { PastEditGate } from './PastEditGate';
 import { PublicLinkSection } from './PublicLinkSection';
 import { LunchBlockModal } from './LunchBlockModal';
 import { RecurringGeneratorModal } from './RecurringGeneratorModal';
@@ -76,6 +77,8 @@ export function AcademyBuilderPage() {
   const [formOpen, setFormOpen] = useState(false);
   // A past session opens the as-taught corrections modal, never the editor.
   const [pastSession, setPastSession] = useState<WithId<SessionDoc> | null>(null);
+  // Past session awaiting the PastEditGate acknowledgment before full editing.
+  const [pastGateSession, setPastGateSession] = useState<WithId<SessionDoc> | null>(null);
   const [formDate, setFormDate] = useState<string | undefined>(undefined);
   const [recurringOpen, setRecurringOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -321,7 +324,10 @@ export function AcademyBuilderPage() {
     // "Record who taught" modal, not reschedules.
     if (s.end.toMillis() < Date.now()) {
       arg.revert();
-      window.alert('This day has passed — the class details are finalized. Open the session to record who actually taught.');
+      window.alert(
+        'This day has passed — the class details are finalized. Open the session to record who actually taught, ' +
+        'or use "Correct class details" there for a warned, audit-logged correction (FDLE records must reflect what actually happened).'
+      );
       return;
     }
     const start = arg.event.start!;
@@ -848,6 +854,7 @@ export function AcademyBuilderPage() {
             setLunchSession(null);
             setLunchOpen(true);
           }}
+          finalizedEdit={!!formSession && formSession.end.toMillis() < Date.now()}
           onClose={() => setFormOpen(false)}
         />
       )}
@@ -887,7 +894,27 @@ export function AcademyBuilderPage() {
           }}
         />
       )}
-      {pastSession && <PastSessionModal session={pastSession} onClose={() => setPastSession(null)} />}
+      {pastSession && (
+        <PastSessionModal
+          session={pastSession}
+          onClose={() => setPastSession(null)}
+          onEditDetails={() => {
+            setPastGateSession(pastSession);
+            setPastSession(null);
+          }}
+        />
+      )}
+      {pastGateSession && (
+        <PastEditGate
+          session={pastGateSession}
+          onClose={() => setPastGateSession(null)}
+          onConfirm={() => {
+            setFormSession(pastGateSession);
+            setFormOpen(true);
+            setPastGateSession(null);
+          }}
+        />
+      )}
       {signupModal && (
         <OpenSignupsModal
           courseLabel={signupModal.label}

@@ -22,6 +22,7 @@ import { academyColorFor } from '../../lib/academyColors';
 import { Field, Input, PageHeader, Select } from '../../components/ui';
 import { SessionDetailModal } from '../sessions/SessionDetailModal';
 import { SessionFormModal } from './SessionFormModal';
+import { PastEditGate } from './PastEditGate';
 import { sessionToEvent, renderEventContent } from './sessionEvents';
 import { holidayBackgroundEvents } from '../../lib/holidays';
 
@@ -155,8 +156,11 @@ export function CalendarPage() {
 
   function openEdit(s: WithId<SessionDoc>) {
     setDetailId(null);
-    setEditSession(s);
+    // Finalized day → the FDLE warning gate first (same firewall as the builder).
+    if (s.end.toMillis() < Date.now()) setGateSession(s);
+    else setEditSession(s);
   }
+  const [gateSession, setGateSession] = useState<WithId<SessionDoc> | null>(null);
   const editAcademy = editSession ? academyById.get(editSession.academyId) : null;
 
   return (
@@ -321,8 +325,23 @@ export function CalendarPage() {
           onEdit={canEdit ? openEdit : undefined}
         />
       )}
+      {gateSession && (
+        <PastEditGate
+          session={gateSession}
+          onClose={() => setGateSession(null)}
+          onConfirm={() => {
+            setEditSession(gateSession);
+            setGateSession(null);
+          }}
+        />
+      )}
       {editSession && editAcademy && (
-        <SessionFormModal academy={editAcademy} session={editSession} onClose={() => setEditSession(null)} />
+        <SessionFormModal
+          academy={editAcademy}
+          session={editSession}
+          finalizedEdit={editSession.end.toMillis() < Date.now()}
+          onClose={() => setEditSession(null)}
+        />
       )}
     </div>
   );
