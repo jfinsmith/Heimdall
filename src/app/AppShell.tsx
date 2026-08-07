@@ -180,7 +180,9 @@ export function AppShell() {
         <>
           {/* CADRE — Coordinated Academy Duty & Roster Engine */}
           <SectionLabel title="CADRE — Coordinated Academy Duty & Roster Engine">CADRE</SectionLabel>
-          <NavItem to="/cadre/calendar" label="Calendar" />
+          {/* Calendar HIDDEN from nav (Aug 2026) — staff kept editing classes here
+              instead of in the academy builder. Route still works for direct
+              links; restore this NavItem to bring it back. */}
           <NavItem to="/cadre/academies" label="Academies" />
           <NavItem to="/cadre/staffing" label="Staffing Board" />
           <NavItem to="/cadre/rooms" label="Room Reservations" />
