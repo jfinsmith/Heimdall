@@ -955,8 +955,9 @@ function QualificationsModal({ user, onClose }: { user: WithId<UserDoc>; onClose
                     </Button>
                   )}
                 </span>
-                {key === 'first_aid' && (
-                  // CPR gate lives right on the row it gates — the Verify above
+                {key === 'first_aid' && q && (
+                  // CPR gate lives right on the row it gates — shown only once
+                  // the member has First Aid / CPR on file; the Verify above
                   // refuses until this date is set (current CPR instructor first).
                   <div className="flex w-full flex-wrap items-center gap-2 border-t border-watch-100 pt-2 text-xs">
                     <span className={cprValid ? 'text-slate-500' : 'font-medium text-amber-700'}>
