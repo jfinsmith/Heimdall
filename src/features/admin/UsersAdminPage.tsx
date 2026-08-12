@@ -313,6 +313,17 @@ export function UsersAdminPage() {
                         <button className="text-bifrost-700 hover:underline" onClick={() => setQualUser(u)}>
                           {verified} verified / {claimed} claimed
                         </button>
+                        {claimed > verified && (
+                          // Loud on purpose — a pending claim means an admin has
+                          // review work to do before this member can take
+                          // restricted slots. The whole pill opens the same modal.
+                          <button
+                            className="mt-1 flex w-fit items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-900 hover:bg-amber-200"
+                            onClick={() => setQualUser(u)}
+                          >
+                            ⚠ {claimed - verified} need{claimed - verified === 1 ? 's' : ''} verification
+                          </button>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-right">
                         {/* Edit is status-independent — a suspended member's

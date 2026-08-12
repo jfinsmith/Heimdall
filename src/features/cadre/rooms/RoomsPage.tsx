@@ -337,7 +337,7 @@ export function RoomsPage() {
             <table className="w-full min-w-[52rem] table-fixed border-separate border-spacing-0 text-xs">
               <thead>
                 <tr>
-                  <th className="sticky left-0 z-10 w-28 border-b border-watch-100 bg-watch-50 px-2.5 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-watch-500">
+                  <th className="sticky left-0 z-10 w-28 border-b-2 border-watch-200 bg-watch-50 px-2.5 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-watch-500">
                     Room
                   </th>
                   {weekDays.map((d) => {
@@ -347,8 +347,8 @@ export function RoomsPage() {
                     return (
                       <th
                         key={key}
-                        className={`border-b border-l border-watch-100 px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-wider ${
-                          today ? 'bg-bifrost-50 text-bifrost-800' : weekend ? 'bg-watch-50/70 text-watch-400' : 'bg-watch-50 text-watch-500'
+                        className={`border-b-2 border-l border-watch-200 px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-wider ${
+                          today ? 'bg-bifrost-50 text-bifrost-800' : weekend ? 'bg-watch-100/70 text-watch-400' : 'bg-watch-50 text-watch-500'
                         }`}
                       >
                         {d.toLocaleDateString(undefined, { weekday: 'short' })}
@@ -370,7 +370,7 @@ export function RoomsPage() {
                       <tr>
                         <td
                           colSpan={8}
-                          className="border-b border-watch-50 bg-watch-50/60 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-widest text-watch-600"
+                          className="border-b border-watch-200 bg-watch-50/60 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-widest text-watch-600"
                           style={{ borderLeft: `4px solid ${catColor.get(c.id)}` }}
                         >
                           {c.name}
@@ -381,7 +381,7 @@ export function RoomsPage() {
                       </tr>
                       {catRooms.map((r) => (
                         <tr key={r.id} className="group/row">
-                          <td className="sticky left-0 z-10 border-b border-watch-50 bg-white px-2.5 py-2 align-top group-hover/row:bg-watch-50/50">
+                          <td className="sticky left-0 z-10 border-b border-watch-200 bg-white px-2.5 py-2 align-top group-hover/row:bg-watch-50/50">
                             <span className="flex items-center gap-1.5 font-semibold text-watch-900">
                               <span className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: r.color || catColor.get(c.id) }} />
                               <span className="truncate" title={r.capacity ? `${r.name} — ${r.capacity} seats` : r.name}>{r.name}</span>
@@ -395,8 +395,8 @@ export function RoomsPage() {
                             return (
                               <td
                                 key={dayKey}
-                                className={`group h-10 border-b border-l border-watch-50 p-1 align-top ${
-                                  today ? 'bg-bifrost-50/40' : weekend ? 'bg-watch-50/40' : 'bg-white'
+                                className={`group h-10 border-b border-l border-watch-200 p-1 align-top ${
+                                  today ? 'bg-bifrost-50/40' : weekend ? 'bg-watch-100/50' : 'bg-white'
                                 }`}
                               >
                                 <div className="flex h-full flex-col gap-1">
@@ -421,7 +421,11 @@ export function RoomsPage() {
                                     type="button"
                                     aria-label={`Reserve ${r.name} on ${dayKey}`}
                                     onClick={() => setResModal({ prefill: { roomId: r.id, date: dayKey } })}
-                                    className={`w-full flex-1 rounded-md border border-dashed border-transparent px-2 text-left text-[11px] text-transparent transition group-hover:border-watch-200 group-hover:text-watch-400 group-hover:hover:border-bifrost-300 group-hover:hover:bg-bifrost-50 group-hover:hover:text-bifrost-700 ${chips.length === 0 ? 'py-1' : 'py-0.5'}`}
+                                    // Faint dashed outline at rest so every FREE slot reads as
+                                    // "empty but bookable" — booked cells read as their solid chips.
+                                    className={`w-full flex-1 rounded-md border border-dashed px-2 text-left text-[11px] transition ${
+                                      chips.length === 0 ? 'border-watch-100 text-transparent' : 'border-transparent text-transparent'
+                                    } group-hover:border-watch-300 group-hover:text-watch-400 group-hover:hover:border-bifrost-300 group-hover:hover:bg-bifrost-50 group-hover:hover:text-bifrost-700 ${chips.length === 0 ? 'py-1' : 'py-0.5'}`}
                                   >
                                     + hold
                                   </button>
