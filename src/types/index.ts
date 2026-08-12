@@ -129,6 +129,14 @@ export interface UserDoc {
    * is unaffected.
    */
   instructorCertExpires?: Timestamp;
+  /**
+   * CPR instructor certification expiration — an actual card date (AHA/ARC
+   * cycle), NOT the FDLE 3/31 cycle above. First Aid / CPR Instructor is the
+   * only qual that requires it: staff must record a current CPR date BEFORE
+   * verifying that qual (the verifier confirms CPR instructorship first).
+   * Tracked with expiry coloring on Roster & Certifications.
+   */
+  cprInstructorExpires?: Timestamp;
   notificationPrefs: NotificationPrefs;
   /** Full days the user marked unavailable to work (yyyy-mm-dd, local). Web-only:
    *  Browse Open Sessions hides open sessions on these days. */

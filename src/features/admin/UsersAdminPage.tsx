@@ -13,7 +13,7 @@ import { RANK_ORDER_ASC } from '../../lib/rbac';
 import { useRoleLabels } from '../../app/providers';
 import type { Qualification, QualificationKey, Role, UserDoc } from '../../types';
 import { QUALIFICATION_LABELS, isInstructorQual } from '../../types';
-import { certYearOf, march31, tsFromDate } from '../../lib/time';
+import { certYearOf, march31, tsFromDate, toDateInputValue, combineDateTime } from '../../lib/time';
 import { Badge, Button, Field, Input, PageHeader, Select, TextArea } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import { logAudit } from '../sessions/audit';
@@ -809,18 +809,26 @@ function QualificationsModal({ user, onClose }: { user: WithId<UserDoc>; onClose
   const [certYear, setCertYear] = useState<string>(
     user.instructorCertExpires ? String(certYearOf(user.instructorCertExpires)) : ''
   );
+  // CPR instructor card date (yyyy-mm-dd) — the extra gate for First Aid / CPR.
+  const [cprDate, setCprDate] = useState<string>(
+    user.cprInstructorExpires ? toDateInputValue(user.cprInstructorExpires.toDate()) : ''
+  );
   const [error, setError] = useState<string | null>(null);
   const [savedCert, setSavedCert] = useState(false);
+  const [savedCpr, setSavedCpr] = useState(false);
 
   const yearNum = parseInt(certYear, 10);
   const certValid = yearNum >= 2000 && yearNum <= 2100;
+  const cprAsDate = /^\d{4}-\d{2}-\d{2}$/.test(cprDate) ? combineDateTime(cprDate, '00:00') : null;
+  const cprValid = cprAsDate !== null && !Number.isNaN(cprAsDate.getTime());
 
-  async function persist(rawNext: Qualification[], alsoSetCert: boolean) {
+  async function persist(rawNext: Qualification[], alsoSetCert: boolean, alsoSetCpr = false) {
     // Drop any orphaned keys from old model versions so they don't linger.
     const next = rawNext.filter((q) => q.key in QUALIFICATION_LABELS);
     const verifiedQualKeys = next.filter((q) => q.verified).map((q) => q.key);
     const patch: Record<string, unknown> = { qualifications: next, verifiedQualKeys, updatedAt: serverTimestamp() };
     if (alsoSetCert && certValid) patch.instructorCertExpires = tsFromDate(march31(yearNum));
+    if (alsoSetCpr && cprValid) patch.cprInstructorExpires = tsFromDate(cprAsDate!);
     await updateDoc(doc(db, 'users', user.id), patch);
     setQuals(next);
   }
@@ -840,10 +848,31 @@ function QualificationsModal({ user, onClose }: { user: WithId<UserDoc>; onClose
     setTimeout(() => setSavedCert(false), 2000);
   }
 
+  async function saveCpr() {
+    if (!cprValid) {
+      setError('Enter a valid CPR instructor expiration date.');
+      return;
+    }
+    setError(null);
+    await updateDoc(doc(db, 'users', user.id), {
+      cprInstructorExpires: tsFromDate(cprAsDate!),
+      updatedAt: serverTimestamp(),
+    });
+    await logAudit(firebaseUser!.uid, 'qualification.set_cpr_expiration', 'user', user.id, `CPR instructor expiration ${cprDate} for ${user.displayName}`);
+    setSavedCpr(true);
+    setTimeout(() => setSavedCpr(false), 2000);
+  }
+
   async function setQual(key: QualificationKey, on: boolean) {
     const instructor = isInstructorQual(key);
     if (on && instructor && !certValid) {
       setError('Set the certification expiration year first — instructor certs need it.');
+      return;
+    }
+    // First Aid / CPR has a SECOND gate: the verifier must confirm the member
+    // is a current CPR instructor by recording that card's expiration date.
+    if (on && key === 'first_aid' && !cprValid) {
+      setError('Enter their CPR instructor expiration date first — First Aid / CPR verification requires confirming a current CPR instructor cert.');
       return;
     }
     setError(null);
@@ -853,7 +882,7 @@ function QualificationsModal({ user, onClose }: { user: WithId<UserDoc>; onClose
         ? quals.map((q) => (q.key === key ? { ...q, verified: true, verifiedBy: firebaseUser!.uid } : q))
         : [...quals, { key, label: QUALIFICATION_LABELS[key], verified: true, verifiedBy: firebaseUser!.uid }]
       : quals.filter((q) => q.key !== key);
-    await persist(next, on && instructor);
+    await persist(next, on && instructor, on && key === 'first_aid');
     await logAudit(
       firebaseUser!.uid,
       on ? 'qualification.verify' : 'qualification.remove',
@@ -892,6 +921,32 @@ function QualificationsModal({ user, onClose }: { user: WithId<UserDoc>; onClose
           </div>
         </div>
 
+        {/* CPR instructor card date — gates First Aid / CPR verification only. */}
+        <div className="rounded-md border border-watch-100 bg-watch-50 px-3 py-3">
+          <div className="text-sm font-medium text-watch-800">CPR instructor certification expiration</div>
+          <p className="mt-0.5 text-xs text-slate-500">
+            First Aid / CPR only: confirm the member is a <strong>current CPR instructor</strong> and record that
+            card&apos;s expiration here (its own cycle — not the FDLE 3/31 date). Required before you can verify
+            First Aid / CPR below.
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-slate-600">
+              Current:{' '}
+              <strong className="text-watch-900">
+                {user.cprInstructorExpires ? user.cprInstructorExpires.toDate().toLocaleDateString() : 'not set'}
+              </strong>
+            </span>
+            <label className="flex items-center gap-1.5 text-xs text-slate-500">
+              Expires
+              <Input type="date" value={cprDate} onChange={(e) => setCprDate(e.target.value)} style={{ width: '10rem' }} />
+            </label>
+            <Button variant="secondary" disabled={!cprDate} onClick={saveCpr}>
+              Save
+            </Button>
+            {savedCpr && <span className="text-xs text-green-700">Saved.</span>}
+          </div>
+        </div>
+
         <ul className="space-y-2">
           {(Object.keys(QUALIFICATION_LABELS) as QualificationKey[]).map((key) => {
             const q = quals.find((x) => x.key === key);
@@ -903,6 +958,14 @@ function QualificationsModal({ user, onClose }: { user: WithId<UserDoc>; onClose
                   {!instructor && <span className="ml-2 text-xs text-slate-400">(dateless)</span>}
                   {instructor && q?.verified && user.instructorCertExpires && (
                     <span className="ml-2 text-xs text-slate-500">expires 3/31/{certYearOf(user.instructorCertExpires)}</span>
+                  )}
+                  {key === 'first_aid' && user.cprInstructorExpires && (
+                    <span className="ml-2 text-xs text-slate-500">
+                      · CPR expires {user.cprInstructorExpires.toDate().toLocaleDateString()}
+                    </span>
+                  )}
+                  {key === 'first_aid' && !user.cprInstructorExpires && (
+                    <span className="ml-2 text-xs font-medium text-amber-700">CPR date required to verify</span>
                   )}
                 </span>
                 <span className="flex items-center gap-2">

@@ -51,6 +51,18 @@ export function RosterPage() {
     return 'ok';
   }
 
+  // CPR instructor card (First Aid / CPR members only). Its own cycle — "soon"
+  // is within 90 days, not the FDLE calendar-year window.
+  const cprSoonCutoff = new Date(now.getTime() + 90 * 864e5);
+  function cprStatus(u: WithId<UserDoc>): 'na' | 'missing' | 'expired' | 'soon' | 'ok' {
+    if (!u.qualifications.some((q) => q.key === 'first_aid')) return 'na';
+    if (!u.cprInstructorExpires) return 'missing'; // claimed First Aid, no CPR date → can't be verified yet
+    const d = u.cprInstructorExpires.toDate();
+    if (d < now) return 'expired';
+    if (d <= cprSoonCutoff) return 'soon';
+    return 'ok';
+  }
+
   // Distinct cert years present, for the per-year quick filter.
   const years = useMemo(
     () => [...new Set(users.filter((u) => u.instructorCertExpires).map((u) => certYearOf(u.instructorCertExpires!)))].sort(),
@@ -66,6 +78,10 @@ export function RosterPage() {
       if (expFilter === 'soon') return st === 'soon' || st === 'expired';
       if (expFilter === 'expired') return st === 'expired';
       if (expFilter === 'none') return st === 'none';
+      if (expFilter === 'cpr') {
+        const c = cprStatus(u);
+        return c === 'soon' || c === 'expired' || c === 'missing';
+      }
       if (expFilter.startsWith('y')) return u.instructorCertExpires && certYearOf(u.instructorCertExpires) === Number(expFilter.slice(1));
       return true;
     });
@@ -144,6 +160,7 @@ export function RosterPage() {
             <option value="soon">Expiring within next calendar year (by 3/31/{nextYear})</option>
             <option value="expired">Expired</option>
             <option value="none">No expiration on file</option>
+            <option value="cpr">CPR — expiring within 90 days, expired, or missing</option>
             {years.map((y) => (
               <option key={y} value={`y${y}`}>Expires 3/31/{y}</option>
             ))}
@@ -181,6 +198,7 @@ export function RosterPage() {
               <th className="px-3 py-3">Contact</th>
               <th className="px-3 py-3">Qualifications</th>
               <th className="px-3 py-3">Cert expires</th>
+              <th className="px-3 py-3">CPR expires</th>
               <th className="px-3 py-3">Status</th>
             </tr>
           </thead>
@@ -228,6 +246,20 @@ export function RosterPage() {
                     )}
                   </td>
                   <td className="px-3 py-3">
+                    {(() => {
+                      const c = cprStatus(u);
+                      if (c === 'na') return <span className="text-slate-400">—</span>;
+                      if (c === 'missing') return <span className="font-medium text-amber-700">not set</span>;
+                      const label = u.cprInstructorExpires!.toDate().toLocaleDateString();
+                      return (
+                        <span className={c === 'expired' ? 'font-medium text-red-700' : c === 'soon' ? 'font-medium text-amber-700' : 'text-slate-600'}>
+                          {label}
+                          {c === 'expired' ? ' · expired' : c === 'soon' ? ' · soon' : ''}
+                        </span>
+                      );
+                    })()}
+                  </td>
+                  <td className="px-3 py-3">
                     <Badge tone={u.status === 'active' ? 'green' : u.status === 'suspended' ? 'red' : 'slate'}>{u.status}</Badge>
                   </td>
                 </tr>
@@ -235,7 +267,7 @@ export function RosterPage() {
             })}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-3 py-10 text-center text-slate-400">No members match these filters.</td>
+                <td colSpan={9} className="px-3 py-10 text-center text-slate-400">No members match these filters.</td>
               </tr>
             )}
           </tbody>

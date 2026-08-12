@@ -416,7 +416,7 @@ export function HowToPage() {
           <Tips items={[
             <><B>Admin → Users &amp; Roles</B>: approve pending self-registrations, create accounts (activation email + temporary password), or <B>Bulk import</B> staff from CSV (each row gets an activation email).</>,
             <>Ranks: Instructor → Coordinator → Sergeant → Lieutenant → Director. Instructors see the Instructor tools; Coordinator+ is &quot;staff&quot; (CADRE — schedules, rosters, rooms); <B>Sergeant+ unlocks the Admin section</B>; Lieutenant and Director are equal top admins. Rank display names are editable under Admin → Permissions.</>,
-            <><B>Verify qualifications</B> and set each member&apos;s single instructor-cert expiration date from their row.</>,
+            <><B>Verify qualifications</B> and set each member&apos;s single instructor-cert expiration date from their row. <B>First Aid / CPR</B> has a second gate: record the member&apos;s <B>CPR instructor expiration date</B> (its own card cycle, not the FDLE 3/31 date) before the Verify button will accept it — CPR expirations are then tracked with expiring/expired coloring on <B>Roster &amp; Certifications</B>.</>,
             <><B>Edit</B> (on each row) lets admins fix a member&apos;s name, sign-in email, rank, agency, or phone, and reset their password. Saving shows a <B>review screen of exactly what changes</B> before anything is applied. A reset password is temporary — the member is signed out everywhere and must choose their own at next sign-in.</>,
             <><B>Suspend</B> blocks sign-in immediately (the member sees an &quot;Account suspended&quot; notice); <B>Deactivate</B> is the permanent variant. Both strip access server-side.</>,
           ]} />
