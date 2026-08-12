@@ -921,32 +921,6 @@ function QualificationsModal({ user, onClose }: { user: WithId<UserDoc>; onClose
           </div>
         </div>
 
-        {/* CPR instructor card date — gates First Aid / CPR verification only. */}
-        <div className="rounded-md border border-watch-100 bg-watch-50 px-3 py-3">
-          <div className="text-sm font-medium text-watch-800">CPR instructor certification expiration</div>
-          <p className="mt-0.5 text-xs text-slate-500">
-            First Aid / CPR only: confirm the member is a <strong>current CPR instructor</strong> and record that
-            card&apos;s expiration here (its own cycle — not the FDLE 3/31 date). Required before you can verify
-            First Aid / CPR below.
-          </p>
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
-            <span className="text-slate-600">
-              Current:{' '}
-              <strong className="text-watch-900">
-                {user.cprInstructorExpires ? user.cprInstructorExpires.toDate().toLocaleDateString() : 'not set'}
-              </strong>
-            </span>
-            <label className="flex items-center gap-1.5 text-xs text-slate-500">
-              Expires
-              <Input type="date" value={cprDate} onChange={(e) => setCprDate(e.target.value)} style={{ width: '10rem' }} />
-            </label>
-            <Button variant="secondary" disabled={!cprDate} onClick={saveCpr}>
-              Save
-            </Button>
-            {savedCpr && <span className="text-xs text-green-700">Saved.</span>}
-          </div>
-        </div>
-
         <ul className="space-y-2">
           {(Object.keys(QUALIFICATION_LABELS) as QualificationKey[]).map((key) => {
             const q = quals.find((x) => x.key === key);
@@ -958,14 +932,6 @@ function QualificationsModal({ user, onClose }: { user: WithId<UserDoc>; onClose
                   {!instructor && <span className="ml-2 text-xs text-slate-400">(dateless)</span>}
                   {instructor && q?.verified && user.instructorCertExpires && (
                     <span className="ml-2 text-xs text-slate-500">expires 3/31/{certYearOf(user.instructorCertExpires)}</span>
-                  )}
-                  {key === 'first_aid' && user.cprInstructorExpires && (
-                    <span className="ml-2 text-xs text-slate-500">
-                      · CPR expires {user.cprInstructorExpires.toDate().toLocaleDateString()}
-                    </span>
-                  )}
-                  {key === 'first_aid' && !user.cprInstructorExpires && (
-                    <span className="ml-2 text-xs font-medium text-amber-700">CPR date required to verify</span>
                   )}
                 </span>
                 <span className="flex items-center gap-2">
@@ -989,6 +955,20 @@ function QualificationsModal({ user, onClose }: { user: WithId<UserDoc>; onClose
                     </Button>
                   )}
                 </span>
+                {key === 'first_aid' && (
+                  // CPR gate lives right on the row it gates — the Verify above
+                  // refuses until this date is set (current CPR instructor first).
+                  <div className="flex w-full flex-wrap items-center gap-2 border-t border-watch-100 pt-2 text-xs">
+                    <span className={cprValid ? 'text-slate-500' : 'font-medium text-amber-700'}>
+                      CPR instructor cert expires
+                    </span>
+                    <Input type="date" value={cprDate} onChange={(e) => setCprDate(e.target.value)} style={{ width: '10rem' }} />
+                    <Button variant="secondary" disabled={!cprDate} onClick={saveCpr}>
+                      Save
+                    </Button>
+                    {savedCpr && <span className="text-green-700">Saved.</span>}
+                  </div>
+                )}
               </li>
             );
           })}
