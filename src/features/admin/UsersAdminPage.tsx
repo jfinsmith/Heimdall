@@ -10,9 +10,9 @@ import { db, functions } from '../../lib/firebase';
 import { useCollection, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import { RANK_ORDER_ASC } from '../../lib/rbac';
-import { useRoleLabels } from '../../app/providers';
+import { useRoleLabels, useGlobalSettings } from '../../app/providers';
 import type { Qualification, QualificationKey, Role, UserDoc } from '../../types';
-import { QUALIFICATION_LABELS, isInstructorQual } from '../../types';
+import { QUALIFICATION_LABELS, isInstructorQual, CERT_PORTALS } from '../../types';
 import { certYearOf, march31, tsFromDate, toDateInputValue, combineDateTime } from '../../lib/time';
 import { Badge, Button, Field, Input, PageHeader, Select, TextArea } from '../../components/ui';
 import { Modal } from '../../components/Modal';
@@ -805,6 +805,8 @@ function AddUserModal({ onClose }: { onClose: () => void }) {
  */
 function QualificationsModal({ user, onClose }: { user: WithId<UserDoc>; onClose: () => void }) {
   const { firebaseUser } = useAuth();
+  const settings = useGlobalSettings();
+  const certPortal = settings?.jurisdiction ? CERT_PORTALS[settings.jurisdiction] : undefined;
   const [quals, setQuals] = useState<Qualification[]>(user.qualifications);
   const [certYear, setCertYear] = useState<string>(
     user.instructorCertExpires ? String(certYearOf(user.instructorCertExpires)) : ''
@@ -899,7 +901,21 @@ function QualificationsModal({ user, onClose }: { user: WithId<UserDoc>; onClose
 
         {/* Single FDLE instructor-cert expiration (governs every instructor cert below) */}
         <div className="rounded-md border border-watch-100 bg-watch-50 px-3 py-3">
-          <div className="text-sm font-medium text-watch-800">FDLE instructor certification expiration</div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-sm font-medium text-watch-800">FDLE instructor certification expiration</div>
+            {certPortal && (
+              // Jurisdiction-specific records portal (CERT_PORTALS) — FL gets
+              // ATMS; other states plug in their own entry, 'neutral' shows none.
+              <a
+                href={certPortal.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs font-medium text-bifrost-700 hover:underline"
+              >
+                {certPortal.label} ↗
+              </a>
+            )}
+          </div>
           <p className="mt-0.5 text-xs text-slate-500">
             Always 3/31 of the cert year, renewed every four years. Required to verify any instructor cert.
           </p>

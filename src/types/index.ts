@@ -28,6 +28,17 @@ export type QualificationKey =
   | 'first_aid'
   | 'role_player';
 
+/**
+ * Per-jurisdiction instructor-records portal — a quick link shown wherever
+ * staff verify instructor certifications (currently the header of the
+ * qualifications modal). Keyed by GlobalSettings.jurisdiction; jurisdictions
+ * without an entry (e.g. 'neutral') simply show no link. Add future states'
+ * training-records systems here.
+ */
+export const CERT_PORTALS: Partial<Record<'FL' | 'neutral', { label: string; url: string }>> = {
+  FL: { label: 'Open FDLE ATMS', url: 'https://atms.fdle.state.fl.us/atms/shiroLogin.jsf' },
+};
+
 export const QUALIFICATION_LABELS: Record<QualificationKey, string> = {
   general: 'General Instructor',
   handgun: 'Handgun Instructor',
@@ -309,6 +320,7 @@ export interface GlobalSettings {
    * PHSC org defaults to 'FL' so its official memos are unchanged.
    */
   jurisdiction?: 'FL' | 'neutral';
+  /* (See CERT_PORTALS below for the per-jurisdiction records-portal link.) */
   /** Optional tagline under the org name in the letterhead (non-PHSC orgs). */
   letterheadTagline?: string;
   /** Optional address / contact lines printed under the document header (e.g.
