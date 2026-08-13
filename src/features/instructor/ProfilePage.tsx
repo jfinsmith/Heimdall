@@ -36,6 +36,7 @@ export function ProfilePage() {
     profile?.instructorCertExpires ? String(certYearOf(profile.instructorCertExpires)) : ''
   );
   const [certSaved, setCertSaved] = useState(false);
+  const [tab, setTab] = useState<'profile' | 'notifications' | 'quals'>('profile');
 
   if (!firebaseUser || !profile) return null;
 
@@ -88,10 +89,43 @@ export function ProfilePage() {
     });
   }
 
+  const noQuals = profile.qualifications.length === 0;
+  const TABS = [
+    { key: 'profile' as const, label: 'Profile' },
+    { key: 'notifications' as const, label: 'Notifications' },
+    { key: 'quals' as const, label: 'Qualifications' },
+  ];
+
   return (
-    <div className="max-w-2xl">
+    <div className="max-w-5xl">
       <PageHeader kicker="Instructor" title="Profile & Qualifications" />
 
+      <div className="mb-5 flex gap-1 overflow-x-auto border-b border-watch-100">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`-mb-px flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium ${
+              tab === t.key ? 'border-bifrost-500 text-bifrost-700' : 'border-transparent text-slate-500 hover:text-watch-800'
+            }`}
+          >
+            {t.label}
+            {t.key === 'quals' && noQuals && (
+              // Red flag until they claim SOMETHING — an empty qualification
+              // list means they can never be scheduled into qualified slots.
+              <span
+                className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold leading-none text-white"
+                title="No qualifications claimed yet"
+              >
+                !
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'profile' && (
+      <div className="grid items-start gap-6 lg:grid-cols-2">
       <form onSubmit={save} className="space-y-4 rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
         <div className="break-words text-sm text-slate-500">
           {profile.displayName} · {profile.email}
@@ -113,12 +147,21 @@ export function ProfilePage() {
           {saved && <span className="text-sm text-green-700">Saved.</span>}
         </div>
       </form>
-
       <NotificationEmailCard />
-      <EmailPreferencesCard />
       <ChangePasswordCard />
+      <UnavailableDatesCard />
+      </div>
+      )}
 
-      <section className="mt-6 rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
+      {tab === 'notifications' && (
+      <div className="grid items-start gap-6 lg:grid-cols-2">
+        <EmailPreferencesCard />
+        <CurriculumSubscriptionsCard />
+      </div>
+      )}
+
+      {tab === 'quals' && (
+      <section className="max-w-3xl rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
         <h2 className="mb-1 text-sm font-semibold uppercase tracking-wider text-watch-600">Qualifications</h2>
         <p className="mb-3 text-sm text-slate-500">
           Claim the instructor qualifications you hold; a coordinator verifies them before they unlock
@@ -196,8 +239,7 @@ export function ProfilePage() {
           })}
         </ul>
       </section>
-      <UnavailableDatesCard />
-      <CurriculumSubscriptionsCard />
+      )}
     </div>
   );
 }
@@ -256,7 +298,7 @@ function NotificationEmailCard() {
     });
 
   return (
-    <section className="mt-6 rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
+    <section className="rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
       <h2 className="mb-1 text-sm font-semibold uppercase tracking-wider text-watch-600">Notification email</h2>
       <p className="mb-3 text-sm text-slate-500">
         Schedule notifications go to <strong>one</strong> address. By default that&apos;s your sign-in email —
@@ -372,7 +414,7 @@ function EmailPreferencesCard() {
   }
 
   return (
-    <section className="mt-6 rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
+    <section className="rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
       <h2 className="mb-1 text-sm font-semibold uppercase tracking-wider text-watch-600">Email preferences</h2>
       <p className="mb-3 text-sm text-slate-500">
         Un-check an email you don&apos;t want — the in-app bell still shows everything. Time-critical
@@ -452,7 +494,7 @@ function CurriculumSubscriptionsCard() {
 
   if (disciplines.length === 0) return null;
   return (
-    <div className="mt-6 rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
+    <div className="rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
       <h2 className="text-sm font-semibold uppercase tracking-wider text-watch-600">Curriculum notifications</h2>
       <p className="mt-1 text-xs text-slate-500">
         You&apos;re subscribed to every discipline by default. Un-check one to stop its course-opening call-outs
@@ -486,7 +528,7 @@ function UnavailableDatesCard() {
   }
 
   return (
-    <section className="mt-6 rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
+    <section className="rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
       <h2 className="mb-1 text-sm font-semibold uppercase tracking-wider text-watch-600">Unavailable days</h2>
       <p className="mb-3 text-sm text-slate-500">Mark days you can't work — open sessions on those days are hidden from your Browse Open Sessions list.</p>
       <div className="flex items-end gap-2">
@@ -525,7 +567,7 @@ function ChangePasswordCard() {
 
   if (!hasPassword) {
     return (
-      <section className="mt-6 rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
+      <section className="rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
         <h2 className="mb-1 text-sm font-semibold uppercase tracking-wider text-watch-600">Password</h2>
         <p className="text-sm text-slate-500">You sign in with Google — manage your password in your Google account.</p>
       </section>
@@ -560,7 +602,7 @@ function ChangePasswordCard() {
   }
 
   return (
-    <section className="mt-6 rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
+    <section className="rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
       <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-watch-600">Change password</h2>
       {error && <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
       <form onSubmit={submit} className="grid max-w-md gap-4">

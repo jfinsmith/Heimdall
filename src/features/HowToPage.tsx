@@ -166,7 +166,7 @@ export function HowToPage() {
           </Sub>
           <Sub title="Email preferences">
             <p>
-              Under <B>Profile → Email preferences</B>, un-check any email category you don&apos;t want (sign-up
+              On the <B>Profile → Notifications</B> tab, un-check any email category you don&apos;t want (sign-up
               confirmations, course announcements, weekly digest…). Muting stops the email only — the in-app bell still
               shows everything. Time-critical emails (schedule changes, reservation requests, account notices) are
               always on, and the list only shows categories your rank can receive.
@@ -174,7 +174,7 @@ export function HowToPage() {
           </Sub>
           <Sub title="Curriculum notifications">
             <p>
-              You&apos;re subscribed to every discipline&apos;s course-opening call-outs by default. Under <B>Profile → Curriculum notifications</B>,
+              You&apos;re subscribed to every discipline&apos;s course-opening call-outs by default. On the <B>Profile → Notifications</B> tab,
               un-check any discipline (e.g. Corrections, if you only teach Law Enforcement) to silence its announcements across bell and email.
               Your own assignments, reminders, and account notices always come through regardless.
             </p>
