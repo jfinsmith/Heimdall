@@ -921,20 +921,28 @@ function QualificationsModal({ user, onClose }: { user: WithId<UserDoc>; onClose
           </div>
         </div>
 
-        <ul className="space-y-2">
+        {/* One panel, three aligned columns (name | status | actions) — fixed
+            column widths keep every badge and button vertically ranked instead
+            of wrapping raggedly under long qualification names. Only pending
+            claims get the loud primary Verify; adding an UNCLAIMED qual is the
+            rare admin path and stays quiet. */}
+        <ul className="divide-y divide-watch-100 overflow-hidden rounded-lg border border-watch-100">
           {(Object.keys(QUALIFICATION_LABELS) as QualificationKey[]).map((key) => {
             const q = quals.find((x) => x.key === key);
             const instructor = isInstructorQual(key);
             return (
-              <li key={key} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-watch-100 px-3 py-2 text-sm">
-                <span className="text-watch-800">
-                  {QUALIFICATION_LABELS[key]}
-                  {!instructor && <span className="ml-2 text-xs text-slate-400">(dateless)</span>}
+              <li
+                key={key}
+                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-3 py-2.5 text-sm sm:grid-cols-[minmax(0,1fr)_9.5rem_10.5rem]"
+              >
+                <span className="min-w-0">
+                  <span className="block truncate font-medium text-watch-800">{QUALIFICATION_LABELS[key]}</span>
+                  {!instructor && <span className="block text-xs text-slate-400">No expiration date</span>}
                   {instructor && q?.verified && user.instructorCertExpires && (
-                    <span className="ml-2 text-xs text-slate-500">expires 3/31/{certYearOf(user.instructorCertExpires)}</span>
+                    <span className="block text-xs text-slate-500">Expires 3/31/{certYearOf(user.instructorCertExpires)}</span>
                   )}
                 </span>
-                <span className="flex items-center gap-2">
+                <span className="justify-self-start sm:justify-self-end">
                   {q ? (
                     q.verified ? (
                       <Badge tone="green">Verified</Badge>
@@ -944,13 +952,20 @@ function QualificationsModal({ user, onClose }: { user: WithId<UserDoc>; onClose
                   ) : (
                     <Badge tone="slate">Not on file</Badge>
                   )}
-                  {!(q && q.verified) && (
-                    <Button variant="primary" onClick={() => setQual(key, true)}>
+                </span>
+                <span className="col-span-2 flex items-center justify-end gap-1.5 sm:col-span-1">
+                  {q && !q.verified && (
+                    <Button variant="primary" className="!px-2.5 !py-1 text-xs" onClick={() => setQual(key, true)}>
                       Verify
                     </Button>
                   )}
+                  {!q && (
+                    <Button variant="secondary" className="!px-2.5 !py-1 text-xs" onClick={() => setQual(key, true)}>
+                      Add &amp; verify
+                    </Button>
+                  )}
                   {q && (
-                    <Button variant="ghost" onClick={() => setQual(key, false)}>
+                    <Button variant="ghost" className="!px-2.5 !py-1 text-xs" onClick={() => setQual(key, false)}>
                       Remove
                     </Button>
                   )}
@@ -959,12 +974,12 @@ function QualificationsModal({ user, onClose }: { user: WithId<UserDoc>; onClose
                   // CPR gate lives right on the row it gates — shown only once
                   // the member has First Aid / CPR on file; the Verify above
                   // refuses until this date is set (current CPR instructor first).
-                  <div className="flex w-full flex-wrap items-center gap-2 border-t border-watch-100 pt-2 text-xs">
+                  <div className="col-span-2 flex flex-wrap items-center gap-2 border-t border-watch-100 pt-2 text-xs sm:col-span-3">
                     <span className={cprValid ? 'text-slate-500' : 'font-medium text-amber-700'}>
                       CPR instructor cert expires
                     </span>
                     <Input type="date" value={cprDate} onChange={(e) => setCprDate(e.target.value)} style={{ width: '10rem' }} />
-                    <Button variant="secondary" disabled={!cprDate} onClick={saveCpr}>
+                    <Button variant="secondary" className="!px-2.5 !py-1 text-xs" disabled={!cprDate} onClick={saveCpr}>
                       Save
                     </Button>
                     {savedCpr && <span className="text-green-700">Saved.</span>}
