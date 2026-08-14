@@ -107,6 +107,7 @@ export function UsersAdminPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [emailsCopied, setEmailsCopied] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   const pending = users.filter((u) => u.status === 'pending');
@@ -191,10 +192,48 @@ export function UsersAdminPage() {
     }
   }
 
+  // Where a member actually READS mail: the verified notification email wins
+  // over the sign-in address (mirrors the server's notify() routing).
+  const bestEmail = (u: UserDoc) => (u.notificationEmail && u.notificationEmailVerified ? u.notificationEmail : u.email);
+
+  function copyEmails() {
+    // Active members only — a mass email shouldn't hit suspended/pending accounts.
+    const emails = [...new Set(users.filter((u) => u.status === 'active').map(bestEmail).filter(Boolean))];
+    void navigator.clipboard?.writeText(emails.join(', '));
+    setEmailsCopied(emails.length);
+    setTimeout(() => setEmailsCopied(0), 3000);
+  }
+
+  function exportCsv() {
+    const esc = (v: string | undefined) => `"${(v ?? '').replace(/"/g, '""')}"`;
+    const rows = [
+      ['Name', 'Best email', 'Sign-in email', 'Notification email', 'Role', 'Status', 'Rank', 'Agency', 'Phone'],
+      ...users.map((u) => [
+        u.displayName, bestEmail(u), u.email,
+        u.notificationEmailVerified ? u.notificationEmail ?? '' : '',
+        roleLabels[u.role], u.status, u.rank ?? '', u.agency ?? '', u.phone ?? '',
+      ]),
+    ];
+    const csv = rows.map((r) => r.map(esc).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `members-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div>
       <PageHeader kicker="Admin" title="Users & Roles" />
-      <div className="-mt-2 mb-4 flex justify-end gap-2">
+      <div className="-mt-2 mb-4 flex flex-wrap items-center justify-end gap-2">
+        {emailsCopied > 0 && <span className="text-sm text-green-700">{emailsCopied} addresses copied — paste into BCC.</span>}
+        <Button variant="ghost" onClick={copyEmails} title="Copy every ACTIVE member's best email address (verified notification email when set), comma-separated for BCC">
+          Copy emails
+        </Button>
+        <Button variant="ghost" onClick={exportCsv} title="Download every member's info as CSV (for an external mail tool)">
+          Export CSV
+        </Button>
         <Button variant="ghost" onClick={() => setBulkOpen(true)}>Bulk import</Button>
         <Button variant="primary" onClick={() => setAddOpen(true)}>
           + Add user
