@@ -41,10 +41,13 @@ export const DOCUMENT_TYPES: ReportType[] = [
     // examinee hand-prints their name above their signature at the bottom.
     document: {
       appliesTo: 'general',
+      // The two-line identity block sits BETWEEN the letterhead and the rule.
+      titleLines: [
+        'EXAMINATION RULES & DISCLOSURE — Class: {className}',
+        'Course: {course} · Examination date: {examDate}',
+      ],
       headerFields: [],
       blocks: [
-        { kind: 'paragraph', text: `EXAMINATION RULES & DISCLOSURE — Class: {className}` },
-        { kind: 'paragraph', text: `Course: {course} · Examination date: {examDate}` },
         { kind: 'paragraph', text: `INSTRUCTIONS. This examination consists of {questionCount} questions with a time limit of {minutes} minutes from the proctor's start signal. The minimum passing score is {passingScore}%. When you finish, follow the proctor's completion instructions — shut down your station and leave the room, or remain seated and silent until the session ends, as directed.` },
         { kind: 'clause', text: `1. TESTING CONDITIONS. Testing conditions begin when the proctor starts administration and remain in effect until the last examinee has finished and the proctor declares the session ended. These rules bind every examinee for that entire period, including those who have finished.` },
         { kind: 'clause', text: `2. ELECTRONIC DEVICES. Every personal device capable of storing, receiving, or transmitting information — phones, smart watches, earpieces — must be powered off and stowed or surrendered as the proctor directs before the examination begins. Possession at the testing station is a violation whether or not the device is used.` },

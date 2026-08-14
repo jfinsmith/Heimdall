@@ -42,6 +42,9 @@ export interface MemoHeaderField {
 export interface MemoDocument {
   /** "Re:" subject; also repeated in the distribution footer. */
   reSubject: string;
+  /** Title lines rendered between the letterhead and the divider rule (above
+   *  any header rows) — e.g. a form's two-line identity block. Resolved text. */
+  titleLines?: string[];
   /** To/From/CC/Date/Re rows. */
   headerFields: MemoHeaderField[];
   blocks: MemoBlock[];

@@ -134,6 +134,15 @@ export function MemoRenderer({
       )}
       <DocumentHeader curriculum={curriculum} settings={settings} />
 
+      {/* Title block — sits between the letterhead and the divider rule. */}
+      {memo.titleLines && memo.titleLines.length > 0 && (
+        <div className={`${c ? 'mt-3' : 'mt-5'} leading-snug`}>
+          {memo.titleLines.map((l, i) => (
+            <div key={i} className={i === 0 ? 'font-semibold' : ''}>{l}</div>
+          ))}
+        </div>
+      )}
+
       {/* Memo header (skipped entirely when a document declares no rows) */}
       {memo.headerFields.length > 0 && (
         <div className={`${c ? 'mt-3' : 'mt-5'} space-y-1`}>

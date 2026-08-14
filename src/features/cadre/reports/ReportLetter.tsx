@@ -89,6 +89,7 @@ export function ReportLetter({
 
     const memo: MemoDocument = {
       reSubject: resolve(type.reSubject),
+      titleLines: doc.titleLines?.map(resolve),
       // Resolve each header value; trim orphan commas/space left by a blank
       // optional token (e.g. an unfilled CC) and drop rows that end up empty.
       headerFields: doc.headerFields

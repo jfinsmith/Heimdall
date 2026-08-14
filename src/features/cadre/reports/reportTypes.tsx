@@ -56,6 +56,8 @@ export interface DocBlock {
 export interface DocumentSpec {
   /** Drives the form (cadet recipient vs. file/general) and the record label. */
   appliesTo: 'cadet' | 'file' | 'general';
+  /** Title lines between the letterhead and the divider rule (templates). */
+  titleLines?: string[];
   /** To/From/CC/Date/Re rows; values are templates resolved to plain text. */
   headerFields: { label: string; value: string }[];
   blocks: DocBlock[];
