@@ -23,6 +23,7 @@ import type { ReportType } from './reportTypes';
 export const DOCUMENT_TYPES: ReportType[] = [
   {
     id: 'exam_rules',
+    updated: '2026-08-14',
     name: 'Examination Rules & Disclosure',
     purpose:
       'Read-and-sign examination rules with fillable question count, time limit, and passing score — collected from each examinee before a written examination and filed as proof the rules were disclosed before testing began.',
@@ -72,6 +73,7 @@ export const DOCUMENT_TYPES: ReportType[] = [
   },
   {
     id: 'crossover_transfer',
+    updated: '2026-07-01',
     name: 'Crossover / Blackbird Transfer Memo',
     purpose: 'Certifies a cadet completed a course (hours + passing written-exam score) with THIS class, addressed to the cadet\'s ORIGINAL class, so the credit transfers (crossover / blackbird) to their file.',
     reSubject: 'Crossover / Blackbird Transfer — {cadetName}',
@@ -107,6 +109,7 @@ export const DOCUMENT_TYPES: ReportType[] = [
   },
   {
     id: 'general_memo',
+    updated: '2026-07-01',
     name: 'General Memorandum',
     purpose: 'All-purpose internal academy memorandum for any recipient on any subject, recorded on letterhead for the training file.',
     reSubject: '{subject}',
@@ -136,6 +139,7 @@ export const DOCUMENT_TYPES: ReportType[] = [
   },
   {
     id: 'counseling',
+    updated: '2026-07-01',
     name: 'Counseling / Remediation',
     purpose: 'Documents a counseling session and a structured remediation plan with a cadet as a developmental step before formal discipline.',
     reSubject: 'Counseling and Remediation Plan — {area}',
@@ -173,6 +177,7 @@ export const DOCUMENT_TYPES: ReportType[] = [
   },
   {
     id: 'injury_illness',
+    updated: '2026-07-01',
     name: 'Injury / Illness Report',
     purpose: 'Documents a cadet training injury or illness for the safety and medical record, including treatment, referral, notifications, and return-to-training status.',
     reSubject: 'Injury / Illness Report — {cadetSubject}',
@@ -216,6 +221,7 @@ export const DOCUMENT_TYPES: ReportType[] = [
   },
   {
     id: 'incident',
+    updated: '2026-07-01',
     name: 'Incident Report',
     purpose: 'Records a non-injury, non-use-of-force training incident (property damage, safety/security event, or conduct/scenario irregularity) as a factual, contemporaneous account for the file.',
     reSubject: 'Incident Report — {dateOfIncident}, {location}',
@@ -254,6 +260,7 @@ export const DOCUMENT_TYPES: ReportType[] = [
   },
   {
     id: 'use_of_force',
+    updated: '2026-07-01',
     name: 'Use of Force (Training Scenario)',
     purpose: 'Documents force applied or observed during a controlled training scenario for after-action review and risk management.',
     reSubject: 'Use of Force During Training Scenario — {cadetSubject}',
@@ -294,6 +301,7 @@ export const DOCUMENT_TYPES: ReportType[] = [
   },
   {
     id: 'disciplinary',
+    updated: '2026-07-01',
     name: 'Disciplinary Action',
     purpose: 'Documents a cadet conduct or policy violation and the disciplinary action imposed, with due-process notice and cadet acknowledgment of receipt.',
     reSubject: 'Disciplinary Action — {cadetName}',
@@ -330,6 +338,7 @@ export const DOCUMENT_TYPES: ReportType[] = [
   },
   {
     id: 'dismissal_conduct',
+    updated: '2026-07-01',
     name: 'Dismissal — Conduct / Administrative',
     purpose: "Documents a cadet's dismissal from the academy on conduct, integrity, attendance, safety, or administrative grounds (not academic failure), with appeal rights and property return.",
     reSubject: 'Dismissal from Academy — Conduct / Administrative Grounds',
@@ -375,6 +384,7 @@ export const DOCUMENT_TYPES: ReportType[] = [
   },
   {
     id: 'cadet_acknowledgment',
+    updated: '2026-07-01',
     name: 'Cadet Acknowledgment',
     purpose: 'A cadet signs to confirm receipt and understanding of a policy, manual, safety rules, equipment, or directive, witnessed by an instructor.',
     reSubject: 'Acknowledgment of Receipt and Understanding — {subject}',

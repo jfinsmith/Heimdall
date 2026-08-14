@@ -94,6 +94,25 @@ export interface ReportType {
    * 'phsc'-only). Set on the registry entry; AcademyReports filters on it.
    */
   orgScope?: string;
+  /** yyyy-mm-dd the document's CONTENT was last added or edited in the code
+   *  registry — stamped by whoever edits the entry; shown on the owner's
+   *  Report Forms page. */
+  updated?: string;
+}
+
+/**
+ * Owner-set per-document org availability (documentAssignments/{reportTypeId}).
+ * NO doc (or scope 'all') = the document is offered to every organization —
+ * which means anything newly added to the code registry appears everywhere
+ * automatically until the owner scopes it. Written only by the platform owner;
+ * readable by any signed-in user (AcademyReports filters the offering with it).
+ */
+export interface DocumentAssignmentDoc {
+  scope: 'all' | 'orgs';
+  orgIds?: string[];
+  /** Registry name at the time of the write (for the audit trail). */
+  name?: string;
+  updatedBy?: string;
 }
 
 /** Underlined fill-in blank, mirroring the form's blanks. */
@@ -118,6 +137,7 @@ const courseShort = (v?: string) => {
 const ACADEMIC_REPORT_TYPES: ReportType[] = [
   {
     id: 'exam_failure',
+    updated: '2026-07-01',
     name: 'End-of-Course Exam Failure (1st)',
     purpose: 'First failure of a written end-of-course exam — the cadet is offered one re-examination.',
     reSubject: 'Failure of End-of-Course Examination',
@@ -148,6 +168,7 @@ const ACADEMIC_REPORT_TYPES: ReportType[] = [
   },
   {
     id: 'proficiency_fail',
+    updated: '2026-07-01',
     name: 'Proficiency / Course Failure',
     purpose: 'Cadet failed required proficiency skills after remediation — must retake the course; next failure means dismissal.',
     reSubject: 'Failure of End-of-Course Examination & Failure of Course',
@@ -174,6 +195,7 @@ const ACADEMIC_REPORT_TYPES: ReportType[] = [
   },
   {
     id: 'exam_course_fail',
+    updated: '2026-07-01',
     name: 'Re-Exam Failure / Course Failure',
     purpose: 'Cadet failed the re-examination — no longer eligible to retake the exam; must redo the whole course. Next failure means dismissal.',
     reSubject: 'Failure of End-of-Course Examination & Failure of Course',
@@ -207,6 +229,7 @@ const ACADEMIC_REPORT_TYPES: ReportType[] = [
   },
   {
     id: 'academy_dismissal',
+    updated: '2026-07-01',
     name: 'Academy Dismissal',
     purpose: 'Cadet failed a second block — dismissed from the Basic Recruit Training Program.',
     reSubject: 'Academy Dismissal',

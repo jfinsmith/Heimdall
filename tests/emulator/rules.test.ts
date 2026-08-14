@@ -183,6 +183,15 @@ describe('users — notification email is callable-only', () => {
       updateDoc(doc(as('dave', 'director'), 'users/bob'), { notificationEmail: 'x@y.test', notificationEmailVerified: true })
     );
   });
+  it('documentAssignments: members read, ONLY the platform owner writes', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'documentAssignments/exam_rules'), { scope: 'orgs', orgIds: [ORG] });
+    });
+    await assertSucceeds(getDoc(doc(as('alice', 'instructor'), 'documentAssignments/exam_rules')));
+    await assertFails(updateDoc(doc(as('dave', 'director'), 'documentAssignments/exam_rules'), { scope: 'all' }));
+    const owner = testEnv.authenticatedContext('owner1', { role: 'director', orgId: ORG, platformOwner: true }).firestore();
+    await assertSucceeds(updateDoc(doc(owner, 'documentAssignments/exam_rules'), { scope: 'all' }));
+  });
   it('no client can read or write users/{uid}/private (the code hash lives there)', async () => {
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       await setDoc(doc(ctx.firestore(), 'users/alice/private/notificationEmail'), { emailLower: 'a@b.c', codeHash: 'h' });

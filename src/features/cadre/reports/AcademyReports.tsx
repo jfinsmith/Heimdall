@@ -14,7 +14,7 @@ import { useAuth } from '../../../auth/AuthContext';
 import type { AcademyDoc, AcademyReportDoc, CurriculumCourse, RosterMemberDoc, UserDoc } from '../../../types';
 import { Button, Field, Input, Select, TextArea } from '../../../components/ui';
 import { Modal } from '../../../components/Modal';
-import { getReportType, REPORT_TYPES, type ReportField, type ReportType } from './reportTypes';
+import { getReportType, REPORT_TYPES, type DocumentAssignmentDoc, type ReportField, type ReportType } from './reportTypes';
 import { offeredLetterForms, libraryFormToReportType, useOrgLibraryForms } from './documentLibrary';
 import { lastFirst, rosterCompare } from '../roster/rosterShared';
 
@@ -74,14 +74,20 @@ export function AcademyReports({ academy, seed, onSeedConsumed }: { academy: Wit
   const [formType, setFormType] = useState<ReportType | null>(null);
   const [editing, setEditing] = useState<WithId<AcademyReportDoc> | null>(null);
 
-  // Forms offered to this class = built-in GENERAL code forms + the owner library's
-  // general forms, with this discipline's overrides applied (disable / swap with a
-  // specialized form / add a specialized form). Categories are gone.
+  // Forms offered to this class = built-in code forms the OWNER assigned to
+  // this org (documentAssignments; no assignment = every org) + the owner
+  // library's general forms, with this discipline's overrides applied
+  // (disable / swap with a specialized form / add a specialized form).
   const { forms: libraryForms } = useOrgLibraryForms();
-  const availableTypes = useMemo(
-    () => offeredLetterForms(curriculum, REPORT_TYPES, libraryForms),
-    [curriculum, libraryForms]
-  );
+  const { data: assignments } = useCollection<DocumentAssignmentDoc>('documentAssignments');
+  const availableTypes = useMemo(() => {
+    const asgById = new Map(assignments.map((a) => [a.id, a]));
+    const assigned = REPORT_TYPES.filter((t) => {
+      const a = asgById.get(String(t.id));
+      return !a || a.scope === 'all' || !profile?.orgId || (a.orgIds ?? []).includes(profile.orgId);
+    });
+    return offeredLetterForms(curriculum, assigned, libraryForms);
+  }, [curriculum, libraryForms, assignments, profile?.orgId]);
   const libById = useMemo(() => new Map(libraryForms.map((f) => [f.id, f])), [libraryForms]);
   // Resolve a filed report's type by id (offered set → code registry → library).
   const typeFor = (id: string): ReportType | undefined => {

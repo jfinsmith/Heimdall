@@ -254,6 +254,16 @@ service cloud.firestore {
       allow write: if isPlatformOwner();
     }
 
+    // ── documentAssignments (owner-set per-document org availability) ──────
+    // documentAssignments/{reportTypeId}: which orgs a registry document is
+    // offered to. Absent doc / scope 'all' = every org. Any signed-in user may
+    // read (each org's Reports page filters its offering with these); ONLY the
+    // platform owner writes.
+    match /documentAssignments/{id} {
+      allow read: if signedIn();
+      allow write: if isPlatformOwner();
+    }
+
     // ── documentForms (in-app document builder, Phase 12) ──────────────────
     // Org-scoped admin/owner-authored documents; staff read them to file reports.
     // Writers must be command (or the platform owner) AND in the doc's org — so an
