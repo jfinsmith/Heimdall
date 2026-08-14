@@ -102,10 +102,11 @@ export const DOCUMENT_TYPES: ReportType[] = [
       ],
       blocks: [
         { kind: 'clause', text: `This evaluation is ANONYMOUS — do not write your name anywhere on it. Your honest assessment is used to develop instructors and improve this program, and has no effect of any kind on your standing in the academy. Mark ONE box for each statement below; written comments on page 2 are strongly encouraged — specific examples of what worked and what should change are the most useful feedback you can give.` },
+        { kind: 'paragraph', text: `Rating scale: 5 — Excellent · 4 — Good · 3 — Satisfactory · 2 — Needs improvement · 1 — Unsatisfactory` },
         {
           kind: 'ratings',
           text: '',
-          scale: ['5 — Excellent', '4 — Good', '3 — Satisfactory', '2 — Needs improvement', '1 — Unsatisfactory'],
+          scale: ['5', '4', '3', '2', '1'],
           items: [
             'Demonstrated thorough, current knowledge of the subject matter.',
             'Presented the material in an organized, understandable sequence.',

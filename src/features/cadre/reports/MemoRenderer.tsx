@@ -48,7 +48,11 @@ function Block({ block, data }: { block: MemoBlock; data: Record<string, string>
           <tr>
             <th className="border border-black px-1.5 py-1 font-semibold">Statement</th>
             {(block.scale ?? []).map((s) => (
-              <th key={s} className="w-[4.2rem] border border-black px-1 py-1 text-center text-[9px] font-semibold leading-tight">
+              // Narrow columns for bare-number scales; wider when labels are worded.
+              <th
+                key={s}
+                className={`${s.length <= 2 ? 'w-10' : 'w-[4.2rem] text-[9px] leading-tight'} border border-black px-1 py-1 text-center font-semibold`}
+              >
                 {s}
               </th>
             ))}
