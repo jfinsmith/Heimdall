@@ -82,17 +82,22 @@ export const DOCUMENT_TYPES: ReportType[] = [
       { key: 'course', label: 'Topic / course evaluated', type: 'course', required: true, hint: 'From this academy\'s curriculum — prints in the title line' },
       { key: 'className', label: 'Academy class', type: 'text', required: true, defaultFrom: 'className', hint: 'Class designation — auto-filled from this academy' },
       { key: 'instructorName', label: 'Instructor being evaluated', type: 'text', required: true, hint: 'Print one evaluation per instructor when a topic had several' },
-      { key: 'evalDate', label: 'Evaluation date', type: 'date', hint: 'Optional — leave blank to hand-write on the printed form' },
+      { key: 'evalDate', label: 'Evaluation date', type: 'date', hint: 'Optional — when blank, the Date row is omitted from the header' },
     ],
     // Two pages BY DESIGN: page 1 is the rating grid, page 2 is a full ruled
     // comments page. Anonymous — no name line, no signature block — so the
     // feedback is candid; the candor assurance is stated on the form itself.
     document: {
       appliesTo: 'general',
-      headerFields: [],
+      // Full memo header restored here — page 1 has the room the one-page
+      // exam form didn't (the eval's page 2 is the comments page anyway).
+      headerFields: [
+        { label: 'Class:', value: '{className}' },
+        { label: 'Course:', value: '{course}' },
+        { label: 'Date:', value: '{evalDate}' },
+        { label: 'Re:', value: 'Instructor Evaluation — {instructorName}' },
+      ],
       blocks: [
-        { kind: 'paragraph', text: `INSTRUCTOR EVALUATION — Class: {className}` },
-        { kind: 'paragraph', text: `Topic / Course: {course} · Instructor: {instructorName} · Date: {evalDate}` },
         { kind: 'clause', text: `This evaluation is ANONYMOUS — do not write your name anywhere on it. Your honest assessment is used to develop instructors and improve this program, and has no effect of any kind on your standing in the academy. Mark ONE box for each statement below; written comments on page 2 are strongly encouraged — specific examples of what worked and what should change are the most useful feedback you can give.` },
         {
           kind: 'ratings',
