@@ -48,6 +48,10 @@ export interface MemoDocument {
   distribution?: string[];
   /** Print a small HEIMDALL product-credit line at the very bottom. */
   brandFooter?: boolean;
+  /** Tighter spacing for one-page read-and-sign forms (rules sheets etc.). */
+  compact?: boolean;
+  /** Render a "(Print name)" line ABOVE the acknowledgment signature line. */
+  ackPrintedName?: boolean;
   /** Fill-in values for field spans and jsx render. */
   data?: Record<string, string>;
 }

@@ -61,6 +61,10 @@ export interface DocumentSpec {
   distribution?: string[];
   /** Print the small HEIMDALL credit line at the bottom of the document. */
   brandFooter?: boolean;
+  /** Tighter spacing for one-page read-and-sign forms. */
+  compact?: boolean;
+  /** "(Print name)" line above the acknowledgment signature. */
+  ackPrintedName?: boolean;
 }
 
 export interface ReportType {

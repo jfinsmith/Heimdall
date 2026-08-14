@@ -100,6 +100,8 @@ export function ReportLetter({
       ackSignerLabel: doc.ackSignerLabel || undefined,
       distribution: doc.distribution?.map(resolve),
       brandFooter: doc.brandFooter,
+      compact: doc.compact,
+      ackPrintedName: doc.ackPrintedName,
       data: ctx,
     };
     return <MemoRenderer document={memo} curriculum={curriculum} />;

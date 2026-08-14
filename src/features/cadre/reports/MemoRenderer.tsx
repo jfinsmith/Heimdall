@@ -72,8 +72,11 @@ export function MemoRenderer({
   ];
   const placeholders = Array.from(new Set(placeholderTexts.join('\n').match(/\[[^\]]+\]/g) ?? []));
 
+  // Compact mode (one-page read-and-sign forms): tighter margins throughout.
+  const c = memo.compact === true;
+
   return (
-    <div className="mx-auto max-w-[8.5in] bg-white p-8 text-[11px] leading-snug text-black">
+    <div className={`mx-auto max-w-[8.5in] bg-white ${c ? 'p-5' : 'p-8'} text-[11px] leading-snug text-black`}>
       {placeholders.length > 0 && (
         <div className="mb-4 rounded border-2 border-red-600 bg-red-50 px-3 py-2 text-[10px] font-semibold text-red-800">
           NOT FOR ISSUE — complete the bracketed placeholder(s) before signing: {placeholders.join(' · ')}
@@ -81,24 +84,26 @@ export function MemoRenderer({
       )}
       <DocumentHeader curriculum={curriculum} settings={settings} />
 
-      {/* Memo header */}
-      <div className="mt-5 space-y-1">
-        {memo.headerFields.map((f) => (
-          <HeaderRow key={f.label} label={f.label}>{f.value}</HeaderRow>
-        ))}
-      </div>
+      {/* Memo header (skipped entirely when a document declares no rows) */}
+      {memo.headerFields.length > 0 && (
+        <div className={`${c ? 'mt-3' : 'mt-5'} space-y-1`}>
+          {memo.headerFields.map((f) => (
+            <HeaderRow key={f.label} label={f.label}>{f.value}</HeaderRow>
+          ))}
+        </div>
+      )}
 
-      <hr className="my-3 border-black" />
+      <hr className={`${c ? 'my-2' : 'my-3'} border-black`} />
 
       {/* Body blocks */}
-      <div className="space-y-2 text-justify [&_p]:m-0">
+      <div className={`${c ? 'space-y-1.5' : 'space-y-2'} text-justify [&_p]:m-0`}>
         {memo.blocks.map((b, i) => (
           <Block key={i} block={b} data={data} />
         ))}
       </div>
 
       {/* Authority signature */}
-      <div className="mt-8">
+      <div className={c ? 'mt-5' : 'mt-8'}>
         <div className="flex items-end gap-6">
           <div className="flex-1 border-t border-black pt-0.5">{memo.signerLine}</div>
           <div className="w-28 border-t border-black pt-0.5">Date</div>
@@ -108,8 +113,14 @@ export function MemoRenderer({
       {/* Recipient acknowledgment (optional) */}
       {memo.acknowledgment && (
         <>
-          <p className="mt-6">{memo.acknowledgment}</p>
-          <div className="mt-6 flex items-end gap-6">
+          <p className={c ? 'mt-4' : 'mt-6'}>{memo.acknowledgment}</p>
+          {memo.ackPrintedName && (
+            <div className={`${c ? 'mt-5' : 'mt-6'} flex items-end gap-6`}>
+              <div className="flex-1 border-t border-black pt-0.5">(Print name)</div>
+              <div className="w-28" />
+            </div>
+          )}
+          <div className={`${memo.ackPrintedName ? 'mt-5' : c ? 'mt-4' : 'mt-6'} flex items-end gap-6`}>
             <div className="flex-1 border-t border-black pt-0.5">(Signature)</div>
             <div className="w-28 border-t border-black pt-0.5">Date</div>
           </div>
