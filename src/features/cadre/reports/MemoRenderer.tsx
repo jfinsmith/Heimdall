@@ -77,6 +77,9 @@ export function MemoRenderer({
 
   return (
     <div className={`mx-auto max-w-[8.5in] bg-white ${c ? 'p-5 pb-1' : 'p-8'} text-[11px] leading-snug text-black`}>
+      {/* Compact one-pagers override the browser's default ~1in print margins —
+          Chrome only honors @page at the TOP level, never inside @media print. */}
+      {c && <style>{'@page { margin: 0.45in; }'}</style>}
       {placeholders.length > 0 && (
         <div className="mb-4 rounded border-2 border-red-600 bg-red-50 px-3 py-2 text-[10px] font-semibold text-red-800">
           NOT FOR ISSUE — complete the bracketed placeholder(s) before signing: {placeholders.join(' · ')}
