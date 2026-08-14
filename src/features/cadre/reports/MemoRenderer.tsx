@@ -76,7 +76,7 @@ export function MemoRenderer({
   const c = memo.compact === true;
 
   return (
-    <div className={`mx-auto max-w-[8.5in] bg-white ${c ? 'p-5' : 'p-8'} text-[11px] leading-snug text-black`}>
+    <div className={`mx-auto max-w-[8.5in] bg-white ${c ? 'p-5 pb-1' : 'p-8'} text-[11px] leading-snug text-black`}>
       {placeholders.length > 0 && (
         <div className="mb-4 rounded border-2 border-red-600 bg-red-50 px-3 py-2 text-[10px] font-semibold text-red-800">
           NOT FOR ISSUE — complete the bracketed placeholder(s) before signing: {placeholders.join(' · ')}
@@ -151,7 +151,7 @@ export function MemoRenderer({
 
       {/* HEIMDALL product credit (opt-in per document; org branding stays on top) */}
       {memo.brandFooter && (
-        <div className={`${c ? 'mt-2' : 'mt-4'} border-t border-black/20 pt-1 text-center text-[8px] tracking-wide text-black/60`}>
+        <div className={`${c ? 'mt-1' : 'mt-4 border-t border-black/20 pt-1'} text-center text-[8px] tracking-wide text-black/60`}>
           Generated with HEIMDALL Scheduling · heimdallscheduling.com
         </div>
       )}
