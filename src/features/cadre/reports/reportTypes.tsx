@@ -65,6 +65,8 @@ export interface DocumentSpec {
   compact?: boolean;
   /** "(Print name)" line above the acknowledgment signature. */
   ackPrintedName?: boolean;
+  /** Initials box at the bottom right (label under the box). */
+  initialsBoxLabel?: string;
 }
 
 export interface ReportType {

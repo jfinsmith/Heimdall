@@ -102,6 +102,7 @@ export function ReportLetter({
       brandFooter: doc.brandFooter,
       compact: doc.compact,
       ackPrintedName: doc.ackPrintedName,
+      initialsBoxLabel: doc.initialsBoxLabel,
       data: ctx,
     };
     return <MemoRenderer document={memo} curriculum={curriculum} />;

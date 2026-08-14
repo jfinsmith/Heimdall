@@ -34,7 +34,6 @@ export const DOCUMENT_TYPES: ReportType[] = [
       { key: 'questionCount', label: 'Number of questions', type: 'number', required: true },
       { key: 'minutes', label: 'Time limit (minutes)', type: 'number', required: true },
       { key: 'passingScore', label: 'Minimum passing score (%)', type: 'number', required: true, default: '80' },
-      { key: 'signerTitle', label: 'Issuing Authority Title', type: 'select', required: true, hint: 'Title under the authority signature', options: ['Examination Proctor', 'Training Coordinator', 'Lead Instructor', 'Academy Director'] },
     ],
     // ONE PAGE by design: no memo-header block (class/course/date live in the
     // title line), compact spacing, and forms are handed out blank — each
@@ -46,23 +45,27 @@ export const DOCUMENT_TYPES: ReportType[] = [
         { kind: 'paragraph', text: `EXAMINATION RULES & DISCLOSURE — Class: {className} · Course: {course} · Examination date: {examDate}` },
         { kind: 'paragraph', text: `INSTRUCTIONS. This examination consists of {questionCount} questions with a time limit of {minutes} minutes, measured from the proctor's start signal. The minimum passing score is {passingScore}%. Record your answers exactly as the proctor instructs. If you finish early, remain seated and silent until your materials are collected or the proctor releases you.` },
         { kind: 'clause', text: `1. TESTING CONDITIONS. Testing conditions begin when examination materials are distributed and remain in effect until every examination in the room has been collected. These rules bind every examinee for that entire period, including those who have finished.` },
-        { kind: 'clause', text: `2. ELECTRONIC DEVICES. Every device capable of storing, receiving, or transmitting information — phones, smart watches, earpieces, and the like — must be powered off and stowed or surrendered as the proctor directs before materials are distributed. Possession at the testing station during testing conditions is a violation whether or not the device is used.` },
+        { kind: 'clause', text: `2. ELECTRONIC DEVICES. Every device capable of storing, receiving, or transmitting information — phones, smart watches, earpieces — must be powered off and stowed or surrendered as the proctor directs before materials are distributed. Possession at the testing station is a violation whether or not the device is used.` },
         { kind: 'clause', text: `3. PERMITTED MATERIALS. Nothing may be at the testing station except materials the proctor issued for this examination. Issued scratch paper is examination material and must be returned.` },
         { kind: 'clause', text: `4. COMMUNICATION. Once materials are distributed, examinees may communicate only with the proctor — no speech, writing, gestures, or signals to anyone else. Raise a hand to speak privately with the proctor, who may clarify administration only, never examination content.` },
         { kind: 'clause', text: `5. INDIVIDUAL WORK. Keep your eyes on your own examination. Conduct a reasonable proctor would interpret as giving or receiving assistance — including positioning materials where another examinee can see them — is treated as a violation.` },
         { kind: 'clause', text: `6. LEAVING THE ROOM. Leaving the room before submitting your examination ends it, unless the proctor expressly authorized the absence beforehand; materials are collected as submitted.` },
         { kind: 'clause', text: `7. TIME. When time is called, stop immediately, put writing instruments down, and follow the proctor's collection instructions. Working after time is called is a violation.` },
-        { kind: 'clause', text: `8. EXAMINATION SECURITY. All examination materials remain academy property. Copying, photographing, transcribing, or removing examination content in any form is prohibited — as is disclosing or discussing it with anyone, including examinees in this or any other class who have not yet tested, before the academy officially releases it.` },
-        { kind: 'clause', text: `9. ACADEMIC HONESTY. Cheating, attempting to cheat, or knowingly giving or receiving unauthorized assistance — before, during, or after the examination — is grounds for a failing grade on this examination and disciplinary action under the Academy Cadet Manual and applicable academy policy, up to and including dismissal, documented in the examinee's training file. An employing or sponsoring agency may be notified consistent with academy policy.` },
+        { kind: 'clause', text: `8. EXAMINATION SECURITY. All examination materials remain academy property. Copying, photographing, transcribing, or removing examination content in any form is prohibited — as is discussing or disclosing it to anyone, including examinees who have not yet tested, before the academy officially releases it.` },
+        { kind: 'clause', text: `9. ACADEMIC HONESTY. Cheating, attempting to cheat, or knowingly giving or receiving unauthorized assistance — before, during, or after the examination — is grounds for a failing grade and disciplinary action under the Academy Cadet Manual and applicable academy policy, up to and including dismissal, documented in the training file. An employing or sponsoring agency may be notified consistent with academy policy.` },
         { kind: 'clause', text: `10. ACCOMMODATIONS. Approved testing accommodations must be arranged with academy staff before the examination begins; they cannot be requested or modified once testing conditions are in effect.` },
         { kind: 'clause', text: `11. ADMINISTRATION. The proctor's rulings on administration take effect immediately. An examinee who believes a rule was misapplied must comply first and may raise the concern with the Training Coordinator afterward — a dispute never excuses compliance during testing.` },
       ],
-      signerLine: '{fromName}, {signerTitle}',
+      // No authority signature — the Training Coordinator initials the box at
+      // the bottom right instead (initialsBoxLabel), leaving the signing room
+      // to the examinee.
+      signerLine: '',
       acknowledgment:
-        'By signing below, I certify that I have read these Examination Rules and this disclosure (or had them read to me), that I had the opportunity to ask questions about them before the examination began, that I understand them, and that I agree to comply with them. I understand that a violation may result in a failing grade on this examination and in disciplinary action up to and including dismissal from the academy under the Academy Cadet Manual and applicable academy policy, and that examination content is confidential.',
+        'By signing below, I certify that I have read these Examination Rules (or had them read to me), had the opportunity to ask questions before the examination began, understand them, and agree to comply with them. I understand a violation may result in a failing grade on this examination and disciplinary action up to and including dismissal under the Academy Cadet Manual and applicable academy policy, and that examination content is confidential.',
       ackSignerLabel: 'Examinee',
       ackPrintedName: true,
       distribution: ['Class File', 'Training File'],
+      initialsBoxLabel: 'Training Coordinator initials',
       brandFooter: true,
       compact: true,
     },

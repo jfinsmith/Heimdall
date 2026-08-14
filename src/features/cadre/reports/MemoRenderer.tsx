@@ -102,25 +102,28 @@ export function MemoRenderer({
         ))}
       </div>
 
-      {/* Authority signature */}
-      <div className={c ? 'mt-5' : 'mt-8'}>
-        <div className="flex items-end gap-6">
-          <div className="flex-1 border-t border-black pt-0.5">{memo.signerLine}</div>
-          <div className="w-28 border-t border-black pt-0.5">Date</div>
+      {/* Authority signature (skipped when the document declares no signer line) */}
+      {memo.signerLine && (
+        <div className={c ? 'mt-5' : 'mt-8'}>
+          <div className="flex items-end gap-6">
+            <div className="flex-1 border-t border-black pt-0.5">{memo.signerLine}</div>
+            <div className="w-28 border-t border-black pt-0.5">Date</div>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Recipient acknowledgment (optional) */}
+      {/* Recipient acknowledgment (optional). The signing lines get GENEROUS
+          gaps even in compact mode — people hand-write on these. */}
       {memo.acknowledgment && (
         <>
           <p className={c ? 'mt-4' : 'mt-6'}>{memo.acknowledgment}</p>
           {memo.ackPrintedName && (
-            <div className={`${c ? 'mt-5' : 'mt-6'} flex items-end gap-6`}>
+            <div className="mt-8 flex items-end gap-6">
               <div className="flex-1 border-t border-black pt-0.5">(Print name)</div>
               <div className="w-28" />
             </div>
           )}
-          <div className={`${memo.ackPrintedName ? 'mt-5' : c ? 'mt-4' : 'mt-6'} flex items-end gap-6`}>
+          <div className={`${memo.ackPrintedName ? 'mt-8' : c ? 'mt-4' : 'mt-6'} flex items-end gap-6`}>
             <div className="flex-1 border-t border-black pt-0.5">(Signature)</div>
             <div className="w-28 border-t border-black pt-0.5">Date</div>
           </div>
@@ -128,19 +131,27 @@ export function MemoRenderer({
         </>
       )}
 
-      {/* Distribution footer (optional) */}
-      {memo.distribution && memo.distribution.length > 0 && (
-        <div className="mt-6 text-[9px] text-black/80">
-          {memo.distribution.map((d, i) => (
-            <div key={i}>{d}</div>
-          ))}
-          <div className="mt-1 font-semibold">{memo.reSubject}</div>
+      {/* Distribution footer + optional initials box (bottom right) */}
+      {((memo.distribution && memo.distribution.length > 0) || memo.initialsBoxLabel) && (
+        <div className={`${c ? 'mt-3' : 'mt-6'} flex items-end justify-between gap-4`}>
+          <div className="text-[9px] text-black/80">
+            {(memo.distribution ?? []).map((d, i) => (
+              <div key={i}>{d}</div>
+            ))}
+            <div className="mt-1 font-semibold">{memo.reSubject}</div>
+          </div>
+          {memo.initialsBoxLabel && (
+            <div className="shrink-0 text-center">
+              <div className="h-11 w-24 border border-black" />
+              <div className="mt-0.5 text-[8px]">{memo.initialsBoxLabel}</div>
+            </div>
+          )}
         </div>
       )}
 
       {/* HEIMDALL product credit (opt-in per document; org branding stays on top) */}
       {memo.brandFooter && (
-        <div className="mt-4 border-t border-black/20 pt-1 text-center text-[8px] tracking-wide text-black/60">
+        <div className={`${c ? 'mt-2' : 'mt-4'} border-t border-black/20 pt-1 text-center text-[8px] tracking-wide text-black/60`}>
           Generated with HEIMDALL Scheduling · heimdallscheduling.com
         </div>
       )}

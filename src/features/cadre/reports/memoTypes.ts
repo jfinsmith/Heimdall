@@ -52,6 +52,9 @@ export interface MemoDocument {
   compact?: boolean;
   /** Render a "(Print name)" line ABOVE the acknowledgment signature line. */
   ackPrintedName?: boolean;
+  /** Small initials box at the bottom right (label under the box), e.g.
+   *  "Training Coordinator initials". Renders beside the distribution lines. */
+  initialsBoxLabel?: string;
   /** Fill-in values for field spans and jsx render. */
   data?: Record<string, string>;
 }
