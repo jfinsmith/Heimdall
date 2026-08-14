@@ -22,6 +22,54 @@ import type { ReportType } from './reportTypes';
 
 export const DOCUMENT_TYPES: ReportType[] = [
   {
+    id: 'exam_rules',
+    name: 'Examination Rules & Disclosure',
+    purpose:
+      'Read-and-sign examination rules with fillable question count, time limit, and passing score — collected from each examinee before a written examination and filed as proof the rules were disclosed before testing began.',
+    reSubject: 'Examination Rules & Disclosure — {course}',
+    fields: [
+      { key: 'course', label: 'Course being examined', type: 'course', required: true, hint: 'From this academy\'s curriculum — prints in the document header' },
+      { key: 'className', label: 'Academy class', type: 'text', required: true, defaultFrom: 'className', hint: 'Class designation — auto-filled from this academy' },
+      { key: 'examDate', label: 'Examination date', type: 'date', hint: 'Optional — leave blank when issuing same-day (the Date row already shows today)' },
+      { key: 'questionCount', label: 'Number of questions', type: 'number', required: true },
+      { key: 'minutes', label: 'Time limit (minutes)', type: 'number', required: true },
+      { key: 'passingScore', label: 'Minimum passing score (%)', type: 'number', required: true, default: '80' },
+      { key: 'examineeName', label: 'Examinee name', type: 'text', hint: 'Leave blank to print a blank line each examinee hand-prints their name on' },
+      { key: 'signerTitle', label: 'Issuing Authority Title', type: 'select', required: true, hint: 'Title under the authority signature', options: ['Examination Proctor', 'Training Coordinator', 'Lead Instructor', 'Academy Director'] },
+    ],
+    document: {
+      appliesTo: 'general',
+      headerFields: [
+        { label: 'Class:', value: '{className}' },
+        { label: 'Course:', value: '{course}' },
+        { label: 'Exam:', value: '{examDate}' },
+        { label: 'Date:', value: '{memoDate}' },
+        { label: 'Re:', value: 'Examination Rules & Conduct Disclosure' },
+      ],
+      blocks: [
+        { kind: 'paragraph', text: `EXAMINATION INSTRUCTIONS — This examination for {course} consists of {questionCount} questions. You will have {minutes} minutes to complete it, measured from the proctor's start signal. The minimum passing score is {passingScore}%. Read each question carefully and record your answers exactly as the proctor instructs. If you finish early, remain seated and silent until your materials are collected or the proctor releases you.` },
+        { kind: 'clause', text: `1. TESTING CONDITIONS. Once examination materials are distributed, testing conditions are in effect until every examination in the room has been collected. These rules apply for that entire period, including to examinees who have finished.` },
+        { kind: 'clause', text: `2. ELECTRONIC DEVICES. Every electronic device — including phones, smart watches, earpieces, and any device capable of storing, receiving, or transmitting information — must be powered off and stowed or surrendered as the proctor directs before materials are distributed. Possession of any such device at the testing station during testing conditions is a violation of these rules whether or not it is used.` },
+        { kind: 'clause', text: `3. PERMITTED MATERIALS. Nothing may be at the testing station except materials issued by the proctor for this examination. Any scratch paper issued is examination material and must be returned with the examination.` },
+        { kind: 'clause', text: `4. COMMUNICATION. From the moment materials are distributed, examinees may not communicate with anyone other than the proctor — by speech, writing, gesture, or any other means. Raise a hand to speak privately with the proctor; the proctor may clarify administration only, never examination content.` },
+        { kind: 'clause', text: `5. INDIVIDUAL WORK. Keep your eyes on your own examination. Looking toward another examinee's materials, positioning materials so another examinee can observe them, or any conduct a reasonable proctor would interpret as giving or receiving assistance is treated as a violation.` },
+        { kind: 'clause', text: `6. LEAVING THE ROOM. An examinee who leaves the room for any reason before submitting their examination may not resume testing unless the proctor expressly authorized it before the examinee exited. Unauthorized departure ends the examination, and the materials are collected as submitted.` },
+        { kind: 'clause', text: `7. TIME. When time is called, stop working immediately, put writing instruments down, and follow the proctor's collection instructions. Continuing to work after time is called is a violation.` },
+        { kind: 'clause', text: `8. EXAMINATION SECURITY. All examination materials remain the property of the academy. Copying, photographing, transcribing, or removing examination content in any form is prohibited. Disclosing or discussing examination content with any person — including examinees in this or any other class who have not yet tested — before the academy officially releases that content is prohibited and compromises the integrity of the examination for every class that uses it.` },
+        { kind: 'clause', text: `9. ACADEMIC HONESTY. Cheating, attempting to cheat, or knowingly giving or receiving unauthorized assistance — before, during, or after the examination — is academic dishonesty. A violation of these rules is grounds for a failing grade on this examination and for disciplinary action under the Academy Cadet Manual and applicable academy policy, up to and including dismissal from the academy, and will be documented in the examinee's training file. Where an examinee is employed or sponsored by an agency, the academy may notify that agency consistent with its policies.` },
+        { kind: 'clause', text: `10. ACCOMMODATIONS. Approved testing accommodations must be arranged with academy staff before the examination begins, in accordance with academy policy. Accommodations cannot be requested or modified once testing conditions are in effect.` },
+        { kind: 'clause', text: `11. ADMINISTRATION. The proctor's rulings on the administration of this examination take effect immediately when made. An examinee who believes a rule was applied in error must comply first and may raise the concern with the Training Coordinator after the examination; a concern about administration never excuses compliance during testing.` },
+        { kind: 'paragraph', text: `Examinee (print name): {examineeName}` },
+      ],
+      signerLine: '{fromName}, {signerTitle}',
+      acknowledgment:
+        'By signing below, I certify that I have read these Examination Rules and this disclosure (or had them read to me), that I had the opportunity to ask questions about them before the examination began, that I understand them, and that I agree to comply with them. I understand that a violation may result in a failing grade on this examination and in disciplinary action up to and including dismissal from the academy under the Academy Cadet Manual and applicable academy policy, and that examination content is confidential.',
+      ackSignerLabel: 'Examinee',
+      distribution: ['Class File', 'Training File'],
+      brandFooter: true,
+    },
+  },
+  {
     id: 'crossover_transfer',
     name: 'Crossover / Blackbird Transfer Memo',
     purpose: 'Certifies a cadet completed a course (hours + passing written-exam score) with THIS class, addressed to the cadet\'s ORIGINAL class, so the credit transfers (crossover / blackbird) to their file.',

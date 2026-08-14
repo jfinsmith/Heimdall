@@ -46,6 +46,8 @@ export interface MemoDocument {
   ackSignerLabel?: string;
   /** Optional distribution footer lines. */
   distribution?: string[];
+  /** Print a small HEIMDALL product-credit line at the very bottom. */
+  brandFooter?: boolean;
   /** Fill-in values for field spans and jsx render. */
   data?: Record<string, string>;
 }

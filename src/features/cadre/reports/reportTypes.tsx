@@ -59,6 +59,8 @@ export interface DocumentSpec {
   acknowledgment?: string;
   ackSignerLabel?: string;
   distribution?: string[];
+  /** Print the small HEIMDALL credit line at the bottom of the document. */
+  brandFooter?: boolean;
 }
 
 export interface ReportType {

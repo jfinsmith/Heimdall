@@ -99,6 +99,7 @@ export function ReportLetter({
       acknowledgment: doc.acknowledgment ? resolve(doc.acknowledgment) : undefined,
       ackSignerLabel: doc.ackSignerLabel || undefined,
       distribution: doc.distribution?.map(resolve),
+      brandFooter: doc.brandFooter,
       data: ctx,
     };
     return <MemoRenderer document={memo} curriculum={curriculum} />;

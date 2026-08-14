@@ -126,6 +126,13 @@ export function MemoRenderer({
           <div className="mt-1 font-semibold">{memo.reSubject}</div>
         </div>
       )}
+
+      {/* HEIMDALL product credit (opt-in per document; org branding stays on top) */}
+      {memo.brandFooter && (
+        <div className="mt-4 border-t border-black/20 pt-1 text-center text-[8px] tracking-wide text-black/60">
+          Generated with HEIMDALL Scheduling · heimdallscheduling.com
+        </div>
+      )}
     </div>
   );
 }
