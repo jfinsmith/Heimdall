@@ -94,7 +94,13 @@ export function ReportLetter({
       headerFields: doc.headerFields
         .map((h) => ({ label: h.label, value: resolve(h.value).replace(/^[\s,]+|[\s,]+$/g, '') }))
         .filter((h) => h.value !== ''),
-      blocks: doc.blocks.map<MemoBlock>((b) => ({ kind: b.kind, spans: toSpans(b.text) })),
+      blocks: doc.blocks.map<MemoBlock>((b) => ({
+        kind: b.kind,
+        spans: toSpans(b.text),
+        ...(b.items ? { items: b.items } : {}),
+        ...(b.scale ? { scale: b.scale } : {}),
+        ...(b.lines ? { lines: b.lines } : {}),
+      })),
       signerLine: resolve(doc.signerLine),
       acknowledgment: doc.acknowledgment ? resolve(doc.acknowledgment) : undefined,
       ackSignerLabel: doc.ackSignerLabel || undefined,

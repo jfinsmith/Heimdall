@@ -44,8 +44,14 @@ export interface ReportField {
  * authority/deadline) are required form fields filled at issue time.
  */
 export interface DocBlock {
-  kind: 'paragraph' | 'clause';
+  kind: 'paragraph' | 'clause' | 'ratings' | 'notesPage';
+  /** paragraph/clause body; for notesPage, the page heading. */
   text: string;
+  /** ratings: statements (rows) + scale (columns, best first). */
+  items?: string[];
+  scale?: string[];
+  /** notesPage: ruled writing lines (default 26); starts on a fresh page. */
+  lines?: number;
 }
 export interface DocumentSpec {
   /** Drives the form (cadet recipient vs. file/general) and the record label. */

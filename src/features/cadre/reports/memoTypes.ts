@@ -20,11 +20,18 @@ import React from 'react';
 export type MemoSpan = string | { field: string; transform?: 'code' };
 
 export interface MemoBlock {
-  kind: 'paragraph' | 'clause' | 'jsx';
-  /** For paragraph/clause: the ordered spans. */
+  kind: 'paragraph' | 'clause' | 'jsx' | 'ratings' | 'notesPage';
+  /** For paragraph/clause (and the notesPage heading): the ordered spans. */
   spans?: MemoSpan[];
   /** For jsx: a render function fed the document's fill-in data. */
   render?: (data: Record<string, string>) => React.ReactNode;
+  /** For ratings: the statements being rated (one table row each). */
+  items?: string[];
+  /** For ratings: the scale columns, best first (e.g. "5 — Excellent"). */
+  scale?: string[];
+  /** For notesPage: how many ruled writing lines (default 26). Starts on a
+   *  fresh printed page (break-before). */
+  lines?: number;
 }
 
 export interface MemoHeaderField {

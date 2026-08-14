@@ -39,6 +39,53 @@ function Span({ span, data }: { span: MemoSpan; data: Record<string, string> }) 
 
 function Block({ block, data }: { block: MemoBlock; data: Record<string, string> }) {
   if (block.kind === 'jsx') return <>{block.render?.(data)}</>;
+  if (block.kind === 'ratings') {
+    // Rating grid: statements down the side, the scale across the top, an empty
+    // box per cell for the respondent to mark on the printed form.
+    return (
+      <table className="w-full border-collapse border border-black text-left">
+        <thead>
+          <tr>
+            <th className="border border-black px-1.5 py-1 font-semibold">Statement</th>
+            {(block.scale ?? []).map((s) => (
+              <th key={s} className="w-[4.2rem] border border-black px-1 py-1 text-center text-[9px] font-semibold leading-tight">
+                {s}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {(block.items ?? []).map((item, i) => (
+            <tr key={i}>
+              <td className="border border-black px-1.5 py-1">{i + 1}. {item}</td>
+              {(block.scale ?? []).map((s) => (
+                <td key={s} className="border border-black text-center align-middle">
+                  <span className="inline-block h-3.5 w-3.5 border border-black align-middle" />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    );
+  }
+  if (block.kind === 'notesPage') {
+    // Fresh printed page of ruled writing lines under a heading.
+    return (
+      <div style={{ breakBefore: 'page' }}>
+        <p className="font-semibold">
+          {(block.spans ?? []).map((s, i) => (
+            <Span key={i} span={s} data={data} />
+          ))}
+        </p>
+        <div className="mt-3">
+          {Array.from({ length: block.lines ?? 26 }, (_, i) => (
+            <div key={i} className="h-[0.34in] border-b border-black/70" />
+          ))}
+        </div>
+      </div>
+    );
+  }
   // paragraph and clause render identically here; 'clause' is metadata that
   // marks the text as locked (uneditable) for the future document builder.
   return (

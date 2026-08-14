@@ -72,6 +72,54 @@ export const DOCUMENT_TYPES: ReportType[] = [
     },
   },
   {
+    id: 'instructor_evaluation',
+    updated: '2026-08-14',
+    name: 'Instructor Evaluation',
+    purpose:
+      'Anonymous end-of-topic evaluation each cadet completes on the instructor who delivered the block — a rating grid plus a full comments page — collected by the Training Coordinator for the instructor-development record.',
+    reSubject: 'Instructor Evaluation — {course}',
+    fields: [
+      { key: 'course', label: 'Topic / course evaluated', type: 'course', required: true, hint: 'From this academy\'s curriculum — prints in the title line' },
+      { key: 'className', label: 'Academy class', type: 'text', required: true, defaultFrom: 'className', hint: 'Class designation — auto-filled from this academy' },
+      { key: 'instructorName', label: 'Instructor being evaluated', type: 'text', required: true, hint: 'Print one evaluation per instructor when a topic had several' },
+      { key: 'evalDate', label: 'Evaluation date', type: 'date', hint: 'Optional — leave blank to hand-write on the printed form' },
+    ],
+    // Two pages BY DESIGN: page 1 is the rating grid, page 2 is a full ruled
+    // comments page. Anonymous — no name line, no signature block — so the
+    // feedback is candid; the candor assurance is stated on the form itself.
+    document: {
+      appliesTo: 'general',
+      headerFields: [],
+      blocks: [
+        { kind: 'paragraph', text: `INSTRUCTOR EVALUATION — Class: {className}` },
+        { kind: 'paragraph', text: `Topic / Course: {course} · Instructor: {instructorName} · Date: {evalDate}` },
+        { kind: 'clause', text: `This evaluation is ANONYMOUS — do not write your name anywhere on it. Your honest assessment is used to develop instructors and improve this program, and has no effect of any kind on your standing in the academy. Mark ONE box for each statement below; written comments on page 2 are strongly encouraged — specific examples of what worked and what should change are the most useful feedback you can give.` },
+        {
+          kind: 'ratings',
+          text: '',
+          scale: ['5 — Excellent', '4 — Good', '3 — Satisfactory', '2 — Needs improvement', '1 — Unsatisfactory'],
+          items: [
+            'Demonstrated thorough, current knowledge of the subject matter.',
+            'Presented the material in an organized, understandable sequence.',
+            'Explained how the material applies to the duties of a criminal justice officer.',
+            'Encouraged questions and answered them clearly and respectfully.',
+            'Used training aids, demonstrations, and practical examples effectively.',
+            'Managed class time well and covered the published material.',
+            'Maintained a professional and respectful learning environment for every student.',
+            'Enforced safety rules and corrected unsafe conditions immediately.',
+            'Was prepared, punctual, and professional throughout the topic.',
+            'Overall effectiveness of this instructor for this topic.',
+          ],
+        },
+        { kind: 'notesPage', text: `CADET COMMENTS — {course} · Instructor: {instructorName}`, lines: 26 },
+      ],
+      signerLine: '',
+      distribution: ['Training Coordinator — Instructor Development File'],
+      brandFooter: true,
+      compact: true,
+    },
+  },
+  {
     id: 'crossover_transfer',
     updated: '2026-07-01',
     name: 'Crossover / Blackbird Transfer Memo',

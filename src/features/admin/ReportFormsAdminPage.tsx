@@ -45,6 +45,7 @@ function sampleValue(f: ReportField): string {
   if (k.includes('sequence')) return '65-2026-2010-3';
   if (k.includes('classname') || k.includes('class')) return 'LE 132 65-2026-2010-3';
   if (k.includes('agency')) return "Sample County Sheriff's Office";
+  if (k.includes('instructor')) return 'Ofc. Alex Sample';
   if (k.includes('name') || k.includes('recipient')) return 'John Q. Sample';
   if (k.includes('subject')) return 'Sample subject line';
   return 'Sample';
