@@ -145,7 +145,10 @@ export function HowToPage() {
           <Sub title="Qualifications & instructor certification">
             <p>
               Open <B>Profile</B> to claim qualifications (General Instructor, Handgun, Defensive Tactics, Vehicle Ops, First Aid, Role Player…).
-              Claims start unverified — an admin verifies them under <B>Admin → Users &amp; Roles</B>. All FDLE instructor certs share one
+              Claims start unverified — an admin verifies them under <B>Admin → Users &amp; Roles</B>. Claiming
+              <B> First Aid / CPR</B> asks for your CPR card&apos;s expiration date and a photo of the card (name and
+              date visible); if you can&apos;t upload one, you can ask staff to confirm from college records — but the
+              request is denied if no card is on file. All FDLE instructor certs share one
               <B> certification expiration date</B> on your profile; when it lapses, you can&apos;t be reserved or sign up for qualified slots until it&apos;s renewed.
               Removing a qualification takes effect immediately (re-verification is required to get it back).
             </p>

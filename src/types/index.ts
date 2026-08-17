@@ -148,6 +148,13 @@ export interface UserDoc {
    * Tracked with expiry coloring on Roster & Certifications.
    */
   cprInstructorExpires?: Timestamp;
+  /** CPR card photo (Storage URL, certCards/{orgId}/{uid}/…) the member
+   *  uploaded when claiming First Aid / CPR — must show their name and the
+   *  expiration date; staff view it when verifying. */
+  cprCardUrl?: string;
+  /** Member could not upload a card and asked staff to confirm from college
+   *  records instead — verification is DENIED if no card is on record. */
+  cprCardWaiver?: boolean;
   notificationPrefs: NotificationPrefs;
   /** Full days the user marked unavailable to work (yyyy-mm-dd, local). Web-only:
    *  Browse Open Sessions hides open sessions on these days. */

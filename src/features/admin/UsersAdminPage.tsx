@@ -1038,6 +1038,22 @@ function QualificationsModal({ user, onClose }: { user: WithId<UserDoc>; onClose
                       Save
                     </Button>
                     {savedCpr && <span className="text-green-700">Saved.</span>}
+                    {user.cprCardUrl && (
+                      <a
+                        href={user.cprCardUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium text-bifrost-700 hover:underline"
+                      >
+                        View CPR card ↗
+                      </a>
+                    )}
+                    {!user.cprCardUrl && user.cprCardWaiver && (
+                      <span className="w-full font-medium text-amber-700">
+                        No card uploaded — the member asks staff to confirm from college records. DENY the claim if no
+                        card is on record.
+                      </span>
+                    )}
                   </div>
                 )}
               </li>

@@ -13,7 +13,10 @@ import { useAuth } from '../../auth/AuthContext';
 import { useOrg } from '../../lib/useOrg';
 import type { Qualification, QualificationKey, Role } from '../../types';
 import { QUALIFICATION_LABELS, isInstructorQual, EMAIL_AUTOMATIONS, STAFF_ROLES, ADMIN_ROLES } from '../../types';
-import { certYearOf, march31, tsFromDate } from '../../lib/time';
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { storage } from '../../lib/firebase';
+import { Modal } from '../../components/Modal';
+import { certYearOf, march31, tsFromDate, combineDateTime } from '../../lib/time';
 import { useAllCurricula, baseCurriculumKey } from '../../lib/curricula';
 import { formatPhone } from '../../lib/format';
 import { Badge, Button, Field, Input, PageHeader } from '../../components/ui';
@@ -37,6 +40,7 @@ export function ProfilePage() {
   );
   const [certSaved, setCertSaved] = useState(false);
   const [tab, setTab] = useState<'profile' | 'notifications' | 'quals'>('profile');
+  const [claimCprOpen, setClaimCprOpen] = useState(false);
 
   if (!firebaseUser || !profile) return null;
 
@@ -67,6 +71,12 @@ export function ProfilePage() {
 
   async function claimQualification(key: QualificationKey) {
     if (profile!.qualifications.some((q) => q.key === key)) return;
+    // First Aid / CPR has its own claim flow: the member must supply their CPR
+    // card expiration and (ideally) a photo of the card before the claim files.
+    if (key === 'first_aid') {
+      setClaimCprOpen(true);
+      return;
+    }
     const next: Qualification[] = [
       ...profile!.qualifications,
       { key, label: QUALIFICATION_LABELS[key], verified: false },
@@ -240,7 +250,103 @@ export function ProfilePage() {
         </ul>
       </section>
       )}
+      {claimCprOpen && <ClaimCprModal onClose={() => setClaimCprOpen(false)} />}
     </div>
+  );
+}
+
+/**
+ * Claiming First Aid / CPR Instructor requires the member's own CPR card
+ * expiration date plus, ideally, a photo of the card (name + expiration
+ * visible) — staff verify against it. The member may instead check "unable to
+ * upload" to ask staff to confirm from college records, with the explicit
+ * warning that the request is DENIED if no card is on record.
+ */
+function ClaimCprModal({ onClose }: { onClose: () => void }) {
+  const { firebaseUser, profile } = useAuth();
+  const [cprDate, setCprDate] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [waiver, setWaiver] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!firebaseUser || !profile) return null;
+
+  const dateValid = /^\d{4}-\d{2}-\d{2}$/.test(cprDate);
+  const canSubmit = dateValid && (file !== null || waiver);
+
+  async function submit() {
+    setError(null);
+    setBusy(true);
+    try {
+      let cardUrl: string | null = null;
+      if (file && !waiver) {
+        const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+        const r = storageRef(storage, `certCards/${profile!.orgId}/${firebaseUser!.uid}/cpr-${Date.now()}.${ext}`);
+        await uploadBytes(r, file, { contentType: file.type });
+        cardUrl = await getDownloadURL(r);
+      }
+      const next: Qualification[] = [
+        ...profile!.qualifications,
+        { key: 'first_aid', label: QUALIFICATION_LABELS.first_aid, verified: false },
+      ];
+      await updateDoc(doc(db, 'users', firebaseUser!.uid), {
+        qualifications: next,
+        cprInstructorExpires: tsFromDate(combineDateTime(cprDate, '00:00')),
+        ...(cardUrl ? { cprCardUrl: cardUrl, cprCardWaiver: false } : { cprCardWaiver: true }),
+        updatedAt: serverTimestamp(),
+      });
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save the claim.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Claim First Aid / CPR Instructor">
+      <div className="space-y-4">
+        {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
+        <p className="text-sm text-slate-600">
+          First Aid / CPR Instructor requires a <strong>current CPR instructor certification</strong>. Enter your
+          card&apos;s expiration date and upload a photo of the card — your <strong>name and the expiration
+          date must be visible</strong> in the photo — so a coordinator can verify it.
+        </p>
+        <Field label="Your CPR instructor card expires" hint="Required — from the card itself">
+          <Input type="date" value={cprDate} onChange={(e) => setCprDate(e.target.value)} style={{ width: '12rem' }} />
+        </Field>
+        <Field label="Photo of your CPR card" hint="Image up to 10 MB — name and expiration date visible">
+          <input
+            type="file"
+            accept="image/*"
+            disabled={waiver}
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            className="block text-sm text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-watch-100 file:px-3 file:py-1.5 file:text-sm file:text-watch-800 disabled:opacity-50"
+          />
+        </Field>
+        <label className="flex items-start gap-2 text-sm text-watch-800">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={waiver}
+            onChange={(e) => { setWaiver(e.target.checked); if (e.target.checked) setFile(null); }}
+          />
+          <span>I am unable to upload a photo at this time and request college staff confirm my certification.</span>
+        </label>
+        {waiver && (
+          <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            ⚠ Staff will check the college&apos;s records for a copy of your CPR card. If we do <strong>not</strong> have
+            a copy of your card on record, your verification request will be <strong>denied</strong>.
+          </div>
+        )}
+        <div className="flex items-center justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" disabled={busy || !canSubmit} onClick={submit}>
+            {busy ? 'Submitting…' : 'Claim qualification'}
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

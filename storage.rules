@@ -53,6 +53,22 @@ service firebase.storage {
       allow delete: if isStaff() && orgId == request.auth.token.get('orgId', null);
     }
 
+    // Certification card photos (CPR cards etc.), partitioned by tenant:
+    // certCards/{orgId}/{uid}/… The member uploads their OWN card when claiming
+    // a qualification; same-tenant STAFF read it to verify (coordinators verify
+    // quals, not just admins). Images only, ≤ 10 MB.
+    match /certCards/{orgId}/{uid}/{allPaths=**} {
+      allow read: if (isStaff() && orgId == request.auth.token.get('orgId', null))
+        || (signedIn() && request.auth.uid == uid);
+      allow write: if signedIn()
+        && request.auth.uid == uid
+        && orgId == request.auth.token.get('orgId', null)
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      allow delete: if (isAdmin() && orgId == request.auth.token.get('orgId', null))
+        || (signedIn() && request.auth.uid == uid);
+    }
+
     // Everything else: locked down by default.
     match /{allPaths=**} {
       allow read, write: if false;
