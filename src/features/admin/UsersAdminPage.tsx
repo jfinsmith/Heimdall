@@ -857,6 +857,9 @@ function QualificationsModal({ user, onClose }: { user: WithId<UserDoc>; onClose
   const [error, setError] = useState<string | null>(null);
   const [savedCert, setSavedCert] = useState(false);
   const [savedCpr, setSavedCpr] = useState(false);
+  // Reveals the CPR strip on an UNCLAIMED First Aid row — an admin adding the
+  // qual directly still has to record the CPR expiration before verifying.
+  const [cprOpen, setCprOpen] = useState(false);
 
   const yearNum = parseInt(certYear, 10);
   const certValid = yearNum >= 2000 && yearNum <= 2100;
@@ -912,8 +915,10 @@ function QualificationsModal({ user, onClose }: { user: WithId<UserDoc>; onClose
     }
     // First Aid / CPR has a SECOND gate: the verifier must confirm the member
     // is a current CPR instructor by recording that card's expiration date.
+    // On an unclaimed row the field is hidden — reveal it instead of dead-ending.
     if (on && key === 'first_aid' && !cprValid) {
-      setError('Enter their CPR instructor expiration date first — First Aid / CPR verification requires confirming a current CPR instructor cert.');
+      setCprOpen(true);
+      setError('Enter their CPR instructor expiration date below, then Verify — First Aid / CPR requires confirming a current CPR instructor cert.');
       return;
     }
     setError(null);
@@ -1025,7 +1030,7 @@ function QualificationsModal({ user, onClose }: { user: WithId<UserDoc>; onClose
                     </Button>
                   )}
                 </span>
-                {key === 'first_aid' && q && (
+                {key === 'first_aid' && (q || cprOpen) && (
                   // CPR gate lives right on the row it gates — shown only once
                   // the member has First Aid / CPR on file; the Verify above
                   // refuses until this date is set (current CPR instructor first).
