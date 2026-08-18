@@ -108,6 +108,7 @@ export function UsersAdminPage() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [emailsCopied, setEmailsCopied] = useState(0);
+  const [deleteTarget, setDeleteTarget] = useState<WithId<UserDoc> | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const pending = users.filter((u) => u.status === 'pending');
@@ -386,6 +387,16 @@ export function UsersAdminPage() {
                             </>
                           )
                         )}
+                        {u.id !== firebaseUser?.uid && (
+                          <Button
+                            variant="ghost"
+                            className="text-red-700 hover:bg-red-50"
+                            disabled={busy === u.id}
+                            onClick={() => setDeleteTarget(u)}
+                          >
+                            Delete…
+                          </Button>
+                        )}
                       </td>
                     </tr>
                   );
@@ -397,6 +408,7 @@ export function UsersAdminPage() {
       </div>
 
       {qualUser && <QualificationsModal user={qualUser} onClose={() => setQualUser(null)} />}
+      {deleteTarget && <DeleteAccountModal user={deleteTarget} onClose={() => setDeleteTarget(null)} />}
       {editTarget && <EditUserModal user={editTarget} onClose={() => setEditTarget(null)} />}
       {addOpen && <AddUserModal onClose={() => setAddOpen(false)} />}
       {bulkOpen && (
@@ -831,6 +843,67 @@ function AddUserModal({ onClose }: { onClose: () => void }) {
           </div>
         </form>
       )}
+    </Modal>
+  );
+}
+
+const adminDeleteAccount = httpsCallable<{ uid: string }, { ok: boolean }>(functions, 'adminDeleteAccount');
+
+/**
+ * PERMANENT account deletion — deliberately hard to do by accident: the admin
+ * must read the consequences, check an acknowledgment, AND type DELETE before
+ * the button arms. The server (adminDeleteAccount) enforces the real guards:
+ * admin-only, never self, never a platform owner, same-tenant, rank ladder.
+ * Training/schedule records under the person's name are intentionally kept.
+ */
+function DeleteAccountModal({ user, onClose }: { user: WithId<UserDoc>; onClose: () => void }) {
+  const [typed, setTyped] = useState('');
+  const [ack, setAck] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const armed = typed === 'DELETE' && ack;
+
+  async function doDelete() {
+    setBusy(true);
+    setError(null);
+    try {
+      await adminDeleteAccount({ uid: user.id });
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message.replace(/^Firebase: /, '') : 'The account could not be deleted.');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open onClose={onClose} title={`Permanently delete — ${user.displayName}`}>
+      <div className="space-y-4">
+        {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
+        <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2.5 text-sm text-red-900">
+          <div className="font-semibold">⚠ This permanently deletes {user.displayName}&apos;s account ({user.email}).</div>
+          <ul className="ml-4 mt-1 list-disc space-y-0.5">
+            <li>Their sign-in is removed <strong>immediately</strong> and cannot be restored.</li>
+            <li>This cannot be undone — a new account would start from scratch.</li>
+            <li>Training and schedule records under their name remain on file (official records survive the account).</li>
+          </ul>
+          <p className="mt-1.5">
+            If they may return, <strong>Deactivate</strong> or <strong>Suspend</strong> instead — both are reversible.
+          </p>
+        </div>
+        <label className="flex items-start gap-2 text-sm text-watch-900">
+          <input type="checkbox" className="mt-0.5" checked={ack} onChange={(e) => setAck(e.target.checked)} />
+          <span>I understand this is permanent and cannot be undone.</span>
+        </label>
+        <Field label={`Type DELETE to confirm`}>
+          <Input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="DELETE" style={{ width: '10rem' }} />
+        </Field>
+        <div className="flex items-center justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="danger" disabled={!armed || busy} onClick={doDelete}>
+            {busy ? 'Deleting…' : 'Permanently delete account'}
+          </Button>
+        </div>
+      </div>
     </Modal>
   );
 }

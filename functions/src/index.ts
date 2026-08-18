@@ -22,7 +22,7 @@ export { calendarFeed } from './gjallarhorn/icsFeed';
 export { gjallarhornDailySweep, gjallarhornWeeklyDigest } from './gjallarhorn/sweeps';
 export { accountPurgeDaily } from './admin/purge';
 // Admin callables
-export { setUserRole, bootstrapFirstDirector, createUserAccount, createOrg, academyApproval, sendActivationEmail, setUserSuspension, setUserActive, listAllFeedback, joinOrgByCode, assignUserToOrg, denyUser, listOwnerQueue, getOrgDetail, setOrgComplimentary, setOrgSuspension, createOrgAdmin, deleteUnassignedAccount, listAllAuditLog, ownerListOrgs, ownerSwitchOrg, importDefaultCurricula, acceptOrgDpa, adminUpdateUser, setFeedbackStatus } from './admin/callables';
+export { setUserRole, bootstrapFirstDirector, createUserAccount, createOrg, academyApproval, sendActivationEmail, setUserSuspension, setUserActive, listAllFeedback, joinOrgByCode, assignUserToOrg, denyUser, listOwnerQueue, getOrgDetail, setOrgComplimentary, setOrgSuspension, createOrgAdmin, deleteUnassignedAccount, listAllAuditLog, ownerListOrgs, ownerSwitchOrg, importDefaultCurricula, acceptOrgDpa, adminUpdateUser, setFeedbackStatus, adminDeleteAccount } from './admin/callables';
 // Academy roster — member creation (no SSN stored; college holds SSNs locally)
 export { rosterCreateMember } from './admin/roster';
 

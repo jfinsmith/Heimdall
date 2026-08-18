@@ -1305,6 +1305,52 @@ export const createOrgAdmin = onCall<{ orgId: string; email: string; displayName
  * "deny → delete" path from the owner queue. Guarded to org-less accounts only;
  * an account that belongs to an org must be removed from it (denyUser) first.
  */
+/**
+ * Admin: PERMANENTLY delete a member's account — Auth user + user doc (and its
+ * private subcollection). Training/schedule RECORDS are intentionally left
+ * intact (filed reports, attendance, and taught history are official records
+ * that must survive the person's account). Guards: admin-only, active caller,
+ * never self, never a platform owner, same-tenant unless the caller is the
+ * owner, and the rank ladder — a non-top admin deletes only strictly-lower
+ * ranks. The client UI requires a typed DELETE confirmation before calling.
+ */
+export const adminDeleteAccount = onCall<{ uid: string }>(async (request) => {
+  const caller = request.auth;
+  if (!caller) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = getFirestore();
+  const callerDoc = await db.doc(`users/${caller.uid}`).get();
+  const callerRole = callerDoc.exists ? (callerDoc.data()!.role as Role) : null;
+  if (!callerRole || !ADMIN_ROLES.includes(callerRole)) {
+    throw new HttpsError('permission-denied', 'Only administrators may delete accounts.');
+  }
+  assertActiveCaller(callerDoc.data());
+
+  const uid = (request.data.uid ?? '').trim();
+  if (!uid) throw new HttpsError('invalid-argument', 'Missing user.');
+  if (uid === caller.uid) throw new HttpsError('failed-precondition', 'You cannot delete your own account.');
+  const targetSnap = await db.doc(`users/${uid}`).get();
+  if (!targetSnap.exists) throw new HttpsError('not-found', 'User not found.');
+  const target = targetSnap.data() as { email?: string; role?: Role; orgId?: string; platformOwner?: boolean };
+  if (target.platformOwner === true) throw new HttpsError('failed-precondition', 'A platform owner account cannot be deleted.');
+  const callerIsOwner = callerDoc.data()?.platformOwner === true;
+  if (!callerIsOwner && target.orgId && target.orgId !== callerDoc.data()?.orgId) {
+    throw new HttpsError('permission-denied', 'That user belongs to another organization.');
+  }
+  assertMayActOn(callerRole, target.role, 'permanently delete');
+
+  const email = target.email ?? uid;
+  // recursiveDelete clears the user doc AND its subcollections (users/{uid}/private/…).
+  await db.recursiveDelete(db.doc(`users/${uid}`));
+  await getAuth().deleteUser(uid).catch(() => null);
+  await db.collection('auditLog').add({
+    actorUid: caller.uid, action: 'admin.delete_account', targetType: 'user', targetId: uid,
+    summary: `PERMANENTLY deleted account ${email}`,
+    ...(callerDoc.data()?.orgId ? { orgId: callerDoc.data()!.orgId } : {}),
+    createdAt: FieldValue.serverTimestamp(),
+  });
+  return { ok: true };
+});
+
 export const deleteUnassignedAccount = onCall<{ uid: string }>(async (request) => {
   const caller = request.auth;
   if (!caller) throw new HttpsError('unauthenticated', 'Sign in required.');
