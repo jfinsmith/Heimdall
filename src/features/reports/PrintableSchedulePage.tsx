@@ -20,6 +20,7 @@ import { useParams } from 'react-router-dom';
 import { orderBy, where } from 'firebase/firestore';
 import { useCollection, useDoc, type WithId } from '../../lib/firestore';
 import { useCurriculum } from '../../lib/curricula';
+import { q } from '../../lib/payPeriods';
 import { useGlobalSettings } from '../../app/providers';
 import type { AcademyDoc, SessionDoc, UserDoc } from '../../types';
 import { SLOT_ROLE_LABELS } from '../../types';
@@ -112,6 +113,30 @@ export function PrintableSchedulePage() {
     ].join(', ');
 
   const disabledHolidays = useMemo(() => new Set(settings?.disabledHolidays ?? []), [settings]);
+
+  // Cumulative curriculum coverage per session (STAFF printout only) — same
+  // walk as the builder calendar: FDLE-countable sessions in time order accrue
+  // hours per curriculum course, so each block prints "6/12" then "12/12".
+  // Non-curriculum/custom blocks are omitted.
+  const coverageBySession = useMemo(() => {
+    const out = new Map<string, string>();
+    if (!curriculum) return out;
+    const norm = (v: string) => v.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+    const minByCourse = new Map(curriculum.courses.map((c) => [norm(c.name), c.minHours]));
+    const running = new Map<string, number>();
+    const countable = sessions
+      .filter((s) => s.status !== 'cancelled' && s.countsTowardFdle !== false)
+      .sort((a, b) => a.start.toMillis() - b.start.toMillis());
+    for (const s of countable) {
+      const key = norm(s.courseName);
+      const min = minByCourse.get(key);
+      if (min == null) continue;
+      const now = (running.get(key) ?? 0) + (s.hours || 0);
+      running.set(key, now);
+      out.set(s.id, `${q(now)}/${min}`);
+    }
+    return out;
+  }, [curriculum, sessions]);
 
   const weeks = useMemo(() => {
     const visible = sessions.filter(
@@ -359,6 +384,11 @@ export function PrintableSchedulePage() {
                               {lunch && (
                                 <div className="mt-0.5 text-[11px] leading-tight text-slate-500">
                                   ○ {s.lunchCountsTowardHours ? 'Working Lunch' : 'Lunch'} {lunch}
+                                </div>
+                              )}
+                              {mode === 'staff' && coverageBySession.has(s.id) && (
+                                <div className="mt-0.5 text-[11px] leading-tight text-slate-500">
+                                  Curriculum coverage: {coverageBySession.get(s.id)} hrs
                                 </div>
                               )}
                               {mode === 'cadet' && lead && <div className="mt-0.5 text-[11px] text-slate-500">Instructor: {lead}</div>}
