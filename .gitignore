@@ -32,3 +32,4 @@ ui-debug.log
 # Agency working schedules (raw extracted data — keep out of the public repo)
 /seed/*-schedule.json
 Gemini_Generated_Image_*.pdf
+tsconfig.node.tsbuildinfo
