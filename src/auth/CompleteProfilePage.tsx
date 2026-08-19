@@ -13,13 +13,17 @@ import { WordmarkHorizontal } from '../brand/Logo';
 import type { Qualification, QualificationKey } from '../types';
 import { QUALIFICATION_LABELS, isInstructorQual } from '../types';
 import { march31, tsFromDate } from '../lib/time';
-import { formatPhone } from '../lib/format';
+import { formatPhone, splitDisplayName } from '../lib/format';
 import { Button, Field, Input } from '../components/ui';
 
 export function CompleteProfilePage() {
   const { firebaseUser, profile } = useAuth();
   const navigate = useNavigate();
-  const [displayName, setDisplayName] = useState(profile?.displayName ?? '');
+  // Split name (ATMS verification fields); legacy docs seed from a heuristic
+  // split of the display name. Saving recomposes displayName so it never drifts.
+  const nameSeed = splitDisplayName(profile?.displayName ?? '');
+  const [firstName, setFirstName] = useState(profile?.firstName ?? nameSeed.firstName);
+  const [lastName, setLastName] = useState(profile?.lastName ?? nameSeed.lastName);
   const [rank, setRank] = useState(profile?.rank ?? '');
   const [agency, setAgency] = useState(profile?.agency ?? '');
   const [phone, setPhone] = useState(profile?.phone ?? '');
@@ -53,7 +57,9 @@ export function CompleteProfilePage() {
       const y = parseInt(certYear, 10);
       const certExpires = y >= 2000 && y <= 2100 ? { instructorCertExpires: tsFromDate(march31(y)) } : {};
       await updateDoc(doc(db, 'users', firebaseUser!.uid), {
-        displayName,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        displayName: `${firstName.trim()} ${lastName.trim()}`,
         rank,
         agency,
         phone: formatPhone(phone),
@@ -77,9 +83,14 @@ export function CompleteProfilePage() {
       </p>
       {error && <div className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
       <form onSubmit={submit} className="space-y-4">
-        <Field label="Full name">
-          <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
-        </Field>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="First name">
+            <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} required autoComplete="given-name" />
+          </Field>
+          <Field label="Last name">
+            <Input value={lastName} onChange={(e) => setLastName(e.target.value)} required autoComplete="family-name" />
+          </Field>
+        </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Rank" hint='e.g. "Deputy", "Sergeant"'>
             <Input value={rank} onChange={(e) => setRank(e.target.value)} required />
@@ -100,7 +111,10 @@ export function CompleteProfilePage() {
             added to role-player call-outs. You can change these any time on your Profile.
           </p>
           <div className="grid gap-1.5 sm:grid-cols-2">
-            {(Object.keys(QUALIFICATION_LABELS) as QualificationKey[]).map((key) => (
+            {/* First Aid / CPR is claimed from the Profile page instead — its
+                claim flow requires the CPR card date + photo, which this quick
+                onboarding checklist can't collect. */}
+            {(Object.keys(QUALIFICATION_LABELS) as QualificationKey[]).filter((k) => k !== 'first_aid').map((key) => (
               <label key={key} className="flex items-center gap-2 text-sm text-watch-800">
                 <input type="checkbox" checked={!!claimed[key]} onChange={() => toggle(key)} />
                 {QUALIFICATION_LABELS[key]}
@@ -108,6 +122,10 @@ export function CompleteProfilePage() {
               </label>
             ))}
           </div>
+          <p className="mt-1.5 text-xs text-slate-500">
+            Hold <strong>First Aid / CPR Instructor</strong>? Claim it from your Profile afterward — it asks for your
+            CPR card&apos;s expiration date and a photo of the card.
+          </p>
           <label className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
             FDLE instructor cert expiration year (3/31 of that year) — optional
             <Input

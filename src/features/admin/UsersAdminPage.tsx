@@ -17,7 +17,7 @@ import { certYearOf, march31, tsFromDate, toDateInputValue, combineDateTime } fr
 import { Badge, Button, Field, Input, PageHeader, Select, TextArea } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import { logAudit } from '../sessions/audit';
-import { formatPhone } from '../../lib/format';
+import { formatPhone, splitDisplayName } from '../../lib/format';
 import { BulkImportModal, type ImportColumn } from '../../components/BulkImportModal';
 
 const setUserRole = httpsCallable<{ uid: string; role: Role }, { ok: boolean }>(functions, 'setUserRole');
@@ -488,7 +488,15 @@ function SuspendUserModal({ user, onClose }: { user: WithId<UserDoc>; onClose: (
  */
 function EditUserModal({ user, onClose }: { user: WithId<UserDoc>; onClose: () => void }) {
   const { firebaseUser } = useAuth();
-  const [displayName, setDisplayName] = useState(user.displayName ?? '');
+  // Seed the split name from the stored fields, falling back to a heuristic
+  // split of the legacy displayName (baseline uses the same seed so opening
+  // the modal on a legacy doc doesn't show a phantom name diff).
+  const seed = splitDisplayName(user.displayName ?? '');
+  const baseFirst = user.firstName ?? seed.firstName;
+  const baseLast = user.lastName ?? seed.lastName;
+  const [firstName, setFirstName] = useState(baseFirst);
+  const [lastName, setLastName] = useState(baseLast);
+  const [dob, setDob] = useState(user.dob ?? '');
   const [email, setEmail] = useState(user.email ?? '');
   const [rank, setRank] = useState(user.rank ?? '');
   const [agency, setAgency] = useState(user.agency ?? '');
@@ -504,14 +512,28 @@ function EditUserModal({ user, onClose }: { user: WithId<UserDoc>; onClose: () =
   // the review screen is rendered from this same list so it can't disagree
   // with the request.
   const next = {
-    displayName: displayName.trim(),
+    firstName: firstName.trim(),
+    lastName: lastName.trim(),
+    dob,
     email: email.trim().toLowerCase(),
     rank: rank.trim(),
     agency: agency.trim(),
     phone: formatPhone(phone.trim()),
   };
   const changes: { field: string; label: string; from: string; to: string }[] = [];
-  if (next.displayName && next.displayName !== (user.displayName ?? '')) changes.push({ field: 'displayName', label: 'Name', from: user.displayName ?? '—', to: next.displayName });
+  if (
+    next.firstName && next.lastName &&
+    (next.firstName !== baseFirst || next.lastName !== baseLast || !user.firstName)
+  ) {
+    // !user.firstName: a legacy doc gets its split fields written even when the
+    // rendered name is unchanged, so one Edit-save migrates it.
+    if (next.firstName !== baseFirst || next.lastName !== baseLast) {
+      changes.push({ field: 'name', label: 'Name', from: user.displayName ?? '—', to: `${next.firstName} ${next.lastName}` });
+    } else if (!user.firstName) {
+      changes.push({ field: 'name', label: 'Name (split on file)', from: user.displayName ?? '—', to: `${next.firstName} · ${next.lastName}` });
+    }
+  }
+  if (next.dob !== (user.dob ?? '')) changes.push({ field: 'dob', label: 'Date of birth', from: user.dob || '—', to: next.dob || '—' });
   if (next.email && next.email !== (user.email ?? '').toLowerCase()) changes.push({ field: 'email', label: 'Sign-in email', from: user.email ?? '—', to: next.email });
   if (next.rank !== (user.rank ?? '')) changes.push({ field: 'rank', label: 'Rank', from: user.rank || '—', to: next.rank || '—' });
   if (next.agency !== (user.agency ?? '')) changes.push({ field: 'agency', label: 'Agency', from: user.agency || '—', to: next.agency || '—' });
@@ -527,7 +549,14 @@ function EditUserModal({ user, onClose }: { user: WithId<UserDoc>; onClose: () =
     setError(null);
     try {
       const payload: { uid: string } & Record<string, string> = { uid: user.id };
-      for (const c of changes) payload[c.field] = next[c.field as keyof typeof next];
+      for (const c of changes) {
+        if (c.field === 'name') {
+          payload.firstName = next.firstName;
+          payload.lastName = next.lastName;
+        } else {
+          payload[c.field] = next[c.field as keyof typeof next];
+        }
+      }
       if (pwChange) payload.newPassword = newPassword;
       await adminUpdateUser(payload);
       const summary = [...changes.map((c) => `${c.label.toLowerCase()} → ${c.to}`), ...(pwChange ? ['password reset'] : [])].join(', ');
@@ -636,8 +665,16 @@ function EditUserModal({ user, onClose }: { user: WithId<UserDoc>; onClose: () =
         className="space-y-4"
       >
         {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
-        <Field label="Full name">
-          <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="First name">
+            <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} required />
+          </Field>
+          <Field label="Last name">
+            <Input value={lastName} onChange={(e) => setLastName(e.target.value)} required />
+          </Field>
+        </div>
+        <Field label="Date of birth" hint="Used to verify credentials against ATMS">
+          <Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} max={new Date().toISOString().slice(0, 10)} style={{ width: '12rem' }} />
         </Field>
         <Field label="Sign-in email" hint="Changing this changes how they log in.">
           <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />

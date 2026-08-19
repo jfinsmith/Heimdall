@@ -26,6 +26,7 @@ export function ProfilePage() {
   const [phone, setPhone] = useState(profile?.phone ?? '');
   const [rank, setRank] = useState(profile?.rank ?? '');
   const [agency, setAgency] = useState(profile?.agency ?? '');
+  const [dob, setDob] = useState(profile?.dob ?? '');
   // Default an empty agency to the user's organization (overridable).
   const { data: org } = useOrg();
   useEffect(() => {
@@ -52,6 +53,8 @@ export function ProfilePage() {
       phone: formatPhone(phone),
       rank,
       agency,
+      // Only write a VALID dob — never blank one out (ATMS requires it on file).
+      ...(/^\d{4}-\d{2}-\d{2}$/.test(dob) ? { dob } : {}),
       updatedAt: serverTimestamp(),
     });
     setSaved(true);
@@ -150,6 +153,9 @@ export function ProfilePage() {
         </div>
         <Field label="Agency">
           <Input value={agency} onChange={(e) => setAgency(e.target.value)} />
+        </Field>
+        <Field label="Date of birth" hint="Used to verify your training credentials (ATMS)">
+          <Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} required max={new Date().toISOString().slice(0, 10)} style={{ width: '12rem' }} />
         </Field>
 
         <div className="flex items-center gap-3">

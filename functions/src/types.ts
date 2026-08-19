@@ -25,6 +25,11 @@ export interface Qualification {
 export interface UserDoc {
   email: string;
   displayName: string;
+  /** Legal name split + DOB ('yyyy-mm-dd') for ATMS credential verification
+   *  (see web-app types). Optional on legacy docs. */
+  firstName?: string;
+  lastName?: string;
+  dob?: string;
   rank?: string;
   agency?: string;
   phone?: string;
@@ -107,6 +112,19 @@ export const PRIORITY_EMAIL_TYPES: ReadonlySet<string> = new Set([
   'approval_request',
   'approval_update',
 ]);
+
+/**
+ * Heuristic first/last split of a display name (mirror of src/lib/format.ts):
+ * last token = last name, generational suffixes kept attached. Used when
+ * server-side account creation only receives a single display name.
+ */
+export function splitDisplayName(name: string): { firstName: string; lastName: string } {
+  const parts = (name ?? '').trim().replace(/\s+/g, ' ').split(' ').filter(Boolean);
+  if (parts.length <= 1) return { firstName: parts[0] ?? '', lastName: '' };
+  let lastIdx = parts.length - 1;
+  if (/^(jr\.?|sr\.?|ii|iii|iv|v)$/i.test(parts[lastIdx]) && parts.length >= 3) lastIdx -= 1;
+  return { firstName: parts.slice(0, lastIdx).join(' '), lastName: parts.slice(lastIdx).join(' ') };
+}
 
 /**
  * Email for a notification type is allowed unless the master switch is off, its

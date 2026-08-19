@@ -132,6 +132,7 @@ export function HowToPage() {
         <Section id="account" title="Your account & first sign-in" role="Everyone">
           <Steps items={[
             <>Two ways in: an administrator creates your account (you get an <B>activation email</B> with a temporary password), or you <B>register yourself</B> — with email &amp; password (you&apos;ll <B>verify your email</B> first) or Continue with Google.</>,
+            <>Registration asks for your <B>legal first and last name</B> and <B>date of birth</B> — required so the academy can verify your training credentials against state records (ATMS). Accounts created before this requirement (and Google/Microsoft sign-ups) are asked ONCE at sign-in to confirm these details.</>,
             <>Self-registered? Enter your academy&apos;s <B>join code</B> (from your welcome email — or just tap the invite link, which fills it in for you). A matching work email domain can skip the code entirely. Accounts never linked to an organization are removed after 30 days.</>,
             <>Complete the <B>welcome profile</B> (name, rank, phone) and claim any instructor qualifications you hold (an admin verifies them before they count).</>,
           ]} />

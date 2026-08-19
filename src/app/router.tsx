@@ -18,6 +18,7 @@ import { SignInPage } from '../auth/SignInPage';
 import { PendingApprovalPage } from '../auth/PendingApprovalPage';
 import { AwaitingOrgPage, JoinInvitePage } from '../auth/AwaitingOrgPage';
 import { VerifyEmailPage } from '../auth/VerifyEmailPage';
+import { CompleteDobPage } from '../auth/CompleteDobPage';
 import { OrgSuspendedPage } from '../auth/OrgSuspendedPage';
 import { CompleteProfilePage } from '../auth/CompleteProfilePage';
 import { ChangePasswordPage } from '../auth/ChangePasswordPage';
@@ -133,6 +134,7 @@ export function AppRouter() {
           <Route element={<RequireAuth />}>
             <Route path="/change-password" element={<ChangePasswordPage />} />
             <Route path="/verify-email" element={<VerifyEmailPage />} />
+            <Route path="/complete-dob" element={<CompleteDobPage />} />
             <Route path="/welcome" element={<CompleteProfilePage />} />
             {/* Print views render outside the shell for a clean sheet */}
             <Route path="/reports/print/:academyId" element={<PrintableSchedulePage />} />

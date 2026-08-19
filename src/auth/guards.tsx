@@ -37,6 +37,13 @@ export function RequireAuth() {
   ) {
     return <Navigate to="/verify-email" replace />;
   }
+  // ATMS-verification gate: every account needs a date of birth on file.
+  // New registrations collect it up front; accounts that predate the
+  // requirement (and OAuth sign-ups, which never asked) complete it ONCE here
+  // on their next sign-in.
+  if (profile && !profile.dob && location.pathname !== '/complete-dob') {
+    return <Navigate to="/complete-dob" replace />;
+  }
   // No tenant yet (self-registered, domain didn't match an org). A graceful
   // holding screen — not a hard lockout — that auto-resolves once an org is
   // assigned. Checked before 'pending' so an orgless account sees "setting up"

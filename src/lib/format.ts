@@ -16,3 +16,17 @@ export function formatPhone(raw: string | null | undefined): string {
   }
   return raw.trim();
 }
+
+/**
+ * Heuristic first/last split of a legacy display name: last token is the last
+ * name, with generational suffixes (Jr., Sr., II–V) kept attached to it.
+ * Used to seed firstName/lastName for accounts that predate the split fields
+ * (scripts/backfill-names.ts and prefills) — admins correct oddballs by hand.
+ */
+export function splitDisplayName(name: string): { firstName: string; lastName: string } {
+  const parts = (name ?? '').trim().replace(/\s+/g, ' ').split(' ').filter(Boolean);
+  if (parts.length <= 1) return { firstName: parts[0] ?? '', lastName: '' };
+  let lastIdx = parts.length - 1;
+  if (/^(jr\.?|sr\.?|ii|iii|iv|v)$/i.test(parts[lastIdx]) && parts.length >= 3) lastIdx -= 1;
+  return { firstName: parts.slice(0, lastIdx).join(' '), lastName: parts.slice(lastIdx).join(' ') };
+}

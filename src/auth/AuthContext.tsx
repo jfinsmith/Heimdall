@@ -40,7 +40,11 @@ interface AuthState {
   signInWithApple: () => Promise<void>;
   signInWithMicrosoft: () => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
-  registerWithEmail: (email: string, password: string, displayName: string) => Promise<void>;
+  registerWithEmail: (
+    email: string,
+    password: string,
+    info: { firstName: string; lastName: string; dob: string }
+  ) => Promise<void>;
   /** Re-send the address-verification email to the signed-in user. */
   resendVerificationEmail: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
@@ -73,13 +77,23 @@ async function oauthSignIn(provider: FbAuthProvider): Promise<void> {
   }
 }
 
-async function ensureUserDoc(user: FirebaseUser, displayName?: string): Promise<void> {
+async function ensureUserDoc(
+  user: FirebaseUser,
+  info?: { firstName: string; lastName: string; dob: string }
+): Promise<void> {
   const ref = doc(db, 'users', user.uid);
   const snap = await getDoc(ref);
   if (snap.exists()) return;
+  // Password registrations arrive with the split name + DOB (required fields);
+  // OAuth sign-ups don't — RequireAuth gates them to /complete-profile until
+  // they supply the ATMS-verification details.
+  const displayName = info
+    ? `${info.firstName} ${info.lastName}`.trim()
+    : user.displayName || user.email?.split('@')[0] || 'New User';
   const profile: Omit<UserDoc, 'createdAt' | 'updatedAt'> & { createdAt: unknown; updatedAt: unknown } = {
     email: user.email ?? '',
-    displayName: displayName || user.displayName || user.email?.split('@')[0] || 'New User',
+    displayName,
+    ...(info ? { firstName: info.firstName, lastName: info.lastName, dob: info.dob } : {}),
     photoURL: user.photoURL ?? '',
     phone: '',
     rank: '',
@@ -153,9 +167,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signInWithEmail: async (email, password) => {
       await signInWithEmailAndPassword(auth, email, password);
     },
-    registerWithEmail: async (email, password, displayName) => {
+    registerWithEmail: async (email, password, info) => {
       const cred = await createUserWithEmailAndPassword(auth, email, password);
-      await ensureUserDoc(cred.user, displayName);
+      await ensureUserDoc(cred.user, info);
       // Verification proves the address is deliverable BEFORE an org relies on
       // it (RequireAuth gates un-verified self-signups at /verify-email).
       // Best-effort — a send hiccup must not fail the registration.

@@ -117,6 +117,20 @@ export interface NotificationPrefs {
 export interface UserDoc {
   email: string;
   displayName: string;
+  /**
+   * Legal first/last name, split for ATMS credential verification. Required at
+   * registration (Aug 2026+); legacy accounts are backfilled by
+   * scripts/backfill-names.ts and corrected via the admin Edit modal.
+   * displayName stays the canonical rendered "First Last".
+   */
+  firstName?: string;
+  lastName?: string;
+  /**
+   * Date of birth, 'yyyy-mm-dd' — required for ATMS credential verification.
+   * Collected at registration; accounts without one are gated to
+   * /complete-profile on their next sign-in until they add it.
+   */
+  dob?: string;
   photoURL?: string;
   phone?: string;
   rank?: string;

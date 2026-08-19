@@ -24,7 +24,9 @@ export function SignInPage() {
   const [mode, setMode] = useState<Mode>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [displayName, setDisplayName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [dob, setDob] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -63,7 +65,8 @@ export function SignInPage() {
     setBusy(true);
     try {
       if (mode === 'signin') await signInWithEmail(email, password);
-      else if (mode === 'register') await registerWithEmail(email, password, displayName);
+      else if (mode === 'register')
+        await registerWithEmail(email, password, { firstName: firstName.trim(), lastName: lastName.trim(), dob });
       else {
         await resetPassword(email);
         setInfo('Password reset email sent. Check your inbox.');
@@ -96,9 +99,26 @@ export function SignInPage() {
 
           <form onSubmit={submit} className="space-y-3">
             {mode === 'register' && (
-              <Field label="Full name">
-                <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} required autoComplete="name" />
-              </Field>
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="First name">
+                    <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} required autoComplete="given-name" />
+                  </Field>
+                  <Field label="Last name">
+                    <Input value={lastName} onChange={(e) => setLastName(e.target.value)} required autoComplete="family-name" />
+                  </Field>
+                </div>
+                <Field label="Date of birth" hint="Required — used to verify your training credentials (ATMS)">
+                  <Input
+                    type="date"
+                    value={dob}
+                    onChange={(e) => setDob(e.target.value)}
+                    required
+                    max={new Date().toISOString().slice(0, 10)}
+                    autoComplete="bday"
+                  />
+                </Field>
+              </>
             )}
             <Field label="Email">
               <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />

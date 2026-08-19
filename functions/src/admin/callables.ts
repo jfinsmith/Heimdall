@@ -12,7 +12,7 @@ import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { notify, notifyAdmins } from '../gjallarhorn/notify';
 import { renderEmail, detailRows, escapeHtml, MAIL_FROM } from '../gjallarhorn/templates';
 import type { AcademyDoc, Role } from '../types';
-import { ADMIN_ROLES, STAFF_ROLES } from '../types';
+import { ADMIN_ROLES, STAFF_ROLES, splitDisplayName } from '../types';
 
 /**
  * Reject a caller whose account is suspended/deactivated. These callables
@@ -226,6 +226,9 @@ export const createUserAccount = onCall<{
   await getFirestore().doc(`users/${uid}`).set({
     email,
     displayName,
+    // Heuristic split at creation; DOB arrives via the member's one-time
+    // /complete-profile gate on first sign-in.
+    ...splitDisplayName(displayName),
     photoURL: '',
     phone: (request.data.phone ?? '').trim(),
     rank: (request.data.rank ?? '').trim(),
@@ -1523,6 +1526,11 @@ export const listAllAuditLog = onCall<{ limit?: number }>(async (request) => {
 export const adminUpdateUser = onCall<{
   uid: string;
   displayName?: string;
+  firstName?: string;
+  lastName?: string;
+  /** 'yyyy-mm-dd' — ATMS credential verification. Empty string clears is NOT
+   *  allowed (DOB is required once set); validated below. */
+  dob?: string;
   email?: string;
   rank?: string;
   agency?: string;
@@ -1552,7 +1560,8 @@ export const adminUpdateUser = onCall<{
   const targetSnap = await db.doc(`users/${uid}`).get();
   if (!targetSnap.exists) throw new HttpsError('not-found', 'User not found.');
   const target = targetSnap.data() as {
-    displayName?: string; email?: string; rank?: string; agency?: string;
+    displayName?: string; firstName?: string; lastName?: string; dob?: string;
+    email?: string; rank?: string; agency?: string;
     phone?: string; orgId?: string; platformOwner?: boolean; role?: Role;
   };
   if (!callerIsOwner && target.orgId && target.orgId !== callerOrgId) {
@@ -1578,6 +1587,29 @@ export const adminUpdateUser = onCall<{
       docPatch.displayName = displayName;
       authPatch.displayName = displayName;
       changed.push('name');
+    }
+  }
+  // Split-name edit (the current Edit modal sends BOTH): recomposes displayName
+  // so the rendered name never drifts from the ATMS-verification fields.
+  if (request.data.firstName !== undefined || request.data.lastName !== undefined) {
+    const firstName = String(request.data.firstName ?? target.firstName ?? '').trim();
+    const lastName = String(request.data.lastName ?? target.lastName ?? '').trim();
+    if (!firstName || !lastName) throw new HttpsError('invalid-argument', 'First and last name are both required.');
+    if (firstName !== (target.firstName ?? '') || lastName !== (target.lastName ?? '')) {
+      const displayName = `${firstName} ${lastName}`;
+      docPatch.firstName = firstName;
+      docPatch.lastName = lastName;
+      docPatch.displayName = displayName;
+      authPatch.displayName = displayName;
+      changed.push('name');
+    }
+  }
+  if (request.data.dob !== undefined) {
+    const dob = String(request.data.dob).trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dob)) throw new HttpsError('invalid-argument', 'Date of birth must be a valid date.');
+    if (dob !== (target.dob ?? '')) {
+      docPatch.dob = dob;
+      changed.push('date of birth');
     }
   }
   if (request.data.email !== undefined) {
