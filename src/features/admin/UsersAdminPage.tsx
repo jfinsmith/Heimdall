@@ -1051,6 +1051,17 @@ function QualificationsModal({ user, onClose }: { user: WithId<UserDoc>; onClose
   return (
     <Modal open onClose={onClose} title={`Qualifications — ${user.displayName}`}>
       <div className="space-y-4">
+        {/* DOB right under the name — the verifier matches it against ATMS. */}
+        <div className="-mt-2 text-sm text-slate-500">
+          Date of birth:{' '}
+          {user.dob ? (
+            <strong className="text-watch-900">
+              {(() => { const [y, m, d] = user.dob.split('-').map(Number); return `${m}/${d}/${y}`; })()}
+            </strong>
+          ) : (
+            <span className="font-medium text-amber-700">not on file — they&apos;ll be asked at next sign-in</span>
+          )}
+        </div>
         {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
 
         {/* Single FDLE instructor-cert expiration (governs every instructor cert below) */}
