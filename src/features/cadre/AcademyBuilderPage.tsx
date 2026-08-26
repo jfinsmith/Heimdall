@@ -24,7 +24,7 @@ import { can } from '../../lib/rbac';
 import { hoursBetween, tsFromDate, toTimeInputValue, fmtDate, isValidDuration, isSameLocalDay } from '../../lib/time';
 import { holidaysForYear, holidayBackgroundEvents, observedHolidayDatesInRange, HOLIDAY_PAY_HOURS } from '../../lib/holidays';
 import type { AcademyDoc, CoursePublishTarget, QualificationKey, RosterMemberDoc, SessionDoc, UserDoc } from '../../types';
-import { QUALIFICATION_LABELS } from '../../types';
+import { QUALIFICATION_LABELS, ADMIN_ROLES } from '../../types';
 import { Badge, Button, Field, Input, PageHeader, Select } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import { SessionFormModal } from './SessionFormModal';
@@ -49,7 +49,7 @@ const academyApproval = httpsCallable<
 
 export function AcademyBuilderPage() {
   const { academyId } = useParams<{ academyId: string }>();
-  const { firebaseUser, orgId } = useAuth();
+  const { firebaseUser, orgId, role } = useAuth();
   const { data: academy } = useDoc<AcademyDoc>(academyId ? `academies/${academyId}` : null);
   const { data: curriculum } = useCurriculum(academy?.discipline);
   const { data: sessions } = useCollection<SessionDoc>(
@@ -312,6 +312,23 @@ export function AcademyBuilderPage() {
 
   const hoursGap = q(academy.targetTotalHours - scheduledHours);
   const published = academy.status !== 'draft' && academy.status !== 'archived';
+  // Course sign-ups master switch (absent = on). Primary coordinator
+  // (coordinatorIds[0]) or sergeant+ may flip it — see the card's toggle.
+  const signupsOn = academy.signupsEnabled !== false;
+  const canToggleSignups =
+    (!!role && (ADMIN_ROLES as readonly string[]).includes(role)) ||
+    firebaseUser?.uid === (academy.coordinatorIds?.[0] ?? '');
+  async function toggleSignupsEnabled() {
+    const next = !signupsOn;
+    await updateDoc(doc(db, 'academies', academyId!), { signupsEnabled: next, updatedAt: serverTimestamp() });
+    await logAudit(
+      firebaseUser!.uid,
+      'academy.signups_toggle',
+      'academy',
+      academyId!,
+      `${next ? 'Enabled' : 'Disabled'} course sign-ups for ${academy!.shortName || academy!.name}`
+    );
+  }
   // Real classes can only be published after the captain's approval; templates skip it.
   const approvalState = academy.approval?.state ?? 'not_submitted';
   const canPublishNow = academy.isTemplate || approvalState === 'approved';
@@ -681,6 +698,23 @@ export function AcademyBuilderPage() {
             Publishing the academy puts sessions on the calendar; instructors can only register once you
             open each course here (Gjallarhorn notifies eligible instructors).
           </p>
+          {!academy.isTemplate && (
+            // Sign-ups master switch: OFF hides every Open button so an
+            // agency-funded program is never accidentally published to college
+            // adjuncts. UI guard only — scheduling and manual assignment are
+            // unaffected. Primary coordinator or sergeant+ may flip it.
+            <div className={`mb-2 flex flex-wrap items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 ${signupsOn ? 'border-watch-100 bg-watch-50' : 'border-amber-300 bg-amber-50'}`}>
+              <span className={`text-xs font-medium ${signupsOn ? 'text-watch-700' : 'text-amber-900'}`}>
+                {signupsOn ? 'Course sign-ups: enabled' : 'Course sign-ups: OFF — Open buttons hidden (scheduling unaffected)'}
+              </span>
+              {canToggleSignups && (
+                <label className="flex items-center gap-1.5 text-xs text-watch-700">
+                  <input type="checkbox" checked={signupsOn} onChange={toggleSignupsEnabled} />
+                  Enabled
+                </label>
+              )}
+            </div>
+          )}
           {academy.isTemplate ? (
             <p className="text-sm text-slate-500">
               This is a <strong>template</strong> — it never publishes or opens sign-ups. Use it to create an
@@ -697,17 +731,21 @@ export function AcademyBuilderPage() {
                     <span className="text-xs text-slate-400">
                       {g.open}/{g.total} open
                     </span>
-                    {g.upcomingScheduled > 0 && (
+                    {signupsOn && g.upcomingScheduled > 0 && (
                       <Button onClick={() => setSignupModal({ label, mode: 'open', group: g })}>Open sign-ups</Button>
                     )}
                     {g.upcomingScheduled === 0 && g.lastEnd < Date.now() && g.open === 0 && (
                       <Badge tone="slate">Concluded</Badge>
                     )}
                     {g.open > 0 && (
+                      // Close stays available even with sign-ups toggled OFF —
+                      // courses opened before the toggle must remain retractable.
                       <>
-                        <Button variant="ghost" onClick={() => setSignupModal({ label, mode: 'announce', group: g })}>
-                          Notify…
-                        </Button>
+                        {signupsOn && (
+                          <Button variant="ghost" onClick={() => setSignupModal({ label, mode: 'announce', group: g })}>
+                            Notify…
+                          </Button>
+                        )}
                         <Button variant="ghost" onClick={() => setCourseSignups(label, false)}>
                           Close
                         </Button>

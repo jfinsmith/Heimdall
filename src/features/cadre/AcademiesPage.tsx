@@ -374,6 +374,12 @@ function CreateAcademyModal({
   const { data: existingAcademies } = useCollection<AcademyDoc>('academies');
 
   const curriculum = curricula.find((c) => c.id === discipline);
+  // Course sign-ups default follows the discipline (platform FDLE programs =
+  // on; admin-created agency programs = off) — overridable before creating.
+  const [signupsEnabled, setSignupsEnabled] = useState(true);
+  useEffect(() => {
+    if (curriculum) setSignupsEnabled(curriculum.signupsDefaultEnabled !== false);
+  }, [curriculum?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   // Default to the next unused palette color so new cohorts auto-differentiate.
   const [color, setColor] = useState('');
   const defaultColor = color || nextAcademyColor(existingAcademies.map((a) => a.color ?? '').filter(Boolean));
@@ -403,6 +409,7 @@ function CreateAcademyModal({
       ...(sequenceNo.trim() ? { sequenceNo: sequenceNo.trim() } : {}),
       status: 'draft',
       isTemplate,
+      signupsEnabled,
       coordinatorIds: [...new Set([primary, secondary].filter(Boolean))],
       targetTotalHours: targetHours,
       createdBy: actorUid,
@@ -504,6 +511,17 @@ function CreateAcademyModal({
             </Select>
           </Field>
         </div>
+        <label className="flex items-start gap-2 rounded-md border border-watch-100 bg-watch-50 px-3 py-2 text-sm text-watch-800">
+          <input type="checkbox" className="mt-0.5" checked={signupsEnabled} onChange={(e) => setSignupsEnabled(e.target.checked)} />
+          <span>
+            Course sign-ups enabled
+            <span className="block text-xs text-slate-500">
+              Off = the Open sign-ups buttons are hidden, so agency-funded programs are never accidentally
+              published to college adjuncts. Scheduling and assigning instructors work as normal. Defaults from
+              the discipline; changeable later on the builder&apos;s Course sign-ups card.
+            </span>
+          </span>
+        </label>
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose}>
             Cancel

@@ -227,6 +227,12 @@ function CurriculumEditorModal({
   const [estimated, setEstimated] = useState(curriculum?.estimated ?? false);
   const [rosterModules, setRosterModules] = useState<RosterModuleKey[]>(curriculum?.rosterModules ?? DEFAULT_ROSTER_MODULES);
   const [attendanceLayout, setAttendanceLayout] = useState<'grid' | 'signin'>(curriculum?.attendanceLayout ?? 'grid');
+  // Sign-ups default for NEW academies of this discipline: existing curricula
+  // keep their setting (absent = on, covering platform FDLE programs); a brand
+  // NEW discipline starts OFF (agency programs shouldn't reach adjuncts).
+  const [signupsDefault, setSignupsDefault] = useState<boolean>(
+    curriculum ? curriculum.signupsDefaultEnabled !== false : false
+  );
   // Branding overrides (org scope only) — each falls back to org settings if blank.
   const [brandLogoUrl, setBrandLogoUrl] = useState(curriculum?.brandLogoUrl ?? '');
   const [brandOrgName, setBrandOrgName] = useState(curriculum?.brandOrgName ?? '');
@@ -323,6 +329,7 @@ function CurriculumEditorModal({
         estimated,
         rosterModules,
         attendanceLayout,
+        signupsDefaultEnabled: signupsDefault,
         ...(brandLogoUrl.trim() ? { brandLogoUrl: brandLogoUrl.trim() } : {}),
         ...(brandOrgName.trim() ? { brandOrgName: brandOrgName.trim() } : {}),
         ...(brandTagline.trim() ? { brandTagline: brandTagline.trim() } : {}),
@@ -502,6 +509,19 @@ function CurriculumEditorModal({
                 <option value="signin">Sign-in sheet (No. / CJIS &amp; Name / Signature — NMT/ARGUS)</option>
               </Select>
             </Field>
+          </div>
+          <div className="mt-3 border-t border-watch-50 pt-3">
+            <label className="flex items-start gap-2 text-sm text-watch-800">
+              <input type="checkbox" className="mt-0.5" checked={signupsDefault} onChange={(e) => setSignupsDefault(e.target.checked)} />
+              <span>
+                New academies of this discipline default to <strong>course sign-ups enabled</strong>
+                <span className="block text-xs text-slate-500">
+                  FDLE programs default on. Agency-funded programs (sheriff&apos;s-office training, not college
+                  classes) should stay off so their classes are never accidentally opened to college adjuncts.
+                  Each academy can override this at creation or on its builder.
+                </span>
+              </span>
+            </label>
           </div>
         </fieldset>
 

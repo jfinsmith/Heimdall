@@ -328,7 +328,10 @@ export function SessionDetailModal({ sessionId, onClose, onEdit, variant = 'staf
 
       {variant === 'staff' && can.buildSchedules(role) && (
         <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-watch-50 pt-3">
-          {session.status === 'scheduled' && session.roleSlots.some((sl) => sl.role !== 'coordinator') && (
+          {session.status === 'scheduled' && session.roleSlots.some((sl) => sl.role !== 'coordinator') &&
+            // Hidden while the academy's sign-ups switch is off (agency-funded
+            // programs are never accidentally opened to adjuncts).
+            academy != null && academy.signupsEnabled !== false && (
             <Button
               variant="primary"
               disabled={busy}

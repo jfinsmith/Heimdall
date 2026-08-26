@@ -514,6 +514,16 @@ export interface AcademyDoc {
   isTemplate?: boolean;
   /** Ordered: [0] = primary coordinator, [1] = secondary. */
   coordinatorIds: string[];
+  /**
+   * Course sign-ups switch (absent = true). When FALSE, every "Open sign-ups"
+   * button for this academy is hidden — a guardrail so agency-funded programs
+   * (sheriff's-office training, not college classes) are never accidentally
+   * published to college adjunct instructors. PURELY a UI guard: scheduling,
+   * role slots, and manual instructor assignment are unaffected. Toggleable by
+   * the primary coordinator (coordinatorIds[0]) or sergeant+; defaults from
+   * the discipline's CurriculumDoc.signupsDefaultEnabled at creation.
+   */
+  signupsEnabled?: boolean;
   targetTotalHours: number; // defaults to the curriculum's course-hour sum; editable
   /** Chain-of-command sign-off before publishing (non-templates). */
   approval?: AcademyApproval;
@@ -786,6 +796,14 @@ export interface CurriculumDoc {
    *  per-course sign-in/out grid; 'signin' = a NO./CJIS & Name/Signature sign-in
    *  sheet (e.g. NMT/ARGUS). Default 'grid'. Extend as new formats ship. */
   attendanceLayout?: 'grid' | 'signin';
+  /**
+   * Default for AcademyDoc.signupsEnabled on new academies of this discipline
+   * (absent = true, so the platform FDLE programs default ON). Admin-created
+   * disciplines are written FALSE at creation — agency-funded programs
+   * shouldn't offer sign-ups to college adjuncts — and can be flipped here in
+   * Curriculum & Hours.
+   */
+  signupsDefaultEnabled?: boolean;
   /** @deprecated category model removed; superseded by the document library + the
    *  form-override fields below. Kept for back-compat read only. */
   reportCategories?: string[];

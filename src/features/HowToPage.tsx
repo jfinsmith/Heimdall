@@ -302,6 +302,7 @@ export function HowToPage() {
           <Sub title="Opening sign-ups">
             <Steps items={[
               <>After publishing, open each course for sign-ups from the builder&apos;s course panel — choose which instructor groups get the announcement email.</>,
+              <>The Course sign-ups card has a master <B>sign-ups switch</B> (primary coordinator or sergeant+ only). Toggled OFF, every Open button is hidden so agency-funded programs are never accidentally published to college adjuncts — scheduling and manually assigning instructors are unaffected, and it defaults per discipline (FDLE programs on; admin-added disciplines off, changeable in Curriculum &amp; Hours).</>,
               <>Track fill status on the <B>Staffing Board</B>; understaffed sessions inside your alert window trigger daily coordinator alerts and command escalation.</>,
               <>A weekly staffing digest email goes to staff each Monday (configurable under Admin → Gjallarhorn).</>,
             ]} />
