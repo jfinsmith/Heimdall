@@ -168,6 +168,20 @@ body {
   overflow: hidden;
   cursor: pointer;
 }
+/* The class designation (LE 132, CO 69) leads the card, bigger and in the
+   bifrost gold so instructors spot the academy they want at a glance; the
+   text-shadow keeps it readable on lighter academy chip colors. */
+.hd-browse-event-academy {
+  font-weight: 800;
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #fcd34d;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.45);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .hd-browse-event-title {
   font-weight: 700;
   white-space: nowrap;

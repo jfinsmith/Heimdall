@@ -243,9 +243,11 @@ export function BrowseOpenSessionsPage() {
               };
               return (
                 <div className="hd-browse-event" title={`${p.range} · ${p.academy} · ${p.slots} instructors${p.room ? ` · ${p.room}` : ''}`}>
+                  {/* Class designation leads — instructors scan for the academy
+                      they want to teach (LE 132, CO 69) before anything else. */}
+                  <div className="hd-browse-event-academy">{p.academy}</div>
                   <div className="hd-browse-event-title">{p.startMil} {p.hl ? '▲ ' : ''}{p.name}</div>
-                  <div className="hd-browse-event-sub">{p.range} · {p.academy}</div>
-                  <div className="hd-browse-event-sub">{p.slots} instructors{p.room ? ` · ${p.room}` : ''}</div>
+                  <div className="hd-browse-event-sub">{p.range} · {p.slots} instructors{p.room ? ` · ${p.room}` : ''}</div>
                 </div>
               );
             }}
