@@ -327,7 +327,10 @@ export function UsersAdminPage() {
                         <div className="font-medium text-watch-900">{lastFirst(u.displayName)}</div>
                         <div className="text-xs text-slate-500">{u.email}</div>
                         {u.status === 'suspended' && u.suspensionReason && (
-                          <div className="mt-0.5 text-xs text-red-700">Suspended: {u.suspensionReason}</div>
+                          // max-w so a long reason WRAPS inside the Name column
+                          // instead of stretching it (which shifted every other
+                          // column right for the whole table).
+                          <div className="mt-0.5 max-w-xs text-xs text-red-700">Suspended: {u.suspensionReason}</div>
                         )}
                       </td>
                       <td className="px-4 py-3">
@@ -365,7 +368,7 @@ export function UsersAdminPage() {
                           </button>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="whitespace-nowrap px-4 py-3 text-right">
                         {/* Edit is status-independent — a suspended member's
                             email or name may be exactly what needs fixing. */}
                         <Button variant="ghost" disabled={busy === u.id} onClick={() => setEditTarget(u)}>
