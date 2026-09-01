@@ -210,12 +210,20 @@ export function SessionDetailModal({ sessionId, onClose, onEdit, variant = 'staf
   /** Delete the session directly from the detail view (staff only), with a warning. */
   async function deleteSession() {
     if (!session || !firebaseUser) return;
-    // Block deleting a session with real instructor sign-ups — cancel it instead.
-    if (session.roleSlots.some((sl) => sl.role !== 'coordinator' && sl.filledBy.length > 0)) {
-      window.alert('This session has instructor sign-ups — cancel it instead of deleting so they are notified.');
-      return;
-    }
-    if (!window.confirm(`Permanently delete "${session.title || session.courseName}"? This cannot be undone.`)) return;
+    // Sign-ups make delete a WARNED bypass, not a hard block: cancel-first is
+    // the clean flow (instructors get the cancellation email, then the
+    // cancelled session deletes freely); deleting live skips the notification.
+    const signedUp = session.roleSlots.some((sl) => sl.role !== 'coordinator' && sl.filledBy.length > 0);
+    if (signedUp && session.status !== 'cancelled') {
+      if (
+        !window.confirm(
+          `"${session.title || session.courseName}" has instructor sign-ups.\n\n` +
+            'RECOMMENDED: Cancel it first — cancelling emails the signed-up instructors so they know not to show, and you can delete the cancelled session afterward.\n\n' +
+            'Deleting right now removes it WITHOUT notifying them. Delete anyway?'
+        )
+      )
+        return;
+    } else if (!window.confirm(`Permanently delete "${session.title || session.courseName}"? This cannot be undone.`)) return;
     setBusy(true);
     setError(null);
     try {

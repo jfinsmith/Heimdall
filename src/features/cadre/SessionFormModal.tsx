@@ -356,8 +356,11 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
     const roomDisplay = [primaryDisplay, ...extraIds.map(nameOf)].filter(Boolean).join(', ');
 
     // Hard block: EVERY managed room must be free over the overlapping time.
-    // (Custom/free-text rooms carry no roomId and are not reserved.)
-    if (allRoomIds.length && academy.orgId) {
+    // (Custom/free-text rooms carry no roomId and are not reserved.) SKIPPED for
+    // a CANCELLED session — it occupies no room (findRoomConflict ignores
+    // cancelled sessions), so replacement hours scheduled into its old slot
+    // would otherwise block every edit of the cancelled record.
+    if (allRoomIds.length && academy.orgId && session?.status !== 'cancelled') {
       const acadById = new Map(academies.map((a) => [a.id, a]));
       try {
         for (const rid of allRoomIds) {
@@ -531,11 +534,21 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
 
   async function deleteSession() {
     if (!session || !firebaseUser) return;
-    if (session.roleSlots.some((s) => s.role !== 'coordinator' && s.filledBy.length > 0)) {
-      window.alert('This session has sign-ups — cancel it instead of deleting so instructors are notified.');
-      return;
-    }
-    if (!window.confirm('Permanently delete this session?')) return;
+    // Sign-ups make delete a WARNED bypass, not a hard block: the clean flow is
+    // cancel first (instructors get the cancellation email), then delete the
+    // cancelled session to free the hours. A cancelled session skips straight
+    // to the plain confirm — its instructors were already notified.
+    const signedUp = session.roleSlots.some((s) => s.role !== 'coordinator' && s.filledBy.length > 0);
+    if (signedUp && session.status !== 'cancelled') {
+      if (
+        !window.confirm(
+          'This session has instructor sign-ups.\n\n' +
+            'RECOMMENDED: Cancel it first — cancelling emails the signed-up instructors so they know not to show, and you can delete the cancelled session afterward.\n\n' +
+            'Deleting right now removes it WITHOUT notifying them. Delete anyway?'
+        )
+      )
+        return;
+    } else if (!window.confirm('Permanently delete this session? This cannot be undone.')) return;
     setBusy(true);
     setError(null);
     try {
