@@ -34,6 +34,7 @@ const REASON_META: Record<RemediationDoc['reason'], { label: string; tone: 'slat
   block_failure: { label: 'Block failure', tone: 'amber' },
   injury: { label: 'Injury', tone: 'red' },
   crossover: { label: 'Crossover', tone: 'navy' },
+  incomplete: { label: 'Incomplete', tone: 'slate' },
 };
 
 const OUTCOME_META: Record<NonNullable<RemediationDoc['outcome']>, { label: string; tone: 'slate' | 'amber' | 'green' | 'red' | 'navy'; hint: string }> = {
@@ -641,6 +642,7 @@ function RemediationModal({ existing, onClose }: { existing: WithId<RemediationD
               <option value="block_failure">Block failure</option>
               <option value="injury">Injury</option>
               <option value="crossover">Crossover</option>
+              <option value="incomplete">Incomplete</option>
             </Select>
           </Field>
           <Field label="Status">

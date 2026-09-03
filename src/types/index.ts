@@ -1116,7 +1116,7 @@ export interface RemediationDoc {
   sourceMemberId?: string | null;
   /** Designation of the class they started with, e.g. "LE 132". */
   originalClass: string;
-  reason: 'block_failure' | 'injury' | 'crossover';
+  reason: 'block_failure' | 'injury' | 'crossover' | 'incomplete';
   /** Crossover cases only: which FDLE crossover program applies. */
   crossoverDirection?: 'co_to_le' | 'le_to_co' | null;
   /** Blocks/courses still owed. */
