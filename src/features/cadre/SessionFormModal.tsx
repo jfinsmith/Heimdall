@@ -126,6 +126,7 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
           name: b.name,
           hours: b.minHours,
           highLiability: !!b.highLiability,
+          optional: !!b.optional,
           leadQualification: b.leadQualification,
           defaultRoleSlots: b.defaultRoleSlots ?? [],
           coordinatorRun: !!b.coordinatorRun,
@@ -587,7 +588,7 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
               <option value="">Select a course…</option>
               {courseOptions.map((o) => (
                 <option key={o.value} value={o.value}>
-                  {o.name} ({o.hours} hrs{o.highLiability ? ', high-liability' : ''})
+                  {o.name} ({o.hours} hrs{o.highLiability ? ', high-liability' : ''}{o.optional ? ', optional' : ''})
                 </option>
               ))}
               <option value={CUSTOM}>— Custom / agency assignment —</option>

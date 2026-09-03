@@ -361,6 +361,7 @@ export function HowToPage() {
           <Sub title="Entering grades">
             <Steps items={[
               <>Mark courses as <B>Test</B> in Admin → Curriculum &amp; Hours to make them gradable — they become columns in the Gradebook tab.</>,
+              <>Mark a course <B>Opt</B> (optional) in Curriculum &amp; Hours — e.g. Mental Health First Aid — and it stays listed and schedulable with an <B>optional</B> tag, but its hours are excluded from the required total and it never triggers the hours-shortfall warnings.</>,
               <>Click a cell to enter the end-of-course score (pass line is <B>80%</B>), or set N/A (injured), CO (carry-over), or XO (crossover-exempt).</>,
             ]} />
           </Sub>

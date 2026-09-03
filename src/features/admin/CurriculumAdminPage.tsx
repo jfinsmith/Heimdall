@@ -69,7 +69,12 @@ export function CurriculumAdminPage({ scope = 'org' }: { scope?: 'org' | 'defaul
         </div>
       </div>
       <div className="mb-2 text-sm text-watch-800">
-        <strong>{c.totalHours}</strong> total hours · {c.courses.length} course blocks
+        <strong>{c.totalHours}</strong> required hours
+        {(() => {
+          const opt = c.courses.filter((x) => x.optional).reduce((s, x) => s + x.minHours, 0);
+          return opt > 0 ? <span className="text-slate-500"> · +{opt} optional</span> : null;
+        })()}{' '}
+        · {c.courses.length} course blocks
       </div>
       <ul className="mb-3 max-h-44 space-y-0.5 overflow-y-auto pr-1 text-sm">
         {c.courses.map((course) => (
@@ -77,6 +82,7 @@ export function CurriculumAdminPage({ scope = 'org' }: { scope?: 'org' | 'defaul
             <span className="truncate text-slate-600">
               {course.cjk && <span className="mr-1 font-mono text-xs text-slate-400">{course.cjk}</span>}
               {course.name}
+              {course.optional && <span className="ml-1 text-[10px] font-semibold uppercase text-slate-400">optional</span>}
             </span>
             <span className="shrink-0 tabular-nums text-slate-400">{course.minHours} hrs</span>
           </li>
@@ -313,6 +319,7 @@ function CurriculumEditorModal({
       ...(c.highLiability ? { highLiability: true } : {}),
       ...(c.coordinatorRun ? { coordinatorRun: true } : {}),
       ...(c.tested ? { tested: true } : {}),
+      ...(c.optional ? { optional: true } : {}),
       ...(c.instructorRatio ? { instructorRatio: Number(c.instructorRatio) } : {}),
       ...(c.leadQualification && !c.coordinatorRun ? { leadQualification: c.leadQualification } : {}),
       ...(c.defaultRoleSlots && c.defaultRoleSlots.length ? { defaultRoleSlots: c.defaultRoleSlots } : {}),
@@ -324,7 +331,9 @@ function CurriculumEditorModal({
         label,
         fdleProgram,
         courses: cleaned,
-        totalHours: cleaned.reduce((s, c) => s + c.minHours, 0),
+        // Optional items don't count toward the REQUIRED total (drives the
+        // create-academy target hours + shortfall math).
+        totalHours: cleaned.reduce((s, c) => s + (c.optional ? 0 : c.minHours), 0),
         active: curriculum?.active ?? true,
         estimated,
         rosterModules,
@@ -385,19 +394,20 @@ function CurriculumEditorModal({
           <legend className="px-1 text-sm font-medium text-watch-800">
             Course blocks &amp; minimum hours — total <strong>{total}</strong> hrs
           </legend>
-          <div className="mb-1 grid min-w-[34rem] grid-cols-[5.5rem_1fr_4rem_2rem_2.5rem_3.5rem_8.5rem_1.5rem] items-center gap-2 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+          <div className="mb-1 grid min-w-[36rem] grid-cols-[5.5rem_1fr_4rem_2rem_2.5rem_2rem_3.5rem_8.5rem_1.5rem] items-center gap-2 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
             <span title="FDLE/CJSTC course number">CJK #</span>
             <span>Course</span>
             <span>Hours</span>
             <span title="High-liability">▲ HL</span>
             <span title="Has an end-of-course exam">Test</span>
+            <span title="Optional item — listed and schedulable, but not required (no hour-shortfall warnings)">Opt</span>
             <span title="Students per instructor (FDLE ratio)">Ratio</span>
             <span>Lead / staffing</span>
             <span />
           </div>
           <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
             {courses.map((c, i) => (
-              <div key={i} className="grid min-w-[34rem] grid-cols-[5.5rem_1fr_4rem_2rem_2.5rem_3.5rem_8.5rem_1.5rem] items-center gap-2">
+              <div key={i} className="grid min-w-[36rem] grid-cols-[5.5rem_1fr_4rem_2rem_2.5rem_2rem_3.5rem_8.5rem_1.5rem] items-center gap-2">
                 <Input
                   value={c.cjk ?? ''}
                   placeholder="CJK0040"
@@ -431,6 +441,13 @@ function CurriculumEditorModal({
                   checked={!!c.tested}
                   aria-label={`Course ${i + 1} has end-of-course exam`}
                   onChange={(e) => updateCourse(i, { tested: e.target.checked })}
+                />
+                <input
+                  type="checkbox"
+                  className="justify-self-center"
+                  checked={!!c.optional}
+                  aria-label={`Course ${i + 1} optional (not required; no shortfall warnings)`}
+                  onChange={(e) => updateCourse(i, { optional: e.target.checked })}
                 />
                 <Input
                   type="number"

@@ -722,6 +722,13 @@ export interface CurriculumCourse {
   minHours: number;
   /** High-liability course (firearms, DT, scenarios) — flagged ▲ in the builder/printout. */
   highLiability?: boolean;
+  /**
+   * Optional curriculum item (e.g. Mental Health First Aid): still listed in
+   * coverage and schedulable, tagged "optional", but its hours are EXCLUDED
+   * from the curriculum's required total and it never triggers the
+   * hours-shortfall warnings.
+   */
+  optional?: boolean;
   /** Qualification a lead instructor must hold to teach this course. */
   leadQualification?: QualificationKey;
   /** Default staffing slots beyond the lead (e.g. safety officer, role players). */

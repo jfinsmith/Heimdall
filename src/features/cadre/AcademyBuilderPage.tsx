@@ -1083,7 +1083,7 @@ function OpenSignupsModal({
 function CourseCoverageRow({
   c,
 }: {
-  c: { cjk?: string; name: string; minHours: number; scheduled: number; delta: number; highLiability?: boolean; instructorRatio?: number };
+  c: { cjk?: string; name: string; minHours: number; scheduled: number; delta: number; highLiability?: boolean; optional?: boolean; instructorRatio?: number };
 }) {
   return (
     <li className="flex items-center justify-between gap-2 text-sm">
@@ -1091,6 +1091,11 @@ function CourseCoverageRow({
         {c.highLiability && <span className="mr-1 text-status-critical" title="High-liability">▲</span>}
         {c.cjk && <span className="mr-1 font-mono text-xs text-slate-400">{c.cjk}</span>}
         {c.name}
+        {c.optional && (
+          <span className="ml-1 rounded bg-watch-100 px-1 text-[10px] font-semibold uppercase tracking-wide text-watch-500" title="Optional item — schedulable but not required">
+            optional
+          </span>
+        )}
         {c.instructorRatio ? (
           <span className="ml-1 text-xs text-slate-400" title="FDLE ratio: students per instructor">· 1:{c.instructorRatio}</span>
         ) : null}
@@ -1100,7 +1105,12 @@ function CourseCoverageRow({
           {c.scheduled}/{c.minHours} hrs
         </span>
         {c.delta < 0 ? (
-          <Badge tone="amber">{-c.delta} left</Badge>
+          // Optional items never ring the shortfall alarm — muted note instead.
+          c.optional ? (
+            <span className="text-xs text-slate-400">{-c.delta} unscheduled</span>
+          ) : (
+            <Badge tone="amber">{-c.delta} left</Badge>
+          )
         ) : c.delta > 0 ? (
           <Badge tone="navy">+{c.delta} over</Badge>
         ) : (
