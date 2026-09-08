@@ -21,7 +21,7 @@ import { useCollection, useDoc, type WithId } from '../../lib/firestore';
 import { useCurriculum, useAllCurricula } from '../../lib/curricula';
 import { useAuth } from '../../auth/AuthContext';
 import { can } from '../../lib/rbac';
-import { hoursBetween, tsFromDate, toTimeInputValue, fmtDate, isValidDuration, isSameLocalDay } from '../../lib/time';
+import { hoursBetween, tsFromDate, toTimeInputValue, toDateInputValue, fmtDate, isValidDuration, isSameLocalDay } from '../../lib/time';
 import { holidaysForYear, holidayBackgroundEvents, observedHolidayDatesInRange, HOLIDAY_PAY_HOURS } from '../../lib/holidays';
 import type { AcademyDoc, CoursePublishTarget, QualificationKey, RosterMemberDoc, SessionDoc, UserDoc } from '../../types';
 import { QUALIFICATION_LABELS, ADMIN_ROLES } from '../../types';
@@ -1225,6 +1225,8 @@ function EditAcademyModal({ academy, onClose }: { academy: WithId<AcademyDoc>; o
   const [defaultRoomId, setDefaultRoomId] = useState<string | undefined>(academy.defaultRoomId);
   const [sequenceNo, setSequenceNo] = useState(academy.sequenceNo ?? '');
   const [targetHours, setTargetHours] = useState(academy.targetTotalHours);
+  const [startDate, setStartDate] = useState(toDateInputValue(academy.startDate.toDate()));
+  const [endDate, setEndDate] = useState(toDateInputValue(academy.endDate.toDate()));
   const [primary, setPrimary] = useState(academy.coordinatorIds[0] ?? '');
   const [secondary, setSecondary] = useState(academy.coordinatorIds[1] ?? '');
   const [busy, setBusy] = useState(false);
@@ -1239,12 +1241,19 @@ function EditAcademyModal({ academy, onClose }: { academy: WithId<AcademyDoc>; o
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    // Same guard as creation: an inverted window breaks every span-based view.
+    if (new Date(`${endDate}T00:00:00`) < new Date(`${startDate}T00:00:00`)) {
+      window.alert('The end date is before the start date — fix the dates before saving.');
+      return;
+    }
     setBusy(true);
     const curriculum = curricula.find((c) => c.id === discipline);
     await updateDoc(doc(db, 'academies', academy.id), {
       name,
       shortName,
       discipline,
+      startDate: tsFromDate(new Date(`${startDate}T00:00:00`)),
+      endDate: tsFromDate(new Date(`${endDate}T23:59:59`)),
       color,
       fdleProgram: curriculum?.fdleProgram ?? academy.fdleProgram,
       defaultRoom,
@@ -1269,6 +1278,14 @@ function EditAcademyModal({ academy, onClose }: { academy: WithId<AcademyDoc>; o
           </Field>
           <Field label="Name">
             <Input value={name} onChange={(e) => setName(e.target.value)} required />
+          </Field>
+        </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="Start date">
+            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} required />
+          </Field>
+          <Field label="End date" hint="Changing dates never moves scheduled sessions — only the academy's window">
+            <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} required />
           </Field>
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

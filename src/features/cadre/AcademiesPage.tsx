@@ -393,6 +393,12 @@ function CreateAcademyModal({
       alert('Your account is still loading its organization — please reload and try again.');
       return;
     }
+    // An inverted date window breaks every span-based view (calendar range,
+    // pay periods, holiday scan) — block it before anything writes.
+    if (new Date(`${endDate}T00:00:00`) < new Date(`${startDate}T00:00:00`)) {
+      alert('The end date is before the start date — fix the dates before creating.');
+      return;
+    }
     setBusy(true);
     await addDoc(collection(db, 'academies'), {
       orgId,
@@ -558,12 +564,16 @@ function CloneAcademyModal({
     setProgress('Copying academy…');
     try {
 
-    // Day-offset between old and new start; every session shifts by the same amount.
+    // CALENDAR-DAY delta between old and new start, applied with addDays
+    // (setDate) — never a raw millisecond offset. A ms offset across a DST
+    // boundary is ±1 hour off, which used to shift every cloned session by an
+    // hour and push the 23:59:59 endDate onto the NEXT day.
     const oldStart = source.startDate.toDate();
     const newStartDate = new Date(`${newStart}T00:00:00`);
-    const offsetMs =
-      new Date(newStartDate.getFullYear(), newStartDate.getMonth(), newStartDate.getDate()).getTime() -
-      new Date(oldStart.getFullYear(), oldStart.getMonth(), oldStart.getDate()).getTime();
+    const dayDelta = Math.round(
+      (new Date(newStartDate.getFullYear(), newStartDate.getMonth(), newStartDate.getDate()).getTime() -
+        new Date(oldStart.getFullYear(), oldStart.getMonth(), oldStart.getDate()).getTime()) / 864e5
+    );
 
     // Strip the doc id from the source before copying (Firestore rejects an
     // `id: undefined` field). The result is always a real academy, never a template.
@@ -578,8 +588,8 @@ function CloneAcademyModal({
       name,
       shortName,
       isTemplate: false,
-      startDate: tsFromDate(new Date(source.startDate.toDate().getTime() + offsetMs)),
-      endDate: tsFromDate(new Date(source.endDate.toDate().getTime() + offsetMs)),
+      startDate: tsFromDate(addDays(source.startDate.toDate(), dayDelta)),
+      endDate: tsFromDate(addDays(source.endDate.toDate(), dayDelta)),
       status: 'draft', // clones always start as drafts
       createdBy: actorUid,
       createdAt: serverTimestamp(),
@@ -600,8 +610,8 @@ function CloneAcademyModal({
       // never inherits a zero/negative-duration block. Shifting both ends by the
       // same offset preserves duration, so any valid source clones valid.
       if (!s.start || !s.end || !isValidDuration(s.start.toDate(), s.end.toDate())) continue;
-      const newStart = new Date(s.start.toDate().getTime() + offsetMs);
-      const newEnd = new Date(s.end.toDate().getTime() + offsetMs);
+      const newStart = addDays(s.start.toDate(), dayDelta);
+      const newEnd = addDays(s.end.toDate(), dayDelta);
       const heldRooms = s.roomIds?.length ? s.roomIds : s.roomId ? [s.roomId] : [];
       if (heldRooms.length && s.status !== 'cancelled') {
         clonedRoomSessions.push({ courseName: s.title || s.courseName, start: newStart, end: newEnd, roomIds: heldRooms });
