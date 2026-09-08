@@ -510,6 +510,11 @@ describe('security-audit hardening (sergeant tier, portal secrets, feedback tria
   it('portal secrets subdoc: staff read OK, instructor DENIED', async () => {
     await assertSucceeds(getDoc(doc(as('carol', 'coordinator'), 'academies/acadA/private/portal')));
     await assertFails(getDoc(doc(as('alice', 'instructor'), 'academies/acadA/private/portal')));
+    // Staff may read a NOT-YET-CREATED private doc (the builder subscribes to
+    // private/portal before the link exists — a denial kills the listener and
+    // the card never updates after Create); non-staff stay denied either way.
+    await assertSucceeds(getDoc(doc(as('carol', 'coordinator'), 'academies/acadA/private/nonexistent')));
+    await assertFails(getDoc(doc(as('alice', 'instructor'), 'academies/acadA/private/nonexistent')));
   });
   it('admin cannot CHANGE their OWN role field on the user doc', async () => {
     // Writing a DIFFERENT role for yourself is blocked (self-escalation path);

@@ -366,7 +366,12 @@ service cloud.firestore {
       // published, so these must never live there — an instructor could crack
       // the unsalted hash offline and reach the grades tier.
       match /private/{docId} {
-        allow read: if isStaff() && inOrg(resource.data);
+        // `resource == null` lets staff SUBSCRIBE to a not-yet-created doc (the
+        // builder listens to private/portal before the link exists). Without
+        // it, the listen is DENIED, the dead listener never fires after Create
+        // writes the doc, and the card only updates on a full page refresh.
+        // Reveals only nonexistence, and only to staff.
+        allow read: if isStaff() && (resource == null || inOrg(resource.data));
         allow create: if isStaff() && inOrg(request.resource.data);
         allow update: if isStaff() && inOrg(resource.data) && unchanged('orgId');
         allow delete: if isStaff() && inOrg(resource.data);
