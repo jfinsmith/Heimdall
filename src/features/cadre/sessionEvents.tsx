@@ -196,6 +196,7 @@ export function renderEventContent(arg: EventContentArg): React.ReactNode | unde
       <div className="hd-event-title">
         {prefix && <span className="hd-event-acad">{prefix}</span>}
         {s.highLiability && <span aria-label="high liability">▲ </span>}
+        {s.includesTest && <span aria-label="end-of-course test" title="End-of-course TEST this block">✎ </span>}
         {s.courseName}
       </div>
       {s.notes && <div className="hd-event-notes">{s.notes}</div>}

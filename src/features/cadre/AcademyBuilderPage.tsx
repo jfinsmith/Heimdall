@@ -249,12 +249,54 @@ export function AcademyBuilderPage() {
     for (const s of fdleSessions) {
       hoursByCourse.set(norm(s.courseName), (hoursByCourse.get(norm(s.courseName)) ?? 0) + (s.hours || 0));
     }
+    // Per-course TEST tracking: the includesTest checkbox is authoritative, and
+    // the legacy convention of writing "Test" in Notes still counts so existing
+    // schedules track without re-editing every session.
+    const testByCourse = new Set<string>();
+    for (const s of fdleSessions) {
+      if (s.includesTest === true || /\btest\b/i.test(s.notes ?? '')) testByCourse.add(norm(s.courseName));
+    }
     // High-liability flag comes from the discipline's own curriculum block.
     return curriculum.courses.map((c) => {
       const scheduled = q(hoursByCourse.get(norm(c.name)) ?? 0);
-      return { ...c, scheduled, delta: q(scheduled - c.minHours), highLiability: !!c.highLiability };
+      return {
+        ...c,
+        scheduled,
+        delta: q(scheduled - c.minHours),
+        highLiability: !!c.highLiability,
+        testScheduled: testByCourse.has(norm(c.name)),
+      };
     });
   }, [curriculum, fdleSessions]);
+
+  // Lunch integrity sweep: a lunch window OUTSIDE its class time silently
+  // under-counts hours (the CO 70 bug), and an 8+ hour day with NO lunch
+  // shouldn't happen — both surface here with a jump to the session.
+  const lunchIssues = useMemo(() => {
+    const out: { session: WithId<SessionDoc>; issue: string }[] = [];
+    for (const s of liveSessions) {
+      if (s.kind === 'lunch' || !s.start || !s.end) continue;
+      const start = s.start.toDate();
+      const end = s.end.toDate();
+      if (s.lunchMinutes && s.lunchStart) {
+        const [h, m] = s.lunchStart.split(':').map(Number);
+        const ls = new Date(start);
+        ls.setHours(h, m || 0, 0, 0);
+        const le = new Date(ls.getTime() + s.lunchMinutes * 60e3);
+        if (ls < start || le > end) {
+          out.push({
+            session: s,
+            issue: `${s.lunchMinutes}-min lunch at ${s.lunchStart} is OUTSIDE the ${toTimeInputValue(start)}–${toTimeInputValue(end)} class — hours are under-counted`,
+          });
+          continue;
+        }
+      }
+      if (!s.lunchMinutes && hoursBetween(start, end) > 8) {
+        out.push({ session: s, issue: `${q(hoursBetween(start, end))} hrs scheduled with NO lunch` });
+      }
+    }
+    return out.sort((a, b) => a.session.start.toMillis() - b.session.start.toMillis());
+  }, [liveSessions]);
 
   /** Sessions landing on school holidays (the post-clone trap). */
   const holidayConflicts = useMemo(() => {
@@ -389,9 +431,20 @@ export function AcademyBuilderPage() {
         }
       }
     }
+    // The lunch window rides along with a drag — a static 12:00 lunch on a
+    // session moved to the afternoon would land OUTSIDE the class and silently
+    // under-count hours.
+    const dragDeltaMin = Math.round((start.getTime() - s.start.toDate().getTime()) / 60e3);
+    const shiftedLunch = (() => {
+      if (!s.lunchMinutes || !s.lunchStart || dragDeltaMin === 0) return {};
+      const [h, m] = s.lunchStart.split(':').map(Number);
+      const mins = Math.min(23 * 60 + 59, Math.max(0, h * 60 + (m || 0) + dragDeltaMin));
+      return { lunchStart: `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}` };
+    })();
     await updateDoc(doc(db, 'sessions', s.id), {
       start: tsFromDate(start),
       end: tsFromDate(end),
+      ...shiftedLunch,
       // Lunch placeholders never carry hours; sessions recompute from the new span
       // (preserving their lunch carve-out, unless lunch counts).
       hours:
@@ -622,6 +675,32 @@ export function AcademyBuilderPage() {
               </li>
             ))}
           </ul>
+        </section>
+      )}
+
+      {/* Lunch integrity — outside-the-class lunches (hours under-count) and
+          8+ hour days without one. Fix each by opening the session. */}
+      {lunchIssues.length > 0 && (
+        <section className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-4">
+          <h2 className="mb-2 text-sm font-bold uppercase tracking-wider text-amber-900">
+            {lunchIssues.length} lunch issue{lunchIssues.length === 1 ? '' : 's'} — hours may be wrong
+          </h2>
+          <ul className="space-y-1.5">
+            {lunchIssues.map(({ session: s, issue }) => (
+              <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 text-sm text-amber-900">
+                <span>
+                  <button className="font-medium hover:underline" onClick={() => setDetailSession(s)}>
+                    {s.title || s.courseName}
+                  </button>{' '}
+                  — {fmtDate(s.start)}: {issue}
+                </span>
+                <Button onClick={() => goToSessionOnCalendar(s)}>Show on calendar</Button>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs text-amber-800">
+            Open the session and fix the times or lunch — saving recomputes the hours automatically.
+          </p>
         </section>
       )}
 
@@ -1083,7 +1162,7 @@ function OpenSignupsModal({
 function CourseCoverageRow({
   c,
 }: {
-  c: { cjk?: string; name: string; minHours: number; scheduled: number; delta: number; highLiability?: boolean; optional?: boolean; instructorRatio?: number };
+  c: { cjk?: string; name: string; minHours: number; scheduled: number; delta: number; highLiability?: boolean; optional?: boolean; tested?: boolean; testScheduled?: boolean; instructorRatio?: number };
 }) {
   return (
     <li className="flex items-center justify-between gap-2 text-sm">
@@ -1116,6 +1195,14 @@ function CourseCoverageRow({
         ) : (
           <Badge tone="green">met</Badge>
         )}
+        {c.tested &&
+          // FL BRTP: every tested topic must END with its written exam — track
+          // that a session carries the TEST flag (or the legacy "Test" note).
+          (c.testScheduled ? (
+            <Badge tone="green">✎ test</Badge>
+          ) : (
+            <Badge tone="amber">no test</Badge>
+          ))}
       </span>
     </li>
   );
@@ -1227,6 +1314,9 @@ function EditAcademyModal({ academy, onClose }: { academy: WithId<AcademyDoc>; o
   const [targetHours, setTargetHours] = useState(academy.targetTotalHours);
   const [startDate, setStartDate] = useState(toDateInputValue(academy.startDate.toDate()));
   const [endDate, setEndDate] = useState(toDateInputValue(academy.endDate.toDate()));
+  const [courseRooms, setCourseRooms] = useState<Record<string, { room: string; roomId?: string }>>(
+    academy.courseRoomDefaults ?? {}
+  );
   const [primary, setPrimary] = useState(academy.coordinatorIds[0] ?? '');
   const [secondary, setSecondary] = useState(academy.coordinatorIds[1] ?? '');
   const [busy, setBusy] = useState(false);
@@ -1254,6 +1344,7 @@ function EditAcademyModal({ academy, onClose }: { academy: WithId<AcademyDoc>; o
       discipline,
       startDate: tsFromDate(new Date(`${startDate}T00:00:00`)),
       endDate: tsFromDate(new Date(`${endDate}T23:59:59`)),
+      courseRoomDefaults: courseRooms,
       color,
       fdleProgram: curriculum?.fdleProgram ?? academy.fdleProgram,
       defaultRoom,
@@ -1323,6 +1414,38 @@ function EditAcademyModal({ academy, onClose }: { academy: WithId<AcademyDoc>; o
             <Input type="number" min={1} step="any" value={targetHours} onChange={(e) => setTargetHours(Number(e.target.value))} />
           </Field>
         </div>
+        <details className="rounded-md border border-watch-100 p-3" open={Object.keys(courseRooms).length > 0}>
+          <summary className="cursor-pointer text-sm font-medium text-watch-800">
+            Per-course default rooms
+            {Object.keys(courseRooms).length > 0 && (
+              <span className="ml-1 text-xs font-normal text-slate-400">({Object.keys(courseRooms).length} set)</span>
+            )}
+          </summary>
+          <p className="mb-2 mt-1 text-xs text-slate-500">
+            New sessions of a course prefill ITS room (Defensive Tactics → the gym, Firearms → the range) instead of
+            the academy default. Set these on <strong>templates</strong> and they roll into every academy created
+            from them. Leave a course blank to keep the academy default.
+          </p>
+          <div className="max-h-60 space-y-1.5 overflow-y-auto pr-1">
+            {(curricula.find((c) => c.id === discipline)?.courses ?? []).map((course) => (
+              <div key={course.name} className="grid grid-cols-[1fr_minmax(12rem,14rem)] items-center gap-2 text-sm">
+                <span className="truncate text-watch-800" title={course.name}>{course.name}</span>
+                <RoomSelect
+                  value={courseRooms[course.name]?.room ?? ''}
+                  roomId={courseRooms[course.name]?.roomId}
+                  onChange={(name, id) =>
+                    setCourseRooms((prev) => {
+                      const next = { ...prev };
+                      if (!name) delete next[course.name];
+                      else next[course.name] = { room: name, ...(id ? { roomId: id } : {}) };
+                      return next;
+                    })
+                  }
+                />
+              </div>
+            ))}
+          </div>
+        </details>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Sequence No." hint="FDLE class/course sequence — flows to the attendance roster">
             <Input value={sequenceNo} onChange={(e) => setSequenceNo(e.target.value)} placeholder="65-2026-2010-2" />

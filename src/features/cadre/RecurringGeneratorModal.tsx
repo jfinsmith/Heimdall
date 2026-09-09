@@ -137,6 +137,25 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
       setError(END_BEFORE_START_MSG);
       return;
     }
+    // Same lunch-integrity guards as the single-session form — a generator
+    // mistake multiplies across every generated day.
+    {
+      const dayStart = combineDateTime(sampleDay, startTime);
+      const dayEnd = combineDateTime(sampleDay, endTime);
+      if (lunchMinutes > 0 && lunchStart) {
+        const ls = combineDateTime(sampleDay, lunchStart);
+        const le = new Date(ls.getTime() + lunchMinutes * 60e3);
+        if (ls < dayStart || le > dayEnd) {
+          setError(
+            `The ${lunchMinutes}-min lunch at ${lunchStart} falls outside the ${startTime}–${endTime} class time — hours would under-count on every generated day.`
+          );
+          return;
+        }
+      }
+      if (hoursBetween(dayStart, dayEnd) > 8 && lunchMinutes === 0) {
+        if (!window.confirm(`Each generated day runs over 8 hours with NO lunch break. Generate anyway without one?`)) return;
+      }
+    }
     setBusy(true);
 
     // Hard block: a managed room can't be double-booked. Check every generated

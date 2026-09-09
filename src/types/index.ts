@@ -524,6 +524,14 @@ export interface AcademyDoc {
    * the discipline's CurriculumDoc.signupsDefaultEnabled at creation.
    */
   signupsEnabled?: boolean;
+  /**
+   * Per-course default rooms, keyed by curriculum course NAME (e.g.
+   * "Criminal Justice Defensive Tactics" → the gym). New sessions of that
+   * course prefill this room instead of the academy-wide defaultRoom; falls
+   * back to defaultRoom when a course has no entry. Set in Edit academy —
+   * especially on TEMPLATES, so it rolls into every academy cloned from them.
+   */
+  courseRoomDefaults?: Record<string, { room: string; roomId?: string }>;
   targetTotalHours: number; // defaults to the curriculum's course-hour sum; editable
   /** Chain-of-command sign-off before publishing (non-templates). */
   approval?: AcademyApproval;
@@ -895,6 +903,14 @@ export interface SessionDoc {
    * lunch that still counts as 9 hrs). Default/undefined = lunch is excluded.
    */
   lunchCountsTowardHours?: boolean;
+  /**
+   * The end-of-course TEST is administered during this block (FL BRTP: every
+   * tested topic ends with a written exam, usually end-of-day or the next
+   * morning). Drives the builder's per-course "test scheduled" check — the
+   * old convention of writing "Test" in Notes is also recognized as a
+   * fallback so legacy schedules still track.
+   */
+  includesTest?: boolean;
   /**
    * False for agency-specific blocks (PSO assignments, resiliency days,
    * formation, drill, study halls…) that exist for member minimum-hour

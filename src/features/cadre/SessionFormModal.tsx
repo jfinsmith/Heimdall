@@ -157,9 +157,35 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
   const [startTime, setStartTime] = useState(session ? toTimeInputValue(session.start.toDate()) : defaultTime || '07:00');
   const [endTime, setEndTime] = useState(session ? toTimeInputValue(session.end.toDate()) : '18:00');
   const [lunchMinutes, setLunchMinutes] = useState<number>(session?.lunchMinutes ?? 0);
+  const [includesTest, setIncludesTest] = useState<boolean>(session?.includesTest ?? false);
+  // Set once the coordinator touches the room by hand — a course's default room
+  // must never overwrite a deliberate choice.
+  const roomTouched = useRef(false);
   // Default to noon — use || so a saved empty string (lunch was 0) still defaults to 12:00.
   const [lunchStart, setLunchStart] = useState<string>(session?.lunchStart || '12:00');
+
   const [lunchCounts, setLunchCounts] = useState<boolean>(session?.lunchCountsTowardHours ?? false);
+
+  // ── Hours ⇄ Start ⇄ End ⇄ Lunch sync ────────────────────────────────────
+  // Instructional hours are ALWAYS span − lunch (unless lunch counts). The
+  // Hours box edits the END time; editing End recomputes hours; changing Start
+  // keeps the hours and shifts End; changing lunch keeps End and adjusts hours.
+  const lunchAdjHours = lunchCounts ? 0 : lunchMinutes / 60;
+  const instrHours =
+    Math.round(
+      Math.max(
+        0,
+        hoursBetween(combineDateTime('2000-01-01', startTime), combineDateTime('2000-01-01', endTime)) - lunchAdjHours
+      ) * 4
+    ) / 4;
+  const timePlus = (hhmm: string, hours: number): string => {
+    const mins = Math.min(
+      23 * 60 + 59,
+      Math.max(0, Math.round(Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5)) + hours * 60))
+    );
+    return `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
+  };
+
   // For a multi-room session, session.room is the already comma-JOINED display
   // ("SIM, E-120") — keep only the primary segment or re-saving would re-append
   // the extras ("SIM, E-120, E-120", growing every save).
@@ -241,6 +267,13 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
     }
     setCountsTowardFdle(true); // a curriculum course always counts toward program hours
     const opt = courseOptions.find((o) => o.value === id);
+    // Course-specific default room (Edit academy → per-course default rooms:
+    // DT → the gym, Firearms → the range) — never overwrites a hand-picked room.
+    const courseDefault = opt ? academy.courseRoomDefaults?.[opt.name] : undefined;
+    if (courseDefault?.room && !roomTouched.current) {
+      setRoom(courseDefault.room);
+      setRoomId(courseDefault.roomId);
+    }
     if (opt?.coordinatorRun) {
       // Coordinator-run block (orientation, equipment issue…): pre-assigned, no open sign-up.
       setSlots([coordinatorSlot()]);
@@ -346,6 +379,27 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
       setError(END_BEFORE_START_MSG);
       return;
     }
+    // Lunch must sit INSIDE the class time — otherwise the carve-out silently
+    // under-counts hours (the CO 70 bug: an 0800–1200 class with a 1200–1300
+    // lunch counted 3 hours instead of 4).
+    if (lunchMinutes > 0 && lunchStart) {
+      const ls = combineDateTime(date, lunchStart);
+      const le = new Date(ls.getTime() + lunchMinutes * 60e3);
+      if (ls < start || le > end) {
+        setBusy(false);
+        setError(
+          `The ${lunchMinutes}-min lunch at ${lunchStart} falls outside the ${startTime}–${endTime} class time, so hours would under-count. Move the lunch inside the class, adjust the times, or set lunch to 0.`
+        );
+        return;
+      }
+    }
+    // Over 8 hours with no lunch break is almost always a mistake — confirm.
+    if (hoursBetween(start, end) > 8 && lunchMinutes === 0) {
+      if (!window.confirm(`This block runs ${Math.round(hoursBetween(start, end) * 4) / 4} hours with NO lunch break. Days over 8 hours need a lunch. Save anyway without one?`)) {
+        setBusy(false);
+        return;
+      }
+    }
     const courseName = resolvedName;
 
     // All managed rooms attached to this session (primary + extras), de-duped.
@@ -419,6 +473,7 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
       lunchCountsTowardHours: lunchCounts,
       // Custom/agency blocks are never FDLE program hours.
       countsTowardFdle: isCustom ? false : countsTowardFdle,
+      includesTest,
       roleSlots: cleanSlots,
       notes: notes ?? '',
       updatedAt: serverTimestamp(),
@@ -607,17 +662,38 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
             </Field>
           )}
         </div>
-        <div className="grid gap-4 sm:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-5">
           <Field label="Date">
             <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
           </Field>
+          <Field label="Hours" hint="Sets the end time">
+            <Input
+              type="number"
+              min={0}
+              step={0.5}
+              value={instrHours}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                if (Number.isFinite(v)) setEndTime(timePlus(startTime, Math.max(0, v) + lunchAdjHours));
+              }}
+            />
+          </Field>
           <Field label="Start">
-            <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} required />
+            <Input
+              type="time"
+              value={startTime}
+              onChange={(e) => {
+                // Keep the HOURS constant: moving the start shifts the end with it.
+                setStartTime(e.target.value);
+                setEndTime(timePlus(e.target.value, instrHours + lunchAdjHours));
+              }}
+              required
+            />
           </Field>
           <Field label="End">
             <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} required />
           </Field>
-          <Field label="Lunch (min)" hint="Default: carved out">
+          <Field label="Lunch (min)" hint="Carved out; end stays">
             <Input
               type="number"
               min={0}
@@ -654,7 +730,7 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Room (optional)" hint="Pick a managed room or Custom — booked rooms are blocked. Add more for scenario days.">
             <div className="space-y-2">
-              <RoomSelect value={room} roomId={roomId} headcount={classSize} onChange={(name, id) => { setRoom(name); setRoomId(id); }} />
+              <RoomSelect value={room} roomId={roomId} headcount={classSize} onChange={(name, id) => { roomTouched.current = true; setRoom(name); setRoomId(id); }} />
               {extraRoomIds.map((id, i) => (
                 <div key={i} className="flex items-start gap-2">
                   <div className="flex-1">
@@ -676,11 +752,20 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
             Custom / agency block — does <strong>not</strong> count toward FDLE program hours.
           </p>
         ) : (
-          <label className="flex items-center gap-2 text-sm text-watch-800">
-            <input type="checkbox" checked={countsTowardFdle} onChange={(e) => setCountsTowardFdle(e.target.checked)} />
-            Counts toward FDLE program hours
-            <span className="text-xs text-slate-400">(uncheck for agency-only blocks like PSO assignments)</span>
-          </label>
+          <div className="space-y-1.5">
+            <label className="flex items-center gap-2 text-sm text-watch-800">
+              <input type="checkbox" checked={countsTowardFdle} onChange={(e) => setCountsTowardFdle(e.target.checked)} />
+              Counts toward FDLE program hours
+              <span className="text-xs text-slate-400">(uncheck for agency-only blocks like PSO assignments)</span>
+            </label>
+            <label className="flex items-center gap-2 text-sm text-watch-800">
+              <input type="checkbox" checked={includesTest} onChange={(e) => setIncludesTest(e.target.checked)} />
+              <span>
+                End-of-course <strong>TEST</strong> in this block
+              </span>
+              <span className="text-xs text-slate-400">(tracked per topic on the coverage card; shows ✎ on the calendar)</span>
+            </label>
+          </div>
         )}
 
         <fieldset className="rounded-md border border-watch-100 p-3">

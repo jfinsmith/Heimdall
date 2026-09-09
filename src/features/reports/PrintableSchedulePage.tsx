@@ -380,6 +380,7 @@ export function PrintableSchedulePage() {
                             <td className="px-2 py-1.5">
                               <span className="font-semibold text-[#1f2a45]">{s.title || s.courseName}</span>
                               {s.highLiability && <span className="ml-2 align-middle text-[10px] font-bold" style={{ color: amber }}>▲</span>}
+                              {s.includesTest && <span className="ml-2 align-middle text-[10px] font-bold">✎ TEST</span>}
                               {flagStyle && <span className="ml-2 rounded px-1 align-middle text-[9px] font-bold uppercase text-white" style={{ backgroundColor: flagStyle.color }}>{flagStyle.label}</span>}
                               {lunch && (
                                 <div className="mt-0.5 text-[11px] leading-tight text-slate-500">
