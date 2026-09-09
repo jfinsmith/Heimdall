@@ -251,9 +251,12 @@ export function AcademyBuilderPage() {
     }
     // Per-course TEST tracking: the includesTest checkbox is authoritative, and
     // the legacy convention of writing "Test" in Notes still counts so existing
-    // schedules track without re-editing every session.
+    // schedules track without re-editing every session. Scans ALL live sessions
+    // — not just FDLE-counting ones — because a test block with "counts toward
+    // FDLE hours" unchecked is still the topic's test.
     const testByCourse = new Set<string>();
-    for (const s of fdleSessions) {
+    for (const s of liveSessions) {
+      if (s.kind === 'lunch') continue;
       if (s.includesTest === true || /\btest\b/i.test(s.notes ?? '')) testByCourse.add(norm(s.courseName));
     }
     // High-liability flag comes from the discipline's own curriculum block.
