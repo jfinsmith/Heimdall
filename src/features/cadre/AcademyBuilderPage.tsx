@@ -270,7 +270,7 @@ export function AcademyBuilderPage() {
         testScheduled: testByCourse.has(norm(c.name)),
       };
     });
-  }, [curriculum, fdleSessions]);
+  }, [curriculum, fdleSessions, liveSessions]);
 
   // Lunch integrity sweep: a lunch window OUTSIDE its class time silently
   // under-counts hours (the CO 70 bug), and an 8+ hour day with NO lunch
