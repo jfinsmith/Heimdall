@@ -635,7 +635,7 @@ export function letterFor(pct: number): string {
 /** FDLE Law Enforcement CJK course list (from the official forms' dropdown). */
 // Official CJSTC Law Enforcement Basic Recruit course titles.
 export const FDLE_LE_COURSES: { code: string; name: string }[] = [
-  ['0096', 'Law Enforcement Officer Physical Fitness Training'], ['0002', 'Introduction to Law Enforcement'], ['0031', 'First Aid for Criminal Justice Officers'],
+  ['0096', 'Criminal Justice Officer Physical Fitness Training (Law Enforcement)'], ['0002', 'Introduction to Law Enforcement'], ['0031', 'First Aid for Criminal Justice Officers'],
   ['0051', 'Criminal Justice Defensive Tactics'], ['0040', 'Criminal Justice Firearms'], ['0020', 'Law Enforcement Vehicle Operations'],
   ['0421', 'Conducted Electrical Weapon/Dart-Firing Stun Gun'], ['0016', 'Communication'], ['0021', 'Serving Your Community'],
   ['0018', 'Legal'], ['0073', 'Crimes Involving Property and Society'], ['0072', 'Crimes Against Persons'],

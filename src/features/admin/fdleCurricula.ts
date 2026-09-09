@@ -42,7 +42,7 @@ const LE_COURSES: CurriculumCourse[] = [
   { cjk: 'CJK0031', name: 'First Aid for Criminal Justice Officers', minHours: 40, tested: true, highLiability: true, instructorRatio: 10, leadQualification: 'first_aid' },
   { cjk: 'CJK0040', name: 'Criminal Justice Firearms', minHours: 80, tested: true, highLiability: true, instructorRatio: 6, leadQualification: 'handgun' },
   { cjk: 'CJK0051', name: 'Criminal Justice Defensive Tactics', minHours: 80, tested: true, highLiability: true, instructorRatio: 8, leadQualification: 'dt' },
-  { cjk: 'CJK0096', name: 'Criminal Justice Officer Physical Fitness Training/Law Enforcement', minHours: 60, leadQualification: 'general' },
+  { cjk: 'CJK0096', name: 'Criminal Justice Officer Physical Fitness Training (Law Enforcement)', minHours: 60, leadQualification: 'general' },
   { cjk: 'CJK0421', name: 'Conducted Electrical Weapon/Dart-Firing Stun Gun', minHours: 4, leadQualification: 'handgun' },
 ];
 
@@ -60,7 +60,7 @@ const CO_COURSES: CurriculumCourse[] = [
   { cjk: 'CJK0031', name: 'First Aid for Criminal Justice Officers', minHours: 40, tested: true, highLiability: true, instructorRatio: 10, leadQualification: 'first_aid' },
   { cjk: 'CJK0040', name: 'Criminal Justice Firearms', minHours: 80, tested: true, highLiability: true, instructorRatio: 6, leadQualification: 'handgun' },
   { cjk: 'CJK0051', name: 'Criminal Justice Defensive Tactics', minHours: 80, tested: true, highLiability: true, instructorRatio: 8, leadQualification: 'dt' },
-  { cjk: 'CJK0340', name: 'Officer Wellness and Physical Abilities', minHours: 30, highLiability: true, leadQualification: 'dt' },
+  { cjk: 'CJK0340', name: 'Criminal Justice Officer Physical Fitness Training (Corrections)', minHours: 30, highLiability: true, leadQualification: 'dt' },
 ];
 
 // ── 3. Crossover: Corrections → Law Enforcement — 518 hrs, 17 courses ──
