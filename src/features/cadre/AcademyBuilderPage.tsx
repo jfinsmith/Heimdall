@@ -1040,6 +1040,7 @@ export function AcademyBuilderPage() {
           courseLabel={signupModal.label}
           mode={signupModal.mode}
           sessionCount={signupModal.mode === 'open' ? signupModal.group.scheduled : signupModal.group.open}
+          courseSessions={liveSessions.filter((s) => s.kind !== 'lunch' && (s.title || s.courseName) === signupModal.label)}
           onConfirm={confirmCourseSignups}
           onClose={() => setSignupModal(null)}
         />
@@ -1058,12 +1059,15 @@ function OpenSignupsModal({
   courseLabel,
   mode,
   sessionCount,
+  courseSessions,
   onConfirm,
   onClose,
 }: {
   courseLabel: string;
   mode: 'open' | 'announce';
   sessionCount: number;
+  /** This course's sessions — drives the "who will get the email" preview. */
+  courseSessions: WithId<SessionDoc>[];
   onConfirm: (target: CoursePublishTarget | null) => Promise<void>;
   onClose: () => void;
 }) {
@@ -1078,6 +1082,33 @@ function OpenSignupsModal({
     .filter((u) => u.role === 'instructor' || u.qualifications.length > 0)
     .sort((a, b) => a.displayName.localeCompare(b.displayName));
   const valid = choice !== 'users' || selectedUids.length > 0;
+
+  // Preview of who "everyone eligible" actually emails — MIRRORS the server's
+  // onCoursePublished rule: active same-org users holding a verified qual that
+  // matches an UNFILLED slot of this course (or anyone, if a slot is
+  // unrestricted). For mode 'open' the sessions aren't open yet, so upcoming
+  // scheduled ones count as about-to-open.
+  const eligibleNames = useMemo(() => {
+    const slotQuals = new Set<string>();
+    let anyUnrestricted = false;
+    for (const s of courseSessions) {
+      const relevant =
+        mode === 'announce'
+          ? s.status === 'open' || s.status === 'fully_staffed'
+          : s.end.toMillis() >= Date.now() &&
+            (s.status === 'scheduled' || s.status === 'open' || s.status === 'fully_staffed');
+      if (!relevant) continue;
+      for (const slot of s.roleSlots) {
+        if (slot.filledBy.length >= slot.count) continue;
+        if (slot.requiredQualificationKey) slotQuals.add(slot.requiredQualificationKey);
+        else anyUnrestricted = true;
+      }
+    }
+    return users
+      .filter((u) => anyUnrestricted || (u.verifiedQualKeys ?? []).some((k) => slotQuals.has(k)))
+      .map((u) => (u.firstName && u.lastName ? `${u.firstName} ${u.lastName}` : u.displayName))
+      .sort((a, b) => a.localeCompare(b));
+  }, [users, courseSessions, mode]);
 
   async function submit() {
     setBusy(true);
@@ -1118,6 +1149,18 @@ function OpenSignupsModal({
 
         <div className="space-y-2">
           <Radio value="all" label="Everyone eligible for this course" hint="All active instructors who qualify for an open slot." />
+          {choice === 'all' && (
+            <div className="ml-7 rounded-md border border-watch-100 bg-watch-50 px-3 py-2">
+              <div className="mb-1 text-xs font-semibold text-watch-600">
+                {eligibleNames.length} member{eligibleNames.length === 1 ? '' : 's'} will receive the email:
+              </div>
+              <p className="max-h-28 overflow-y-auto text-xs leading-relaxed text-slate-600">
+                {eligibleNames.length > 0
+                  ? eligibleNames.join(', ')
+                  : 'No one currently qualifies for an unfilled slot of this course.'}
+              </p>
+            </div>
+          )}
           <Radio value="qualification" label="Only a specific qualification" hint="e.g. open Firearms to Handgun instructors only." />
           {choice === 'qualification' && (
             <div className="pl-7">
