@@ -17,7 +17,7 @@ import { DocumentHeader } from '../reports/DocumentHeader';
 import { Button, Spinner } from '../../../components/ui';
 
 const RESULT_LABEL: Record<string, string> = {
-  pass: 'Pass', fail: 'Fail', na: 'N/A', xo: 'XO (crossover)', wd: 'Withdrawn', pending: '—',
+  pass: 'Pass', fail: 'Fail', na: 'N/A', xo: 'XO (crossover)', wd: 'Withdrawn', dism: 'Dismissed', pending: '—',
 };
 
 export function CadetRecordPrintPage() {

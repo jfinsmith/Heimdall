@@ -9,7 +9,7 @@ import type { WithId } from '../../../lib/firestore';
 import { agencyLabel, courseKey, courseResult, effectiveScore, gradedCourses, lastFirst, memberStanding } from './rosterShared';
 
 const RESULT_LABEL: Record<string, string> = {
-  pass: 'Pass', fail: 'Fail', na: 'N/A', xo: 'XO', wd: 'WD', pending: '',
+  pass: 'Pass', fail: 'Fail', na: 'N/A', xo: 'XO', wd: 'WD', dism: 'DISM', pending: '',
 };
 
 const STATUS_LABEL: Record<string, string> = {

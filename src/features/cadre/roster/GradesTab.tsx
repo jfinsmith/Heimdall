@@ -50,6 +50,7 @@ export function GradesTab({
         <Legend className="bg-slate-100 text-slate-500" label="N/A (injured)" />
         <Legend className="bg-sky-50 text-sky-700" label="XO (crossover)" />
         <Legend className="bg-slate-200 text-slate-400" label="WD (withdrawn)" />
+        <Legend className="bg-slate-200 text-slate-400" label="DISM (dismissed)" />
         <Legend className="ring-2 ring-inset ring-red-400" label="Re-exam / remediation used" />
       </div>
 
@@ -82,9 +83,9 @@ export function GradesTab({
               const seedScore = failCell?.reexamScore ?? failCell?.score;
               const courseVal = failC?.cjk ? `${failC.cjk.replace(/^CJK\s*/, 'CJK ')} — ${failC.name}` : '';
               return (
-                <tr key={m.id} className={m.status === 'withdrawn' ? 'opacity-60' : ''}>
+                <tr key={m.id} className={m.status === 'withdrawn' || m.status === 'dismissed' ? 'opacity-60' : ''}>
                   <td className="sticky left-0 z-10 bg-white px-3 py-2 font-medium text-watch-900">
-                    <span className={m.status === 'withdrawn' ? 'line-through' : ''}>{lastFirst(m.fullName)}</span>
+                    <span className={m.status === 'withdrawn' || m.status === 'dismissed' ? 'line-through' : ''}>{lastFirst(m.fullName)}</span>
                     {standing.warnings.length > 0 && (
                       <span className="ml-1 cursor-help text-red-600" title={standing.warnings.join('\n')}>⚠</span>
                     )}
@@ -121,8 +122,8 @@ export function GradesTab({
                         <button
                           className={`min-w-[3rem] rounded px-2 py-1 text-xs ${resultClasses(res)} ${usedReexam ? 'ring-2 ring-inset ring-red-400' : ''} hover:ring-2 hover:ring-bifrost-300`}
                           onClick={() => setEditing({ member: m, course: c })}
-                          disabled={res === 'wd'}
-                          title={usedReexam ? 'Re-exam / remediation used — Edit grade' : res === 'wd' ? 'Withdrawn' : 'Edit grade'}
+                          disabled={res === 'wd' || res === 'dism'}
+                          title={usedReexam ? 'Re-exam / remediation used — Edit grade' : res === 'wd' ? 'Withdrawn' : res === 'dism' ? 'Dismissed' : 'Edit grade'}
                         >
                           {cellLabel(res, cell)}
                         </button>
@@ -151,6 +152,7 @@ export function GradesTab({
 
 function cellLabel(res: string, cell?: GradeCell): string {
   if (res === 'wd') return 'WD';
+  if (res === 'dism') return 'DISM';
   if (res === 'na') return 'N/A';
   if (res === 'xo') return 'XO';
   if (cell?.status === 'co') return 'CO';

@@ -52,8 +52,10 @@ export function DisciplineTab({ academyId, members, onGenerateLetter }: { academ
             {roster.map((m) => {
               const t = disciplineTally(m.violations);
               return (
-                <tr key={m.id} className={m.status === 'withdrawn' ? 'text-slate-400' : ''}>
-                  <td className="px-3 py-3 font-medium text-watch-900">{lastFirst(m.fullName)}</td>
+                <tr key={m.id} className={m.status === 'withdrawn' || m.status === 'dismissed' ? 'text-slate-400' : ''}>
+                  <td className="px-3 py-3 font-medium text-watch-900">
+                    <span className={m.status === 'withdrawn' || m.status === 'dismissed' ? 'text-slate-400 line-through' : ''}>{lastFirst(m.fullName)}</span>
+                  </td>
                   <td className="px-3 py-3">{agencyLabel(m)}</td>
                   <td className="px-3 py-3 text-center">
                     {t.warnings > 0 ? <Badge tone="amber">{t.warnings}</Badge> : <span className="text-slate-300">0</span>}

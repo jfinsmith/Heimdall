@@ -50,7 +50,7 @@ export function disciplineTally(violations: ViolationEntry[] = []) {
   return { warnings, counts, points };
 }
 
-export type CourseResult = 'pass' | 'fail' | 'na' | 'xo' | 'wd' | 'pending';
+export type CourseResult = 'pass' | 'fail' | 'na' | 'xo' | 'wd' | 'dism' | 'pending';
 
 /** Tested curriculum courses in academy order. */
 export function gradedCourses(courses: CurriculumCourse[] = []): CurriculumCourse[] {
@@ -93,9 +93,11 @@ export function courseResult(
   courseIndexById: Map<string, number>,
   thisIndex: number
 ): CourseResult {
-  if (member.status === 'withdrawn') {
+  if (member.status === 'withdrawn' || member.status === 'dismissed') {
+    // Same cut-off mechanics for both: courses past the departure point (or ALL
+    // courses when no marker was recorded) read WD / DISM.
     const wIdx = member.withdrawnAfterCourse ? courseIndexById.get(member.withdrawnAfterCourse) ?? -1 : -1;
-    if (wIdx < 0 || thisIndex > wIdx) return 'wd';
+    if (wIdx < 0 || thisIndex > wIdx) return member.status === 'dismissed' ? 'dism' : 'wd';
   }
   const cell = member.grades?.[courseKey(course)];
   if (cell?.status === 'na') return 'na';
@@ -154,6 +156,7 @@ export function resultClasses(res: CourseResult): string {
     case 'xo':
       return 'bg-sky-50 text-sky-700';
     case 'wd':
+    case 'dism':
       return 'bg-slate-200 text-slate-400';
     default:
       return 'bg-amber-50 text-amber-700';
