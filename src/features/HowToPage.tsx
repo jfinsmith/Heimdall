@@ -43,6 +43,7 @@ const TOC: { group: string; items: { id: string; title: string }[] }[] = [
       { id: 'remediation', title: 'Remediation & Returns (returning cadets)' },
       { id: 'documents', title: 'Documents, letters & reports' },
       { id: 'printing', title: 'Printing guide' },
+      { id: 'exports', title: 'Exports (CSV & hours summary)' },
     ],
   },
   {
@@ -52,6 +53,7 @@ const TOC: { group: string; items: { id: string; title: string }[] }[] = [
       { id: 'curriculum', title: 'Curriculum & Hours (per-discipline setup)' },
       { id: 'org-settings', title: 'Org settings, branding & emails' },
       { id: 'billing', title: 'Billing & subscription' },
+      { id: 'compliance', title: 'Compliance & data (DPA, FERPA export)' },
     ],
   },
   {
@@ -131,7 +133,7 @@ export function HowToPage() {
             invite link /join/{code}) → org pending queue. */}
         <Section id="account" title="Your account & first sign-in" role="Everyone">
           <Steps items={[
-            <>Two ways in: an administrator creates your account (you get an <B>activation email</B> with a temporary password), or you <B>register yourself</B> — with email &amp; password (you&apos;ll <B>verify your email</B> first) or Continue with Google.</>,
+            <>Two ways in: an administrator creates your account (you get an <B>activation email</B> with a temporary password), or you <B>register yourself</B> — with email &amp; password (you&apos;ll <B>verify your email</B> first) or Continue with Google / Microsoft.</>,
             <>Registration asks for your <B>legal first and last name</B> and <B>date of birth</B> — required so the academy can verify your training credentials against state records (ATMS). Accounts created before this requirement (and Google/Microsoft sign-ups) are asked ONCE at sign-in to confirm these details.</>,
             <>Self-registered? Enter your academy&apos;s <B>join code</B> (from your welcome email — or just tap the invite link, which fills it in for you). A matching work email domain can skip the code entirely. Accounts never linked to an organization are removed after 30 days.</>,
             <>Complete the <B>welcome profile</B> (name, rank, phone) and claim any instructor qualifications you hold (an admin verifies them before they count).</>,
@@ -145,7 +147,7 @@ export function HowToPage() {
         <Section id="profile" title="Profile, qualifications & availability" role="Everyone">
           <Sub title="Qualifications & instructor certification">
             <p>
-              Open <B>Profile</B> to claim qualifications (General Instructor, Handgun, Defensive Tactics, Vehicle Ops, First Aid, Role Player…).
+              Profile has three tabs — <B>Profile</B> (contact info, notification email, password, unavailable days), <B>Notifications</B>, and <B>Qualifications</B>, which carries a red <B>!</B> until you&apos;ve claimed at least one qualification. Open the <B>Qualifications</B> tab to claim what you hold (General Instructor, Handgun, Defensive Tactics, Vehicle Ops, First Aid, Role Player…).
               Claims start unverified — an admin verifies them under <B>Admin → Users &amp; Roles</B>. Claiming
               <B> First Aid / CPR</B> asks for your CPR card&apos;s expiration date and a photo of the card (name and
               date visible); if you can&apos;t upload one, you can ask staff to confirm from college records — but the
@@ -223,7 +225,7 @@ export function HowToPage() {
             ]} />
           </Sub>
           <Sub title="Cloning a past class">
-            <p>Cloning an existing academy works the same way. After the copy, HEIMDALL flags any cloned session whose <B>room is already booked</B> by another class, and any that landed on holidays — fix those days in the builder.</p>
+            <p>Cloning an existing academy works the same way. After the copy, HEIMDALL flags any cloned session whose <B>room is already booked</B> by another class, and any that landed on holidays — fix those days in the builder. Class dates can be corrected any time under <B>Edit academy</B> — changing them adjusts the academy&apos;s window (and printed program dates) but never moves scheduled sessions.</p>
           </Sub>
           <Tips items={[
             <>Deleting an academy requires typing <B>DELETE</B> — it removes the class and its sessions permanently.</>,
@@ -245,7 +247,7 @@ export function HowToPage() {
           <Steps items={[
             <>Build the schedule as a <B>draft</B> — drafts are invisible to instructors.</>,
             <>From the builder, <B>Submit for approval</B> and pick the reviewing sergeant.</>,
-            <>The chain runs sergeant → lieutenant → captain; each approver gets a notification and an entry in their <B>Overview → Pending your approval</B> queue. Command may fast-track past the sergeant step. Lieutenant and Director are equal ranks — either can clear the command stages.</>,
+            <>Each stage has ONE approver: the assigned <B>sergeant</B>, then the <B>lieutenant</B>, then the <B>captain — who alone gives final approval</B>. Each approver gets a notification and an entry in their <B>Overview → Pending your approval</B> queue; the lieutenant can fast-track past the sergeant step. Any current approver can instead <B>Request changes</B> with a note — the submitter is notified, fixes the schedule, and resubmits.</>,
             <>Once approved, <B>Publish</B> makes the calendar visible. Publishing is hard-gated: an unapproved academy cannot be published, and course sign-ups stay closed until you open each course (see Staffing).</>,
           ]} />
         </Section>
@@ -258,6 +260,9 @@ export function HowToPage() {
               <>Set the <B>lunch break</B> (minutes + start). Lunch is carved out of instructional hours unless you explicitly check <B>lunch counts toward hours</B> — that&apos;s rare/case-by-case and shows a warning, and the calendar and printouts label it <B>Working Lunch</B> so the paid break is unmistakable. The <B>Hours / Start / End / Lunch boxes stay in sync</B>: type 4 hours and the end time moves; change the end and the hours recompute; add lunch and the hours shrink while the end stays. A lunch set <B>outside the class time</B> is blocked (it silently under-counts hours), 8+ hour days without a lunch warn, and the builder flags any existing offenders in an amber &quot;lunch issues&quot; card.</>,
               <>Check <B>End-of-course TEST in this block</B> on the session that carries a topic&apos;s written exam (usually end-of-day or next morning). Tested topics show <B>✎ test</B> / <B>no test</B> on the coverage card so no exam gets forgotten, the calendar and printouts mark the block with ✎, and the old &quot;Test&quot;-in-Notes convention still counts.</>,
               <>Under <B>Edit academy → Per-course default rooms</B>, map courses to their rooms (DT → gym, Firearms → range) — new sessions of that course prefill it, and setting them on a <B>template</B> rolls into every academy created from it.</>,
+              <>The <B>Pay periods</B> panel above the calendar totals each bi-weekly period against your org&apos;s target hours — short periods flag amber (typically topped up with a Friday PSO assignment), overtime flags red, and <B>observed holidays credit their pay hours</B> automatically.</>,
+              <>Besides the per-session lunch carve-out, <B>Add lunch</B> draws a standalone lunch/break placeholder block — never staffed, zero hours, purely visual on the calendar and printouts.</>,
+              <>The builder also flags anything scheduled on a <B>Saturday or Sunday</B> (usually a clone artifact) in a dismissible card, alongside the holiday and lunch-issue alerts.</>,
               <>Pick a <B>room</B> — the location auto-fills from the room&apos;s location and locks (choose Custom room to type a free-text room/location). Use <B>+ Add room</B> for scenario days needing several rooms; every room is conflict-checked.</>,
             ]} />
           </Sub>
@@ -282,7 +287,9 @@ export function HowToPage() {
             </p>
             <p className="mt-2">
               The Staffing Board&apos;s <B>Hardest to staff</B> panel ranks courses by how well they attracted sign-ups over the past
-              year — the courses that consistently ran short are where to focus instructor recruitment and certification pushes.
+              year — the courses that consistently ran short are where to focus instructor recruitment and certification pushes. Need to
+              reach everyone at once? <B>Bulk message</B> on the Staffing Board emails (and bell-notifies) either all
+              instructors with upcoming assignments or just one class&apos;s signed-up instructors.
             </p>
           </Sub>
           <Sub title="After the day has passed — record who taught">
@@ -303,7 +310,7 @@ export function HowToPage() {
           </Sub>
           <Sub title="Opening sign-ups">
             <Steps items={[
-              <>After publishing, open each course for sign-ups from the builder&apos;s course panel — choose which instructor groups get the announcement email.</>,
+              <>After publishing, open each course for sign-ups from the builder&apos;s course panel — choose which instructor groups get the announcement email. Picking <B>Everyone eligible</B> previews the exact members who will receive it before you send.</>,
               <>The Course sign-ups card has a master <B>sign-ups switch</B> (primary coordinator or sergeant+ only). Toggled OFF, every Open button is hidden so agency-funded programs are never accidentally published to college adjuncts — scheduling and manually assigning instructors are unaffected, and it defaults per discipline (FDLE programs on; admin-added disciplines off, changeable in Curriculum &amp; Hours).</>,
               <>Track fill status on the <B>Staffing Board</B>; understaffed sessions inside your alert window trigger daily coordinator alerts and command escalation.</>,
               <>A weekly staffing digest email goes to staff each Monday (configurable under Admin → Gjallarhorn).</>,
@@ -335,7 +342,7 @@ export function HowToPage() {
             <Tips items={[
               <><B>Withdraw</B> keeps the record (struck through, grades to the withdrawal point); <B>Reinstate</B> restores it. <B>Remove</B> deletes entirely — prefer withdrawing.</>,
               <><B>Graduate</B> marks completion and unlocks the org-branded <B>Certificate of Completion</B>; it warns about unresolved course failures but never blocks — the record is yours.</>,
-              <><B>Dismiss</B> records a reason and excludes the cadet from future sign-in sheets.</>,
+              <><B>Dismiss</B> records a reason and works like Withdraw across the record: the cadet drops to the bottom of the Gradebook and Discipline lists with a line through their name, grades stay to the dismissal point (later cells read <B>DISM</B>), and they're excluded from future sign-in sheets.</>,
               <>The <B>Certificate</B> link on each row opens the printable certificate (graduated cadets) + course-by-course transcript.</>,
               <><B>⬇ Export records</B> downloads the full class as CSV: identity, outcome, class standing, attended hours, per-course results.</>,
             ]} />
@@ -419,12 +426,19 @@ export function HowToPage() {
           ]} />
         </Section>
 
+        <Section id="exports" title="Exports (CSV & hours summary)" role="Staff">
+          <Tips items={[
+            <><B>CADRE → Exports</B> downloads CSVs of the <B>schedule</B>, all <B>sign-ups</B>, and per-instructor <B>confirmed hours</B> — pick one academy or leave the filter blank for everything.</>,
+            <>Selecting an academy also shows its <B>FDLE hours summary</B> (program, dates, scheduled vs target hours with a met/short badge) and a link straight to the printable schedule.</>,
+          ]} />
+        </Section>
+
         {/* ── Administration ─────────────────────────────────────────────── */}
         <Section id="users" title="Users, roles & suspension" role="Admins">
           <Tips items={[
             <><B>Admin → Users &amp; Roles</B>: approve pending self-registrations, create accounts (activation email + temporary password), or <B>Bulk import</B> staff from CSV (each row gets an activation email). <B>Copy emails</B> puts every active member&apos;s best address (verified notification email when set) on the clipboard for a BCC mass email; <B>Export CSV</B> downloads the full member list for external mail tools.</>,
             <>Ranks: Instructor → Coordinator → Sergeant → Lieutenant → Director. Instructors see the Instructor tools; Coordinator+ is &quot;staff&quot; (CADRE — schedules, rosters, rooms); <B>Sergeant+ unlocks the Admin section</B>; Lieutenant and Director are equal top admins. Rank display names are editable under Admin → Permissions.</>,
-            <><B>Verify qualifications</B> and set each member&apos;s single instructor-cert expiration date from their row. <B>First Aid / CPR</B> has a second gate: record the member&apos;s <B>CPR instructor expiration date</B> (its own card cycle, not the FDLE 3/31 date) before the Verify button will accept it — CPR expirations are then tracked with expiring/expired coloring on <B>Roster &amp; Certifications</B>.</>,
+            <><B>Verify qualifications</B> and set each member&apos;s single instructor-cert expiration date from their row. <B>First Aid / CPR</B> has a second gate: record the member&apos;s <B>CPR instructor expiration date</B> (its own card cycle, not the FDLE 3/31 date) before the Verify button will accept it — CPR expirations are then tracked with expiring/expired coloring on <B>Roster &amp; Certifications</B>. The editor also shows the member&apos;s <B>date of birth</B> and (Florida jurisdiction) an <B>Open FDLE ATMS</B> link so you can check their credentials against state records before verifying.</>,
             <><B>Edit</B> (on each row) lets admins fix a member&apos;s name, sign-in email, rank, agency, or phone, and reset their password. Saving shows a <B>review screen of exactly what changes</B> before anything is applied. A reset password is temporary — the member is signed out everywhere and must choose their own at next sign-in.</>,
             <><B>Suspend</B> blocks sign-in immediately (the member sees an &quot;Account suspended&quot; notice); <B>Deactivate</B> turns the account off but keeps it. Both are reversible and strip access server-side. <B>Delete…</B> permanently removes the account (checkbox + typed DELETE required; never yourself, never a rank at or above your own) — training and schedule records under the person&apos;s name remain on file.</>,
           ]} />
@@ -440,9 +454,9 @@ export function HowToPage() {
 
         <Section id="org-settings" title="Org settings, branding & emails" role="Admins">
           <Tips items={[
-            <><B>Admin → Settings</B>: org name, logo, letterhead tagline/address, brand colors (printed documents only), allowed email domains for self-registration, pay-period target hours, site code. With a site code set, an <B>invite link</B> appears below it (heimdallscheduling.com/join/&lt;code&gt;) — share that instead of the code and it&apos;s applied automatically when the recipient registers or signs in.</>,
+            <><B>Admin → Settings</B>: org name, logo, letterhead tagline/address, brand colors (printed documents only), allowed email domains for self-registration, pay-period target hours, site code, and the <B>Document jurisdiction</B> (Florida renders FDLE/F.A.C. wording on academic letters and enables the ATMS lookup link; Generic is state-neutral). With a site code set, an <B>invite link</B> appears below it (heimdallscheduling.com/join/&lt;code&gt;) — share that instead of the code and it&apos;s applied automatically when the recipient registers or signs in.</>,
             <><B>Admin → Holidays</B>: toggle which holidays shade calendars, mark which are <B>observed</B> (paid day off — credits holiday pay hours), set the pay hours.</>,
-            <><B>Admin → Gjallarhorn</B>: the email system — master switch, per-automation toggles (reminders, open-course announcements, waitlist promotions, understaffing alerts, weekly digest), default reminder lead time, escalation recipients.</>,
+            <><B>Admin → Gjallarhorn</B>: the email system — master switch, per-automation toggles (reminders, open-course announcements, waitlist promotions, understaffing alerts, weekly digest), default reminder lead time, escalation recipients. Each automation can also be limited to specific <B>recipient ranks</B>.</>,
           ]} />
         </Section>
 
@@ -455,13 +469,22 @@ export function HowToPage() {
           ]} />
         </Section>
 
+        <Section id="compliance" title="Compliance & data (DPA, FERPA export)" role="Admins">
+          <Tips items={[
+            <><B>Admin → Compliance &amp; Data</B> shows where your data lives and exactly what PII is (and is <B>not</B> — never SSNs) stored.</>,
+            <>A top admin can review and <B>accept the Data Processing Agreement</B> there — recorded with version, date, and name.</>,
+            <><B>Export org records (JSON)</B> downloads everything your organization can read in one file — built for FERPA right-to-access requests (the page lists what&apos;s excluded).</>,
+            <>Individual record deletions happen in Roster &amp; Certifications / Users &amp; Roles; a full organization purge goes through the platform operator.</>,
+          ]} />
+        </Section>
+
         {/* ── Help ───────────────────────────────────────────────────────── */}
         <Section id="troubleshooting" title="Troubleshooting & support" role="Everyone">
           <Tips items={[
             <><B>Something looks stale or a button is missing?</B> Hard-refresh (Cmd/Ctrl+Shift+R) — you&apos;re likely on an older cached version after an update.</>,
             <><B>&quot;Site can&apos;t be reached&quot; on one device</B> while others work: quit and reopen the browser — it&apos;s a local network/browser cache issue, not an outage.</>,
             <><B>A list looks empty that shouldn&apos;t be:</B> check your filters first; then hard-refresh.</>,
-            <><B>Found a bug or want a feature?</B> Use <B>Feedback</B> in the sidebar — screenshots attach directly and reports go straight to the developers with your page context. <B>Your reports</B> at the bottom of that page shows each submission&apos;s current status (and any note from the developer); status changes also email you.</>,
+            <><B>Found a bug or want a feature?</B> Use <B>Report a Problem</B> in the sidebar — screenshots attach directly and reports go straight to the developers with your page context. <B>Your reports</B> at the bottom of that page shows each submission&apos;s current status (and any note from the developer); status changes also email you.</>,
             <>Anything else: contact your Academy Director or coordinator; platform issues reach HEIMDALL through the feedback channel.</>,
           ]} />
         </Section>
