@@ -99,6 +99,14 @@ export const saveRoomReservation = onCall<{
 
     const ref = db.doc(`roomReservations/${id}`);
     if (reservationId) {
+      // Cross-tenant guard: the EDIT path must verify the existing reservation
+      // belongs to the caller's org — the checks above only vetted the target
+      // room. Without this, an org-A staffer with an org-B reservation id could
+      // retitle/reschedule it (and detach it from B's conflict checks).
+      const existing = await tx.get(ref);
+      if (!existing.exists || existing.data()!.orgId !== orgId) {
+        throw new HttpsError('permission-denied', 'That reservation belongs to another organization.');
+      }
       tx.update(ref, { roomId, title, start, end, notes: notes || FieldValue.delete() });
     } else {
       tx.set(ref, { orgId, roomId, title, start, end, ...(notes ? { notes } : {}), createdBy: uid, createdAt: FieldValue.serverTimestamp() });

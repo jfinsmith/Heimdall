@@ -154,7 +154,7 @@ export const withdrawSignup = onCall<{ sessionId: string }>(async (request) => {
   });
   if (declined) {
     const d = declined as { reservedBy: string; displayName: string; courseLabel: string; whenMs: number };
-    const when = new Date(d.whenMs).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    const when = new Date(d.whenMs).toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric' });
     await notify({
       uid: d.reservedBy,
       type: 'reservation_declined',
@@ -243,7 +243,7 @@ export const confirmReservation = onCall<{ sessionId: string }>(async (request) 
   if (signup.reservedBy) {
     const sessionSnap = await db.doc(`sessions/${sessionId}`).get();
     const session = sessionSnap.exists ? (sessionSnap.data() as SessionDoc) : null;
-    const when = session ? session.start.toDate().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
+    const when = session ? session.start.toDate().toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric' }) : '';
     await notify({
       uid: signup.reservedBy,
       type: 'reservation_confirmed',

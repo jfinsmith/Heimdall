@@ -249,7 +249,7 @@ export const EMAIL_AUTOMATIONS = [
   { key: 'understaffing_alert', label: 'Understaffing alerts', description: 'Daily sweep: emails coordinators + command about unfilled slots inside the alert window.', audience: 'staff' },
   { key: 'digest', label: 'Weekly digest', description: 'Monday summary of staffing health for coordinators and command.', audience: 'staff' },
   { key: 'message', label: 'Bulk messages', description: 'Manual broadcasts sent from the Staffing Board.', audience: 'everyone' },
-  { key: 'feedback_submitted', label: 'Bug / feature report', description: 'Emails command when a member submits a bug report or feature request.', audience: 'admin' },
+  { key: 'feedback_submitted', label: 'Bug / feature report', description: 'Emails the HEIMDALL platform team when a member submits a bug report or feature request.', audience: 'admin' },
 ] as const;
 
 export type EmailAutomationKey = (typeof EMAIL_AUTOMATIONS)[number]['key'];

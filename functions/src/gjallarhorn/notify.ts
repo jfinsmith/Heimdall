@@ -132,6 +132,10 @@ export async function notify(opts: NotifyOptions): Promise<void> {
       // names / bulk-message text that must not inject HTML into the email.
       bodyHtml: escapeHtml(opts.body).replace(/\n/g, '<br/>'),
       bodyText: opts.body,
+      // Every email gets a button back into the app — recipients shouldn't
+      // have to type a URL to act on a notification.
+      ctaLabel: opts.link ? 'Open in HEIMDALL' : undefined,
+      ctaUrl: opts.link ? `https://heimdallscheduling.com${opts.link}` : undefined,
       orgName: settings?.orgName,
       logoUrl: settings?.logoUrl,
     });

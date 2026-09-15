@@ -143,6 +143,8 @@ export const onSignupWritten = onDocumentWritten('sessions/{sessionId}/signups/{
         heading: 'A coordinator reserved you for a session',
         bodyHtml: `<p>${escapeHtml(after.displayName)}, you've been reserved as <strong>${escapeHtml(after.role.replace('_', ' '))}</strong>. Please open <strong>My Schedule</strong> and confirm whether you're available — "Not available" frees the slot.</p>${details.html}`,
         bodyText: `${after.displayName}, you've been reserved as ${after.role.replace('_', ' ')}. Open My Schedule and confirm whether you're available — "Not available" frees the slot.\n\n${details.text}`,
+        ctaLabel: "I'm available / Not available",
+        ctaUrl: 'https://heimdallscheduling.com/my-schedule',
         orgName: settings?.orgName,
         logoUrl: settings?.logoUrl,
       }),
@@ -163,6 +165,8 @@ export const onSignupWritten = onDocumentWritten('sessions/{sessionId}/signups/{
         heading: 'Assignment confirmed',
         bodyHtml: `<p>${escapeHtml(after.displayName)}, you are confirmed as <strong>${escapeHtml(after.role.replace('_', ' '))}</strong>.</p>${details.html}`,
         bodyText: `${after.displayName}, you are confirmed as ${after.role.replace('_', ' ')}.\n\n${details.text}`,
+        ctaLabel: 'View My Schedule',
+        ctaUrl: 'https://heimdallscheduling.com/my-schedule',
         orgName: settings?.orgName,
         logoUrl: settings?.logoUrl,
       }),
@@ -245,12 +249,15 @@ export const onSessionUpdated = onDocumentUpdated('sessions/{sessionId}', async 
   await Promise.all(
     signups.docs.map(async (d) => {
       const su = d.data() as SignupDoc;
-      // Keep the assignment mirror in sync for reminders/My Schedule.
+      // Keep the assignment mirror in sync for reminders/My Schedule. Stamp
+      // uid/orgId on the cancel path too — a merge-set on a MISSING mirror
+      // would otherwise create an org-less {status} stub (invisible garbage
+      // per the org-stamping rule).
       await db()
         .doc(`assignments/${sessionId}_${su.uid}`)
         .set(
           cancelled
-            ? { status: 'withdrawn' }
+            ? { status: 'withdrawn', uid: su.uid, ...(after.orgId ? { orgId: after.orgId } : {}) }
             : {
                 start: after.start,
                 end: after.end,
@@ -278,6 +285,8 @@ export const onSessionUpdated = onDocumentUpdated('sessions/{sessionId}', async 
           heading: cancelled ? 'Session cancelled' : `Session ${what}`,
           bodyHtml: `<p>${escapeHtml(su.displayName)}, your assigned session has been <strong>${what}</strong>.</p>${details.html}`,
           bodyText: `${su.displayName}, your assigned session has been ${what}.\n\n${details.text}`,
+          ctaLabel: 'View My Schedule',
+          ctaUrl: 'https://heimdallscheduling.com/my-schedule',
           orgName: settings?.orgName,
           logoUrl: settings?.logoUrl,
         }),
@@ -446,7 +455,13 @@ export const onCoursePublished = onDocumentCreated('coursePublishEvents/{id}', a
   // instructors regardless — this only controls who gets pushed an email).
   let recipientIds: string[];
   if (target.mode === 'users') {
-    recipientIds = target.uids ?? [];
+    // Cross-tenant guard: hand-picked uids are client-supplied — only members
+    // of the ACADEMY's own org may be emailed, whatever the event doc claims.
+    const picked = target.uids ?? [];
+    const checks = await Promise.all(picked.map((u) => db().doc(`users/${u}`).get()));
+    recipientIds = checks
+      .filter((d) => d.exists && (!academyOrgId || d.data()!.orgId === academyOrgId))
+      .map((d) => d.id);
   } else {
     // Scope to the academy's own tenant so a pooled DB doesn't notify other orgs' instructors.
     let uq: FirebaseFirestore.Query = db().collection('users').where('status', '==', 'active');

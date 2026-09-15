@@ -59,6 +59,7 @@ export const gjallarhornDailySweep = onSchedule(
       .get();
 
     for (const doc of upcoming.docs) {
+      try {
       const a = doc.data() as AssignmentDoc & { orgId?: string; reservationState?: string };
       // An unanswered reservation isn't an accepted assignment — don't send
       // "you teach X" reminders for an offer the instructor never confirmed.
@@ -90,11 +91,18 @@ export const gjallarhornDailySweep = onSchedule(
           heading: 'Upcoming assignment',
           bodyHtml: `<p>The horn sounds: you have an assignment coming up.</p>${details.html}`,
           bodyText: `The horn sounds: you have an assignment coming up.\n\n${details.text}`,
+          ctaLabel: 'View My Schedule',
+          ctaUrl: 'https://heimdallscheduling.com/my-schedule',
           orgName: orgSettings?.orgName,
           logoUrl: orgSettings?.logoUrl,
         }),
       });
       await doc.ref.update({ reminderSent: true });
+      } catch (err) {
+        // One bad assignment must never abort the rest of the reminders (or
+        // the understaffing section below) — log and keep sweeping.
+        console.error(`reminder sweep: assignment ${doc.id} failed`, err);
+      }
     }
 
     // ── 2. Understaffing sweep — PER ORG ───────────────────────────────────

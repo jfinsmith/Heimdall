@@ -218,7 +218,7 @@ export function GjallarhornSettingsPage() {
         <h2 className="text-sm font-semibold uppercase tracking-wider text-watch-600">Alert windows</h2>
         <div className="grid gap-4 sm:grid-cols-3">
           <Field label="Reminder lead time (hours)" hint="Default; users can override on their profile">
-            <Input type="number" min={1} max={336} value={leadHours} onChange={(e) => setLeadHours(Number(e.target.value))} />
+            <Input type="number" min={1} max={168} value={leadHours} onChange={(e) => setLeadHours(Number(e.target.value))} />
           </Field>
           <Field label="Understaffing window (days)" hint="Alert when required slots are unfilled within this many days">
             <Input type="number" min={1} max={60} value={alertDays} onChange={(e) => setAlertDays(Number(e.target.value))} />

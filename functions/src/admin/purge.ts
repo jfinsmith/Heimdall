@@ -13,7 +13,7 @@
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';
-import { renderEmail, MAIL_FROM } from '../gjallarhorn/templates';
+import { renderEmail, escapeHtml, MAIL_FROM } from '../gjallarhorn/templates';
 
 const WARN_AFTER_MS = 23 * 864e5;
 const PURGE_AFTER_MS = 30 * 864e5;
@@ -53,7 +53,7 @@ export const accountPurgeDaily = onSchedule(
           subject: '[HEIMDALL] Action needed — your account will be removed in 7 days',
           heading: 'Your account is not linked to an organization',
           bodyHtml:
-            `Hi ${name},<br/><br/>` +
+            `Hi ${escapeHtml(name)},<br/><br/>` +
             `You created a HEIMDALL account but it isn't linked to a training academy yet. ` +
             `Accounts without an organization are removed after 30 days.<br/><br/>` +
             `To keep your account: sign in and enter your academy's <strong>join code</strong> ` +
