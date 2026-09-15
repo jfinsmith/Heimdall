@@ -193,6 +193,12 @@ export const createUserAccount = onCall<{
   if (!email || !email.includes('@')) throw new HttpsError('invalid-argument', 'A valid email is required.');
   if (!displayName) throw new HttpsError('invalid-argument', 'A display name is required.');
   if (!VALID_ROLES.includes(role)) throw new HttpsError('invalid-argument', 'Pick a valid role.');
+  // Rank ladder applies to the role being CREATED, same as setUserRole — a
+  // sergeant minting a director (whose password they chose) is one-call org
+  // takeover; the adoption branch below would even reset an existing login.
+  if (callerDoc.data()?.platformOwner !== true) {
+    assertMayActOn(callerRole, role, 'create an account with the rank of');
+  }
   if (password.length < 6) throw new HttpsError('invalid-argument', 'Temporary password must be at least 6 characters.');
 
   let uid: string;
@@ -1339,6 +1345,11 @@ export const adminDeleteAccount = onCall<{ uid: string }>(async (request) => {
   if (!callerIsOwner && target.orgId && target.orgId !== callerDoc.data()?.orgId) {
     throw new HttpsError('permission-denied', 'That user belongs to another organization.');
   }
+  // Org-less (pending-assignment) accounts are the OWNER's to manage — any
+  // org's admin reaching them was platform-wide account deletion.
+  if (!callerIsOwner && !target.orgId) {
+    throw new HttpsError('permission-denied', 'That account is not in your organization.');
+  }
   assertMayActOn(callerRole, target.role, 'permanently delete');
 
   const email = target.email ?? uid;
@@ -1567,6 +1578,11 @@ export const adminUpdateUser = onCall<{
   if (!callerIsOwner && target.orgId && target.orgId !== callerOrgId) {
     throw new HttpsError('permission-denied', 'That member belongs to another organization.');
   }
+  // Org-less accounts (awaiting assignment) are managed by the owner only —
+  // otherwise any org's admin could reset their email/password pre-assignment.
+  if (!callerIsOwner && !target.orgId) {
+    throw new HttpsError('permission-denied', 'That account is not in your organization yet.');
+  }
   if (target.platformOwner === true && !callerIsOwner) {
     throw new HttpsError('permission-denied', 'The platform owner account cannot be edited here.');
   }
@@ -1607,6 +1623,14 @@ export const adminUpdateUser = onCall<{
   if (request.data.dob !== undefined) {
     const dob = String(request.data.dob).trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dob)) throw new HttpsError('invalid-argument', 'Date of birth must be a valid date.');
+    // The regex admits impossible dates (2026-13-45) — require a real calendar
+    // date in a plausible range (Date.UTC would silently roll 13/45 over).
+    const [yy, mm, dd] = dob.split('-').map(Number);
+    const parsed = new Date(Date.UTC(yy, mm - 1, dd));
+    const real = parsed.getUTCFullYear() === yy && parsed.getUTCMonth() === mm - 1 && parsed.getUTCDate() === dd;
+    if (!real || yy < 1900 || parsed.getTime() > Date.now()) {
+      throw new HttpsError('invalid-argument', 'Date of birth must be a valid date.');
+    }
     if (dob !== (target.dob ?? '')) {
       docPatch.dob = dob;
       changed.push('date of birth');

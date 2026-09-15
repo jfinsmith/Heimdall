@@ -132,11 +132,28 @@ describe('users — staff verification (SEC-1)', () => {
   it('SEC-1: coordinator CANNOT self-change own status', async () => {
     await assertFails(updateDoc(doc(as('carol', 'coordinator'), 'users/carol'), { status: 'inactive' }));
   });
-  it('coordinator CANNOT change any role (admin only)', async () => {
+  it('coordinator CANNOT change any role (callable only)', async () => {
     await assertFails(updateDoc(doc(as('carol', 'coordinator'), 'users/bob'), { role: 'sergeant' }));
   });
-  it('director CAN change a role', async () => {
-    await assertSucceeds(updateDoc(doc(as('dave', 'director'), 'users/bob'), { role: 'sergeant' }));
+  it('even a director CANNOT write a role directly — setUserRole is the only path', async () => {
+    // A direct role write skipped the rank-ladder check in the callable: a
+    // sergeant could write an accomplice up to director.
+    await assertFails(updateDoc(doc(as('dave', 'director'), 'users/bob'), { role: 'sergeant' }));
+  });
+  it('even a director CANNOT rewrite another member\'s sign-in email (mail-redirect)', async () => {
+    await assertFails(updateDoc(doc(as('dave', 'director'), 'users/bob'), { email: 'attacker@evil.test' }));
+  });
+  it('even a director CANNOT suspend via direct doc write — setUserSuspension only', async () => {
+    await assertFails(updateDoc(doc(as('dave', 'director'), 'users/bob'), { status: 'suspended' }));
+  });
+  it('status can only move pending → active (no direct un-suspend)', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'users/sam'), user({ orgId: ORG, status: 'suspended' }));
+    });
+    await assertFails(updateDoc(doc(as('dave', 'director'), 'users/sam'), { status: 'active' }));
+  });
+  it('NO client may delete a user doc — adoption-hijack guard', async () => {
+    await assertFails(deleteDoc(doc(as('dave', 'director'), 'users/bob')));
   });
 });
 
@@ -183,11 +200,14 @@ describe('users — notification email is callable-only', () => {
       updateDoc(doc(as('dave', 'director'), 'users/bob'), { notificationEmail: 'x@y.test', notificationEmailVerified: true })
     );
   });
-  it('documentAssignments: members read, ONLY the platform owner writes', async () => {
+  it('documentAssignments: staff read, ONLY the platform owner writes', async () => {
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       await setDoc(doc(ctx.firestore(), 'documentAssignments/exam_rules'), { scope: 'orgs', orgIds: [ORG] });
     });
-    await assertSucceeds(getDoc(doc(as('alice', 'instructor'), 'documentAssignments/exam_rules')));
+    // Staff (who print documents) read the org-scoping map; plain members have
+    // no use for the platform's tenant roster and cannot read it.
+    await assertSucceeds(getDoc(doc(as('carol', 'coordinator'), 'documentAssignments/exam_rules')));
+    await assertFails(getDoc(doc(as('alice', 'instructor'), 'documentAssignments/exam_rules')));
     await assertFails(updateDoc(doc(as('dave', 'director'), 'documentAssignments/exam_rules'), { scope: 'all' }));
     const owner = testEnv.authenticatedContext('owner1', { role: 'director', orgId: ORG, platformOwner: true }).firestore();
     await assertSucceeds(updateDoc(doc(owner, 'documentAssignments/exam_rules'), { scope: 'all' }));

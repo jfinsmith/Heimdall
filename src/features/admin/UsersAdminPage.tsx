@@ -206,7 +206,13 @@ export function UsersAdminPage() {
   }
 
   function exportCsv() {
-    const esc = (v: string | undefined) => `"${(v ?? '').replace(/"/g, '""')}"`;
+    // Leading =+-@ would execute as a formula when the CSV is opened in Excel /
+    // Sheets — and these are member-typed fields (name, agency). Neutralize with
+    // a leading apostrophe (the standard "treat as text" marker).
+    const esc = (v: string | undefined) => {
+      const s = v ?? '';
+      return `"${(/^[=+\-@]/.test(s) ? `'${s}` : s).replace(/"/g, '""')}"`;
+    };
     const rows = [
       ['Name', 'Best email', 'Sign-in email', 'Notification email', 'Role', 'Status', 'Rank', 'Agency', 'Phone'],
       ...users.map((u) => [
@@ -1167,7 +1173,10 @@ function QualificationsModal({ user, onClose }: { user: WithId<UserDoc>; onClose
                       Save
                     </Button>
                     {savedCpr && <span className="text-green-700">Saved.</span>}
-                    {user.cprCardUrl && (
+                    {/* Host check: this field is member-writable, so only render it as a
+                        clickable link when it's genuinely our Storage bucket — never a
+                        javascript:/phishing URL an admin would click on trust. */}
+                    {user.cprCardUrl?.startsWith('https://firebasestorage.googleapis.com/') && (
                       <a
                         href={user.cprCardUrl}
                         target="_blank"

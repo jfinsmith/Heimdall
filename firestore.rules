@@ -118,26 +118,33 @@ service cloud.firestore {
         // callables (code-verified) — a client write here could forge
         // notificationEmailVerified and route mail to an unproven inbox.
         && unchanged('notificationEmail') && unchanged('notificationEmailVerified')
-        && unchanged('notificationEmailPending') && (
-        // Admins may edit others freely, but never their OWN role field — the
-        // callables authorize from this doc, so a self-write of role:'director'
-        // would be real vertical escalation (found in the sergeant-tier audit).
-        (isAdmin() && inOrg(resource.data) && (request.auth.uid != uid || unchanged('role')))
+        && unchanged('notificationEmailPending')
+        // role / email / suspension changes go ONLY through their callables
+        // (setUserRole / adminUpdateUser / setUserSuspension) — the callables
+        // authorize from doc roles, so a direct write here was a ladder bypass
+        // (write an accomplice's role), a silent mail redirect (rewrite a
+        // member's email, notify()'s destination), or an upward lockout (flip a
+        // director's status). The ONE allowed client status write is the
+        // pending → active account approval.
+        && unchanged('role') && unchanged('email')
+        && (unchanged('status')
+            || (resource.data.status == 'pending' && request.resource.data.status == 'active')) && (
+        // Admins may edit others' profile fields; self-approval stays blocked.
+        (isAdmin() && inOrg(resource.data) && (request.auth.uid != uid || unchanged('status')))
         // Staff (coordinator/sergeant) may approve accounts and verify quals on
-        // OTHER same-tenant users, but may not change roles, and may NOT
-        // self-grant their own status / verifiedQualKeys (no self-escalation;
-        // removal-only self-edits are allowed).
+        // OTHER same-tenant users, but may NOT self-grant their own status /
+        // verifiedQualKeys (no self-escalation; removal-only self-edits OK).
         || (isStaff()
             && inOrg(resource.data)
-            && unchanged('role')
             && (request.auth.uid != uid || (unchanged('status') && verifiedQualsOnlyRemoved())))
         // Self-service: profile fields only (+ removal-only verified quals).
         || (isOwner(uid)
-            && unchanged('role')
             && unchanged('status')
-            && verifiedQualsOnlyRemoved()
-            && unchanged('email')));
-      allow delete: if isAdmin() && inOrg(resource.data);
+            && verifiedQualsOnlyRemoved()));
+      // NO client deletes — deletion goes through adminDeleteAccount (rank
+      // ladder + audit) or the owner's deleteUnassignedAccount. A direct
+      // delete let a sergeant orphan a director's login for adoption hijack.
+      allow delete: if false;
 
       // Server-only secrets (e.g. the notification-email verification code
       // hash). NO client access — not even the owner: if a member could read
@@ -260,7 +267,9 @@ service cloud.firestore {
     // read (each org's Reports page filters its offering with these); ONLY the
     // platform owner writes.
     match /documentAssignments/{id} {
-      allow read: if signedIn();
+      // Staff-only read (the Reports offering filter is a staff surface) — a
+      // signedIn() read let any member enumerate other tenants' org ids.
+      allow read: if isStaff() || isPlatformOwner();
       allow write: if isPlatformOwner();
     }
 

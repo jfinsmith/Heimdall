@@ -446,6 +446,12 @@ export const onCoursePublished = onDocumentCreated('coursePublishEvents/{id}', a
   const academy = await db().doc(`academies/${academyId}`).get();
   const academyLabel = academy.exists ? (academy.data()!.shortName || academy.data()!.name) : '';
   const academyOrgId = academy.exists ? (academy.data()!.orgId as string | undefined) : undefined;
+  // Cross-tenant guard: the event doc's org (rules-validated to its creator)
+  // must match the academy it points at — otherwise org-A staff could aim an
+  // event at org B's academy and blast org B's roster. An org-less academy
+  // would make the 'all' query unscoped, so it never sends either.
+  const eventOrgId = (data as { orgId?: string }).orgId;
+  if (!academy.exists || !academyOrgId || (eventOrgId && eventOrgId !== academyOrgId)) return;
   // Base curriculum key (org-namespaced ids are '{orgId}__{key}') — recipients who
   // muted this discipline in their profile are skipped by notify().
   const disciplineId = academy.exists ? ((academy.data()!.discipline as string | undefined) ?? '') : '';
