@@ -434,20 +434,29 @@ export function AcademyBuilderPage() {
         }
       }
     }
-    // The lunch window rides along with a drag — a static 12:00 lunch on a
-    // session moved to the afternoon would land OUTSIDE the class and silently
-    // under-count hours.
-    const dragDeltaMin = Math.round((start.getTime() - s.start.toDate().getTime()) / 60e3);
-    const shiftedLunch = (() => {
-      if (!s.lunchMinutes || !s.lunchStart || dragDeltaMin === 0) return {};
-      const [h, m] = s.lunchStart.split(':').map(Number);
-      const mins = Math.min(23 * 60 + 59, Math.max(0, h * 60 + (m || 0) + dragDeltaMin));
-      return { lunchStart: `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}` };
-    })();
+    // The lunch window stays at its CONFIGURED clock time through a drag (an
+    // academy's lunch hour is a fixed 12:00–13:00 regardless of where the
+    // class block moves). If the kept lunch would land OUTSIDE the new span —
+    // the under-count trap — warn and let the coordinator decide.
+    if (s.kind !== 'lunch' && s.lunchMinutes && s.lunchStart) {
+      const [lh, lm] = s.lunchStart.split(':').map(Number);
+      const ls = new Date(start);
+      ls.setHours(lh, lm || 0, 0, 0);
+      const le = new Date(ls.getTime() + s.lunchMinutes * 60e3);
+      if (ls < start || le > end) {
+        if (
+          !window.confirm(
+            `Heads up: this session's ${s.lunchMinutes}-min lunch stays at ${s.lunchStart}, which falls OUTSIDE the new ${toTimeInputValue(start)}–${toTimeInputValue(end)} time — hours will under-count and the lunch-issues card will flag it.\n\nMove it anyway? (Cancel to put the session back, then adjust the lunch first.)`
+          )
+        ) {
+          arg.revert();
+          return;
+        }
+      }
+    }
     await updateDoc(doc(db, 'sessions', s.id), {
       start: tsFromDate(start),
       end: tsFromDate(end),
-      ...shiftedLunch,
       // Lunch placeholders never carry hours; sessions recompute from the new span
       // (preserving their lunch carve-out, unless lunch counts).
       hours:
