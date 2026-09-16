@@ -384,6 +384,19 @@ function CreateAcademyModal({
   const [color, setColor] = useState('');
   const defaultColor = color || nextAcademyColor(existingAcademies.map((a) => a.color ?? '').filter(Boolean));
 
+  // Auto end date: the curriculum's hours at ~40/week (M–F, 8-hr days), landing
+  // on the FRIDAY of the final week — 770 hrs → 20 weeks → start's Monday +
+  // 19 weeks + 4 days. Stops the moment the user types their own end date.
+  const [endTouched, setEndTouched] = useState(false);
+  useEffect(() => {
+    if (endTouched || !startDate || !targetHours || targetHours <= 0) return;
+    const start = new Date(`${startDate}T00:00:00`);
+    if (Number.isNaN(start.getTime())) return;
+    const weeks = Math.ceil(targetHours / 40);
+    const monday = addDays(start, -((start.getDay() + 6) % 7));
+    setEndDate(toDateInputValue(addDays(monday, (weeks - 1) * 7 + 4)));
+  }, [startDate, targetHours, endTouched]);
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     // Never create an academy without a tenant — an orgId-less (or null) academy
@@ -470,8 +483,8 @@ function CreateAcademyModal({
           <Field label="Start date">
             <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} required />
           </Field>
-          <Field label="End date">
-            <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} required />
+          <Field label="End date" hint="Auto-fills as the Friday the curriculum's hours run out (~40 hrs/week) — type a date to override">
+            <Input type="date" value={endDate} onChange={(e) => { setEndTouched(true); setEndDate(e.target.value); }} required />
           </Field>
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -557,6 +570,12 @@ function CloneAcademyModal({
   const [newStart, setNewStart] = useState('');
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState('');
+  // Calendar color is the CLONE's own choice, not the template's: every cohort
+  // cut from the same template would otherwise be identical on shared calendars.
+  // Defaults to the next unused palette color; the writer can pick any.
+  const { data: existingAcademies } = useCollection<AcademyDoc>('academies');
+  const [color, setColor] = useState('');
+  const cloneColor = color || nextAcademyColor(existingAcademies.map((a) => a.color ?? '').filter(Boolean));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -587,6 +606,7 @@ function CloneAcademyModal({
       orgId: source.orgId,
       name,
       shortName,
+      color: cloneColor,
       isTemplate: false,
       startDate: tsFromDate(addDays(source.startDate.toDate(), dayDelta)),
       endDate: tsFromDate(addDays(source.endDate.toDate(), dayDelta)),
@@ -701,6 +721,16 @@ function CloneAcademyModal({
         <Field label="New start date">
           <Input type="date" value={newStart} onChange={(e) => setNewStart(e.target.value)} required />
         </Field>
+        <Field label="Calendar color" hint="Each cohort gets its own — defaults to the next unused color">
+          <div className="flex items-center gap-2">
+            <Select value={cloneColor} onChange={(e) => setColor(e.target.value)} className="flex-1">
+              {ACADEMY_COLORS.map((c) => (
+                <option key={c.value} value={c.value}>{c.name}</option>
+              ))}
+            </Select>
+            <span className="h-7 w-7 shrink-0 rounded-md ring-1 ring-watch-200" style={{ backgroundColor: cloneColor }} />
+          </div>
+        </Field>
         {/* Quarter/year presets — "January class → January next year" in one click */}
         <div className="flex flex-wrap gap-2">
           {[3, 6, 9, 12].map((months) => {
@@ -714,8 +744,8 @@ function CloneAcademyModal({
           })}
         </div>
         <p className="text-xs text-slate-500">
-          After cloning, the builder flags any sessions that land on school holidays, with a "show on
-          calendar" jump so you can move each one where you want it.
+          After cloning, the builder flags any sessions that land on school holidays or in rooms another
+          class or reservation already holds, with a "show on calendar" jump so you can fix each one.
         </p>
         {progress && busy && <p className="text-sm text-bifrost-700">{progress}</p>}
         <div className="flex justify-end gap-2">

@@ -414,8 +414,11 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
     // (Custom/free-text rooms carry no roomId and are not reserved.) SKIPPED for
     // a CANCELLED session — it occupies no room (findRoomConflict ignores
     // cancelled sessions), so replacement hours scheduled into its old slot
-    // would otherwise block every edit of the cancelled record.
-    if (allRoomIds.length && academy.orgId && session?.status !== 'cancelled') {
+    // would otherwise block every edit of the cancelled record. Also SKIPPED
+    // inside a TEMPLATE (or archived) academy — its sessions aren't real
+    // bookings in either direction: they never block a real class, and a real
+    // class must never block editing the template's placeholder dates.
+    if (allRoomIds.length && academy.orgId && session?.status !== 'cancelled' && !roomExemptAcademy(academy)) {
       const acadById = new Map(academies.map((a) => [a.id, a]));
       try {
         for (const rid of allRoomIds) {
@@ -509,7 +512,10 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
       // instructors) into signups + assignments so they show on My Schedule
       // and get Gjallarhorn reminders. Only newly-added uids get created and
       // un-reserved ones get removed — existing sign-ups are left untouched.
-      if (sessionId) {
+      // NEVER for a template: a signup/assignment there would put a phantom
+      // session on someone's My Schedule and email them a real reservation
+      // offer (the reserve UI is hidden for templates; this is the backstop).
+      if (sessionId && !academy.isTemplate) {
         const desired = new Map<string, { slotId: string; role: string }>();
         for (const slot of slots) {
           for (const uid of slot.filledBy) if (!desired.has(uid)) desired.set(uid, { slotId: slot.slotId, role: slot.role });
@@ -857,8 +863,12 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
                   </button>
                 </div>
 
-                {/* Reserve specific instructors for this slot (pre-assigned, no sign-up needed). */}
-                {slot.role !== 'coordinator' && (
+                {/* Reserve specific instructors for this slot (pre-assigned, no
+                    sign-up needed). Hidden for TEMPLATES — reserving a real
+                    person into a placeholder session would email them an offer
+                    for a class that doesn't exist; templates only carry the
+                    slot pattern (role/count/qualification). */}
+                {slot.role !== 'coordinator' && !academy.isTemplate && (
                   <div className="mt-2 flex flex-wrap items-center gap-1.5 pl-0.5">
                     <span className="text-xs font-medium text-slate-500">Reserved:</span>
                     {slot.filledBy.length === 0 && (

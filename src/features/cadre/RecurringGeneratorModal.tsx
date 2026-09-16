@@ -160,7 +160,9 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
 
     // Hard block: a managed room can't be double-booked. Check every generated
     // day against existing (non-cancelled, non-template) bookings for the room.
-    if (roomId && academy.orgId) {
+    // SKIPPED when generating INTO a template — its sessions aren't real
+    // bookings, so real classes must not block authoring the pattern.
+    if (roomId && academy.orgId && !roomExemptAcademy(academy)) {
       const acadById = new Map(academies.map((a) => [a.id, a]));
       const [bookings, reservations] = await Promise.all([
         loadRoomBookings(academy.orgId, roomId),
@@ -244,7 +246,9 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
       await batch.commit();
 
       // Mirror coordinator assignments for custom blocks so they hit My Schedule.
-      if (isCustom && defaultCoord) {
+      // NEVER for a template — an assignment there would put a phantom session
+      // on the coordinator's My Schedule and send them Gjallarhorn reminders.
+      if (isCustom && defaultCoord && !academy.isTemplate) {
         for (const { ref, start, end } of created) {
           const now = Timestamp.now();
           await setDoc(doc(db, 'assignments', `${ref.id}_${defaultCoord}`), {

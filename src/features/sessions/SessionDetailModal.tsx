@@ -151,7 +151,9 @@ export function SessionDetailModal({ sessionId, onClose, onEdit, variant = 'staf
       if (dupRoomIds.length && dupOrgId) {
         const acadSnap = await getDocs(query(collection(db, 'academies'), where('orgId', '==', dupOrgId)));
         const acadById = new Map(acadSnap.docs.map((d) => [d.id, d.data() as AcademyDoc]));
-        for (const rid of dupRoomIds) {
+        // Template/archived academies' sessions aren't real bookings in either
+        // direction — duplicating inside one skips the gate entirely.
+        for (const rid of roomExemptAcademy(acadById.get(session.academyId)) ? [] : dupRoomIds) {
           const conflict = await findRoomConflict({
             orgId: dupOrgId,
             roomId: rid,

@@ -5,7 +5,7 @@
  * fixer, two-stage publishing (academy publish → sessions visible; per-course
  * "open sign-ups" → instructors can register), academy editing.
  */
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
@@ -34,7 +34,7 @@ import { PublicLinkSection } from './PublicLinkSection';
 import { LunchBlockModal } from './LunchBlockModal';
 import { RecurringGeneratorModal } from './RecurringGeneratorModal';
 import { RoomSelect } from './rooms/RoomSelect';
-import { findRoomConflict, roomExemptAcademy, academyHolderLabel } from './rooms/roomBooking';
+import { findRoomConflict, roomExemptAcademy, academyHolderLabel, loadRoomBookings, loadRoomReservations, overlaps } from './rooms/roomBooking';
 import { SessionDetailModal } from '../sessions/SessionDetailModal';
 import { sessionToEvent, renderEventContent } from './sessionEvents';
 import { ACADEMY_COLORS } from '../../lib/academyColors';
@@ -303,6 +303,9 @@ export function AcademyBuilderPage() {
 
   /** Sessions landing on school holidays (the post-clone trap). */
   const holidayConflicts = useMemo(() => {
+    // A template's dates are placeholders — its holidays are the WRONG year's.
+    // The real academy cloned from it gets swept against its own dates.
+    if (academy?.isTemplate) return [];
     const holidayDates = new Map<string, string>();
     // Cover the academy's own span (clamped to a sane minimum) so a session in
     // any year — including future ones — is still checked against holidays.
@@ -319,6 +322,55 @@ export function AcademyBuilderPage() {
       .map((s) => ({ session: s, holiday: holidayDates.get(s.start.toDate().toDateString()) }))
       .filter((x): x is { session: WithId<SessionDoc>; holiday: string } => !!x.holiday);
   }, [liveSessions, disabledHolidays, academy]);
+
+  // Room double-bookings — the other post-clone trap. Every single-session save
+  // hard-blocks a double-booking, but "Use template" lands a whole calendar of
+  // copied rooms at once with no per-day gate, so conflicts can only enter here.
+  // Advisory async sweep: for each managed room this academy's live sessions
+  // hold, load the other holders + reservations once and flag overlaps.
+  // Templates skip it — their sessions aren't real bookings (roomExemptAcademy).
+  const [roomConflicts, setRoomConflicts] = useState<{ session: WithId<SessionDoc>; label: string }[]>([]);
+  useEffect(() => {
+    if (!academy?.orgId || roomExemptAcademy(academy)) { setRoomConflicts([]); return; }
+    const holders = liveSessions
+      .map((s) => ({ s, rooms: s.roomIds?.length ? s.roomIds : s.roomId ? [s.roomId] : [] }))
+      .filter((x) => x.rooms.length);
+    const roomIds = [...new Set(holders.flatMap((x) => x.rooms))];
+    if (!roomIds.length) { setRoomConflicts([]); return; }
+    const orgId = academy.orgId;
+    let stale = false;
+    (async () => {
+      try {
+        const acadById = new Map(allAcademies.map((a) => [a.id, a]));
+        const found = new Map<string, { session: WithId<SessionDoc>; label: string }>();
+        for (const rid of roomIds) {
+          const [bookings, holds] = await Promise.all([loadRoomBookings(orgId, rid), loadRoomReservations(orgId, rid)]);
+          const others = bookings.filter(
+            (b) => b.academyId !== academyId && b.status !== 'cancelled' && !roomExemptAcademy(acadById.get(b.academyId))
+          );
+          for (const { s, rooms } of holders) {
+            if (found.has(s.id) || !rooms.includes(rid)) continue;
+            const st = s.start.toDate();
+            const en = s.end.toDate();
+            const hit = others.find((b) => overlaps(st, en, b.start.toDate(), b.end.toDate()));
+            const resHit = hit ? null : holds.find((r) => overlaps(st, en, r.start.toDate(), r.end.toDate()));
+            if (hit) {
+              found.set(s.id, { session: s, label: `${academyHolderLabel(acadById.get(hit.academyId))} — ${hit.title || hit.courseName}` });
+            } else if (resHit) {
+              found.set(s.id, { session: s, label: `🔒 reservation “${resHit.title || 'Reservation'}”` });
+            }
+          }
+        }
+        if (!stale) {
+          setRoomConflicts([...found.values()].sort((a, b) => a.session.start.toMillis() - b.session.start.toMillis()));
+        }
+      } catch {
+        // Advisory only — a failed sweep (index building, offline) shows nothing
+        // rather than blocking the builder.
+      }
+    })();
+    return () => { stale = true; };
+  }, [liveSessions, academy, academyId, allAcademies]);
 
   /**
    * Courses grouped for the open-sign-ups control. Only FDLE courses that
@@ -411,11 +463,13 @@ export function AcademyBuilderPage() {
       return;
     }
     // Block a drag/resize that double-books a managed room (the other save paths
-    // already guard; this is the most common scheduler action).
+    // already guard; this is the most common scheduler action). TEMPLATE (and
+    // archived) academies skip it both ways: their sessions aren't real bookings,
+    // so real bookings must not block moving them either.
     const acadOrgId = academy?.orgId;
     // Every managed room the session holds (multi-room scenario days included).
     const dragRoomIds = s.roomIds?.length ? s.roomIds : s.roomId ? [s.roomId] : [];
-    if (dragRoomIds.length && acadOrgId && s.kind !== 'lunch') {
+    if (dragRoomIds.length && acadOrgId && s.kind !== 'lunch' && !roomExemptAcademy(academy)) {
       const acadById = new Map(allAcademies.map((a) => [a.id, a]));
       for (const rid of dragRoomIds) {
         const conflict = await findRoomConflict({
@@ -687,6 +741,33 @@ export function AcademyBuilderPage() {
               </li>
             ))}
           </ul>
+        </section>
+      )}
+
+      {/* Room double-bookings — copied rooms from "Use template" that landed on
+          days another class or a reservation already holds. */}
+      {roomConflicts.length > 0 && (
+        <section className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4">
+          <h2 className="mb-2 text-sm font-bold uppercase tracking-wider text-red-800">
+            {roomConflicts.length} session(s) in a room that&apos;s already booked
+          </h2>
+          <ul className="space-y-1.5">
+            {roomConflicts.map(({ session: s, label }) => (
+              <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 text-sm text-red-900">
+                <span>
+                  <button className="font-medium hover:underline" onClick={() => setDetailSession(s)}>
+                    {s.title || s.courseName}
+                  </button>{' '}
+                  — {fmtDate(s.start)} {s.room ? `in ${s.room} ` : ''}overlaps <strong>{label}</strong>
+                </span>
+                <Button onClick={() => goToSessionOnCalendar(s)}>Show on calendar</Button>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs text-red-800">
+            The other class or reservation holds the room — open each session and pick a different room or
+            time for it.
+          </p>
         </section>
       )}
 

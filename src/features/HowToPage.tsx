@@ -220,14 +220,17 @@ export function HowToPage() {
           <Sub title="From a quarterly template">
             <Steps items={[
               <>Go to <B>CADRE → Academies</B>. Templates are grouped by discipline (Jan/Apr/Jul/Oct starts).</>,
-              <>Pick a template → <B>Use template</B> → set the class name, short name (e.g. &quot;LE 133&quot;), start date, and default room. Every session shifts to the new dates automatically.</>,
-              <>The clone lands as a <B>draft</B> — staffing does not copy, the FDLE sequence number is intentionally blank (it&apos;s per-cohort), and approval resets.</>,
+              <>Pick a template → <B>Use template</B> → set the class name, short name (e.g. &quot;LE 133&quot;), start date, and a <B>calendar color</B> for the new cohort (defaults to the next unused color — the template&apos;s color is not inherited, so cohorts stay distinguishable). Every session shifts to the new dates automatically.</>,
+              <>The template&apos;s <B>default room, per-course rooms, coordinators, and settings all carry over</B>. The clone lands as a <B>draft</B> — staffing does not copy, the FDLE sequence number is intentionally blank (it&apos;s per-cohort), and approval resets.</>,
+              <>If any copied session lands in a <B>room another class or reservation already holds</B>, or on a <B>holiday</B>, the builder shows a red alert at the top listing each one with a &quot;show on calendar&quot; jump — fix those days first.</>,
             ]} />
           </Sub>
           <Sub title="Cloning a past class">
             <p>Cloning an existing academy works the same way. After the copy, HEIMDALL flags any cloned session whose <B>room is already booked</B> by another class, and any that landed on holidays — fix those days in the builder. Class dates can be corrected any time under <B>Edit academy</B> — changing them adjusts the academy&apos;s window (and printed program dates) but never moves scheduled sessions.</p>
           </Sub>
           <Tips items={[
+            <>Templates are <B>sandboxes</B>: their sessions never appear on the master or rooms calendars, never book or conflict with real rooms, and you can&apos;t reserve instructors into them — the slot pattern (roles, counts, qualifications) is what carries into each new academy.</>,
+            <>When creating a new academy or template, the <B>end date auto-fills</B> from the curriculum&apos;s hours (~40/week, ending on a Friday) — type your own date to override it.</>,
             <>Deleting an academy requires typing <B>DELETE</B> — it removes the class and its sessions permanently.</>,
             <>The Academies list shows live cadet headcounts per class.</>,
           ]} />
