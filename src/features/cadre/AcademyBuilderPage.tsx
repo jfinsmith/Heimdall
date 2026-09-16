@@ -72,6 +72,8 @@ export function AcademyBuilderPage() {
   const observedHolidays = useMemo(() => new Set(settings?.observedHolidays ?? []), [settings]);
   const payTarget = settings?.payPeriodTargetHours ?? DEFAULT_PAY_PERIOD_TARGET;
   const calRef = useRef<FullCalendar>(null);
+  // Timer for the "show on calendar" red day-pulse (see goToSessionOnCalendar).
+  const flashTimerRef = useRef<number | null>(null);
 
   const [formSession, setFormSession] = useState<WithId<SessionDoc> | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -618,8 +620,25 @@ export function AcademyBuilderPage() {
   function goToSessionOnCalendar(s: WithId<SessionDoc>) {
     const api = calRef.current?.getApi();
     if (!api) return;
-    api.changeView('timeGridWeek', s.start.toDate());
+    // Stay in the builder's two-week view (jumping used to collapse to a
+    // single week, losing the working context) — just navigate to the date.
+    api.changeView('twoWeek', s.start.toDate());
     document.getElementById('builder-calendar')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Pulse the target day red for ~4s so the eye lands on it. Done at the DOM
+    // level: FullCalendar owns these cells (React state would be wiped by its
+    // re-renders anyway), and the class is cosmetic + self-removing. data-date
+    // matches both the header cell and the time-grid column for that day.
+    const dateAttr = toDateInputValue(s.start.toDate());
+    if (flashTimerRef.current) window.clearTimeout(flashTimerRef.current);
+    document.querySelectorAll('#builder-calendar .hd-flash-day').forEach((el) => el.classList.remove('hd-flash-day'));
+    window.setTimeout(() => {
+      const cells = document.querySelectorAll(`#builder-calendar [data-date="${dateAttr}"]`);
+      cells.forEach((el) => el.classList.add('hd-flash-day'));
+      flashTimerRef.current = window.setTimeout(() => {
+        cells.forEach((el) => el.classList.remove('hd-flash-day'));
+        flashTimerRef.current = null;
+      }, 4200);
+    }, 60); // let changeView finish painting the new range first
   }
 
   return (

@@ -58,6 +58,24 @@ body {
   @apply text-lg font-semibold text-watch-900;
 }
 
+/* "Show on calendar" flash: the jumped-to day glows and pulses red for ~4s
+   (4 × 1s) so the user finds it at a glance. Applied to the day's header cell
+   AND its time-grid column via [data-date]; removed by the same timer that
+   added it. Inset ring, not outline — table cells clip outlines. */
+@keyframes hd-flash-day-pulse {
+  0%, 100% {
+    background-color: rgb(254 226 226 / 0);
+    box-shadow: inset 0 0 0 0 rgb(239 68 68 / 0);
+  }
+  50% {
+    background-color: rgb(254 226 226 / 0.85);
+    box-shadow: inset 0 0 0 3px rgb(239 68 68 / 0.75);
+  }
+}
+.fc .hd-flash-day {
+  animation: hd-flash-day-pulse 1s ease-in-out 4;
+}
+
 /* Holiday wash: subtle background; the readable name comes from the label chip */
 .fc {
   --fc-bg-event-opacity: 0.14;

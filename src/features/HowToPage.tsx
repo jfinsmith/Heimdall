@@ -222,7 +222,7 @@ export function HowToPage() {
               <>Go to <B>CADRE → Academies</B>. Templates are grouped by discipline (Jan/Apr/Jul/Oct starts).</>,
               <>Pick a template → <B>Use template</B> → set the class name, short name (e.g. &quot;LE 133&quot;), start date, and a <B>calendar color</B> for the new cohort (defaults to the next unused color — the template&apos;s color is not inherited, so cohorts stay distinguishable). Every session shifts to the new dates automatically.</>,
               <>The template&apos;s <B>default room, per-course rooms, coordinators, and settings all carry over</B>. The clone lands as a <B>draft</B> — staffing does not copy, the FDLE sequence number is intentionally blank (it&apos;s per-cohort), and approval resets.</>,
-              <>If any copied session lands in a <B>room another class or reservation already holds</B>, or on a <B>holiday</B>, the builder shows a red alert at the top listing each one with a &quot;show on calendar&quot; jump — fix those days first.</>,
+              <>If any copied session lands in a <B>room another class or reservation already holds</B>, or on a <B>holiday</B>, the builder shows a red alert at the top listing each one with a &quot;show on calendar&quot; jump that pulses the day red so it&apos;s easy to spot — fix those days first.</>,
             ]} />
           </Sub>
           <Sub title="Cloning a past class">
