@@ -229,16 +229,16 @@ export interface UserDoc {
  * (PRIORITY_EMAIL_TYPES) — the server is what actually enforces it.
  */
 export const EMAIL_AUTOMATIONS = [
-  { key: 'signup_confirmed', label: 'Sign-up confirmation', description: 'Emails the instructor (with calendar invite) when they sign up for a slot.', audience: 'everyone' },
+  { key: 'signup_confirmed', label: 'Sign-up confirmation', description: 'Emails the instructor (with calendar invite) when they sign up for a slot. Not sent for builder assignments the person already knows about — coordinator-slot placements and staff assigning themselves.', audience: 'everyone' },
   { key: 'reservation_offer', label: 'Reservation — availability request', description: 'Emails an instructor when a coordinator reserves them into a slot, asking them to confirm or decline on My Schedule.', audience: 'everyone', priority: true },
   { key: 'reservation_confirmed', label: 'Reservation confirmed', description: 'Emails the reserving coordinator when the instructor confirms they are available.', audience: 'staff' },
   { key: 'reservation_declined', label: 'Reservation declined', description: 'Emails the reserving coordinator when the instructor declines and the slot re-opens.', audience: 'staff' },
-  { key: 'slot_reopened', label: 'Withdrawal / slot re-opened', description: 'Emails the academy coordinators when an instructor withdraws.', audience: 'staff' },
-  { key: 'session_fully_staffed', label: 'Session fully staffed', description: 'Emails coordinators when the last required slot fills.', audience: 'staff' },
+  { key: 'slot_reopened', label: 'Withdrawal / slot re-opened', description: 'Emails the academy coordinators when an instructor withdraws (never the withdrawer themselves).', audience: 'staff' },
+  { key: 'session_fully_staffed', label: 'Session fully staffed', description: 'Emails coordinators when the last required slot fills (except whoever filled it).', audience: 'staff' },
   { key: 'lead_withdrawal_escalation', label: 'Lead withdrawal escalation', description: 'Emails command when a lead withdraws inside the escalation window.', audience: 'admin', priority: true },
-  { key: 'schedule_change', label: 'Schedule change', description: 'Emails signed-up instructors when a session is moved, re-roomed, or cancelled.', audience: 'everyone', priority: true },
+  { key: 'schedule_change', label: 'Schedule change', description: 'Emails signed-up instructors when a session is moved, re-roomed, or cancelled — everyone except the person who made the change.', audience: 'everyone', priority: true },
   { key: 'qualification_approved', label: 'Qualification verified', description: 'Emails the instructor when a coordinator verifies a qualification.', audience: 'everyone' },
-  { key: 'course_published', label: 'Course opened for sign-up', description: 'Emails eligible instructors when coordinators open a course’s sessions for sign-up.', audience: 'everyone' },
+  { key: 'course_published', label: 'Course opened for sign-up', description: 'Emails eligible instructors when coordinators open a course’s sessions for sign-up (the opener is not emailed).', audience: 'everyone' },
   { key: 'account_approved', label: 'Account approved', description: 'Emails a new user when their account is activated.', audience: 'everyone', priority: true },
   { key: 'new_account_pending', label: 'New account request', description: 'Emails command when someone self-registers and is waiting for approval.', audience: 'admin', priority: true },
   { key: 'account_suspended', label: 'Account suspended', description: 'Emails a member when an admin suspends their account, with the reason.', audience: 'everyone', priority: true },
@@ -874,6 +874,10 @@ export interface SessionDoc {
    * per-session lunch carve-out (lunchMinutes), which still applies to sessions.
    */
   kind?: 'session' | 'lunch';
+  /** Uid of the last person who edited this session (stamped by every client
+   *  write path) — Gjallarhorn skips notifying the actor about their own
+   *  change (schedule change, fully staffed). */
+  updatedBy?: string;
   academyId: string;
   courseId: string;
   courseName: string;     // denormalized from courseCatalog
@@ -998,6 +1002,10 @@ export interface SignupDoc {
   /** 'pending' until the instructor confirms availability ('accepted');
    *  declining is a normal withdrawal. */
   reservationState?: 'pending' | 'accepted';
+  /** True = skip the "sign-up confirmed" notification: set by the builder's
+   *  assignment sync for coordinator-slot placements and self-reserves —
+   *  things the person inherently already knows about. */
+  quiet?: boolean;
 }
 
 /** Denormalized mirror powering "My Schedule" and Gjallarhorn reminders. */

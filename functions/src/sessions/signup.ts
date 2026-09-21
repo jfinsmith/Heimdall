@@ -86,7 +86,7 @@ export const submitSignup = onCall<{ sessionId: string; slotId: string; allowWai
     }
 
     const newSlots = session.roleSlots.map((s) => (s.slotId === slotId ? { ...s, filledBy: [...s.filledBy, uid] } : s));
-    tx.update(sessionRef, { roleSlots: newSlots, status: recomputeStatus(session.status, newSlots), updatedAt: now });
+    tx.update(sessionRef, { roleSlots: newSlots, status: recomputeStatus(session.status, newSlots), updatedAt: now, updatedBy: uid });
     tx.set(signupRef, { ...base, status: 'confirmed' } satisfies SignupDoc);
     tx.set(db.doc(`assignments/${sessionId}_${uid}`), {
       uid, orgId: sOrg, sessionId, academyId: session.academyId, role: slot.role,
@@ -144,7 +144,7 @@ export const withdrawSignup = onCall<{ sessionId: string }>(async (request) => {
     );
     tx.update(signupRef, { status: 'withdrawn' });
     if (assignmentSnap.exists) tx.update(assignmentRef, { status: 'withdrawn' });
-    tx.update(sessionRef, { roleSlots: newSlots, status: recomputeStatus(session.status, newSlots), updatedAt: now });
+    tx.update(sessionRef, { roleSlots: newSlots, status: recomputeStatus(session.status, newSlots), updatedAt: now, updatedBy: uid });
   });
 
   await db.collection('auditLog').add({

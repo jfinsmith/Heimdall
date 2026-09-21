@@ -149,6 +149,8 @@ export interface RoleSlot {
 
 export interface SessionDoc {
   orgId?: string;
+  /** Last editor's uid — the actor is skipped for their own change's alerts. */
+  updatedBy?: string;
   academyId: string;
   courseId: string;
   courseName: string;
@@ -205,6 +207,9 @@ export interface SignupDoc {
   /** Coordinator reservation (see src/types) — pending until confirmed. */
   reservedBy?: string;
   reservationState?: 'pending' | 'accepted';
+  /** True = builder-sync placement the person already knows about (coordinator
+   *  slot or self-reserve) — no "sign-up confirmed" notification. */
+  quiet?: boolean;
 }
 
 export interface AssignmentDoc {

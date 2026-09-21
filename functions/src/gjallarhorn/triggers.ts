@@ -108,6 +108,9 @@ async function promoteFromWaitlist(sessionId: string, slotId: string): Promise<b
       roleSlots: newSlots,
       status: full ? 'fully_staffed' : 'open',
       updatedAt: FieldValue.serverTimestamp(),
+      // This change belongs to the promoted instructor, not whoever edited the
+      // session last — keeps the fully-staffed actor-exclusion accurate.
+      updatedBy: candidate.uid,
     });
     return true;
   });
@@ -150,8 +153,11 @@ export const onSignupWritten = onDocumentWritten('sessions/{sessionId}/signups/{
       }),
       attachments: [{ filename: 'session.ics', content: sessionIcs(sessionId, session) }],
     });
-  } else if (becameConfirmed) {
-    // 1) Confirmation to the instructor, with session details + .ics
+  } else if (becameConfirmed && after.quiet !== true) {
+    // 1) Confirmation to the instructor, with session details + .ics. QUIET
+    // sign-ups (builder sync: coordinator-slot placements and self-reserves)
+    // skip it — no one needs a confirmation of an assignment they made or
+    // inherently already know about; My Schedule + reminders still work.
     const details = sessionDetails(session);
     await notify({
       uid,
@@ -181,6 +187,8 @@ export const onSignupWritten = onDocumentWritten('sessions/{sessionId}/signups/{
     const promoted = await promoteFromWaitlist(sessionId, after.slotId);
     if (!promoted) {
       // 2) Withdrawal / slot re-opened → coordinators
+      // The withdrawn person is excluded — a coordinator who withdrew
+      // themselves doesn't need to hear about their own withdrawal.
       await notifyCoordinators(session.academyId, {
         dedupeKey: `${event.id}_reopen`,
         type: 'slot_reopened',
@@ -189,7 +197,7 @@ export const onSignupWritten = onDocumentWritten('sessions/{sessionId}/signups/{
           .toDate()
           .toLocaleDateString('en-US', { timeZone: 'America/New_York' })}.`,
         link: `/cadre/staffing`,
-      });
+      }, [], [uid]);
 
       // 3) Lead withdrawal close to the session date → escalate up the chain
       const daysOut = (session.start.toMillis() - Date.now()) / 864e5;
@@ -203,7 +211,7 @@ export const onSignupWritten = onDocumentWritten('sessions/{sessionId}/signups/{
             .toDate()
             .toLocaleString('en-US', { timeZone: 'America/New_York' })}. Verify the lead slot is still covered.`,
           link: `/cadre/staffing`,
-        }, session.orgId);
+        }, session.orgId, [uid]);
       }
     }
   }
@@ -218,6 +226,9 @@ export const onSessionUpdated = onDocumentUpdated('sessions/{sessionId}', async 
 
   // 4) Fully staffed → coordinators
   if (before.status !== 'fully_staffed' && after.status === 'fully_staffed') {
+    // updatedBy = whoever made this change (the coordinator whose builder save
+    // or self-assign filled the last slot, or the instructor whose sign-up
+    // did) — they know; only the OTHER coordinators hear about it.
     await notifyCoordinators(after.academyId, {
       dedupeKey: `${event.id}_staffed`,
       type: 'session_fully_staffed',
@@ -226,7 +237,7 @@ export const onSessionUpdated = onDocumentUpdated('sessions/{sessionId}', async 
         .toDate()
         .toLocaleDateString('en-US', { timeZone: 'America/New_York' })}.`,
       link: `/cadre/staffing`,
-    });
+    }, [], after.updatedBy ? [after.updatedBy] : []);
   }
 
   // 5) Schedule change (time/room/cancel) with sign-ups → all signed-up instructors
@@ -249,6 +260,10 @@ export const onSessionUpdated = onDocumentUpdated('sessions/{sessionId}', async 
   await Promise.all(
     signups.docs.map(async (d) => {
       const su = d.data() as SignupDoc;
+      // The EDITOR is skipped (they made the change — rescheduling or
+      // cancelling a session they're also signed up for shouldn't email them),
+      // but their assignment mirror below must still update.
+      const isEditor = su.uid === after.updatedBy;
       // Keep the assignment mirror in sync for reminders/My Schedule. Stamp
       // uid/orgId on the cancel path too — a merge-set on a MISSING mirror
       // would otherwise create an org-less {status} stub (invisible garbage
@@ -270,6 +285,7 @@ export const onSessionUpdated = onDocumentUpdated('sessions/{sessionId}', async 
               },
           { merge: true }
         );
+      if (isEditor) return;
       await notify({
         uid: su.uid,
         dedupeKey: `${event.id}_sched_${su.uid}`,
@@ -483,6 +499,11 @@ export const onCoursePublished = onDocumentCreated('coursePublishEvents/{id}', a
       })
       .map((d) => d.id);
   }
+
+  // The coordinator who opened sign-ups is never a recipient of their own
+  // announcement (they may themselves hold matching quals).
+  const requestedBy = (data as { requestedBy?: string }).requestedBy;
+  if (requestedBy) recipientIds = recipientIds.filter((uid) => uid !== requestedBy);
 
   const firstDay = earliest
     ? earliest.toDate().toLocaleDateString('en-US', { timeZone: 'America/New_York', dateStyle: 'medium' })

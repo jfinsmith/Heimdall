@@ -480,6 +480,8 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
       roleSlots: cleanSlots,
       notes: notes ?? '',
       updatedAt: serverTimestamp(),
+      // Gjallarhorn skips notifying the editor about their own change.
+      updatedBy: firebaseUser.uid,
     };
 
     try {
@@ -532,7 +534,13 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
           const reservation =
             info.role !== 'coordinator' && firebaseUser.uid !== uid
               ? { reservedBy: firebaseUser.uid, reservationState: 'pending' as const }
-              : {};
+              : // Coordinator-slot placements and self-reserves are things the
+                // person inherently already knows (the academy's coordinator
+                // being staffed on their own class, or staff assigning
+                // themselves) — quiet suppresses the "sign-up confirmed"
+                // notification while everything else (My Schedule, reminders)
+                // works normally.
+                { quiet: true };
           await setDoc(doc(db, 'sessions', sessionId, 'signups', uid), {
             uid,
             // academy.orgId is optional on legacy docs; undefined would abort
@@ -584,7 +592,7 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
     setError(null);
     setBusy(true);
     try {
-      await updateDoc(doc(db, 'sessions', session.id), { status: 'cancelled', updatedAt: serverTimestamp() });
+      await updateDoc(doc(db, 'sessions', session.id), { status: 'cancelled', updatedAt: serverTimestamp(), updatedBy: firebaseUser!.uid });
       await logAudit(firebaseUser.uid, 'session.cancel', 'session', session.id, `Cancelled ${session.courseName}`);
       onClose();
     } catch (err) {

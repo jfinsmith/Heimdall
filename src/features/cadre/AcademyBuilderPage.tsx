@@ -513,6 +513,8 @@ export function AcademyBuilderPage() {
     await updateDoc(doc(db, 'sessions', s.id), {
       start: tsFromDate(start),
       end: tsFromDate(end),
+      // Gjallarhorn skips notifying the dragger about their own reschedule.
+      ...(firebaseUser ? { updatedBy: firebaseUser.uid } : {}),
       // Lunch placeholders never carry hours; sessions recompute from the new span
       // (preserving their lunch carve-out, unless lunch counts).
       hours:
@@ -1181,6 +1183,7 @@ function OpenSignupsModal({
   onClose: () => void;
 }) {
   const { data: users } = useCollection<UserDoc>('users', [where('status', '==', 'active')]);
+  const { firebaseUser } = useAuth();
   type Choice = 'all' | 'qualification' | 'users' | 'none';
   const [choice, setChoice] = useState<Choice>('all');
   const [qualKey, setQualKey] = useState<QualificationKey>('handgun');
@@ -1215,9 +1218,12 @@ function OpenSignupsModal({
     }
     return users
       .filter((u) => anyUnrestricted || (u.verifiedQualKeys ?? []).some((k) => slotQuals.has(k)))
+      // Mirrors the server rule: the person opening sign-ups never emails
+      // themselves about their own announcement.
+      .filter((u) => u.id !== firebaseUser?.uid)
       .map((u) => (u.firstName && u.lastName ? `${u.firstName} ${u.lastName}` : u.displayName))
       .sort((a, b) => a.localeCompare(b));
-  }, [users, courseSessions, mode]);
+  }, [users, courseSessions, mode, firebaseUser?.uid]);
 
   async function submit() {
     setBusy(true);

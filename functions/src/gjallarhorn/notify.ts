@@ -162,11 +162,15 @@ export async function notify(opts: NotifyOptions): Promise<void> {
 export async function notifyCoordinators(
   academyId: string,
   payload: Omit<NotifyOptions, 'uid' | 'email'>,
-  extraUids: string[] = []
+  extraUids: string[] = [],
+  // The person whose own action caused the event (self-withdrawal, filling the
+  // last slot themselves, their own edit) — never notified about it.
+  excludeUids: string[] = []
 ): Promise<void> {
   const academy = await db().doc(`academies/${academyId}`).get();
   const coordinatorIds: string[] = academy.exists ? (academy.data()!.coordinatorIds ?? []) : [];
-  const targets = [...new Set([...coordinatorIds, ...extraUids])];
+  const skip = new Set(excludeUids.filter(Boolean));
+  const targets = [...new Set([...coordinatorIds, ...extraUids])].filter((uid) => !skip.has(uid));
   await Promise.all(targets.map((uid) => notify({ ...payload, uid, dedupeKey: keyFor(payload.dedupeKey, uid) })));
 }
 
@@ -192,10 +196,14 @@ export async function notifyAdmins(payload: Omit<NotifyOptions, 'uid' | 'email'>
 /** Escalate to the configured command recipients (uids or raw emails). */
 export async function escalateToCommand(
   payload: Omit<NotifyOptions, 'uid' | 'email'>,
-  orgId?: string
+  orgId?: string,
+  // Actor exclusion (uid recipients only — raw emails can't be matched): a
+  // command member who withdrew THEMSELVES doesn't need their own escalation.
+  excludeUids: string[] = []
 ): Promise<void> {
   const settings = await getSettings(orgId);
-  const recipients = settings?.escalationRecipients ?? [];
+  const skip = new Set(excludeUids.filter(Boolean));
+  const recipients = (settings?.escalationRecipients ?? []).filter((r) => !skip.has(r));
   await Promise.all(
     recipients.map((r) =>
       r.includes('@')
