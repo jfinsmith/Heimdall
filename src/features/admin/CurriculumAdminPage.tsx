@@ -423,7 +423,7 @@ function CurriculumEditorModal({
                 <Input
                   type="number"
                   min={0}
-                  step={0.5}
+                  step={0.25}
                   value={c.minHours}
                   aria-label={`Course ${i + 1} hours`}
                   onChange={(e) => updateCourse(i, { minHours: Number(e.target.value) })}

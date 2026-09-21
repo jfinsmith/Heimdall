@@ -676,7 +676,7 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
             <Input
               type="number"
               min={0}
-              step={0.5}
+              step={0.25}
               value={instrHours}
               onChange={(e) => {
                 const v = Number(e.target.value);
