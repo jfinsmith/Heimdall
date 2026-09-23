@@ -129,10 +129,20 @@ export const onSignupWritten = onDocumentWritten('sessions/{sessionId}/signups/{
   const becameConfirmed = after.status === 'confirmed' && before?.status !== 'confirmed';
   const becameWithdrawn = after.status === 'withdrawn' && before?.status !== 'withdrawn';
 
+  // NOTHING about a sign-up is announced before the course is live: a session
+  // still 'draft' (unpublished academy) or 'scheduled' (published, sign-ups not
+  // yet opened) is invisible to instructors — an email now would link them to a
+  // class they can't see. Reservation offers made in the builder pre-open are
+  // HELD and sent as one batched email per person when the course opens
+  // (onCoursePublished); everything else (My Schedule mirror once open,
+  // reminders) is unaffected.
+  const sessionLive = session.status === 'open' || session.status === 'fully_staffed';
+
   // A coordinator RESERVATION is an offer, not a confirmation — the instructor
   // still has to accept it on My Schedule. Sending "Assignment confirmed" here
   // would contradict the pending-offer UI they're about to see.
   if (becameConfirmed && after.reservationState === 'pending') {
+    if (!sessionLive) return; // held — the course-open batch sends this offer
     const details = sessionDetails(session);
     await notify({
       uid,
@@ -153,7 +163,11 @@ export const onSignupWritten = onDocumentWritten('sessions/{sessionId}/signups/{
       }),
       attachments: [{ filename: 'session.ics', content: sessionIcs(sessionId, session) }],
     });
+    // Mark the offer as delivered so the course-open batch and the
+    // schedule-change filter know this person has actually been told.
+    await db().doc(`sessions/${sessionId}/signups/${uid}`).set({ offerNotified: true }, { merge: true });
   } else if (becameConfirmed && after.quiet !== true) {
+    if (!sessionLive) return; // defensive: confirmations only make sense on a live course
     // 1) Confirmation to the instructor, with session details + .ics. QUIET
     // sign-ups (builder sync: coordinator-slot placements and self-reserves)
     // skip it — no one needs a confirmation of an assignment they made or
@@ -180,7 +194,7 @@ export const onSignupWritten = onDocumentWritten('sessions/{sessionId}/signups/{
     });
   }
 
-  if (becameWithdrawn) {
+  if (becameWithdrawn && sessionLive) {
     // Auto-promote the next waitlisted candidate for the vacated slot (Admin
     // SDK — the client can't, by design). If the slot gets re-filled it isn't
     // really "re-opened", so skip the coordinator alert and lead escalation.
@@ -240,7 +254,13 @@ export const onSessionUpdated = onDocumentUpdated('sessions/{sessionId}', async 
     }, [], after.updatedBy ? [after.updatedBy] : []);
   }
 
-  // 5) Schedule change (time/room/cancel) with sign-ups → all signed-up instructors
+  // 5) Schedule change (time/room/cancel) with sign-ups → all signed-up
+  // instructors. A session that was still DRAFT was never announced to anyone
+  // — editing or cancelling it is SILENT (the builder's quiet placements know,
+  // and held reservation offers were never sent) — but the assignment mirrors
+  // below must still sync so a cancelled draft doesn't leave live-looking
+  // assignments behind.
+  const unannounced = before.status === 'draft';
   const timeChanged =
     before.start.toMillis() !== after.start.toMillis() || before.end.toMillis() !== after.end.toMillis();
   const roomChanged = before.room !== after.room || before.location !== after.location;
@@ -262,8 +282,12 @@ export const onSessionUpdated = onDocumentUpdated('sessions/{sessionId}', async 
       const su = d.data() as SignupDoc;
       // The EDITOR is skipped (they made the change — rescheduling or
       // cancelling a session they're also signed up for shouldn't email them),
-      // but their assignment mirror below must still update.
+      // but their assignment mirror below must still update. Same for a
+      // reservee whose offer was never sent (course not opened yet): they
+      // don't know the session exists, so there's no "change" to report.
       const isEditor = su.uid === after.updatedBy;
+      const neverTold = su.reservationState === 'pending' && su.offerNotified !== true;
+      const skipNotify = unannounced || isEditor || neverTold;
       // Keep the assignment mirror in sync for reminders/My Schedule. Stamp
       // uid/orgId on the cancel path too — a merge-set on a MISSING mirror
       // would otherwise create an org-less {status} stub (invisible garbage
@@ -285,7 +309,7 @@ export const onSessionUpdated = onDocumentUpdated('sessions/{sessionId}', async 
               },
           { merge: true }
         );
-      if (isEditor) return;
+      if (skipNotify) return;
       await notify({
         uid: su.uid,
         dedupeKey: `${event.id}_sched_${su.uid}`,
@@ -438,6 +462,7 @@ export const onCoursePublished = onDocumentCreated('coursePublishEvents/{id}', a
   // modal). Default to everyone eligible for back-compat with older events.
   const target = (data.target ?? { mode: 'all' }) as
     | { mode: 'all' }
+    | { mode: 'none' }
     | { mode: 'qualification'; qualificationKey: string }
     | { mode: 'users'; uids: string[] };
 
@@ -476,7 +501,11 @@ export const onCoursePublished = onDocumentCreated('coursePublishEvents/{id}', a
   // Resolve recipients for the email blast (the course is visible to all eligible
   // instructors regardless — this only controls who gets pushed an email).
   let recipientIds: string[];
-  if (target.mode === 'users') {
+  if (target.mode === 'none') {
+    // "Don't send an email" — the event still fires so HELD reservation
+    // offers (below) go out; only the eligible-instructor blast is skipped.
+    recipientIds = [];
+  } else if (target.mode === 'users') {
     // Cross-tenant guard: hand-picked uids are client-supplied — only members
     // of the ACADEMY's own org may be emailed, whatever the event doc claims.
     const picked = target.uids ?? [];
@@ -521,6 +550,67 @@ export const onCoursePublished = onDocumentCreated('coursePublishEvents/{id}', a
       })
     )
   );
+
+  // HELD reservation offers: reservations made in the builder BEFORE the
+  // course opened were deliberately silent (the class wasn't visible yet, so
+  // the email would have linked to nothing). Now that sign-ups are open, tell
+  // each reserved person ONCE — a single email listing every session they're
+  // reserved for — and mark those offers delivered.
+  const liveCourse = sessions.docs
+    .map((d) => ({ id: d.id, s: d.data() as SessionDoc }))
+    .filter(
+      (x) =>
+        (x.s.title || x.s.courseName) === courseLabel &&
+        (x.s.status === 'open' || x.s.status === 'fully_staffed')
+    );
+  const held = new Map<string, { displayName: string; role: string; sessionId: string; s: SessionDoc }[]>();
+  for (const { id, s } of liveCourse) {
+    const pend = await db().collection(`sessions/${id}/signups`).where('reservationState', '==', 'pending').get();
+    for (const d of pend.docs) {
+      const su = d.data() as SignupDoc;
+      if (su.status !== 'confirmed' || su.offerNotified === true) continue;
+      if (!held.has(su.uid)) held.set(su.uid, []);
+      held.get(su.uid)!.push({ displayName: su.displayName, role: su.role, sessionId: id, s });
+    }
+  }
+  if (held.size) {
+    const settings = await getSettings(academyOrgId);
+    const fmtDT = (t: FirebaseFirestore.Timestamp) =>
+      t.toDate().toLocaleString('en-US', { timeZone: 'America/New_York', dateStyle: 'medium', timeStyle: 'short' });
+    await Promise.all(
+      [...held.entries()].map(async ([uid, items]) => {
+        items.sort((a, b) => a.s.start.toMillis() - b.s.start.toMillis());
+        const n = items.length;
+        const plural = n === 1 ? '' : 's';
+        const rowsHtml = items
+          .map((i) => `<li>${escapeHtml(fmtDT(i.s.start))} — <strong>${escapeHtml(i.role.replace('_', ' '))}</strong></li>`)
+          .join('');
+        const rowsText = items.map((i) => `- ${fmtDT(i.s.start)} — ${i.role.replace('_', ' ')}`).join('\n');
+        await notify({
+          uid,
+          dedupeKey: `${event.id}_resv_${uid}`,
+          ...(curriculumKey ? { curriculumKey } : {}),
+          type: 'reservation_offer',
+          title: `Reserved for you: ${n} session${plural} of ${courseLabel}`,
+          body: `A coordinator reserved you for ${n} ${courseLabel} session${plural} — confirm whether you're available on My Schedule.`,
+          link: '/my-schedule',
+          emailContent: renderEmail({
+            subject: `[HEIMDALL] Are you available? ${n} session${plural} of ${courseLabel}`,
+            heading: `You're reserved for ${n} session${plural} of ${courseLabel}`,
+            bodyHtml: `<p>${escapeHtml(items[0].displayName)}, a coordinator reserved you for the following${academyLabel ? ` ${escapeHtml(academyLabel)}` : ''} session${plural}, now open for sign-up:</p><ul>${rowsHtml}</ul><p>Please open <strong>My Schedule</strong> and confirm each one — "Not available" frees that slot for someone else.</p>`,
+            bodyText: `${items[0].displayName}, a coordinator reserved you for the following session${plural}, now open for sign-up:\n\n${rowsText}\n\nOpen My Schedule and confirm each one — "Not available" frees that slot for someone else.`,
+            ctaLabel: "I'm available / Not available",
+            ctaUrl: 'https://heimdallscheduling.com/my-schedule',
+            orgName: settings?.orgName,
+            logoUrl: settings?.logoUrl,
+          }),
+        });
+        await Promise.all(
+          items.map((i) => db().doc(`sessions/${i.sessionId}/signups/${uid}`).set({ offerNotified: true }, { merge: true }))
+        );
+      })
+    );
+  }
 });
 
 // ── Bug / feature report filed → notify command for triage ────────────────

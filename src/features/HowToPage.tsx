@@ -285,6 +285,8 @@ export function HowToPage() {
               Each session carries role slots (lead, assistant, role player, coordinator) with counts and optional qualification requirements.
               You can <B>reserve</B> specific instructors into slots from the session editor — the picker excludes expired certifications and
               warns on double-bookings. A reservation asks the instructor to <B>confirm availability</B> from My Schedule.
+              Reservations made <B>before the course is open for sign-up are silent</B> — the instructor gets one email listing
+              all their reserved sessions the moment you open the course (reserving into an already-open course notifies immediately).
               Coordinator slots are pre-assigned (no open registration). An advisory badge shows when a
               high-liability day is below its FDLE instructor ratio.
             </p>

@@ -909,6 +909,17 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
               </div>
             ))}
           </div>
+          {!academy.isTemplate &&
+            session?.status !== 'open' &&
+            session?.status !== 'fully_staffed' &&
+            slots.some((sl) => sl.role !== 'coordinator' && sl.filledBy.length > 0) && (
+              // Held-offer notice: pre-open reservations are silent by design —
+              // without this line coordinators wonder why no email went out.
+              <p className="mt-1.5 text-xs text-slate-500">
+                Reserved instructors are <span className="font-medium">not notified yet</span> — they get one
+                email listing all their reserved sessions when this course opens for sign-up.
+              </p>
+            )}
           <Button
             type="button"
             variant="ghost"

@@ -64,6 +64,12 @@ export const gjallarhornDailySweep = onSchedule(
       // An unanswered reservation isn't an accepted assignment — don't send
       // "you teach X" reminders for an offer the instructor never confirmed.
       if (a.reservationState === 'pending') continue;
+      // A DRAFT session's class was never published — a quiet builder
+      // placement (e.g. the coordinator on their own unapproved schedule)
+      // shouldn't produce "you teach tomorrow" for an unannounced class.
+      const sessSnap = await db().doc(`sessions/${a.sessionId}`).get();
+      const sessStatus = sessSnap.exists ? (sessSnap.data()!.status as string) : null;
+      if (!sessStatus || sessStatus === 'draft' || sessStatus === 'cancelled') continue;
       const orgSettings = a.orgId ? settingsByOrg.get(a.orgId) ?? null : null;
       const defaultLead = orgSettings?.reminderDefaultLeadHours ?? 48;
       const userSnap = await db().doc(`users/${a.uid}`).get();

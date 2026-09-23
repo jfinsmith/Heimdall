@@ -210,6 +210,9 @@ export interface SignupDoc {
   /** True = builder-sync placement the person already knows about (coordinator
    *  slot or self-reserve) — no "sign-up confirmed" notification. */
   quiet?: boolean;
+  /** True once the reservation offer was actually sent (offers are held until
+   *  the course opens for sign-up). */
+  offerNotified?: boolean;
 }
 
 export interface AssignmentDoc {

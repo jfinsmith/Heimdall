@@ -230,7 +230,7 @@ export interface UserDoc {
  */
 export const EMAIL_AUTOMATIONS = [
   { key: 'signup_confirmed', label: 'Sign-up confirmation', description: 'Emails the instructor (with calendar invite) when they sign up for a slot. Not sent for builder assignments the person already knows about — coordinator-slot placements and staff assigning themselves.', audience: 'everyone' },
-  { key: 'reservation_offer', label: 'Reservation — availability request', description: 'Emails an instructor when a coordinator reserves them into a slot, asking them to confirm or decline on My Schedule.', audience: 'everyone', priority: true },
+  { key: 'reservation_offer', label: 'Reservation — availability request', description: 'Emails an instructor when a coordinator reserves them into a slot, asking them to confirm or decline on My Schedule. Reservations made before the course opens are held and sent as one batched email per person when sign-ups open.', audience: 'everyone', priority: true },
   { key: 'reservation_confirmed', label: 'Reservation confirmed', description: 'Emails the reserving coordinator when the instructor confirms they are available.', audience: 'staff' },
   { key: 'reservation_declined', label: 'Reservation declined', description: 'Emails the reserving coordinator when the instructor declines and the slot re-opens.', audience: 'staff' },
   { key: 'slot_reopened', label: 'Withdrawal / slot re-opened', description: 'Emails the academy coordinators when an instructor withdraws (never the withdrawer themselves).', audience: 'staff' },
@@ -385,6 +385,7 @@ export interface GlobalSettings {
 /** Who a "course opened for sign-up" announcement email targets. */
 export type CoursePublishTarget =
   | { mode: 'all' }
+  | { mode: 'none' } // no instructor blast — still releases held reservation offers
   | { mode: 'qualification'; qualificationKey: QualificationKey }
   | { mode: 'users'; uids: string[] };
 
@@ -1006,6 +1007,10 @@ export interface SignupDoc {
    *  assignment sync for coordinator-slot placements and self-reserves —
    *  things the person inherently already knows about. */
   quiet?: boolean;
+  /** True once the reservation-offer notification actually went out. Offers on
+   *  not-yet-open sessions are HELD and sent (batched per person) when the
+   *  course opens for sign-up. */
+  offerNotified?: boolean;
 }
 
 /** Denormalized mirror powering "My Schedule" and Gjallarhorn reminders. */

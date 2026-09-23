@@ -609,7 +609,11 @@ export function AcademyBuilderPage() {
         setSignupModal(null);
         return;
       }
-      if (emailTarget) await announceCourse(label, emailTarget, group.open + opened);
+      // The publish event ALWAYS fires on open — even "Don't send an email"
+      // ({mode:'none'}) — because it's also what releases the HELD reservation
+      // offers (people reserved in the builder pre-open get their one batched
+      // "are you available?" email at this moment).
+      await announceCourse(label, emailTarget ?? { mode: 'none' }, group.open + opened);
     } else if (emailTarget) {
       await announceCourse(label, emailTarget, group.open);
     }
