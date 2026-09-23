@@ -9,7 +9,7 @@ import { db, functions } from '../../lib/firebase';
 import { shortId, useCollection, useDoc, type WithId } from '../../lib/firestore';
 import { useCurriculum } from '../../lib/curricula';
 import { instructorCount, requiredInstructors } from '../cadre/instructorRatio';
-import { findRoomConflict, roomExemptAcademy, academyHolderLabel } from '../cadre/rooms/roomBooking';
+import { findRoomConflict, roomExemptAcademy, draftHolderAcademy, academyHolderLabel } from '../cadre/rooms/roomBooking';
 import { useAuth } from '../../auth/AuthContext';
 import { can } from '../../lib/rbac';
 import { fmtRange, isValidDuration } from '../../lib/time';
@@ -153,6 +153,9 @@ export function SessionDetailModal({ sessionId, onClose, onEdit, variant = 'staf
         const acadById = new Map(acadSnap.docs.map((d) => [d.id, d.data() as AcademyDoc]));
         // Template/archived academies' sessions aren't real bookings in either
         // direction — duplicating inside one skips the gate entirely.
+        // First-publish-wins: draft holders (or a draft OWN academy) soft-warn
+        // with a duplicate-anyway instead of blocking.
+        const ownDraft = draftHolderAcademy(acadById.get(session.academyId));
         for (const rid of roomExemptAcademy(acadById.get(session.academyId)) ? [] : dupRoomIds) {
           const conflict = await findRoomConflict({
             orgId: dupOrgId,
@@ -160,9 +163,19 @@ export function SessionDetailModal({ sessionId, onClose, onEdit, variant = 'staf
             start: nextStart,
             end: nextEnd,
             ignoreAcademy: (id) => roomExemptAcademy(acadById.get(id)),
+            softSession: (x) => ownDraft || draftHolderAcademy(acadById.get(x.academyId)),
+            softReservations: ownDraft,
             labelFor: (x) => `${academyHolderLabel(acadById.get(x.academyId))} — ${x.title || x.courseName}`,
           });
-          if (conflict) {
+          if (conflict && conflict.soft) {
+            if (
+              !window.confirm(
+                `${session.room || 'The room'} is already booked on that day by ${conflict.label}.\n\nDuplicate anyway? The room belongs to whichever class is published first — the conflict stays flagged at the top of the builder until one of you moves.`
+              )
+            ) {
+              return;
+            }
+          } else if (conflict) {
             setError(`Can't duplicate: ${session.room || 'the room'} is already booked on that day by ${conflict.label}. Reschedule or change rooms first.`);
             return;
           }

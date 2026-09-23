@@ -23,7 +23,7 @@ import { BlockModeToggle } from './blockMode';
 import { instructorCount, requiredInstructors } from './instructorRatio';
 import { logAudit } from '../sessions/audit';
 import { RoomSelect } from './rooms/RoomSelect';
-import { findRoomConflict, roomExemptAcademy, academyHolderLabel } from './rooms/roomBooking';
+import { findRoomConflict, roomExemptAcademy, draftHolderAcademy, academyHolderLabel } from './rooms/roomBooking';
 
 const CUSTOM = '__custom__';
 
@@ -420,6 +420,13 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
     // class must never block editing the template's placeholder dates.
     if (allRoomIds.length && academy.orgId && session?.status !== 'cancelled' && !roomExemptAcademy(academy)) {
       const acadById = new Map(academies.map((a) => [a.id, a]));
+      // First-publish-wins: rooms belong to whichever class PUBLISHES first.
+      // A DRAFT saving academy gets a warn-and-schedule-anyway on every
+      // conflict; a published one is still hard-blocked by published classes
+      // and reservations, but only warned about DRAFT holders (which have no
+      // claim yet). Bypassed conflicts stay flagged in the builder's
+      // room-conflict banner on BOTH academies until someone moves.
+      const savingDraft = academy.status === 'draft';
       try {
         for (const rid of allRoomIds) {
           const conflict = await findRoomConflict({
@@ -429,9 +436,19 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
             end,
             excludeSessionId: session?.id,
             ignoreAcademy: (id) => roomExemptAcademy(acadById.get(id)),
+            softSession: (s) => savingDraft || draftHolderAcademy(acadById.get(s.academyId)),
+            softReservations: savingDraft,
             labelFor: (s) => `${academyHolderLabel(acadById.get(s.academyId))} — ${s.title || s.courseName}`,
           });
-          if (conflict) {
+          if (conflict && conflict.soft) {
+            const ok = window.confirm(
+              `${nameOf(rid) || 'This room'} is already booked ${toTimeInputValue(conflict.start)}–${toTimeInputValue(conflict.end)} by ${conflict.label}.\n\nSchedule anyway? The room belongs to whichever class is published first — this conflict stays flagged at the top of the builder (for both classes) until one of you moves.`
+            );
+            if (!ok) {
+              setBusy(false);
+              return;
+            }
+          } else if (conflict) {
             setBusy(false);
             setError(`${nameOf(rid) || 'A room'} is already booked ${toTimeInputValue(conflict.start)}–${toTimeInputValue(conflict.end)} by ${conflict.label}. Choose another room or time.`);
             return;

@@ -18,7 +18,7 @@ import { Button, Field, Input, Select } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import { logAudit } from '../sessions/audit';
 import { RoomSelect } from './rooms/RoomSelect';
-import { loadRoomBookings, loadRoomReservations, overlaps, roomExemptAcademy, academyHolderLabel } from './rooms/roomBooking';
+import { loadRoomBookings, loadRoomReservations, overlaps, roomExemptAcademy, draftHolderAcademy, academyHolderLabel } from './rooms/roomBooking';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const CUSTOM = '__custom__';
@@ -158,31 +158,50 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
     }
     setBusy(true);
 
-    // Hard block: a managed room can't be double-booked. Check every generated
-    // day against existing (non-cancelled, non-template) bookings for the room.
+    // Room gate: a managed room can't silently double-book. Checked per
+    // generated day against existing (non-cancelled, non-template) bookings.
     // SKIPPED when generating INTO a template — its sessions aren't real
     // bookings, so real classes must not block authoring the pattern.
+    // First-publish-wins: HARD hits (published classes, reservations) block;
+    // SOFT hits (draft holders — or everything when THIS academy is a draft)
+    // confirm with a generate-anyway; bypassed conflicts stay flagged in the
+    // builder's room-conflict banner.
     if (roomId && academy.orgId && !roomExemptAcademy(academy)) {
       const acadById = new Map(academies.map((a) => [a.id, a]));
+      const savingDraft = academy.status === 'draft';
       const [bookings, reservations] = await Promise.all([
         loadRoomBookings(academy.orgId, roomId),
         loadRoomReservations(academy.orgId, roomId),
       ]);
       const live = bookings.filter((b) => b.status !== 'cancelled' && !roomExemptAcademy(acadById.get(b.academyId)));
-      const hits: string[] = [];
+      const hardHits: string[] = [];
+      const softHits: string[] = [];
       for (const date of matchingDates) {
         const ds = toDateInputValue(date);
         const s = combineDateTime(ds, startTime);
         const en = combineDateTime(ds, endTime);
         const c = live.find((b) => overlaps(s, en, b.start.toDate(), b.end.toDate()));
-        if (c) { hits.push(`${ds}: ${academyHolderLabel(acadById.get(c.academyId))} — ${c.title || c.courseName}`); continue; }
+        if (c) {
+          const soft = savingDraft || draftHolderAcademy(acadById.get(c.academyId));
+          (soft ? softHits : hardHits).push(`${ds}: ${academyHolderLabel(acadById.get(c.academyId))} — ${c.title || c.courseName}`);
+          continue;
+        }
         const r = reservations.find((rr) => overlaps(s, en, rr.start.toDate(), rr.end.toDate()));
-        if (r) hits.push(`${ds}: 🔒 ${r.title || 'Reservation'}`);
+        if (r) (savingDraft ? softHits : hardHits).push(`${ds}: 🔒 ${r.title || 'Reservation'}`);
       }
-      if (hits.length) {
+      if (hardHits.length) {
         setBusy(false);
-        setError(`${room} is already booked on ${hits.length} of these day(s): ${hits.slice(0, 5).join('; ')}${hits.length > 5 ? `; +${hits.length - 5} more` : ''}. Choose another room or adjust the dates/times.`);
+        setError(`${room} is already booked on ${hardHits.length} of these day(s): ${hardHits.slice(0, 5).join('; ')}${hardHits.length > 5 ? `; +${hardHits.length - 5} more` : ''}. Choose another room or adjust the dates/times.`);
         return;
+      }
+      if (softHits.length) {
+        const ok = window.confirm(
+          `${room} is already booked on ${softHits.length} of these day(s):\n\n${softHits.slice(0, 8).join('\n')}${softHits.length > 8 ? `\n…and ${softHits.length - 8} more` : ''}\n\nGenerate anyway? The room belongs to whichever class is published first — these conflicts stay flagged at the top of the builder until one of you moves.`
+        );
+        if (!ok) {
+          setBusy(false);
+          return;
+        }
       }
     }
 

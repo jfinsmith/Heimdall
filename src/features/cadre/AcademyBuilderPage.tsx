@@ -34,7 +34,7 @@ import { PublicLinkSection } from './PublicLinkSection';
 import { LunchBlockModal } from './LunchBlockModal';
 import { RecurringGeneratorModal } from './RecurringGeneratorModal';
 import { RoomSelect } from './rooms/RoomSelect';
-import { findRoomConflict, roomExemptAcademy, academyHolderLabel, loadRoomBookings, loadRoomReservations, overlaps } from './rooms/roomBooking';
+import { findRoomConflict, roomExemptAcademy, draftHolderAcademy, academyHolderLabel, loadRoomBookings, loadRoomReservations, overlaps } from './rooms/roomBooking';
 import { SessionDetailModal } from '../sessions/SessionDetailModal';
 import { sessionToEvent, renderEventContent } from './sessionEvents';
 import { ACADEMY_COLORS } from '../../lib/academyColors';
@@ -325,12 +325,14 @@ export function AcademyBuilderPage() {
       .filter((x): x is { session: WithId<SessionDoc>; holiday: string } => !!x.holiday);
   }, [liveSessions, disabledHolidays, academy]);
 
-  // Room double-bookings — the other post-clone trap. Every single-session save
-  // hard-blocks a double-booking, but "Use template" lands a whole calendar of
-  // copied rooms at once with no per-day gate, so conflicts can only enter here.
-  // Advisory async sweep: for each managed room this academy's live sessions
-  // hold, load the other holders + reservations once and flag overlaps.
-  // Templates skip it — their sessions aren't real bookings (roomExemptAcademy).
+  // Room double-bookings — the running ledger of first-publish-wins. Conflicts
+  // enter via "Use template" (bulk copy, no per-day gate) or a deliberate
+  // "schedule anyway" past a soft warning (draft classes hold rooms softly;
+  // published classes and reservations hold them hard). BOTH academies see the
+  // overlap here until one of them moves — the room belongs to whichever class
+  // publishes first. Advisory async sweep: for each managed room this academy's
+  // live sessions hold, load the other holders + reservations once and flag
+  // overlaps. Templates skip it — their sessions aren't real bookings.
   const [roomConflicts, setRoomConflicts] = useState<{ session: WithId<SessionDoc>; label: string }[]>([]);
   useEffect(() => {
     if (!academy?.orgId || roomExemptAcademy(academy)) { setRoomConflicts([]); return; }
@@ -473,6 +475,10 @@ export function AcademyBuilderPage() {
     const dragRoomIds = s.roomIds?.length ? s.roomIds : s.roomId ? [s.roomId] : [];
     if (dragRoomIds.length && acadOrgId && s.kind !== 'lunch' && !roomExemptAcademy(academy)) {
       const acadById = new Map(allAcademies.map((a) => [a.id, a]));
+      // First-publish-wins: a DRAFT academy's drags soft-warn on every
+      // conflict; a published one is hard-blocked by published classes and
+      // reservations but only warned about draft holders.
+      const savingDraft = academy?.status === 'draft';
       for (const rid of dragRoomIds) {
         const conflict = await findRoomConflict({
           orgId: acadOrgId,
@@ -481,9 +487,20 @@ export function AcademyBuilderPage() {
           end,
           excludeSessionId: s.id,
           ignoreAcademy: (id) => roomExemptAcademy(acadById.get(id)),
+          softSession: (x) => savingDraft || draftHolderAcademy(acadById.get(x.academyId)),
+          softReservations: savingDraft,
           labelFor: (x) => `${academyHolderLabel(acadById.get(x.academyId))} — ${x.title || x.courseName}`,
         });
-        if (conflict) {
+        if (conflict && conflict.soft) {
+          if (
+            !window.confirm(
+              `${s.room || 'That room'} is already booked ${toTimeInputValue(conflict.start)}–${toTimeInputValue(conflict.end)} by ${conflict.label}.\n\nMove it anyway? The room belongs to whichever class is published first — the conflict stays flagged at the top of the builder until one of you moves.`
+            )
+          ) {
+            arg.revert();
+            return;
+          }
+        } else if (conflict) {
           arg.revert();
           window.alert(`${s.room || 'That room'} is already booked ${toTimeInputValue(conflict.start)}–${toTimeInputValue(conflict.end)} by ${conflict.label}. Move blocked — pick another time or room.`);
           return;
@@ -783,15 +800,17 @@ export function AcademyBuilderPage() {
                   <button className="font-medium hover:underline" onClick={() => setDetailSession(s)}>
                     {s.title || s.courseName}
                   </button>{' '}
-                  — {fmtDate(s.start)} {s.room ? `in ${s.room} ` : ''}overlaps <strong>{label}</strong>
+                  — {fmtDate(s.start)} {toTimeInputValue(s.start.toDate())}–{toTimeInputValue(s.end.toDate())}{' '}
+                  {s.room ? `in ${s.room} ` : ''}overlaps <strong>{label}</strong>
                 </span>
                 <Button onClick={() => goToSessionOnCalendar(s)}>Show on calendar</Button>
               </li>
             ))}
           </ul>
           <p className="mt-2 text-xs text-red-800">
-            The other class or reservation holds the room — open each session and pick a different room or
-            time for it.
+            Rooms belong to whichever class is <span className="font-semibold">published first</span> — a draft
+            holds its rooms softly until then. Open each session and pick a different room or time, or publish
+            first to claim them.
           </p>
         </section>
       )}

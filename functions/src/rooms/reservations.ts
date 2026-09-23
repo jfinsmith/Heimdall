@@ -60,13 +60,17 @@ export const saveRoomReservation = onCall<{
   const endD = end.toDate();
 
   // Template + ARCHIVED academies' sessions aren't real bookings (archived =
-  // abandoned schedules that must not keep blocking rooms) — pre-read ids.
-  // MUST mirror roomExemptAcademy in src/features/cadre/rooms/roomBooking.ts.
-  const [templSnap, archSnap] = await Promise.all([
+  // abandoned schedules that must not keep blocking rooms) — and DRAFT classes
+  // hold rooms only SOFTLY under first-publish-wins: an ad-hoc reservation (a
+  // real hold) is never blocked by a draft; the draft's builder banner flags
+  // the overlap for the draft to resolve. Pre-read the skip ids. MUST mirror
+  // roomExemptAcademy/draftHolderAcademy in src/features/cadre/rooms/roomBooking.ts.
+  const [templSnap, archSnap, draftSnap] = await Promise.all([
     db.collection('academies').where('orgId', '==', orgId).where('isTemplate', '==', true).get(),
     db.collection('academies').where('orgId', '==', orgId).where('status', '==', 'archived').get(),
+    db.collection('academies').where('orgId', '==', orgId).where('status', '==', 'draft').get(),
   ]);
-  const templateIds = new Set([...templSnap.docs, ...archSnap.docs].map((d) => d.id));
+  const templateIds = new Set([...templSnap.docs, ...archSnap.docs, ...draftSnap.docs].map((d) => d.id));
 
   const id = reservationId || db.collection('roomReservations').doc().id;
   await db.runTransaction(async (tx) => {

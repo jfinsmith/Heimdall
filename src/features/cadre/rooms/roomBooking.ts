@@ -16,14 +16,23 @@ export function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date): bo
 }
 
 /**
- * True when an academy's sessions should NOT count as room bookings:
+ * True when an academy's sessions should NOT count as room bookings at all:
  * templates never really book, and ARCHIVED classes are abandoned schedules
- * that must not keep blocking rooms forever. DRAFTS deliberately DO block —
- * two real classes in planning must not grab the same room (that hard block
- * is what catches a forgotten copy holding E-210).
+ * that must not keep blocking rooms forever.
+ *
+ * DRAFTS are a third tier — SOFT holds: they conflict, but with a
+ * warn-and-schedule-anyway instead of a hard block. Rooms belong to whichever
+ * class PUBLISHES first, not whichever draft grabbed them first; the builder's
+ * room-conflict banner keeps every unresolved overlap visible on both sides
+ * until someone moves. (See draftHolderAcademy + findRoomConflict's soft path.)
  */
 export function roomExemptAcademy(a?: { isTemplate?: boolean; status?: string } | null): boolean {
   return !!a && (a.isTemplate === true || a.status === 'archived');
+}
+
+/** True when the holding academy is a non-template DRAFT — a soft room hold. */
+export function draftHolderAcademy(a?: { isTemplate?: boolean; status?: string } | null): boolean {
+  return !!a && a.isTemplate !== true && a.status === 'draft';
 }
 
 /**
@@ -68,12 +77,18 @@ export interface RoomConflict {
   label: string;
   start: Date;
   end: Date;
+  /** True = the hold is SOFT (a draft class, or everything when the saving
+   *  academy is itself a draft) — warn + allow "schedule anyway" instead of a
+   *  hard block. A hard conflict is always returned in preference to a soft
+   *  one, so a confirmed soft conflict can't mask a hard one. */
+  soft: boolean;
 }
 
 /**
  * Returns the first conflicting hold (session OR reservation) for `roomId` over
- * [start,end), or null. Used by every room-booking save path so a managed room
- * can't be double-booked.
+ * [start,end), or null. Used by every room-booking save path. Hard conflicts
+ * (published classes, reservations) block; soft ones (see RoomConflict.soft)
+ * are the caller's warn-and-proceed.
  */
 export async function findRoomConflict(opts: {
   orgId: string;
@@ -84,22 +99,32 @@ export async function findRoomConflict(opts: {
   excludeReservationId?: string;
   /** True to skip this academy's sessions (template/archived — see roomExemptAcademy). */
   ignoreAcademy: (academyId: string) => boolean;
+  /** Classifies a holding session as a SOFT conflict (draft academies under
+   *  first-publish-wins). Omit = every conflict is hard. */
+  softSession?: (s: SessionDoc & { id: string }) => boolean;
+  /** True = ad-hoc reservations are soft too (the SAVING academy is a draft). */
+  softReservations?: boolean;
   /** Builds the holder label for a conflicting session. */
   labelFor: (s: SessionDoc & { id: string }) => string;
 }): Promise<RoomConflict | null> {
+  let firstSoft: RoomConflict | null = null;
   for (const s of await loadRoomBookings(opts.orgId, opts.roomId)) {
     if (s.id === opts.excludeSessionId) continue;
     if (s.status === 'cancelled') continue;
     if (opts.ignoreAcademy(s.academyId)) continue;
     if (overlaps(opts.start, opts.end, s.start.toDate(), s.end.toDate())) {
-      return { label: opts.labelFor(s), start: s.start.toDate(), end: s.end.toDate() };
+      const c = { label: opts.labelFor(s), start: s.start.toDate(), end: s.end.toDate(), soft: opts.softSession?.(s) === true };
+      if (!c.soft) return c;
+      firstSoft ??= c;
     }
   }
   for (const r of await loadRoomReservations(opts.orgId, opts.roomId)) {
     if (r.id === opts.excludeReservationId) continue;
     if (overlaps(opts.start, opts.end, r.start.toDate(), r.end.toDate())) {
-      return { label: `🔒 ${r.title || 'Reservation'}`, start: r.start.toDate(), end: r.end.toDate() };
+      const c = { label: `🔒 ${r.title || 'Reservation'}`, start: r.start.toDate(), end: r.end.toDate(), soft: opts.softReservations === true };
+      if (!c.soft) return c;
+      firstSoft ??= c;
     }
   }
-  return null;
+  return firstSoft;
 }
