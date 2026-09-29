@@ -173,6 +173,9 @@ export interface UserDoc {
   /** Full days the user marked unavailable to work (yyyy-mm-dd, local). Web-only:
    *  Browse Open Sessions hides open sessions on these days. */
   unavailableDates?: string[];
+  /** Personal ordering of the curriculum groups on the Academies page
+   *  (discipline keys, first = shown on top). Set via the ↑/↓ arrows there. */
+  academyGroupOrder?: string[];
   /** Random token for the personal ICS calendar-feed URL (user-generated). */
   icsToken?: string;
   /**

@@ -34,7 +34,7 @@ import { RoomSelect } from './rooms/RoomSelect';
 const DEFAULT_LOCATION = 'PHSC — Dade City, FL';
 
 export function AcademiesPage() {
-  const { firebaseUser } = useAuth();
+  const { firebaseUser, profile } = useAuth();
   const [params, setParams] = useSearchParams();
   const [createOpen, setCreateOpen] = useState(false);
   const [templateCreateOpen, setTemplateCreateOpen] = useState(false);
@@ -67,17 +67,43 @@ export function AcademiesPage() {
   // together; the discipline heading uses the curriculum label when available.
   const disciplineLabel = (key: string) =>
     curricula.find((c) => (c.key || baseCurriculumKey(c.id)) === baseCurriculumKey(key))?.label ??
-    templates.find((t) => t.discipline === key)?.fdleProgram?.replace(/^FDLE\s*/, '') ??
+    allAcademies.find((t) => t.discipline === key)?.fdleProgram?.replace(/^FDLE\s*/, '') ??
     key;
+  // Personal curriculum-group ordering (users/{uid}.academyGroupOrder, set with
+  // the ↑/↓ arrows on the group headers). Unlisted groups append label-sorted.
+  const groupOrder = profile?.academyGroupOrder ?? [];
+  const orderIndex = (key: string) => {
+    const i = groupOrder.indexOf(key);
+    return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+  };
+  const byGroupOrder = (a: { key: string; label: string }, b: { key: string; label: string }) =>
+    orderIndex(a.key) - orderIndex(b.key) || a.label.localeCompare(b.label);
   const templateGroups = [...new Set(templates.map((t) => t.discipline))]
     .map((key) => ({ key, label: disciplineLabel(key), items: templates.filter((t) => t.discipline === key) }))
-    .sort((a, b) => a.label.localeCompare(b.label));
+    .sort(byGroupOrder);
+  // Templates live behind a toggle, COLLAPSED by default — they're reached for
+  // a few times a year and otherwise just push the academy list around.
+  const [templatesOpen, setTemplatesOpen] = useState(false);
   const academies = allAcademies
     .filter((a) => !a.isTemplate)
     .filter((a) => showArchived || a.status !== 'archived')
-    // List in start-date order (earliest first), matching the Dates column. Sorted
+    // Start-date order (earliest first) WITHIN each curriculum group. Sorted
     // client-side so it's independent of the query's index direction.
     .sort((a, b) => a.startDate.toMillis() - b.startDate.toMillis());
+  const academyGroups = [...new Set(academies.map((a) => a.discipline))]
+    .map((key) => ({ key, label: disciplineLabel(key), items: academies.filter((a) => a.discipline === key) }))
+    .sort(byGroupOrder);
+
+  /** Swap a curriculum group with its neighbor and save as MY preference. */
+  async function moveGroup(key: string, dir: -1 | 1) {
+    if (!firebaseUser) return;
+    const keys = academyGroups.map((g) => g.key);
+    const i = keys.indexOf(key);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= keys.length) return;
+    [keys[i], keys[j]] = [keys[j], keys[i]];
+    await updateDoc(doc(db, 'users', firebaseUser.uid), { academyGroupOrder: keys, updatedAt: serverTimestamp() });
+  }
 
   async function setArchived(a: WithId<AcademyDoc>, archived: boolean) {
     if (archived && !window.confirm(`Archive "${a.name}"? It disappears from instructor views; you can unarchive any time.`)) return;
@@ -109,81 +135,124 @@ export function AcademiesPage() {
         }
       />
 
-      <div className="overflow-x-auto rounded-lg border border-watch-100 bg-white shadow-sm">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-watch-50 text-xs uppercase tracking-wider text-watch-600">
-            <tr>
-              <th className="px-4 py-3">Academy</th>
-              <th className="px-4 py-3">Discipline</th>
-              <th className="whitespace-nowrap px-4 py-3">Dates</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="whitespace-nowrap px-4 py-3">Hours</th>
-              <th className="px-4 py-3" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-watch-50">
-            {academies.map((a) => (
-              <tr key={a.id} className="hover:bg-watch-50/50">
-                <td className="min-w-[11rem] px-4 py-3 font-medium text-watch-900">
-                  {/* Short designation stacked over the class name — reads cleanly
-                      instead of running together and wrapping mid-title. */}
-                  <Link to={`/cadre/academies/${a.id}`} className="group block">
-                    {a.shortName ? <span className="block font-bold text-bifrost-700 group-hover:underline">{a.shortName}</span> : null}
-                    <span className="block group-hover:underline">{a.name}</span>
-                  </Link>
-                </td>
-                <td className="px-4 py-3 text-slate-600">{a.fdleProgram?.replace(/^FDLE\s*/, '') || a.discipline}</td>
-                <td className="px-4 py-3 text-slate-500">
-                  {/* Wrap only at the arrow — never mid-date. */}
-                  <span className="whitespace-nowrap">{fmtDate(a.startDate)}</span>{' '}
-                  <span className="text-slate-300">→</span>{' '}
-                  <span className="whitespace-nowrap">{fmtDate(a.endDate)}</span>
-                </td>
-                <td className="px-4 py-3">
-                  <Badge tone={a.status === 'published' || a.status === 'in_progress' ? 'green' : a.status === 'draft' ? 'slate' : 'navy'}>
-                    {a.status.replace('_', ' ')}
-                  </Badge>
-                </td>
-                <td className="px-4 py-3 tabular-nums">{a.targetTotalHours}</td>
-                <td className="whitespace-nowrap px-4 py-3 text-right">
-                  <Button
-                    variant="ghost"
-                    onClick={() => setCloneSource(a)}
-                    disabled={!canCreate}
-                    title={canCreate ? undefined : 'Your subscription is inactive — renew under Admin → Billing.'}
-                  >
-                    Clone
-                  </Button>
-                  {a.status === 'archived' ? (
-                    <Button variant="ghost" onClick={() => setArchived(a, false)}>
-                      Unarchive
-                    </Button>
-                  ) : (
-                    <Button variant="ghost" onClick={() => setArchived(a, true)}>
-                      Archive
-                    </Button>
-                  )}
-                  <Button variant="ghost" className="text-red-700" onClick={() => setDeleteSource(a)}>
-                    Delete
-                  </Button>
-                </td>
-              </tr>
-            ))}
-            {!loading && academies.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-slate-400">
-                  No academies yet. Create the first one.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+      {/* One card per curriculum, in MY saved order (↑/↓ on the header);
+          chronological by start date within each. Shared fixed column widths so
+          the groups line up card-to-card (each is its own table). */}
+      <div className="space-y-5">
+        {academyGroups.map((group, gi) => (
+          <div key={group.key} className="overflow-x-auto rounded-lg border border-watch-100 bg-white shadow-sm">
+            <div className="flex items-center gap-2 border-b border-watch-100 bg-watch-50 px-4 py-2">
+              <h3 className="text-sm font-semibold text-watch-800">{group.label}</h3>
+              <span className="text-xs text-slate-500">
+                {group.items.length} academ{group.items.length === 1 ? 'y' : 'ies'}
+              </span>
+              <div className="ml-auto flex items-center gap-1">
+                <button
+                  type="button"
+                  aria-label={`Move ${group.label} up`}
+                  title="Move this curriculum up — saved as your personal order"
+                  disabled={gi === 0}
+                  onClick={() => void moveGroup(group.key, -1)}
+                  className="rounded px-1.5 py-0.5 text-slate-500 hover:bg-watch-100 hover:text-watch-900 disabled:opacity-30"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Move ${group.label} down`}
+                  title="Move this curriculum down — saved as your personal order"
+                  disabled={gi === academyGroups.length - 1}
+                  onClick={() => void moveGroup(group.key, 1)}
+                  className="rounded px-1.5 py-0.5 text-slate-500 hover:bg-watch-100 hover:text-watch-900 disabled:opacity-30"
+                >
+                  ↓
+                </button>
+              </div>
+            </div>
+            <table className="w-full min-w-[48rem] table-fixed text-left text-sm">
+              <thead className="text-xs uppercase tracking-wider text-watch-500">
+                <tr>
+                  <th className="w-[28%] px-4 py-2 font-medium">Academy</th>
+                  <th className="w-[26%] whitespace-nowrap px-4 py-2 font-medium">Dates</th>
+                  <th className="w-[13%] px-4 py-2 font-medium">Status</th>
+                  <th className="w-[9%] whitespace-nowrap px-4 py-2 font-medium">Hours</th>
+                  <th className="w-[24%] px-4 py-2" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-watch-50">
+                {group.items.map((a) => (
+                  <tr key={a.id} className="hover:bg-watch-50/50">
+                    <td className="px-4 py-3 font-medium text-watch-900">
+                      {/* Short designation stacked over the class name — reads cleanly
+                          instead of running together and wrapping mid-title. */}
+                      <Link to={`/cadre/academies/${a.id}`} className="group block">
+                        {a.shortName ? <span className="block font-bold text-bifrost-700 group-hover:underline">{a.shortName}</span> : null}
+                        <span className="block group-hover:underline">{a.name}</span>
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3 text-slate-500">
+                      {/* Wrap only at the arrow — never mid-date. */}
+                      <span className="whitespace-nowrap">{fmtDate(a.startDate)}</span>{' '}
+                      <span className="text-slate-300">→</span>{' '}
+                      <span className="whitespace-nowrap">{fmtDate(a.endDate)}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge tone={a.status === 'published' || a.status === 'in_progress' ? 'green' : a.status === 'draft' ? 'slate' : 'navy'}>
+                        {a.status.replace('_', ' ')}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3 tabular-nums">{a.targetTotalHours}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right">
+                      <Button
+                        variant="ghost"
+                        onClick={() => setCloneSource(a)}
+                        disabled={!canCreate}
+                        title={canCreate ? undefined : 'Your subscription is inactive — renew under Admin → Billing.'}
+                      >
+                        Clone
+                      </Button>
+                      {a.status === 'archived' ? (
+                        <Button variant="ghost" onClick={() => setArchived(a, false)}>
+                          Unarchive
+                        </Button>
+                      ) : (
+                        <Button variant="ghost" onClick={() => setArchived(a, true)}>
+                          Archive
+                        </Button>
+                      )}
+                      <Button variant="ghost" className="text-red-700" onClick={() => setDeleteSource(a)}>
+                        Delete
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
+        {!loading && academies.length === 0 && (
+          <div className="rounded-lg border border-watch-100 bg-white px-4 py-10 text-center text-slate-400 shadow-sm">
+            No academies yet. Create the first one.
+          </div>
+        )}
       </div>
 
-      {/* Templates — reusable schedule patterns, grouped by discipline; "Use" clones one into a real academy */}
+      {/* Templates — reusable schedule patterns, grouped by discipline; "Use"
+          clones one into a real academy. Collapsed by default (reached for a
+          few times a year); the toggle shows the count so it isn't invisible. */}
       {templates.length > 0 && (
         <section className="mt-8">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-watch-600">Schedule templates</h2>
+          <button
+            type="button"
+            onClick={() => setTemplatesOpen((o) => !o)}
+            aria-expanded={templatesOpen}
+            className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-watch-600 hover:text-watch-900"
+          >
+            <span aria-hidden className={`inline-block transition-transform ${templatesOpen ? 'rotate-90' : ''}`}>▸</span>
+            Schedule templates ({templates.length})
+            {!templatesOpen && <span className="font-normal normal-case tracking-normal text-slate-400">— click to show</span>}
+          </button>
+          {templatesOpen && (
           <div className="space-y-5">
             {templateGroups.map((group) => (
               <div key={group.key} className="overflow-x-auto rounded-lg border border-watch-100 bg-white shadow-sm">
@@ -238,6 +307,7 @@ export function AcademiesPage() {
               </div>
             ))}
           </div>
+          )}
         </section>
       )}
 

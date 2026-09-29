@@ -219,7 +219,7 @@ export function HowToPage() {
         <Section id="academies" title="Creating academies (templates & clones)" role="Staff">
           <Sub title="From a quarterly template">
             <Steps items={[
-              <>Go to <B>CADRE → Academies</B>. Templates are grouped by discipline (Jan/Apr/Jul/Oct starts).</>,
+              <>Go to <B>CADRE → Academies</B> and expand <B>Schedule templates</B> at the bottom (collapsed by default). Templates are grouped by discipline (Jan/Apr/Jul/Oct starts).</>,
               <>Pick a template → <B>Use template</B> → set the class name, short name (e.g. &quot;LE 133&quot;), start date, and a <B>calendar color</B> for the new cohort (defaults to the next unused color — the template&apos;s color is not inherited, so cohorts stay distinguishable). Every session shifts to the new dates automatically.</>,
               <>The template&apos;s <B>default room, per-course rooms, coordinators, and settings all carry over</B>. The clone lands as a <B>draft</B> — staffing does not copy, the FDLE sequence number is intentionally blank (it&apos;s per-cohort), and approval resets.</>,
               <>If any copied session lands in a <B>room another class or reservation already holds</B>, or on a <B>holiday</B>, the builder shows a red alert at the top listing each one with a &quot;show on calendar&quot; jump that pulses the day red so it&apos;s easy to spot — fix those days first.</>,
@@ -232,7 +232,7 @@ export function HowToPage() {
             <>Templates are <B>sandboxes</B>: their sessions never appear on the master or rooms calendars, never book or conflict with real rooms, and you can&apos;t reserve instructors into them — the slot pattern (roles, counts, qualifications) is what carries into each new academy.</>,
             <>When creating a new academy or template, the <B>end date auto-fills</B> from the curriculum&apos;s hours (~40/week, ending on a Friday) — type your own date to override it.</>,
             <>Deleting an academy requires typing <B>DELETE</B> — it removes the class and its sessions permanently.</>,
-            <>The Academies list shows live cadet headcounts per class.</>,
+            <>The Academies list is grouped by <B>curriculum</B> (chronological within each group); the ↑/↓ arrows on a group header reorder the groups — saved as YOUR personal order.</>,
           ]} />
           <Sub title="Public class link">
             <p>
