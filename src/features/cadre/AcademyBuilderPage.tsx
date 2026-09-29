@@ -113,11 +113,19 @@ export function AcademyBuilderPage() {
     [liveSessions]
   );
 
-  // Observed holidays within the academy add the org's holiday-pay hours each.
+  // Observed holidays add the org's holiday-pay hours each. Scanned over WHOLE
+  // pay periods the academy touches, not the academy's exact date window — a
+  // class that starts Tuesday because Monday is MLK still gets that Monday's
+  // pay credit in its first period. (The calendar toolbar's per-period readout
+  // scans the visible two-week range, so clamping to academy dates here made
+  // the panel disagree with the calendar by exactly one holiday credit.)
   const holidayPayHours = settings?.holidayPayHours ?? HOLIDAY_PAY_HOURS;
   const holidayPayBlocks = useMemo(() => {
     if (!academy || observedHolidays.size === 0) return [];
-    return observedHolidayDatesInRange(academy.startDate.toDate(), academy.endDate.toDate(), observedHolidays).map(
+    const spanStart = payPeriodStart(academy.startDate.toDate());
+    const spanEnd = payPeriodStart(academy.endDate.toDate());
+    spanEnd.setDate(spanEnd.getDate() + 14); // exclusive end of the last period
+    return observedHolidayDatesInRange(spanStart, spanEnd, observedHolidays).map(
       (date) => ({ date, hours: holidayPayHours })
     );
   }, [academy, observedHolidays, holidayPayHours]);
