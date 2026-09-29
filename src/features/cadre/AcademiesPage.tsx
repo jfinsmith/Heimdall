@@ -555,7 +555,8 @@ function CreateAcademyModal({
 }
 
 // ── Clone (copy full schedule, shift all dates) ─────────────────────────────
-function CloneAcademyModal({
+// Exported: the builder header offers the same Clone action.
+export function CloneAcademyModal({
   source,
   onClose,
   actorUid,
@@ -568,6 +569,9 @@ function CloneAcademyModal({
   const [name, setName] = useState(isTemplate ? source.name.replace(/template/i, '').trim() || source.name : `${source.name} (copy)`);
   const [shortName, setShortName] = useState(source.shortName ?? '');
   const [newStart, setNewStart] = useState('');
+  // What the copy BECOMES: a real academy (default — today's behavior) or a
+  // schedule template (lands under Schedule templates for future "Use template").
+  const [asTemplate, setAsTemplate] = useState(false);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState('');
   // Calendar color is the CLONE's own choice, not the template's: every cohort
@@ -595,11 +599,11 @@ function CloneAcademyModal({
     );
 
     // Strip the doc id from the source before copying (Firestore rejects an
-    // `id: undefined` field). The result is always a real academy, never a template.
-    // Also drop `approval` (else a clone of an approved class inherits
-    // state:'approved' and could be published with no sign-off) and `sequenceNo`
-    // (the FDLE CSN is per-cohort and must not be reused). Omit via destructure —
-    // never re-add as undefined (Firestore would reject it).
+    // `id: undefined` field). The result is a real academy or (asTemplate) a
+    // schedule template. Also drop `approval` (else a clone of an approved
+    // class inherits state:'approved' and could be published with no sign-off)
+    // and `sequenceNo` (the FDLE CSN is per-cohort and must not be reused).
+    // Omit via destructure — never re-add as undefined (Firestore rejects it).
     const { id: _id, approval: _approval, sequenceNo: _sequenceNo, ...sourceData } = source;
     const academyRef = await addDoc(collection(db, 'academies'), {
       ...sourceData,
@@ -607,7 +611,7 @@ function CloneAcademyModal({
       name,
       shortName,
       color: cloneColor,
-      isTemplate: false,
+      isTemplate: asTemplate,
       startDate: tsFromDate(addDays(source.startDate.toDate(), dayDelta)),
       endDate: tsFromDate(addDays(source.endDate.toDate(), dayDelta)),
       status: 'draft', // clones always start as drafts
@@ -662,7 +666,8 @@ function CloneAcademyModal({
     // held by another class or reservation so the coordinator can fix those days.
     const conflictLines: string[] = [];
     try {
-      const roomsHeld = [...new Set(clonedRoomSessions.flatMap((c) => c.roomIds))];
+      // A TEMPLATE clone never books rooms (roomExemptAcademy) — skip the sweep.
+      const roomsHeld = asTemplate ? [] : [...new Set(clonedRoomSessions.flatMap((c) => c.roomIds))];
       if (roomsHeld.length && source.orgId) {
         setProgress('Checking room conflicts…');
         const templSnap = await getDocs(query(collection(db, 'academies'), where('orgId', '==', source.orgId), where('isTemplate', '==', true)));
@@ -710,6 +715,30 @@ function CloneAcademyModal({
             : 'Copies the entire schedule and shifts every session by the same number of days to the new start date. '}
           Sign-ups are not copied. ({fmtDate(source.startDate)} → {fmtDate(source.endDate)})
         </p>
+        {/* What the copy becomes — a real academy (default) or a reusable template. */}
+        <div className="flex flex-wrap gap-4 rounded-md border border-watch-100 bg-watch-50 px-3 py-2 text-sm">
+          <label className="flex items-center gap-1.5">
+            <input type="radio" name="cloneAs" checked={!asTemplate} onChange={() => setAsTemplate(false)} />
+            <span>Real academy</span>
+          </label>
+          <label className="flex items-center gap-1.5">
+            <input
+              type="radio"
+              name="cloneAs"
+              checked={asTemplate}
+              onChange={() => {
+                setAsTemplate(true);
+                // Template dates are placeholders — default to "no shift".
+                if (!newStart) setNewStart(toDateInputValue(source.startDate.toDate()));
+              }}
+            />
+            <span>Schedule template</span>
+          </label>
+          <span className="w-full text-xs text-slate-500">
+            A template lands under <span className="font-medium">Schedule templates</span> — it never appears on
+            calendars or books rooms, and you create future academies from it with &quot;Use template&quot;.
+          </span>
+        </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_2fr]">
           <Field label="Class designation">
             <Input value={shortName} onChange={(e) => setShortName(e.target.value)} required placeholder="LE 133" />
@@ -721,16 +750,19 @@ function CloneAcademyModal({
         <Field label="New start date">
           <Input type="date" value={newStart} onChange={(e) => setNewStart(e.target.value)} required />
         </Field>
-        <Field label="Calendar color" hint="Each cohort gets its own — defaults to the next unused color">
-          <div className="flex items-center gap-2">
-            <Select value={cloneColor} onChange={(e) => setColor(e.target.value)} className="flex-1">
-              {ACADEMY_COLORS.map((c) => (
-                <option key={c.value} value={c.value}>{c.name}</option>
-              ))}
-            </Select>
-            <span className="h-7 w-7 shrink-0 rounded-md ring-1 ring-watch-200" style={{ backgroundColor: cloneColor }} />
-          </div>
-        </Field>
+        {/* Templates never appear on calendars — a color choice is noise there. */}
+        {!asTemplate && (
+          <Field label="Calendar color" hint="Each cohort gets its own — defaults to the next unused color">
+            <div className="flex items-center gap-2">
+              <Select value={cloneColor} onChange={(e) => setColor(e.target.value)} className="flex-1">
+                {ACADEMY_COLORS.map((c) => (
+                  <option key={c.value} value={c.value}>{c.name}</option>
+                ))}
+              </Select>
+              <span className="h-7 w-7 shrink-0 rounded-md ring-1 ring-watch-200" style={{ backgroundColor: cloneColor }} />
+            </div>
+          </Field>
+        )}
         {/* Quarter/year presets — "January class → January next year" in one click */}
         <div className="flex flex-wrap gap-2">
           {[3, 6, 9, 12].map((months) => {
@@ -753,7 +785,7 @@ function CloneAcademyModal({
             Cancel
           </Button>
           <Button type="submit" variant="primary" disabled={busy}>
-            Clone schedule
+            {asTemplate ? 'Save as template' : 'Clone schedule'}
           </Button>
         </div>
       </form>

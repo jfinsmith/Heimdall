@@ -226,7 +226,7 @@ export function HowToPage() {
             ]} />
           </Sub>
           <Sub title="Cloning a past class">
-            <p>Cloning an existing academy works the same way. After the copy, HEIMDALL flags any cloned session whose <B>room is already booked</B> by another class, and any that landed on holidays — fix those days in the builder. Class dates can be corrected any time under <B>Edit academy</B> — changing them adjusts the academy&apos;s window (and printed program dates) but never moves scheduled sessions.</p>
+            <p>Cloning an existing academy works the same way — from the Academies list or the <B>Clone</B> button in the builder header. The clone dialog also offers <B>Schedule template</B>: instead of a new class, the copy lands under Schedule templates as a reusable base for future “Use template” starts. After the copy, HEIMDALL flags any cloned session whose <B>room is already booked</B> by another class, and any that landed on holidays — fix those days in the builder. Class dates can be corrected any time under <B>Edit academy</B> — changing them adjusts the academy&apos;s window (and printed program dates) but never moves scheduled sessions.</p>
           </Sub>
           <Tips items={[
             <>Templates are <B>sandboxes</B>: their sessions never appear on the master or rooms calendars, never book or conflict with real rooms, and you can&apos;t reserve instructors into them — the slot pattern (roles, counts, qualifications) is what carries into each new academy.</>,

@@ -33,6 +33,7 @@ import { PastEditGate } from './PastEditGate';
 import { PublicLinkSection } from './PublicLinkSection';
 import { LunchBlockModal } from './LunchBlockModal';
 import { RecurringGeneratorModal } from './RecurringGeneratorModal';
+import { CloneAcademyModal } from './AcademiesPage';
 import { RoomSelect } from './rooms/RoomSelect';
 import { findRoomConflict, roomExemptAcademy, draftHolderAcademy, academyHolderLabel, loadRoomBookings, loadRoomReservations, overlaps } from './rooms/roomBooking';
 import { SessionDetailModal } from '../sessions/SessionDetailModal';
@@ -75,6 +76,7 @@ export function AcademyBuilderPage() {
   // Timer for the "show on calendar" red day-pulse (see goToSessionOnCalendar).
   const flashTimerRef = useRef<number | null>(null);
 
+  const [cloneOpen, setCloneOpen] = useState(false);
   const [formSession, setFormSession] = useState<WithId<SessionDoc> | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   // A past session opens the as-taught corrections modal, never the editor.
@@ -689,6 +691,9 @@ export function AcademyBuilderPage() {
               </Link>
             )}
             <Button onClick={() => setEditOpen(true)}>Edit academy</Button>
+            <Button onClick={() => setCloneOpen(true)} title="Copy this schedule as a new academy or as a reusable template">
+              Clone
+            </Button>
             <Button onClick={() => setRecurringOpen(true)}>Recurring blocks</Button>
             <Button
               onClick={() => {
@@ -1121,6 +1126,7 @@ export function AcademyBuilderPage() {
         />
       )}
       {recurringOpen && <RecurringGeneratorModal academy={academy} onClose={() => setRecurringOpen(false)} />}
+      {cloneOpen && <CloneAcademyModal source={academy} onClose={() => setCloneOpen(false)} actorUid={firebaseUser?.uid ?? ''} />}
       {lunchOpen && (
         <LunchBlockModal
           academy={academy}
