@@ -94,15 +94,19 @@ export function AcademiesPage() {
     .map((key) => ({ key, label: disciplineLabel(key), items: academies.filter((a) => a.discipline === key) }))
     .sort(byGroupOrder);
 
-  /** Swap a curriculum group with its neighbor and save as MY preference. */
-  async function moveGroup(key: string, dir: -1 | 1) {
+  /** Swap a curriculum group with its neighbor (within whichever section's
+   *  arrows were clicked) and save as MY preference — one shared order drives
+   *  both the academies and templates sections. Saved keys not visible in the
+   *  clicked section keep their relative position at the end. */
+  async function moveGroup(groups: { key: string }[], key: string, dir: -1 | 1) {
     if (!firebaseUser) return;
-    const keys = academyGroups.map((g) => g.key);
+    const keys = groups.map((g) => g.key);
     const i = keys.indexOf(key);
     const j = i + dir;
     if (i < 0 || j < 0 || j >= keys.length) return;
     [keys[i], keys[j]] = [keys[j], keys[i]];
-    await updateDoc(doc(db, 'users', firebaseUser.uid), { academyGroupOrder: keys, updatedAt: serverTimestamp() });
+    const rest = groupOrder.filter((k) => !keys.includes(k));
+    await updateDoc(doc(db, 'users', firebaseUser.uid), { academyGroupOrder: [...keys, ...rest], updatedAt: serverTimestamp() });
   }
 
   async function setArchived(a: WithId<AcademyDoc>, archived: boolean) {
@@ -152,7 +156,7 @@ export function AcademiesPage() {
                   aria-label={`Move ${group.label} up`}
                   title="Move this curriculum up — saved as your personal order"
                   disabled={gi === 0}
-                  onClick={() => void moveGroup(group.key, -1)}
+                  onClick={() => void moveGroup(academyGroups, group.key, -1)}
                   className="rounded px-1.5 py-0.5 text-slate-500 hover:bg-watch-100 hover:text-watch-900 disabled:opacity-30"
                 >
                   ↑
@@ -162,7 +166,7 @@ export function AcademiesPage() {
                   aria-label={`Move ${group.label} down`}
                   title="Move this curriculum down — saved as your personal order"
                   disabled={gi === academyGroups.length - 1}
-                  onClick={() => void moveGroup(group.key, 1)}
+                  onClick={() => void moveGroup(academyGroups, group.key, 1)}
                   className="rounded px-1.5 py-0.5 text-slate-500 hover:bg-watch-100 hover:text-watch-900 disabled:opacity-30"
                 >
                   ↓
@@ -254,13 +258,35 @@ export function AcademiesPage() {
           </button>
           {templatesOpen && (
           <div className="space-y-5">
-            {templateGroups.map((group) => (
+            {templateGroups.map((group, gi) => (
               <div key={group.key} className="overflow-x-auto rounded-lg border border-watch-100 bg-white shadow-sm">
-                <div className="flex items-center justify-between gap-2 border-b border-watch-100 bg-watch-50 px-4 py-2">
+                <div className="flex items-center gap-2 border-b border-watch-100 bg-watch-50 px-4 py-2">
                   <h3 className="text-sm font-semibold text-watch-800">{group.label}</h3>
                   <span className="text-xs text-slate-500">
                     {group.items.length} template{group.items.length === 1 ? '' : 's'}
                   </span>
+                  <div className="ml-auto flex items-center gap-1">
+                    <button
+                      type="button"
+                      aria-label={`Move ${group.label} up`}
+                      title="Move this curriculum up — saved as your personal order"
+                      disabled={gi === 0}
+                      onClick={() => void moveGroup(templateGroups, group.key, -1)}
+                      className="rounded px-1.5 py-0.5 text-slate-500 hover:bg-watch-100 hover:text-watch-900 disabled:opacity-30"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Move ${group.label} down`}
+                      title="Move this curriculum down — saved as your personal order"
+                      disabled={gi === templateGroups.length - 1}
+                      onClick={() => void moveGroup(templateGroups, group.key, 1)}
+                      className="rounded px-1.5 py-0.5 text-slate-500 hover:bg-watch-100 hover:text-watch-900 disabled:opacity-30"
+                    >
+                      ↓
+                    </button>
+                  </div>
                 </div>
                 {/* table-fixed + shared column widths: every discipline group is
                     its own table, so without this each group sizes its columns
