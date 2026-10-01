@@ -23,7 +23,7 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { createHash, randomInt } from 'crypto';
 import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
-import { renderEmail, MAIL_FROM } from '../gjallarhorn/templates';
+import { renderEmail, MAIL_FROM, MAIL_QUEUE } from '../gjallarhorn/templates';
 
 const CODE_TTL_MS = 15 * 60 * 1000;      // code lives 15 minutes
 const SEND_WINDOW_MS = 60 * 60 * 1000;   // max 5 code emails per rolling hour
@@ -104,7 +104,7 @@ export const requestNotificationEmail = onCall<{ email: string }>(async (request
   });
   // Direct mail write — a verification code must bypass the automation toggles
   // and always deliver to the address being proven, not the routed destination.
-  await db.collection('mail').add({
+  await db.collection(MAIL_QUEUE).add({
     to: [emailLower],
     from: MAIL_FROM,
     message: { subject: content.subject, html: content.html, text: content.text },

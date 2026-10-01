@@ -12,6 +12,7 @@
  * from the assignment's own org.
  */
 import { onSchedule } from 'firebase-functions/v2/scheduler';
+import { logger } from 'firebase-functions/v2';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { getSettings, notify, sessionDetails } from './notify';
 import { renderEmail } from './templates';
@@ -170,6 +171,26 @@ export const gjallarhornDailySweep = onSchedule(
             : notify({ ...payload, uid: key, force: r.force, dedupeKey: `understaff_${dayKey}_${orgId}_${key}` })
         )
       );
+    }
+
+    // ── 3. Mail retention ──────────────────────────────────────────────────
+    // Sent/failed queue docs carry full email bodies (one-time verification
+    // codes, activation details) — don't keep them forever. Delete docs older
+    // than 30 days from the live queue AND the retired extension's legacy
+    // `mail` collection, capped per run (the single-field createdAt range
+    // needs no composite index; a backlog drains over a few nights).
+    for (const coll of ['mailQueue', 'mail']) {
+      try {
+        const cutoff = Timestamp.fromMillis(now - 30 * 864e5);
+        const old = await db().collection(coll).where('createdAt', '<', cutoff).limit(450).get();
+        if (old.empty) continue;
+        const batch = db().batch();
+        for (const doc of old.docs) batch.delete(doc.ref);
+        await batch.commit();
+        logger.info(`Mail retention: deleted ${old.size} ${coll} doc(s) older than 30 days`);
+      } catch (err) {
+        logger.error(`Mail retention sweep failed for ${coll}`, err);
+      }
     }
   }
 );

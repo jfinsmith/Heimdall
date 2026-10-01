@@ -13,7 +13,7 @@
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';
-import { renderEmail, escapeHtml, MAIL_FROM } from '../gjallarhorn/templates';
+import { renderEmail, escapeHtml, MAIL_FROM, MAIL_QUEUE } from '../gjallarhorn/templates';
 
 const WARN_AFTER_MS = 23 * 864e5;
 const PURGE_AFTER_MS = 30 * 864e5;
@@ -67,7 +67,7 @@ export const accountPurgeDaily = onSchedule(
           ctaLabel: 'Sign in and join',
           ctaUrl: 'https://heimdallscheduling.com/signin',
         });
-        await db.collection('mail').add({
+        await db.collection(MAIL_QUEUE).add({
           to: [u.email],
           from: MAIL_FROM,
           message: { subject: content.subject, html: content.html, text: content.text },

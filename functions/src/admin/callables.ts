@@ -10,7 +10,7 @@ import { randomBytes } from 'crypto';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { notify, notifyAdmins } from '../gjallarhorn/notify';
-import { renderEmail, detailRows, escapeHtml, MAIL_FROM } from '../gjallarhorn/templates';
+import { renderEmail, detailRows, escapeHtml, MAIL_FROM, MAIL_QUEUE } from '../gjallarhorn/templates';
 import type { AcademyDoc, Role } from '../types';
 import { ADMIN_ROLES, STAFF_ROLES, splitDisplayName } from '../types';
 
@@ -467,7 +467,7 @@ export const sendActivationEmail = onCall<{ uid: string; password: string }>(asy
     logoUrl: settingsSnap.data()?.logoUrl as string | undefined,
   });
 
-  await db.collection('mail').add({
+  await db.collection(MAIL_QUEUE).add({
     to: [email],
     from: MAIL_FROM,
     message: { subject: content.subject, html: content.html, text: content.text },
@@ -1294,7 +1294,7 @@ export const createOrgAdmin = onCall<{ orgId: string; email: string; displayName
     orgName,
     logoUrl: settingsSnap.data()?.logoUrl as string | undefined,
   });
-  await db.collection('mail').add({
+  await db.collection(MAIL_QUEUE).add({
     to: [email],
     from: MAIL_FROM,
     message: { subject: content.subject, html: content.html, text: content.text },
@@ -1757,7 +1757,7 @@ export const setFeedbackStatus = onCall<{ id: string; status: string; comment?: 
         `<br/><br/>Thank you for helping improve HEIMDALL.`,
       bodyText: `Hi ${(report.submittedByName ?? '').trim() || 'there'},\n\nThe status of "${report.title ?? 'your report'}" is now ${LABELS[status]}.${plainComment}\n\nThank you for helping improve HEIMDALL.`,
     });
-    await db.collection('mail').add({
+    await db.collection(MAIL_QUEUE).add({
       to: [email],
       from: MAIL_FROM,
       message: { subject: content.subject, html: content.html, text: content.text },

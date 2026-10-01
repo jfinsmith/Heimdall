@@ -35,6 +35,10 @@ export function escapeHtml(s: string): string {
  * verified in Resend (SPF/DKIM via Cloudflare), so this sends cleanly.
  */
 export const MAIL_FROM = 'HEIMDALL Scheduling <no-reply@heimdallscheduling.com>';
+/** Outgoing-email queue consumed by sendQueuedEmail (mailer.ts). The legacy
+ *  `mail` collection belonged to the retired Trigger Email extension — never
+ *  write there again or the mail silently goes nowhere once it's uninstalled. */
+export const MAIL_QUEUE = 'mailQueue';
 
 export function renderEmail(opts: {
   subject: string;

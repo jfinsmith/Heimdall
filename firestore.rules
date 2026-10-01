@@ -445,11 +445,23 @@ service cloud.firestore {
       allow delete: if signedIn() && resource.data.uid == request.auth.uid;
     }
 
-    // ── mail ───────────────────────────────────────────────────────────────
-    // Watched by the Trigger Email extension. Server-written ONLY; same-tenant
-    // admin read (notify() stamps orgId on each mail doc).
+    // ── mail / mailQueue ───────────────────────────────────────────────────
+    // Outgoing email. `mailQueue` is consumed by our sendQueuedEmail function;
+    // `mail` is the Trigger Email extension's legacy queue (extension stays
+    // installed until the new sender is verified; the daily sweep purges old
+    // docs from both). Server-written ONLY; same-tenant admin read — the
+    // mailQueue rule uses DIRECT field comparisons (no function wrappers) so a
+    // future admin mail-log LIST query passes the analyzer (see the
+    // firestore-list-query-rules gotcha).
     match /mail/{mailId} {
       allow read: if isAdmin() && inOrg(resource.data);
+      allow write: if false; // functions/Admin SDK only
+    }
+    match /mailQueue/{mailId} {
+      allow read: if request.auth != null
+        && request.auth.token.role in ['director', 'lieutenant', 'sergeant']
+        && request.auth.token.orgId != null
+        && resource.data.orgId == request.auth.token.orgId;
       allow write: if false; // functions/Admin SDK only
     }
 

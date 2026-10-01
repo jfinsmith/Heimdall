@@ -7,7 +7,7 @@
  * touching any trigger code — that's the extension point promised in §14.
  */
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
-import { renderEmail, detailRows, escapeHtml, EmailContent, MAIL_FROM } from './templates';
+import { renderEmail, detailRows, escapeHtml, EmailContent, MAIL_FROM, MAIL_QUEUE } from './templates';
 import { emailAllowed, ADMIN_ROLES, PRIORITY_EMAIL_TYPES, GlobalSettings, Role, SessionDoc, UserDoc } from '../types';
 
 const db = () => getFirestore();
@@ -140,7 +140,7 @@ export async function notify(opts: NotifyOptions): Promise<void> {
       logoUrl: settings?.logoUrl,
     });
 
-  // `mail` docs are server-written only; the Trigger Email extension sends them.
+  // Queue docs are server-written only; sendQueuedEmail (mailer.ts) sends them.
   // Stamp the recipient's tenant so the same-tenant admin read rule can scope it.
   const mailData = {
     to: [email],
@@ -154,8 +154,8 @@ export async function notify(opts: NotifyOptions): Promise<void> {
     ...(recipientOrgId ? { orgId: recipientOrgId } : {}),
     createdAt: FieldValue.serverTimestamp(),
   };
-  if (opts.dedupeKey) await idempotentCreate(db().collection('mail').doc(`m_${opts.dedupeKey}`), mailData);
-  else await db().collection('mail').add(mailData);
+  if (opts.dedupeKey) await idempotentCreate(db().collection(MAIL_QUEUE).doc(`m_${opts.dedupeKey}`), mailData);
+  else await db().collection(MAIL_QUEUE).add(mailData);
 }
 
 /** Notify every coordinator of an academy (plus optional extra uids). */
