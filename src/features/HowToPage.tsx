@@ -139,7 +139,7 @@ export function HowToPage() {
             <>Complete the <B>welcome profile</B> (name, rank, phone) and claim any instructor qualifications you hold (an admin verifies them before they count).</>,
           ]} />
           <Tips items={[
-            <>Forgot your password? Use <B>Reset password</B> on the sign-in page — a reset email is sent to your account address.</>,
+            <>Forgot your password? Use <B>Forgot password?</B> on the sign-in page — a reset email is sent to your account address. Never register a second account: a failed sign-in offers a one-click <B>Email me a password reset link</B> button right under the error.</>,
             <>If your account was created but you never got the email, ask an admin to re-send the activation from <B>Admin → Users &amp; Roles</B>.</>,
           ]} />
         </Section>

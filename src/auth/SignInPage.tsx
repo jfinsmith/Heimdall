@@ -29,7 +29,36 @@ export function SignInPage() {
   const [dob, setDob] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  // True when the error is really a forgotten password in disguise — renders a
+  // one-click "email me a reset link" under the error, so people stop solving
+  // "wrong password" by registering themselves a second account.
+  const [suggestReset, setSuggestReset] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  function switchMode(next: Mode) {
+    setMode(next);
+    setError(null);
+    setInfo(null);
+    setSuggestReset(false);
+  }
+
+  /** Send the reset link for whatever email is in the form (from the inline
+   *  rescue button under an error). Firebase doesn't reveal whether the email
+   *  has an account (enumeration protection), so the copy stays neutral. */
+  async function sendResetNow() {
+    setBusy(true);
+    try {
+      await resetPassword(email);
+      setError(null);
+      setSuggestReset(false);
+      setMode('signin');
+      setInfo(`Password reset email sent to ${email}. Check your inbox (and spam), then sign in with your new password.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message.replace('Firebase: ', '') : 'Could not send the reset email.');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   // A deactivated OR suspended account stays authenticated; RequireAuth bounces
   // both here, so BOTH need a terminal notice — redirecting either back into the
@@ -72,7 +101,28 @@ export function SignInPage() {
         setInfo('Password reset email sent. Check your inbox.');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message.replace('Firebase: ', '') : 'Sign-in failed.');
+      // Map the common "forgot my password" failure shapes to guidance + a
+      // one-click reset instead of a raw Firebase code — the raw errors are
+      // exactly what sent people off to register duplicate accounts.
+      const code = (err as { code?: string })?.code ?? '';
+      setSuggestReset(false);
+      if (
+        mode === 'signin' &&
+        ['auth/wrong-password', 'auth/invalid-credential', 'auth/invalid-login-credentials', 'auth/user-not-found'].includes(code)
+      ) {
+        setError(
+          "That email and password don't match. If you already have an account — including one set up for you by staff — reset your password instead of creating a new account."
+        );
+        setSuggestReset(true);
+      } else if (mode === 'register' && code === 'auth/email-already-in-use') {
+        setError(`An account for ${email} already exists — you don't need to register again. Send yourself a password reset instead:`);
+        setSuggestReset(true);
+      } else if (code === 'auth/too-many-requests') {
+        setError('Too many attempts — wait a few minutes, or reset your password now:');
+        setSuggestReset(true);
+      } else {
+        setError(err instanceof Error ? err.message.replace('Firebase: ', '') : 'Sign-in failed.');
+      }
     } finally {
       setBusy(false);
     }
@@ -94,8 +144,27 @@ export function SignInPage() {
               : 'Academy training schedule & instructor staffing.'}
           </p>
 
-          {error && <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
+          {error && (
+            <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">
+              {error}
+              {suggestReset && (
+                <Button type="button" variant="secondary" className="mt-2 w-full" disabled={busy || !email} onClick={() => void sendResetNow()}>
+                  Email me a password reset link
+                </Button>
+              )}
+            </div>
+          )}
           {info && <div className="mb-3 rounded-md bg-green-50 px-3 py-2 text-sm text-green-800">{info}</div>}
+          {mode === 'register' && (
+            <div className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              Already have an account — or had one <span className="font-semibold">created for you by staff</span>? Don&apos;t
+              register a second one:{' '}
+              <button type="button" className="font-semibold underline" onClick={() => switchMode('reset')}>
+                reset your password
+              </button>{' '}
+              instead.
+            </div>
+          )}
 
           <form onSubmit={submit} className="space-y-3">
             {mode === 'register' && (
@@ -191,16 +260,16 @@ export function SignInPage() {
 
           <div className="mt-4 flex justify-between text-xs text-watch-600">
             {mode !== 'signin' && (
-              <button className="hover:underline" onClick={() => setMode('signin')}>
+              <button className="hover:underline" onClick={() => switchMode('signin')}>
                 Back to sign in
               </button>
             )}
             {mode === 'signin' && (
               <>
-                <button className="hover:underline" onClick={() => setMode('register')}>
+                <button className="hover:underline" onClick={() => switchMode('register')}>
                   Request an account
                 </button>
-                <button className="hover:underline" onClick={() => setMode('reset')}>
+                <button className="hover:underline" onClick={() => switchMode('reset')}>
                   Forgot password?
                 </button>
               </>
