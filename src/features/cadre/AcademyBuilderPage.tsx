@@ -723,7 +723,7 @@ export function AcademyBuilderPage() {
       {/* Hours tally vs target */}
       <div className="mb-4 flex flex-wrap items-center gap-4 rounded-lg border border-watch-100 bg-white px-5 py-4 shadow-sm">
         <div>
-          <div className="text-xs uppercase tracking-wider text-watch-500">FDLE hours scheduled</div>
+          <div className="text-xs uppercase tracking-wider text-watch-500">Program hours scheduled</div>
           <div className="text-2xl font-bold text-watch-900">
             {scheduledHours}
             <span className="text-base font-normal text-slate-400"> / {academy.targetTotalHours}</span>

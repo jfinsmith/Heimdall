@@ -780,14 +780,16 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
 
         {isCustom ? (
           <p className="text-sm text-slate-500">
-            Custom / agency block — does <strong>not</strong> count toward FDLE program hours.
+            Custom / agency block — does <strong>not</strong> count toward the curriculum&apos;s program hours.
           </p>
         ) : (
           <div className="space-y-1.5">
             <label className="flex items-center gap-2 text-sm text-watch-800">
               <input type="checkbox" checked={countsTowardFdle} onChange={(e) => setCountsTowardFdle(e.target.checked)} />
-              Counts toward FDLE program hours
-              <span className="text-xs text-slate-400">(uncheck for agency-only blocks like PSO assignments)</span>
+              Counts toward program hours
+              <span className="text-xs text-slate-400">
+                (uncheck ONLY for agency extras — unchecked sessions vanish from curriculum coverage and the hours tally)
+              </span>
             </label>
             <label className="flex items-center gap-2 text-sm text-watch-800">
               <input type="checkbox" checked={includesTest} onChange={(e) => setIncludesTest(e.target.checked)} />
