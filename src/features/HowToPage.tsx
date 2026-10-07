@@ -266,7 +266,7 @@ export function HowToPage() {
               <>The <B>Pay periods</B> panel above the calendar totals each bi-weekly period against your org&apos;s target hours — short periods flag amber (typically topped up with a Friday PSO assignment), overtime flags red, and <B>observed holidays credit their pay hours</B> automatically.</>,
               <>Besides the per-session lunch carve-out, <B>Add lunch</B> draws a standalone lunch/break placeholder block — never staffed, zero hours, purely visual on the calendar and printouts.</>,
               <>The builder also flags anything scheduled on a <B>Saturday or Sunday</B> (usually a clone artifact) in a dismissible card, alongside the holiday and lunch-issue alerts.</>,
-              <>Pick a <B>room</B> — the location auto-fills from the room&apos;s location and locks (choose Custom room to type a free-text room/location). Use <B>+ Add room</B> for scenario days needing several rooms; every room is conflict-checked.</>,
+              <>Pick a <B>room</B> — the location auto-fills from the room&apos;s location and locks (choose Custom room to type a free-text room/location). Use <B>+ Add room</B> for scenario days needing several rooms — managed rooms only, since extras drive conflict-checking; a <B>custom/free-text room</B> goes in the main Room box.</>,
             ]} />
           </Sub>
           <Sub title="Recurring blocks & coverage">

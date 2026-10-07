@@ -765,7 +765,12 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
               {extraRoomIds.map((id, i) => (
                 <div key={i} className="flex items-start gap-2">
                   <div className="flex-1">
-                    <RoomSelect value={nameOf(id)} roomId={id || undefined} headcount={classSize} onChange={(_, nid) => updateExtraRoom(i, nid)} />
+                    {/* Managed rooms ONLY: extras live in roomIds (what gets
+                        conflict-checked), so a free-text name has nowhere to
+                        go — the old Custom option here silently dropped
+                        whatever was typed. Custom rooms go in the main Room
+                        box above. */}
+                    <RoomSelect value={nameOf(id)} roomId={id || undefined} headcount={classSize} allowCustom={false} onChange={(_, nid) => updateExtraRoom(i, nid)} />
                   </div>
                   <button type="button" className="mt-2 text-slate-400 hover:text-red-600" onClick={() => removeExtraRoom(i)} aria-label="Remove room">✕</button>
                 </div>

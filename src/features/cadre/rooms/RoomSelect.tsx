@@ -17,6 +17,7 @@ export function RoomSelect({
   onChange,
   placeholder = 'E-120 / Range A',
   includeNone = true,
+  allowCustom = true,
   headcount,
 }: {
   value: string;
@@ -24,6 +25,10 @@ export function RoomSelect({
   onChange: (room: string, roomId: string | undefined) => void;
   placeholder?: string;
   includeNone?: boolean;
+  /** False where only MANAGED rooms make sense (extra-room rows, ad-hoc
+   *  reservations — the things conflict-checking operates on). The main Room
+   *  field keeps free-text custom entries. */
+  allowCustom?: boolean;
   /** Class headcount — when set and the picked room has a smaller capacity, warns. */
   headcount?: number;
 }) {
@@ -69,9 +74,9 @@ export function RoomSelect({
             {g.rooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
           </optgroup>
         ))}
-        <option value={CUSTOM}>➕ Custom room…</option>
+        {allowCustom && <option value={CUSTOM}>➕ Custom room…</option>}
       </Select>
-      {showCustomInput && (
+      {allowCustom && showCustomInput && (
         <Input value={value} onChange={(e) => onChange(e.target.value, undefined)} placeholder={placeholder} autoFocus />
       )}
       {matched?.capacity != null && headcount != null && headcount > matched.capacity && (

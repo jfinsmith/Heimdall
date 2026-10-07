@@ -540,7 +540,7 @@ function ReservationModal({
       <form onSubmit={save} className="space-y-4">
         {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
         <Field label="Room">
-          <RoomSelect value={room} roomId={roomId} includeNone={false} onChange={(name, id) => { setRoom(name); setRoomId(id); }} />
+          <RoomSelect value={room} roomId={roomId} includeNone={false} allowCustom={false} onChange={(name, id) => { setRoom(name); setRoomId(id); }} />
         </Field>
         <Field label="Title" hint="e.g. Staff meeting, Maintenance, Outside agency">
           <Input value={title} onChange={(e) => setTitle(e.target.value)} required placeholder="Maintenance" />
