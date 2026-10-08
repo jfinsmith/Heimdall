@@ -315,9 +315,10 @@ export function AcademyBuilderPage() {
 
   /** Sessions landing on school holidays (the post-clone trap). */
   const holidayConflicts = useMemo(() => {
-    // A template's dates are placeholders — its holidays are the WRONG year's.
-    // The real academy cloned from it gets swept against its own dates.
-    if (academy?.isTemplate) return [];
+    // Templates get this sweep too: in practice templates carry REAL upcoming
+    // dates (the next quarter's calendar), so a session sitting on Veterans
+    // Day needs flagging while AUTHORING, not only after cloning. (Briefly
+    // gated off for templates in Sept 2026 on a wrong-year theory — reverted.)
     const holidayDates = new Map<string, string>();
     // Cover the academy's own span (clamped to a sane minimum) so a session in
     // any year — including future ones — is still checked against holidays.
