@@ -22,8 +22,12 @@ export function HolidaysAdminPage() {
   const [payInput, setPayInput] = useState('');
   useEffect(() => { setPayInput(String(settings?.holidayPayHours ?? HOLIDAY_PAY_HOURS)); }, [settings]);
 
-  async function savePayHours(v: number) {
-    if (!Number.isFinite(v) || v < 0) return;
+  async function savePayHours(raw: string) {
+    const v = Number(raw);
+    // A cleared box blurs as Number('') === 0, which would zero every observed
+    // holiday's pay credit — restore the saved value instead of writing 0.
+    if (raw.trim() === '' || !Number.isFinite(v) || v < 0) { setPayInput(String(payHours)); return; }
+    if (v === payHours) return;
     await setDoc(doc(db, orgConfigPath('settings', orgId)), { holidayPayHours: v }, { merge: true });
     await logAudit(firebaseUser!.uid, 'settings.holidays', 'settings', 'global', `Holiday pay hours = ${v}`);
   }
@@ -64,7 +68,7 @@ export function HolidaysAdminPage() {
           step={0.5}
           value={payInput}
           onChange={(e) => setPayInput(e.target.value)}
-          onBlur={(e) => savePayHours(Number(e.target.value))}
+          onBlur={(e) => savePayHours(e.target.value)}
         />
       </Field>
       <ul className="divide-y divide-watch-50 rounded-lg border border-watch-100 bg-white shadow-sm">

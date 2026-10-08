@@ -51,9 +51,13 @@ export function CompleteProfilePage() {
     setError(null);
     setBusy(true);
     try {
+      // Keep an existing entry as-is (a legacy member re-doing onboarding must
+      // not have staff-verified quals knocked back to "pending"); new claims
+      // start unverified.
+      const existing = profile?.qualifications ?? [];
       const qualifications: Qualification[] = (Object.keys(QUALIFICATION_LABELS) as QualificationKey[])
         .filter((k) => claimed[k])
-        .map((k) => ({ key: k, label: QUALIFICATION_LABELS[k], verified: false }));
+        .map((k) => existing.find((q) => q.key === k) ?? { key: k, label: QUALIFICATION_LABELS[k], verified: false });
       const y = parseInt(certYear, 10);
       const certExpires = y >= 2000 && y <= 2100 ? { instructorCertExpires: tsFromDate(march31(y)) } : {};
       await updateDoc(doc(db, 'users', firebaseUser!.uid), {

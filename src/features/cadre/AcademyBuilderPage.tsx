@@ -66,7 +66,8 @@ export function AcademyBuilderPage() {
     [],
     [academyId, academy?.isTemplate]
   );
-  const classSize = rosterMembers.filter((m) => m.status !== 'withdrawn' && !m.blockTaker).length;
+  // Same headcount the day roster / attendance use — dismissed cadets are gone too.
+  const classSize = rosterMembers.filter((m) => m.status !== 'withdrawn' && m.status !== 'dismissed' && !m.blockTaker).length;
 
   const settings = useGlobalSettings();
   const disabledHolidays = useMemo(() => new Set(settings?.disabledHolidays ?? []), [settings]);
@@ -104,7 +105,7 @@ export function AcademyBuilderPage() {
   const [signupModal, setSignupModal] = useState<{
     label: string;
     mode: 'open' | 'announce';
-    group: { open: number; scheduled: number; total: number };
+    group: { open: number; scheduled: number; upcomingScheduled: number; total: number };
   } | null>(null);
 
   const liveSessions = useMemo(() => sessions.filter((s) => s.status !== 'cancelled'), [sessions]);
@@ -401,7 +402,8 @@ export function AcademyBuilderPage() {
       // Skip blocks that only have pre-assigned coordinator slots.
       const needsSignup = s.roleSlots.some((slot) => slot.role !== 'coordinator');
       if (!needsSignup) continue;
-      const key = s.courseName;
+      // Same label setCourseSignups / the announce modal match on.
+      const key = s.title || s.courseName;
       const g = map.get(key) ?? { scheduled: 0, upcomingScheduled: 0, open: 0, total: 0, firstStart: Infinity, lastEnd: 0 };
       g.total++;
       g.firstStart = Math.min(g.firstStart, s.start.toMillis());
@@ -560,17 +562,24 @@ export function AcademyBuilderPage() {
   async function togglePublish() {
     if (!firebaseUser || !academyId) return;
     const next = published ? 'draft' : 'published';
-    const batch = writeBatch(db);
-    batch.update(doc(db, 'academies', academyId), { status: next, updatedAt: serverTimestamp() });
-    for (const s of sessions) {
-      if (next === 'published' && s.status === 'draft') {
-        batch.update(doc(db, 'sessions', s.id), { status: 'scheduled', updatedAt: serverTimestamp() });
+    // A full academy (courses + daily formation + lunch blocks) can exceed
+    // Firestore's 500-write batch limit, which would fail the whole publish —
+    // chunk the session flips, then flip the academy last so a mid-way failure
+    // leaves it in its old state (re-clicking resumes the rest).
+    const updates = sessions.flatMap((s): { id: string; status: 'scheduled' | 'draft' }[] => {
+      if (next === 'published' && s.status === 'draft') return [{ id: s.id, status: 'scheduled' }];
+      // Unpublish hides EVERY visible session, fully-staffed ones included.
+      if (next === 'draft' && (s.status === 'scheduled' || s.status === 'open' || s.status === 'fully_staffed')) {
+        return [{ id: s.id, status: 'draft' }];
       }
-      if (next === 'draft' && (s.status === 'scheduled' || s.status === 'open')) {
-        batch.update(doc(db, 'sessions', s.id), { status: 'draft', updatedAt: serverTimestamp() });
-      }
+      return [];
+    });
+    for (let i = 0; i < updates.length; i += 450) {
+      const batch = writeBatch(db);
+      for (const u of updates.slice(i, i + 450)) batch.update(doc(db, 'sessions', u.id), { status: u.status, updatedAt: serverTimestamp() });
+      await batch.commit();
     }
-    await batch.commit();
+    await updateDoc(doc(db, 'academies', academyId), { status: next, updatedAt: serverTimestamp() });
     await logAudit(firebaseUser.uid, `academy.${next === 'published' ? 'publish' : 'unpublish'}`, 'academy', academyId, academy!.name);
   }
 
@@ -613,7 +622,7 @@ export function AcademyBuilderPage() {
   async function announceCourse(courseLabel: string, target: CoursePublishTarget, sessionCount: number) {
     if (!firebaseUser || sessionCount <= 0) return;
     await addDoc(collection(db, 'coursePublishEvents'), {
-      orgId,
+      orgId: academy?.orgId ?? orgId,
       academyId: academyId!,
       courseLabel,
       sessionCount,
@@ -1188,7 +1197,9 @@ export function AcademyBuilderPage() {
         <OpenSignupsModal
           courseLabel={signupModal.label}
           mode={signupModal.mode}
-          sessionCount={signupModal.mode === 'open' ? signupModal.group.scheduled : signupModal.group.open}
+          // Only sessions that haven't happened yet actually open (past days are
+          // finalized) — say that number, not the scheduled total.
+          sessionCount={signupModal.mode === 'open' ? signupModal.group.upcomingScheduled : signupModal.group.open}
           courseSessions={liveSessions.filter((s) => s.kind !== 'lunch' && (s.title || s.courseName) === signupModal.label)}
           onConfirm={confirmCourseSignups}
           onClose={() => setSignupModal(null)}

@@ -34,6 +34,7 @@ export const CATEGORY: Record<NotificationType, { group: string; tone: Notificat
   reservation_offer: { group: 'Staffing', tone: 'amber' },
   reservation_confirmed: { group: 'Staffing', tone: 'green' },
   reservation_declined: { group: 'Staffing', tone: 'red' },
+  assignment_removed: { group: 'Staffing', tone: 'red' },
 };
 export const CATEGORY_GROUPS = [...new Set(Object.values(CATEGORY).map((c) => c.group))].sort();
 

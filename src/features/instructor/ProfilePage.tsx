@@ -145,7 +145,8 @@ export function ProfilePage() {
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Rank">
-            <Input value={rank} onChange={(e) => setRank(e.target.value)} />
+            {/* Required: a blank rank re-triggers the /welcome onboarding gate. */}
+            <Input value={rank} onChange={(e) => setRank(e.target.value)} required />
           </Field>
           <Field label="Phone">
             <Input value={phone} onChange={(e) => setPhone(e.target.value)} onBlur={() => setPhone(formatPhone(phone))} />
@@ -665,7 +666,7 @@ function UnavailableDatesCard() {
 
 /**
  * Self-service password change. Only shown for email/password accounts —
- * Google-sign-in users have no password to change here.
+ * OAuth (Google / Microsoft) sign-ins have no password to change here.
  */
 function ChangePasswordCard() {
   const { changePassword } = useAuth();
@@ -681,7 +682,7 @@ function ChangePasswordCard() {
     return (
       <section className="rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
         <h2 className="mb-1 text-sm font-semibold uppercase tracking-wider text-watch-600">Password</h2>
-        <p className="text-sm text-slate-500">You sign in with Google — manage your password in your Google account.</p>
+        <p className="text-sm text-slate-500">You sign in with Google or Microsoft — manage your password with that provider.</p>
       </section>
     );
   }

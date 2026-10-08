@@ -59,6 +59,25 @@ const SEV_TONE: Record<string, 'slate' | 'navy' | 'amber' | 'red'> = {
 };
 const ta = 'w-full rounded-md border border-watch-200 px-2 py-1 text-sm';
 
+/** screenshotUrls is member-written (rules don't constrain it) — only render
+ *  links/images that genuinely point at our Storage bucket, never an arbitrary
+ *  URL an admin would open on trust. */
+const isStorageUrl = (u: string) => u.startsWith('https://firebasestorage.googleapis.com/');
+
+function Screenshots({ urls }: { urls?: string[] }) {
+  const safe = (urls ?? []).filter(isStorageUrl);
+  if (safe.length === 0) return null;
+  return (
+    <div className="mt-3 flex flex-wrap gap-2">
+      {safe.map((u, i) => (
+        <a key={i} href={u} target="_blank" rel="noopener noreferrer" className="block">
+          <img src={u} alt={`Screenshot ${i + 1}`} className="h-24 w-auto rounded-md border border-watch-100 object-cover" />
+        </a>
+      ))}
+    </div>
+  );
+}
+
 export function FeedbackAdminPage() {
   const { platformOwner } = useAuth();
   const { data: reports } = useCollection<FeedbackReportDoc>('feedbackReports', [orderBy('createdAt', 'desc')]);
@@ -263,15 +282,7 @@ function OwnerFeedbackCard({ r, onStatusApplied }: { r: OwnerReport; onStatusApp
           {r.actual && <Detail label="Actual">{r.actual}</Detail>}
         </div>
       )}
-      {r.screenshotUrls && r.screenshotUrls.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-2">
-          {r.screenshotUrls.map((u, i) => (
-            <a key={i} href={u} target="_blank" rel="noopener noreferrer" className="block">
-              <img src={u} alt={`Screenshot ${i + 1}`} className="h-24 w-auto rounded-md border border-watch-100 object-cover" />
-            </a>
-          ))}
-        </div>
-      )}
+      <Screenshots urls={r.screenshotUrls} />
       {!!r.screenshotsWithheld && (
         <div className="mt-3 rounded-md bg-watch-50 px-3 py-2 text-xs text-slate-500">
           🔒 {r.screenshotsWithheld} screenshot(s) withheld — viewable only by {r.orgName} admins (possible PII).
@@ -317,15 +328,7 @@ function FeedbackCard({
         </div>
       )}
 
-      {r.screenshotUrls && r.screenshotUrls.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-2">
-          {r.screenshotUrls.map((u, i) => (
-            <a key={i} href={u} target="_blank" rel="noopener noreferrer" className="block">
-              <img src={u} alt={`Screenshot ${i + 1}`} className="h-24 w-auto rounded-md border border-watch-100 object-cover" />
-            </a>
-          ))}
-        </div>
-      )}
+      <Screenshots urls={r.screenshotUrls} />
 
       {r.userAgent && <div className="mt-2 truncate text-[10px] text-slate-400" title={r.userAgent}>{r.userAgent}</div>}
 

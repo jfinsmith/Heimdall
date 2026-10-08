@@ -11,6 +11,7 @@ import { db, functions } from '../../lib/firebase';
 import { useCollection, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import { useRoleLabels } from '../../app/providers';
+import { mayActOn } from '../../lib/rbac';
 import type { QualificationKey, UserDoc } from '../../types';
 import { QUALIFICATION_LABELS } from '../../types';
 import { certYearOf, march31, tsFromDate } from '../../lib/time';
@@ -27,7 +28,7 @@ const setUserSuspension = httpsCallable<{ uid: string; suspended: boolean; reaso
 const shortQual = (key: QualificationKey) => QUALIFICATION_LABELS[key].replace(/ Instructor$/, '');
 
 export function RosterPage() {
-  const { firebaseUser } = useAuth();
+  const { firebaseUser, role: myRole, platformOwner } = useAuth();
   const roleLabels = useRoleLabels();
   const { data: users } = useCollection<UserDoc>('users', [orderBy('displayName'), limit(2000)]);
 
@@ -276,7 +277,11 @@ export function RosterPage() {
 
       {bulkSuspendOpen && (
         <BulkSuspendModal
-          users={selectedUsers.filter((u) => u.id !== firebaseUser?.uid && u.status !== 'suspended')}
+          // Rank ladder (mirrors assertMayActOn): a non-top admin suspends only
+          // members strictly below their own rank — never upward, never self.
+          users={selectedUsers.filter(
+            (u) => u.id !== firebaseUser?.uid && u.status !== 'suspended' && (platformOwner || mayActOn(myRole, u.role))
+          )}
           onClose={() => setBulkSuspendOpen(false)}
           onDone={(n) => {
             setBulkSuspendOpen(false);
@@ -324,7 +329,7 @@ function BulkSuspendModal({
       <form onSubmit={submit} className="space-y-4 text-sm">
         {users.length === 0 ? (
           <p className="text-slate-500">
-            No eligible members in the selection (already suspended or yourself are skipped). Close and adjust your selection.
+            No eligible members in the selection (already suspended, yourself, and ranks at or above your own are skipped). Close and adjust your selection.
           </p>
         ) : (
           <>

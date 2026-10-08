@@ -13,7 +13,7 @@ import { addDoc, collection, deleteDoc, doc, serverTimestamp, updateDoc } from '
 import { db } from '../../lib/firebase';
 import type { WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
-import { combineDateTime, toDateInputValue, toTimeInputValue, tsFromDate } from '../../lib/time';
+import { combineDateTime, isSameLocalDay, toDateInputValue, toTimeInputValue, tsFromDate } from '../../lib/time';
 import type { AcademyDoc, SessionDoc } from '../../types';
 import { Button, Field, Input } from '../../components/ui';
 import { Modal } from '../../components/Modal';
@@ -70,6 +70,13 @@ export function LunchBlockModal({
     try {
       const start = snap15(combineDateTime(date, time));
       const end = new Date(start.getTime() + durMin * 60000);
+      // Blocks live on one calendar day (single date field) — a duration that
+      // runs past midnight would draw across two days on every calendar.
+      if (!isSameLocalDay(start, end)) {
+        setError('The block must end on the same day it starts — shorten the duration or start earlier.');
+        setBusy(false);
+        return;
+      }
       // A lunch block never counts toward hours and is never staffable.
       const base = {
         kind: 'lunch' as const,

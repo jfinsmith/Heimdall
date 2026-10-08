@@ -140,7 +140,7 @@ export function SignInPage() {
           </h1>
           <p className="mb-4 text-sm text-slate-500">
             {mode === 'register'
-              ? 'New instructor accounts are reviewed by a coordinator before activation.'
+              ? 'New instructor accounts are reviewed by an administrator before activation.'
               : 'Academy training schedule & instructor staffing.'}
           </p>
 

@@ -64,6 +64,28 @@ export const RANKS: { key: Role; defaultLabel: string; summary: string }[] = [
   },
 ];
 
+/**
+ * Admin-on-admin authority ladder — MUST mirror assertMayActOn in
+ * functions/src/admin/callables.ts (the server is what actually enforces it).
+ * Lieutenant and director are intentionally EQUAL at the top; every other
+ * admin may act on, and assign, only ranks STRICTLY below their own. A
+ * role-less target (a pending join) ranks lowest.
+ */
+const ROLE_RANK: Record<Role, number> = { guest: 0, instructor: 1, coordinator: 2, sergeant: 3, lieutenant: 4, director: 4 };
+const TOP_RANK = 4;
+const rankOf = (role?: Role | null): number => (role ? ROLE_RANK[role] ?? 0 : 0);
+export function isTopAdmin(role?: Role | null): boolean {
+  return rankOf(role) >= TOP_RANK;
+}
+/** May `caller` manage (re-rank, edit, suspend, deactivate, delete) a member holding `target`? */
+export function mayActOn(caller?: Role | null, target?: Role | null): boolean {
+  return !!caller && (isTopAdmin(caller) || rankOf(target) < rankOf(caller));
+}
+/** May `caller` assign `role` to someone (approve-as / role dropdown / add user)? */
+export function mayAssignRole(caller: Role | null | undefined, role: Role): boolean {
+  return !!caller && (isTopAdmin(caller) || rankOf(role) < rankOf(caller));
+}
+
 /** Default labels (key → label). Per-org overrides applied via getRankLabel/rankLabels. */
 export const ROLE_LABELS: Record<Role, string> = Object.fromEntries(
   RANKS.map((r) => [r.key, r.defaultLabel])

@@ -5,7 +5,7 @@
  */
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { addDoc, collection, deleteDoc, doc, limit, serverTimestamp, updateDoc, where } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { useCollection, type WithId } from '../../../lib/firestore';
 import { useCurriculum, baseCurriculumKey } from '../../../lib/curricula';
@@ -43,6 +43,21 @@ function resolveFieldDefault(f: ReportField, academy: AcademyDoc): string | unde
   }
 }
 
+/**
+ * The name printed as "Academy Director" on letters, certificates and
+ * transcripts: an ACTIVE director, else an active lieutenant (lieutenant ===
+ * director — a lieutenant-led org has no director account). The director role is
+ * preferred EXPLICITLY: a role-`in` query orders by document id, so taking the
+ * first row let a lieutenant sign dismissal letters as the director whenever
+ * their id sorted first. Active-only in the query — suspended command must never
+ * be printed as the signer. Empty when the org has no command.
+ */
+export function useDirectorName(): string {
+  const { data } = useCollection<UserDoc>('users', [where('role', 'in', ['director', 'lieutenant']), where('status', '==', 'active')]);
+  const pick = data.find((u) => u.role === 'director') ?? [...data].sort((a, b) => a.displayName.localeCompare(b.displayName))[0];
+  return pick?.displayName ?? '';
+}
+
 /** A pre-fill handed in from the gradebook/discipline tabs: the cadet (+ for a
  *  course failure, the course/score). The coordinator still PICKS the letter — we
  *  never auto-file a legally-sensitive document — and these values pre-populate it. */
@@ -63,12 +78,7 @@ export function AcademyReports({ academy, seed, onSeedConsumed }: { academy: Wit
     () => [...reportsRaw].sort((a, b) => ((b.createdAt as { toMillis?: () => number })?.toMillis?.() ?? 0) - ((a.createdAt as { toMillis?: () => number })?.toMillis?.() ?? 0)),
     [reportsRaw]
   );
-  // lieutenant === director: a lieutenant-led org has no role==='director' user,
-  // so include both and prefer an active one. Empty when the org has no command.
-  // Active-only in the QUERY — with limit(2), two suspended command users could
-  // otherwise crowd out the active director entirely.
-  const { data: directors } = useCollection<UserDoc>('users', [where('role', 'in', ['director', 'lieutenant']), where('status', '==', 'active'), limit(2)]);
-  const directorName = directors[0]?.displayName ?? '';
+  const directorName = useDirectorName();
   const { data: curriculum } = useCurriculum(academy.discipline);
 
   const [formType, setFormType] = useState<ReportType | null>(null);
@@ -213,7 +223,7 @@ function ReportFormModal({
   directorName: string;
   onClose: () => void;
 }) {
-  const { firebaseUser } = useAuth();
+  const { firebaseUser, orgId: callerOrgId } = useAuth();
   // 'cadet' docs address a cadet (To: line); 'file'/'general' docs capture the
   // subject in their own fields. Academic letters (no document) are cadet-addressed.
   const appliesTo = type.document?.appliesTo ?? 'cadet';
@@ -297,6 +307,14 @@ function ReportFormModal({
   }
 
   async function save() {
+    // A report filed without a tenant is invisible to the org-scoped list (and
+    // `orgId: undefined` is rejected by Firestore outright) — fall back to the
+    // caller's org for a legacy academy doc that predates orgId stamping.
+    const orgId = academy.orgId ?? callerOrgId;
+    if (!editing && !orgId) {
+      setError('Your account is still loading its organization — please reload and try again.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -312,7 +330,7 @@ function ReportFormModal({
       } else {
         await addDoc(collection(db, 'academies', academy.id, 'reports'), {
           ...payload,
-          orgId: academy.orgId,
+          orgId,
           createdBy: firebaseUser!.uid,
           createdByName: fromName,
           createdAt: serverTimestamp(),

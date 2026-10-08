@@ -5,12 +5,12 @@
  */
 import React from 'react';
 import { useParams } from 'react-router-dom';
-import { limit, where } from 'firebase/firestore';
-import { useCollection, useDoc } from '../../../lib/firestore';
+import { useDoc } from '../../../lib/firestore';
 import { useCurriculum } from '../../../lib/curricula';
-import type { AcademyDoc, AcademyReportDoc, UserDoc } from '../../../types';
+import type { AcademyDoc, AcademyReportDoc } from '../../../types';
 import { Button, Spinner } from '../../../components/ui';
 import { ReportLetter } from './ReportLetter';
+import { useDirectorName } from './AcademyReports';
 import { libraryFormToReportType, useOrgLibraryForms, type LibraryFormDoc } from './documentLibrary';
 
 export function CadetReportPrintPage() {
@@ -21,9 +21,9 @@ export function CadetReportPrintPage() {
   );
   // The class's curriculum drives the unified header (branding + program).
   const { data: curriculum } = useCurriculum(academy?.discipline);
-  // lieutenant === director: include both so a lieutenant-led org's leader prints.
-  const { data: directors } = useCollection<UserDoc>('users', [where('role', 'in', ['director', 'lieutenant']), limit(2)]);
-  const directorName = (directors.find((d) => d.status === 'active') ?? directors[0])?.displayName ?? '';
+  // Same signer resolution as the form preview (active director first) — this
+  // page previously had no active filter, so a suspended director could print.
+  const directorName = useDirectorName();
   // Library forms aren't in the code registry — resolve the report's type by id.
   const { forms } = useOrgLibraryForms();
   // Fallback by-id read so a report filed against a form later deactivated (but

@@ -227,12 +227,13 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
     try {
       let batch = writeBatch(db);
       let count = 0;
-      const created: { ref: ReturnType<typeof doc>; start: Date; end: Date }[] = [];
+      const created: { ref: ReturnType<typeof doc>; slotId: string; start: Date; end: Date }[] = [];
       for (const date of matchingDates) {
         const ds = toDateInputValue(date);
         const start = combineDateTime(ds, startTime);
         const end = combineDateTime(ds, endTime);
         const ref = doc(collection(db, 'sessions'));
+        const roleSlots = buildSlots();
         batch.set(ref, {
           orgId: academy.orgId,
           academyId: academy.id,
@@ -251,12 +252,12 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
           lunchCountsTowardHours: lunchCounts,
           countsTowardFdle: !isCustom,
           status: academy.status === 'draft' ? 'draft' : 'scheduled',
-          roleSlots: buildSlots(),
+          roleSlots,
           notes: '',
           createdBy: firebaseUser.uid,
           updatedAt: serverTimestamp(),
         });
-        if (isCustom && defaultCoord) created.push({ ref, start, end });
+        if (isCustom && defaultCoord) created.push({ ref, slotId: roleSlots[0].slotId as string, start, end });
         if (++count % 300 === 0) {
           await batch.commit();
           batch = writeBatch(db);
@@ -264,12 +265,27 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
       }
       await batch.commit();
 
-      // Mirror coordinator assignments for custom blocks so they hit My Schedule.
+      // Mirror coordinator placements for custom blocks so they hit My Schedule —
+      // BOTH the signup (quiet: the coordinator inherently knows) and the
+      // assignment, exactly like the session editor's sync. The signup is what
+      // Gjallarhorn's schedule-change trigger iterates to keep the assignment's
+      // times in step with a later drag, and what the detail modal lists.
       // NEVER for a template — an assignment there would put a phantom session
       // on the coordinator's My Schedule and send them Gjallarhorn reminders.
       if (isCustom && defaultCoord && !academy.isTemplate) {
-        for (const { ref, start, end } of created) {
+        const coordName = coordinatorUsers.find((u) => u.id === defaultCoord)?.displayName ?? defaultCoord;
+        for (const { ref, slotId, start, end } of created) {
           const now = Timestamp.now();
+          await setDoc(doc(db, 'sessions', ref.id, 'signups', defaultCoord), {
+            uid: defaultCoord,
+            orgId: academy.orgId,
+            displayName: coordName,
+            role: 'coordinator',
+            slotId,
+            status: 'confirmed',
+            signedUpAt: now,
+            quiet: true,
+          });
           await setDoc(doc(db, 'assignments', `${ref.id}_${defaultCoord}`), {
             orgId: academy.orgId,
             uid: defaultCoord,
@@ -379,7 +395,8 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
         {lunchMinutes > 0 && (
           <div className="flex flex-wrap items-end gap-4">
             <Field label="Lunch starts at" className="max-w-[10rem]">
-              <Input type="time" value={lunchStart} onChange={(e) => setLunchStart(e.target.value)} />
+              {/* Required: a blank start would skip the lunch-inside-class guard. */}
+              <Input type="time" value={lunchStart} onChange={(e) => setLunchStart(e.target.value)} required />
             </Field>
             <details className="mb-2 w-full">
               <summary className="cursor-pointer text-xs font-medium text-slate-500 hover:text-watch-700">

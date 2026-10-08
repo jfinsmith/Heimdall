@@ -7,7 +7,9 @@ import { Button } from '../components/ui';
 export function PendingApprovalPage() {
   const { firebaseUser, profile, signOut } = useAuth();
   if (!firebaseUser) return <Navigate to="/signin" replace />;
-  if (profile && profile.status === 'active') return <Navigate to="/" replace />;
+  // Anything other than 'pending' (active, suspended, inactive) belongs to
+  // RequireAuth's routing, not this holding screen.
+  if (profile && profile.status !== 'pending') return <Navigate to="/" replace />;
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-watch-950 px-4 text-center">

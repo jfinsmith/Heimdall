@@ -25,41 +25,37 @@ export function RequireAuth() {
   if (profile?.orgId && org?.status === 'suspended' && !platformOwner) {
     return <Navigate to="/org-suspended" replace />;
   }
+  if (!profile) return <Outlet />;
+  // Onboarding gates, in priority order. Each gate HOLDS the user on its own
+  // page (renders the Outlet there) and never lets a later gate fire — so two
+  // outstanding gates can't bounce between each other (e.g. an admin-created
+  // account with no DOB + a temp password used to loop /complete-dob ↔
+  // /change-password forever, and an unverified self-signup was skipped past
+  // /verify-email straight to /awaiting-org by the org gate below).
+  const gate = (path: string) => (location.pathname === path ? <Outlet /> : <Navigate to={path} replace />);
   // Email verification — SELF-SIGNUP funnel only (password accounts still
   // outside any org). Proves deliverability before an organization relies on
   // the address. Never applied once an org holds the account (admin-created
   // members were provisioned deliberately) and never to OAuth sign-ins.
   const passwordOnly =
     firebaseUser.providerData.length === 1 && firebaseUser.providerData[0]?.providerId === 'password';
-  if (
-    profile && !profile.orgId && passwordOnly && !firebaseUser.emailVerified &&
-    location.pathname !== '/verify-email'
-  ) {
-    return <Navigate to="/verify-email" replace />;
-  }
+  if (!profile.orgId && passwordOnly && !firebaseUser.emailVerified) return gate('/verify-email');
   // ATMS-verification gate: every account needs a date of birth on file.
   // New registrations collect it up front; accounts that predate the
-  // requirement (and OAuth sign-ups, which never asked) complete it ONCE here
-  // on their next sign-in.
-  if (profile && !profile.dob && location.pathname !== '/complete-dob') {
-    return <Navigate to="/complete-dob" replace />;
-  }
+  // requirement (admin-created and OAuth sign-ups, which never asked)
+  // complete it ONCE here on their next sign-in.
+  if (!profile.dob) return gate('/complete-dob');
   // No tenant yet (self-registered, domain didn't match an org). A graceful
   // holding screen — not a hard lockout — that auto-resolves once an org is
   // assigned. Checked before 'pending' so an orgless account sees "setting up"
   // rather than "awaiting role approval" (there's no org to approve within yet).
-  if (profile && !profile.orgId && location.pathname !== '/awaiting-org') {
-    return <Navigate to="/awaiting-org" replace />;
-  }
-  if (profile && profile.status === 'pending') return <Navigate to="/pending" replace />;
+  // (/awaiting-org and /pending live OUTSIDE this guard.)
+  if (!profile.orgId) return <Navigate to="/awaiting-org" replace />;
+  if (profile.status === 'pending') return <Navigate to="/pending" replace />;
   // Force a password change for admin-created accounts on first sign-in.
-  if (profile && profile.mustChangePassword && location.pathname !== '/change-password') {
-    return <Navigate to="/change-password" replace />;
-  }
+  if (profile.mustChangePassword) return gate('/change-password');
   // Force first-time profile completion (no rank/agency yet)
-  if (profile && !profile.rank && location.pathname !== '/welcome') {
-    return <Navigate to="/welcome" replace />;
-  }
+  if (!profile.rank) return gate('/welcome');
   return <Outlet />;
 }
 

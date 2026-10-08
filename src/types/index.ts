@@ -128,7 +128,7 @@ export interface UserDoc {
   /**
    * Date of birth, 'yyyy-mm-dd' — required for ATMS credential verification.
    * Collected at registration; accounts without one are gated to
-   * /complete-profile on their next sign-in until they add it.
+   * /complete-dob on their next sign-in until they add it.
    */
   dob?: string;
   photoURL?: string;
@@ -253,6 +253,7 @@ export const EMAIL_AUTOMATIONS = [
   { key: 'digest', label: 'Weekly digest', description: 'Monday summary of staffing health for coordinators and command.', audience: 'staff' },
   { key: 'message', label: 'Bulk messages', description: 'Manual broadcasts sent from the Staffing Board.', audience: 'everyone' },
   { key: 'feedback_submitted', label: 'Bug / feature report', description: 'Emails the HEIMDALL platform team when a member submits a bug report or feature request.', audience: 'admin' },
+  { key: 'assignment_removed', label: 'Removed from a session', description: 'Emails an instructor when a coordinator removes them from a session they had confirmed or been offered (never for coordinator-slot or self placements).', audience: 'everyone' },
 ] as const;
 
 export type EmailAutomationKey = (typeof EMAIL_AUTOMATIONS)[number]['key'];
@@ -514,6 +515,9 @@ export interface AcademyDoc {
   /** Calendar color for this cohort (hex from the fixed palette). */
   color?: string;
   status: AcademyStatus;
+  /** Lifecycle status at the moment the class was archived — unarchive restores
+   *  it (a draft comes back as a draft, never as a published 'completed'). */
+  statusBeforeArchive?: AcademyStatus;
   /** True for reusable schedule templates (excluded from calendars & rosters). */
   isTemplate?: boolean;
   /** Ordered: [0] = primary coordinator, [1] = secondary. */
@@ -1057,6 +1061,7 @@ export type NotificationType =
   | 'digest'
   | 'message'
   | 'feedback_submitted'
+  | 'assignment_removed'
   | 'reservation_offer'
   | 'reservation_confirmed'
   | 'reservation_declined';

@@ -75,7 +75,10 @@ export function PastSessionModal({
     return run(async () => {
       const newSlots = s.roleSlots.map((sl) => (sl.slotId === slotId ? { ...sl, filledBy: sl.filledBy.filter((u) => u !== uid) } : sl));
       await updateDoc(doc(db, 'sessions', s.id), { roleSlots: newSlots, updatedAt: serverTimestamp() });
-      await setDoc(doc(db, 'sessions', s.id, 'signups', uid), { status: 'withdrawn' }, { merge: true });
+      // update (not merge-set): a placement with no signup doc has nothing to
+      // withdraw, and a merge-set would try to CREATE an org-less {status} stub
+      // the rules reject — failing the correction after the slot was already saved.
+      try { await updateDoc(doc(db, 'sessions', s.id, 'signups', uid), { status: 'withdrawn' }); } catch { /* no signup doc — fine */ }
       try { await updateDoc(doc(db, 'assignments', `${s.id}_${uid}`), { status: 'withdrawn' }); } catch { /* no assignment doc — fine */ }
       await logAudit(firebaseUser!.uid, 'session.correction', 'session', s.id, `As-taught correction: removed ${nameOf(uid)} (did not teach) — ${s.courseName} ${when}`);
     });
@@ -218,8 +221,11 @@ export function PastSessionModal({
                 aria-label={`Add ${SLOT_ROLE_LABELS[slot.role]}`}
               >
                 <option value="">— add who taught (saves instantly) —</option>
+                {/* One person, one role per session (same rule as the editor's
+                    reserve picker) — the signup/assignment docs are keyed by uid,
+                    so a second slot would silently overwrite the first. */}
                 {sortedUsers
-                  .filter((u) => !slot.filledBy.includes(u.id))
+                  .filter((u) => !s.roleSlots.some((sl) => sl.filledBy.includes(u.id)))
                   .map((u) => <option key={u.id} value={u.id}>{lastFirst(u.displayName)}</option>)}
               </Select>
               <span className="text-xs text-slate-400">

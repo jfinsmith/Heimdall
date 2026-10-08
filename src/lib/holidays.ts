@@ -46,7 +46,11 @@ export const HOLIDAY_DEFS: HolidayDef[] = [
   {
     key: 'day_after_thanksgiving',
     label: 'Day after Thanksgiving',
-    dates: (y) => [new Date(nthWeekday(y, 10, 4, 4).getTime() + 864e5)],
+    dates: (y) => {
+      const d = nthWeekday(y, 10, 4, 4);
+      d.setDate(d.getDate() + 1); // calendar-day step, never a ms shift
+      return [d];
+    },
   },
   // The four PSO paid holidays around the break — each can be observed
   // (paid) independently of the school winter break.

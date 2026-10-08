@@ -117,7 +117,7 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
   // high-liability flag, lead qualification, and default staffing slots. There's
   // no separate catalog; anything off-curriculum goes through "Custom".
   // Alphabetical for easy scanning.
-  const { data: curriculum } = useCurriculum(academy.discipline);
+  const { data: curriculum, loading: curriculumLoading } = useCurriculum(academy.discipline);
   const courseOptions = useMemo(
     () =>
       (curriculum?.courses ?? [])
@@ -144,7 +144,8 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
     [],
     [academy.id]
   );
-  const classSize = rosterMembers.filter((m) => m.status !== 'withdrawn' && !m.blockTaker).length;
+  // Same headcount the day roster / attendance use — dismissed cadets are gone too.
+  const classSize = rosterMembers.filter((m) => m.status !== 'withdrawn' && m.status !== 'dismissed' && !m.blockTaker).length;
 
   const userName = (uid: string) =>
     activeUsers.find((u) => u.id === uid)?.displayName ?? coordinatorUsers.find((u) => u.id === uid)?.displayName ?? uid;
@@ -171,13 +172,11 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
   // Hours box edits the END time; editing End recomputes hours; changing Start
   // keeps the hours and shifts End; changing lunch keeps End and adjusts hours.
   const lunchAdjHours = lunchCounts ? 0 : lunchMinutes / 60;
-  const instrHours =
-    Math.round(
-      Math.max(
-        0,
-        hoursBetween(combineDateTime('2000-01-01', startTime), combineDateTime('2000-01-01', endTime)) - lunchAdjHours
-      ) * 4
-    ) / 4;
+  // A time input reports "" mid-edit (segment cleared), which makes the span
+  // NaN — treat that as 0 so NaN never reaches the Hours box or End time.
+  const spanHours = hoursBetween(combineDateTime('2000-01-01', startTime), combineDateTime('2000-01-01', endTime));
+  const exactHours = Number.isFinite(spanHours) ? Math.max(0, spanHours - lunchAdjHours) : 0;
+  const instrHours = Math.round(exactHours * 4) / 4;
   const timePlus = (hhmm: string, hours: number): string => {
     const mins = Math.min(
       23 * 60 + 59,
@@ -238,12 +237,16 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
   const ratioMet = ratioRequired === 0 || instructorSlotCount >= ratioRequired;
 
   // On edit, match the saved session to a curriculum option by name (handles
-  // sessions saved before the picker became curriculum-driven).
+  // sessions saved before the picker became curriculum-driven). A session whose
+  // course is no longer in the curriculum (renamed/removed since it was
+  // scheduled) keeps its own id so it stays saveable as-is — otherwise the
+  // required picker sat on "Select a course…" and Save was disabled.
   useEffect(() => {
-    if (isCustomSession || courseId || !session) return;
+    if (isCustomSession || courseId || !session || curriculumLoading) return;
     const opt = courseOptions.find((o) => o.name === session.courseName);
-    if (opt) setCourseId(opt.value);
-  }, [courseOptions, session, isCustomSession, courseId]);
+    setCourseId(opt ? opt.value : session.courseId || `block:${session.courseName}`);
+  }, [courseOptions, session, isCustomSession, courseId, curriculumLoading]);
+  const orphanCourse = !!session && !isCustom && !!courseId && !selectedOption;
   const defaultCoordinator = academy.coordinatorIds[0] ?? '';
 
   function coordinatorSlot(): RoleSlot {
@@ -504,7 +507,20 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
     try {
       let sessionId = session?.id;
       if (session) {
-        await updateDoc(doc(db, 'sessions', session.id), { ...payload, roomId: roomId ?? deleteField(), roomIds: allRoomIds.length ? allRoomIds : deleteField() });
+        // Mirror the server's recomputeStatus: a coordinator filling (or
+        // vacating) the last slot flips open ↔ fully_staffed, so the
+        // fully-staffed alert fires and the staffing board stays honest —
+        // only self-sign-ups and waitlist promotion used to flip it.
+        const liveStatus =
+          session.status === 'open' || session.status === 'fully_staffed'
+            ? slots.every((sl) => sl.filledBy.length >= sl.count) ? 'fully_staffed' : 'open'
+            : null;
+        await updateDoc(doc(db, 'sessions', session.id), {
+          ...payload,
+          ...(liveStatus ? { status: liveStatus } : {}),
+          roomId: roomId ?? deleteField(),
+          roomIds: allRoomIds.length ? allRoomIds : deleteField(),
+        });
         await logAudit(
           firebaseUser.uid,
           finalizedEdit ? 'session.edit_past' : 'session.update',
@@ -539,12 +555,23 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
         for (const slot of slots) {
           for (const uid of slot.filledBy) if (!desired.has(uid)) desired.set(uid, { slotId: slot.slotId, role: slot.role });
         }
-        const prevUids = new Set<string>();
-        if (session) for (const slot of session.roleSlots) for (const uid of slot.filledBy) prevUids.add(uid);
+        const prev = new Map<string, { slotId: string; role: string }>();
+        if (session) for (const slot of session.roleSlots) for (const uid of slot.filledBy) if (!prev.has(uid)) prev.set(uid, { slotId: slot.slotId, role: slot.role });
         const now = Timestamp.now();
 
         for (const [uid, info] of desired) {
-          if (prevUids.has(uid)) continue; // unchanged
+          const was = prev.get(uid);
+          if (was) {
+            // Still placed, but moved to another slot or the slot's role was
+            // changed (Assistant → Lead): the mirrors must follow, or the detail
+            // modal lists them under the old slot and My Schedule shows the old
+            // role. Only these two fields — reservation state/offer stay as-is.
+            if (was.slotId !== info.slotId || was.role !== info.role) {
+              await updateDoc(doc(db, 'sessions', sessionId, 'signups', uid), { slotId: info.slotId, role: info.role }).catch(() => {});
+              await updateDoc(doc(db, 'assignments', `${sessionId}_${uid}`), { role: info.role }).catch(() => {});
+            }
+            continue;
+          }
           // A coordinator reserving an INSTRUCTOR is an offer, not a commitment
           // — stamped 'pending' so My Schedule asks them to confirm or decline.
           // Coordinator-role pre-assignments stay unconditional.
@@ -588,7 +615,7 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
           });
         }
         // Remove people who were un-reserved.
-        for (const uid of prevUids) {
+        for (const uid of prev.keys()) {
           if (desired.has(uid)) continue;
           await deleteDoc(doc(db, 'assignments', `${sessionId}_${uid}`)).catch(() => {});
           await deleteDoc(doc(db, 'sessions', sessionId, 'signups', uid)).catch(() => {});
@@ -672,6 +699,9 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
           <Field label="Course (required)" hint="From this academy's discipline">
             <Select value={courseId} onChange={(e) => pickCourse(e.target.value)} required>
               <option value="">Select a course…</option>
+              {orphanCourse && (
+                <option value={courseId}>{session!.courseName} (not in the current curriculum)</option>
+              )}
               {courseOptions.map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.name} ({o.hours} hrs{o.highLiability ? ', high-liability' : ''}{o.optional ? ', optional' : ''})
@@ -705,7 +735,7 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
               value={instrHours}
               onChange={(e) => {
                 const v = Number(e.target.value);
-                if (Number.isFinite(v)) setEndTime(timePlus(startTime, Math.max(0, v) + lunchAdjHours));
+                if (Number.isFinite(v) && startTime) setEndTime(timePlus(startTime, Math.max(0, v) + lunchAdjHours));
               }}
             />
           </Field>
@@ -715,8 +745,11 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
               value={startTime}
               onChange={(e) => {
                 // Keep the HOURS constant: moving the start shifts the end with it.
-                setStartTime(e.target.value);
-                setEndTime(timePlus(e.target.value, instrHours + lunchAdjHours));
+                // While the start is cleared/partial (or was), there are no hours
+                // to keep — leave End alone rather than writing a NaN time.
+                const v = e.target.value;
+                setStartTime(v);
+                if (v && startTime) setEndTime(timePlus(v, instrHours + lunchAdjHours));
               }}
               required
             />
@@ -737,7 +770,8 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
         {lunchMinutes > 0 && (
           <div className="flex flex-wrap items-end gap-4">
             <Field label="Lunch starts at" className="max-w-[10rem]">
-              <Input type="time" value={lunchStart} onChange={(e) => setLunchStart(e.target.value)} />
+              {/* Required: a blank start would skip the lunch-inside-class guard. */}
+              <Input type="time" value={lunchStart} onChange={(e) => setLunchStart(e.target.value)} required />
             </Field>
             <details className="mb-2 w-full">
               <summary className="cursor-pointer text-xs font-medium text-slate-500 hover:text-watch-700">
@@ -755,7 +789,7 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
           </div>
         )}
         <p className="-mt-2 text-xs text-slate-500">
-          Instructional hours: <strong>{Math.max(0, hoursBetween(combineDateTime(date || '2000-01-01', startTime), combineDateTime(date || '2000-01-01', endTime)) - (lunchCounts ? 0 : lunchMinutes / 60))}</strong>
+          Instructional hours: <strong>{exactHours}</strong>
           {lunchMinutes > 0 && (lunchCounts ? ` (incl. a ${lunchMinutes}-min lunch)` : ` (after a ${lunchMinutes}-min lunch)`)}
         </p>
         <div className="grid gap-4 sm:grid-cols-2">

@@ -30,6 +30,10 @@ export function DisciplineTab({ academyId, members, onGenerateLetter }: { academ
   const roster = members.filter((m) => !m.blockTaker);
 
   async function removeViolation(m: WithId<RosterMemberDoc>, id: string) {
+    // A disciplinary entry is part of the cadet's record — one stray click on
+    // the pill's ✕ must not erase it without a pause.
+    const v = (m.violations ?? []).find((x) => x.id === id);
+    if (!window.confirm(`Remove this ${v ? levelLabel(v.level).toLowerCase() : 'violation'} from ${m.fullName}'s record? This cannot be undone.`)) return;
     const next = (m.violations ?? []).filter((v) => v.id !== id);
     await updateDoc(doc(db, 'academies', academyId, 'roster', m.id), { violations: next, updatedAt: serverTimestamp() });
   }

@@ -163,7 +163,15 @@ export function BrowseOpenSessionsPage() {
       await signUpForSlot(firebaseUser.uid, sessionId, slotId, { orgId: orgId ?? undefined });
       setMessage('Signed up — confirmation will arrive from Gjallarhorn.');
     } catch (err) {
-      setMessage(err instanceof SignupError ? err.message : 'Sign-up failed.');
+      // 'FULL' is the server's sentinel (someone took the last seat first) —
+      // the detail modal offers the waitlist; the quick button just explains.
+      setMessage(
+        err instanceof SignupError
+          ? err.message === 'FULL'
+            ? 'That slot just filled. Open the session to join its waitlist.'
+            : err.message
+          : 'Sign-up failed.'
+      );
     } finally {
       setBusySlot(null);
     }

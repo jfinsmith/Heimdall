@@ -37,10 +37,13 @@ export function RoomSelect({
   const activeRooms = useMemo(() => rooms.filter((r) => r.active !== false), [rooms]);
   const matched = useMemo(() => (roomId ? activeRooms.find((r) => r.id === roomId) : undefined), [activeRooms, roomId]);
   // Custom mode: free text with no managed room behind it (legacy / custom / a
-  // room that was since deleted).
+  // room that was since deleted). Only tracks the just-picked-Custom-but-empty
+  // case; otherwise the shown option is DERIVED from the props, so a parent that
+  // later swaps in a free-text room (a course's default room) shows "Custom"
+  // with that text instead of "— none —" while silently holding the name.
   const [custom, setCustom] = useState<boolean>(() => !roomId && !!value);
 
-  const selectValue = custom ? CUSTOM : matched ? matched.id : roomId ? CUSTOM : '';
+  const selectValue = matched ? matched.id : custom || roomId || value ? CUSTOM : '';
   const showCustomInput = selectValue === CUSTOM;
 
   const groups = useMemo(() => {
@@ -68,7 +71,13 @@ export function RoomSelect({
   return (
     <div className="space-y-2">
       <Select value={selectValue} onChange={(e) => handleSelect(e.target.value)}>
-        {includeNone && <option value="">— none —</option>}
+        {includeNone ? (
+          <option value="">— none —</option>
+        ) : (
+          // Without a "none" row an empty value matched NO option, so the browser
+          // showed the first room while nothing was actually selected.
+          <option value="" disabled>Select a room…</option>
+        )}
         {groups.map((g) => (
           <optgroup key={g.key} label={g.label}>
             {g.rooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}

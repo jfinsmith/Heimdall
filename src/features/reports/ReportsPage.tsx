@@ -19,11 +19,17 @@ export function ReportsPage() {
   const academies = allAcademies.filter((a) => !a.isTemplate);
   const [academyId, setAcademyId] = useState('');
   // Bound the live subscription to the selected academy; only the all-academies
-  // export (no academy chosen) needs the full set.
-  const { data: sessions } = useCollection<SessionDoc>('sessions', academyId ? [where('academyId', '==', academyId)] : [], [academyId]);
+  // export (no academy chosen) needs the full set — minus schedule TEMPLATES,
+  // whose placeholder sessions are not real classes and belong in no export.
+  const templateIds = new Set(allAcademies.filter((a) => a.isTemplate).map((a) => a.id));
+  const { data: sessionsRaw } = useCollection<SessionDoc>('sessions', academyId ? [where('academyId', '==', academyId)] : [], [academyId]);
+  const sessions = sessionsRaw.filter((s) => !templateIds.has(s.academyId));
   const academy = academies.find((a) => a.id === academyId);
   const academySessions = sessions.filter((s) => s.academyId === academyId && s.status !== 'cancelled');
-  const scheduled = academySessions.reduce((sum, s) => sum + (s.hours || 0), 0);
+  // FDLE hours = the same tally as the builder: agency blocks flagged "does not
+  // count toward FDLE hours" (PSO assignments, formation…) are excluded, or the
+  // summary reads "met" while the program is actually short.
+  const scheduled = academySessions.filter((s) => s.countsTowardFdle !== false).reduce((sum, s) => sum + (s.hours || 0), 0);
 
   async function exportSchedule() {
     downloadCsv(

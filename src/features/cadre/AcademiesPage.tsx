@@ -7,6 +7,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import {
   addDoc,
   collection,
+  deleteField,
   getDocs,
   orderBy,
   query,
@@ -24,7 +25,7 @@ import { billingActive } from '../../lib/subscription';
 import { fmtDate, tsFromDate, addDays, toDateInputValue, isValidDuration } from '../../lib/time';
 import { useAllCurricula, baseCurriculumKey } from '../../lib/curricula';
 import { loadRoomBookings, loadRoomReservations, overlaps } from './rooms/roomBooking';
-import type { AcademyDoc, CurriculumDoc, SessionDoc, UserDoc } from '../../types';
+import type { AcademyDoc, AcademyStatus, CurriculumDoc, SessionDoc, UserDoc } from '../../types';
 import { Badge, Button, Field, Input, PageHeader, Select } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import { ACADEMY_COLORS, nextAcademyColor } from '../../lib/academyColors';
@@ -111,8 +112,23 @@ export function AcademiesPage() {
 
   async function setArchived(a: WithId<AcademyDoc>, archived: boolean) {
     if (archived && !window.confirm(`Archive "${a.name}"? It disappears from instructor views; you can unarchive any time.`)) return;
-    await updateDoc(doc(db, 'academies', a.id), { status: archived ? 'archived' : 'completed', updatedAt: serverTimestamp() });
-    await logAudit(firebaseUser!.uid, archived ? 'academy.archive' : 'academy.unarchive', 'academy', a.id, a.name);
+    // Archiving remembers the prior lifecycle status so unarchive puts the class
+    // back where it was. Legacy archives (nothing remembered): an approved class
+    // returns as 'completed' (the old behavior); anything else must come back as
+    // a draft — rules deny moving a never-approved class into a published state,
+    // which made the old always-'completed' unarchive fail silently.
+    const restored: AcademyStatus = a.statusBeforeArchive ?? (a.approval?.state === 'approved' ? 'completed' : 'draft');
+    try {
+      await updateDoc(
+        doc(db, 'academies', a.id),
+        archived
+          ? { status: 'archived', statusBeforeArchive: a.status, updatedAt: serverTimestamp() }
+          : { status: restored, statusBeforeArchive: deleteField(), updatedAt: serverTimestamp() }
+      );
+      await logAudit(firebaseUser!.uid, archived ? 'academy.archive' : 'academy.unarchive', 'academy', a.id, a.name);
+    } catch (err) {
+      window.alert(`Could not ${archived ? 'archive' : 'unarchive'} "${a.name}": ${err instanceof Error ? err.message : 'unknown error'}`);
+    }
   }
 
   return (
@@ -337,8 +353,11 @@ export function AcademiesPage() {
         </section>
       )}
 
-      <CreateAcademyModal open={createOpen} onClose={() => setCreateOpen(false)} actorUid={firebaseUser?.uid ?? ''} />
-      <CreateAcademyModal open={templateCreateOpen} onClose={() => setTemplateCreateOpen(false)} actorUid={firebaseUser?.uid ?? ''} isTemplate />
+      {/* Mounted on demand so each open starts from a blank form — an always-
+          mounted modal kept the previous academy's name/designation/dates (and
+          the end-date override flag) for the next one. */}
+      {createOpen && <CreateAcademyModal open onClose={() => setCreateOpen(false)} actorUid={firebaseUser?.uid ?? ''} />}
+      {templateCreateOpen && <CreateAcademyModal open onClose={() => setTemplateCreateOpen(false)} actorUid={firebaseUser?.uid ?? ''} isTemplate />}
       {cloneSource && (
         <CloneAcademyModal
           source={cloneSource}
@@ -357,7 +376,13 @@ export function AcademiesPage() {
   );
 }
 
-// ── Delete (cascade: academy + sessions + sign-ups + assignments) ───────────
+// ── Delete (cascade: academy + sessions + sign-ups + assignments + the
+//    academy's own subcollections: roster, attendance, reports, portal secrets) ──
+// Org-owned subcollections of an academy. Firestore never cascades a document
+// delete to its subcollections, so each is listed (org-filtered — the list rule
+// is inOrg(resource.data)) and removed explicitly; otherwise the roster's PII
+// (CJIS, DOB, contacts) and filed letters would outlive the class forever.
+const ACADEMY_SUBCOLLECTIONS = ['roster', 'attendance', 'reports', 'private'] as const;
 function DeleteAcademyModal({
   academy,
   onClose,
@@ -376,19 +401,26 @@ function DeleteAcademyModal({
     if (!canDelete) return;
     setBusy(true);
     try {
+      const orgFilter = academy.orgId ? [where('orgId', '==', academy.orgId)] : [];
       setProgress('Finding sessions…');
-      const sessionsSnap = await getDocs(query(collection(db, 'sessions'), where('academyId', '==', academy.id), ...(academy.orgId ? [where('orgId', '==', academy.orgId)] : [])));
+      const sessionsSnap = await getDocs(query(collection(db, 'sessions'), where('academyId', '==', academy.id), ...orgFilter));
       // Collect every doc to remove: each session's sign-ups, the sessions, the
-      // assignment mirrors, and finally the academy itself.
+      // assignment mirrors, the academy's subcollections, and finally the
+      // academy itself.
       const refs: ReturnType<typeof doc>[] = [];
       setProgress('Clearing sign-ups…');
       for (const sess of sessionsSnap.docs) {
-        const signups = await getDocs(query(collection(db, 'sessions', sess.id, 'signups'), ...(academy.orgId ? [where('orgId', '==', academy.orgId)] : [])));
+        const signups = await getDocs(query(collection(db, 'sessions', sess.id, 'signups'), ...orgFilter));
         signups.forEach((su) => refs.push(su.ref));
         refs.push(sess.ref);
       }
-      const assignmentsSnap = await getDocs(query(collection(db, 'assignments'), where('academyId', '==', academy.id), ...(academy.orgId ? [where('orgId', '==', academy.orgId)] : [])));
+      const assignmentsSnap = await getDocs(query(collection(db, 'assignments'), where('academyId', '==', academy.id), ...orgFilter));
       assignmentsSnap.forEach((a) => refs.push(a.ref));
+      setProgress('Clearing roster, attendance & reports…');
+      for (const sub of ACADEMY_SUBCOLLECTIONS) {
+        const snap = await getDocs(query(collection(db, 'academies', academy.id, sub), ...orgFilter));
+        snap.forEach((d) => refs.push(d.ref));
+      }
       refs.push(doc(db, 'academies', academy.id));
 
       setProgress(`Deleting ${refs.length} records…`);
@@ -412,7 +444,8 @@ function DeleteAcademyModal({
         <div className="rounded-md bg-red-50 px-3 py-3 text-red-800">
           <p className="font-semibold">This permanently deletes the academy and everything in it.</p>
           <p className="mt-1">
-            All sessions, sign-ups, and assignments for <strong>{academy.shortName || academy.name}</strong> will be
+            All sessions, sign-ups, assignments, the cadet roster (grades, discipline, attendance), filed
+            reports, and the public class link for <strong>{academy.shortName || academy.name}</strong> will be
             erased. This cannot be undone.
           </p>
         </div>
@@ -698,9 +731,15 @@ export function CloneAcademyModal({
     // `id: undefined` field). The result is a real academy or (asTemplate) a
     // schedule template. Also drop `approval` (else a clone of an approved
     // class inherits state:'approved' and could be published with no sign-off)
-    // and `sequenceNo` (the FDLE CSN is per-cohort and must not be reused).
+    // and `sequenceNo` (the FDLE CSN is per-cohort and must not be reused),
+    // `statusBeforeArchive` (the copy is a fresh draft), and any legacy `portal`
+    // block — copying it would launch the clone's public link already ENABLED
+    // with the source's token + academic-password hash, so the old class's
+    // credentials would open the new class's grades.
     // Omit via destructure — never re-add as undefined (Firestore rejects it).
-    const { id: _id, approval: _approval, sequenceNo: _sequenceNo, ...sourceData } = source;
+    const {
+      id: _id, approval: _approval, sequenceNo: _sequenceNo, statusBeforeArchive: _sba, portal: _portal, ...sourceData
+    } = source;
     const academyRef = await addDoc(collection(db, 'academies'), {
       ...sourceData,
       orgId: source.orgId,
@@ -725,7 +764,10 @@ export function CloneAcademyModal({
     // Cloned sessions that hold managed rooms — swept for conflicts post-commit.
     const clonedRoomSessions: { courseName: string; start: Date; end: Date; roomIds: string[] }[] = [];
     for (const snap of sessionsSnap.docs) {
-      const s = snap.data() as SessionDoc;
+      // As-taught write-ins are the SOURCE cohort's staffing record (who really
+      // taught that day) — like filledBy they must not carry into a new cohort,
+      // or its rosters and printed schedules credit last class's instructors.
+      const { writeInInstructors: _writeIns, ...s } = snap.data() as SessionDoc;
       // Skip a malformed source session (missing or inverted times) so the clone
       // never inherits a zero/negative-duration block. Shifting both ends by the
       // same offset preserves duration, so any valid source clones valid.
@@ -733,7 +775,9 @@ export function CloneAcademyModal({
       const newStart = addDays(s.start.toDate(), dayDelta);
       const newEnd = addDays(s.end.toDate(), dayDelta);
       const heldRooms = s.roomIds?.length ? s.roomIds : s.roomId ? [s.roomId] : [];
-      if (heldRooms.length && s.status !== 'cancelled') {
+      // Every copy lands as a live draft (a cancelled source day is revived), so
+      // every copy with a managed room is a real hold to sweep.
+      if (heldRooms.length) {
         clonedRoomSessions.push({ courseName: s.title || s.courseName, start: newStart, end: newEnd, roomIds: heldRooms });
       }
       const ref = doc(collection(db, 'sessions'));
@@ -747,6 +791,7 @@ export function CloneAcademyModal({
         // Staffing does NOT copy — new cohort starts unstaffed.
         roleSlots: s.roleSlots.map((slot) => ({ ...slot, filledBy: [] })),
         createdBy: actorUid,
+        updatedBy: actorUid,
         updatedAt: serverTimestamp(),
       });
       if (++count % 400 === 0) {

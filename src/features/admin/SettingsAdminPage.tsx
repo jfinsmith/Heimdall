@@ -163,7 +163,7 @@ export function SettingsAdminPage() {
         </div>
         <Field
           label="Organization logo (optional)"
-          hint="Shown in the app, on printed documents, and in email. Upload an image, or paste a URL. Blank = the Heimdall wordmark. Remember to Save."
+          hint="Shown on printed documents and in email (the app itself stays Heimdall-branded). Upload an image, or paste a URL. Blank = the Heimdall wordmark. Remember to Save."
         >
           <div className="space-y-2">
             {logoUrl && (

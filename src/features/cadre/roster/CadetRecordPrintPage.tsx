@@ -6,14 +6,15 @@
  */
 import React from 'react';
 import { useParams } from 'react-router-dom';
-import { limit, where } from 'firebase/firestore';
-import { useDoc, useCollection } from '../../../lib/firestore';
+import { useDoc } from '../../../lib/firestore';
 import { useCurriculum } from '../../../lib/curricula';
 import { useGlobalSettings } from '../../../app/providers';
-import type { AcademyDoc, RosterMemberDoc, UserDoc } from '../../../types';
+import { useAuth } from '../../../auth/AuthContext';
+import type { AcademyDoc, RosterMemberDoc } from '../../../types';
 import { fmtDate } from '../../../lib/time';
 import { agencyLabel, courseKey, courseResult, effectiveScore, gradedCourses, lastFirst, memberStanding } from './rosterShared';
 import { DocumentHeader } from '../reports/DocumentHeader';
+import { useDirectorName } from '../reports/AcademyReports';
 import { Button, Spinner } from '../../../components/ui';
 
 const RESULT_LABEL: Record<string, string> = {
@@ -25,11 +26,13 @@ export function CadetRecordPrintPage() {
   const { data: academy, loading: aLoading } = useDoc<AcademyDoc>(academyId ? `academies/${academyId}` : null);
   const { data: member, loading: mLoading } = useDoc<RosterMemberDoc>(academyId && memberId ? `academies/${academyId}/roster/${memberId}` : null);
   const { data: curriculum } = useCurriculum(academy?.discipline);
-  // Active-only in the QUERY — with limit(2), two suspended command users could
-  // otherwise crowd out the active director and misprint the certificate signer.
-  const { data: directors } = useCollection<UserDoc>('users', [where('role', 'in', ['director', 'lieutenant']), where('status', '==', 'active'), limit(2)]);
-  const directorName = directors[0]?.displayName ?? '';
+  const directorName = useDirectorName();
   const settings = useGlobalSettings();
+  const { orgId } = useAuth();
+  // The CJSTC clause is Florida wording — same jurisdiction switch as the
+  // academic letters (ReportLetter); a state-neutral org must not certify
+  // against a Florida commission it isn't governed by.
+  const fl = (settings?.jurisdiction ?? (orgId === 'phsc' ? 'FL' : 'neutral')) === 'FL';
 
   if (aLoading || mLoading) return <div className="flex h-screen items-center justify-center"><Spinner className="text-bifrost-400" /></div>;
   if (!academy || !member) return <p className="p-8 text-sm text-slate-500">Record not found.</p>;
@@ -60,8 +63,12 @@ export function CadetRecordPrintPage() {
           <p className="mt-6 text-sm leading-relaxed">
             has successfully completed the<br />
             <strong>{curriculum?.fdleProgram || academy.name}</strong> ({totalHours} hours)<br />
-            conducted by {settings?.orgName || 'the academy'}, {programDates},<br />
-            in accordance with the Florida Criminal Justice Standards and Training Commission (CJSTC).
+            conducted by {settings?.orgName || 'the academy'}, {programDates}
+            {fl ? (
+              <>,<br />in accordance with the Florida Criminal Justice Standards and Training Commission (CJSTC).</>
+            ) : (
+              '.'
+            )}
           </p>
           <p className="mt-6 text-sm">Awarded {completed}{academy.location ? ` at ${academy.location}` : ''}.</p>
           <div className="mt-16 flex items-start justify-center gap-12 text-xs">

@@ -46,7 +46,13 @@ export function AttendanceLogTab({ academyId, members }: { academyId: string; me
   const [saved, setSaved] = useState(false);
 
   const savedDay = useMemo(() => days.find((d) => d.id === date), [days, date]);
-  useEffect(() => { setDraft(savedDay?.entries ?? {}); setSaved(false); }, [date, savedDay]);
+  // Reseed the draft only when the DATE changes or this day's saved doc actually
+  // changes (its write stamp). Keying on the doc object reseeded on EVERY
+  // snapshot of the subcollection — a colleague saving a different date wiped
+  // the edits in progress here, and our own save's echo cleared "Saved." at once.
+  const savedStamp = savedDay ? savedDay.updatedAt?.toMillis?.() ?? 0 : -1;
+  useEffect(() => { setDraft(savedDay?.entries ?? {}); }, [date, savedStamp]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setSaved(false); }, [date]);
 
   // Per-cadet attended-hours rollup across every recorded day.
   const totalHours = useMemo(() => {

@@ -24,7 +24,7 @@ export function PublicLinkSection({ academy, className = '' }: { academy: WithId
   // readable by every org member once published, which would expose the token
   // and password hash. Legacy configs (pre-move) fall back to academy.portal
   // and migrate on the next save.
-  const { data: privatePortal } = useDoc<NonNullable<AcademyDoc['portal']> & { orgId: string }>(
+  const { data: privatePortal, loading: portalLoading } = useDoc<NonNullable<AcademyDoc['portal']> & { orgId: string }>(
     `academies/${academy.id}/private/portal`
   );
 
@@ -76,9 +76,12 @@ export function PublicLinkSection({ academy, className = '' }: { academy: WithId
       </p>
 
       {!portal?.enabled ? (
+        // Held while the private doc loads: the card briefly reads "off" before
+        // the subscription lands, and a click then minted a NEW token over the
+        // live one — breaking every copy of the link already handed out.
         <Button
           variant="primary"
-          disabled={busy || !codeDigits}
+          disabled={busy || !codeDigits || portalLoading}
           title={codeDigits ? undefined : 'Set a class designation with digits (e.g. LE 132) first — it becomes the access code.'}
           onClick={() => save({ enabled: true, token: portal?.token ?? randomToken(), ...(portal?.academicHash ? { academicHash: portal.academicHash } : {}) }, 'Enabled the public class link')}
         >

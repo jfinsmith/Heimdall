@@ -9,7 +9,7 @@ import { doc, serverTimestamp, updateDoc, orderBy, limit } from 'firebase/firest
 import { db, functions } from '../../lib/firebase';
 import { useCollection, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
-import { RANK_ORDER_ASC } from '../../lib/rbac';
+import { RANK_ORDER_ASC, mayActOn, mayAssignRole } from '../../lib/rbac';
 import { useRoleLabels, useGlobalSettings } from '../../app/providers';
 import type { Qualification, QualificationKey, Role, UserDoc } from '../../types';
 import { QUALIFICATION_LABELS, isInstructorQual, CERT_PORTALS } from '../../types';
@@ -83,8 +83,15 @@ async function importStaffRow(r: Record<string, string>): Promise<void> {
 }
 
 export function UsersAdminPage() {
-  const { firebaseUser } = useAuth();
+  const { firebaseUser, role: myRole, platformOwner } = useAuth();
   const roleLabels = useRoleLabels();
+  // Mirror the server's rank ladder (assertMayActOn): a non-top admin manages
+  // only members STRICTLY below their own rank and assigns only lower ranks;
+  // nobody manages their own account from this page. Offering an action the
+  // callables reject just produced "permission-denied" errors here.
+  const canAct = (u: WithId<UserDoc>) => u.id !== firebaseUser?.uid && (platformOwner || mayActOn(myRole, u.role));
+  const allRoles = (Object.keys(roleLabels) as Role[]).sort((a, b) => roleLabels[a].localeCompare(roleLabels[b]));
+  const assignableRoles = allRoles.filter((r) => platformOwner || mayAssignRole(myRole, r));
   // Naturally bounded by org headcount; the cap is a defensive ceiling far above
   // any realistic agency size (add search/pagination only if it's ever exceeded).
   const { data: users } = useCollection<UserDoc>('users', [orderBy('displayName'), limit(2000)]);
@@ -274,11 +281,11 @@ export function UsersAdminPage() {
                       aria-label={`Role for ${u.displayName}`}
                       onChange={(e) => setPendingRoles((p) => ({ ...p, [u.id]: e.target.value as Role }))}
                     >
-                      {(Object.keys(roleLabels) as Role[]).sort((a, b) => roleLabels[a].localeCompare(roleLabels[b])).map((r) => (
+                      {assignableRoles.map((r) => (
                         <option key={r} value={r}>{roleLabels[r]}</option>
                       ))}
                     </Select>
-                    <Button variant="primary" disabled={busy === u.id} onClick={() => approve(u, chosen)}>
+                    <Button variant="primary" disabled={busy === u.id || !canAct(u)} onClick={() => approve(u, chosen)}>
                       Approve as {roleLabels[chosen]}
                     </Button>
                     <Button
@@ -342,11 +349,12 @@ export function UsersAdminPage() {
                       <td className="px-4 py-3">
                         <Select
                           value={u.role}
-                          disabled={busy === u.id}
+                          disabled={busy === u.id || !canAct(u)}
                           onChange={(e) => changeRole(u, e.target.value as Role)}
                           aria-label={`Role for ${u.displayName}`}
                         >
-                          {(Object.keys(roleLabels) as Role[]).sort((a, b) => roleLabels[a].localeCompare(roleLabels[b])).map((r) => (
+                          {/* A locked select still lists every rank so the current one renders. */}
+                          {(canAct(u) ? assignableRoles : allRoles).map((r) => (
                             <option key={r} value={r}>
                               {roleLabels[r]}
                             </option>
@@ -375,36 +383,38 @@ export function UsersAdminPage() {
                         )}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-right">
-                        {/* Edit is status-independent — a suspended member's
-                            email or name may be exactly what needs fixing. */}
-                        <Button variant="ghost" disabled={busy === u.id} onClick={() => setEditTarget(u)}>
-                          Edit
-                        </Button>
-                        {u.status === 'suspended' ? (
-                          <Button variant="ghost" disabled={busy === u.id} onClick={() => liftSuspension(u)}>
-                            Lift suspension
-                          </Button>
-                        ) : (
-                          u.status === 'active' && (
-                            <>
-                              <Button variant="ghost" className="text-amber-700" disabled={busy === u.id} onClick={() => setSuspendTarget(u)}>
-                                Suspend
+                        {canAct(u) && (
+                          <>
+                            {/* Edit is status-independent — a suspended member's
+                                email or name may be exactly what needs fixing. */}
+                            <Button variant="ghost" disabled={busy === u.id} onClick={() => setEditTarget(u)}>
+                              Edit
+                            </Button>
+                            {u.status === 'suspended' ? (
+                              <Button variant="ghost" disabled={busy === u.id} onClick={() => liftSuspension(u)}>
+                                Lift suspension
                               </Button>
-                              <Button variant="ghost" onClick={() => deactivate(u)}>
-                                Deactivate
-                              </Button>
-                            </>
-                          )
-                        )}
-                        {u.id !== firebaseUser?.uid && (
-                          <Button
-                            variant="ghost"
-                            className="text-red-700 hover:bg-red-50"
-                            disabled={busy === u.id}
-                            onClick={() => setDeleteTarget(u)}
-                          >
-                            Delete…
-                          </Button>
+                            ) : (
+                              u.status === 'active' && (
+                                <>
+                                  <Button variant="ghost" className="text-amber-700" disabled={busy === u.id} onClick={() => setSuspendTarget(u)}>
+                                    Suspend
+                                  </Button>
+                                  <Button variant="ghost" onClick={() => deactivate(u)}>
+                                    Deactivate
+                                  </Button>
+                                </>
+                              )
+                            )}
+                            <Button
+                              variant="ghost"
+                              className="text-red-700 hover:bg-red-50"
+                              disabled={busy === u.id}
+                              onClick={() => setDeleteTarget(u)}
+                            >
+                              Delete…
+                            </Button>
+                          </>
                         )}
                       </td>
                     </tr>
@@ -542,7 +552,8 @@ function EditUserModal({ user, onClose }: { user: WithId<UserDoc>; onClose: () =
       changes.push({ field: 'name', label: 'Name (split on file)', from: user.displayName ?? '—', to: `${next.firstName} · ${next.lastName}` });
     }
   }
-  if (next.dob !== (user.dob ?? '')) changes.push({ field: 'dob', label: 'Date of birth', from: user.dob || '—', to: next.dob || '—' });
+  // A cleared date is never sent — the callable rejects an empty DOB (required once set).
+  if (next.dob && next.dob !== (user.dob ?? '')) changes.push({ field: 'dob', label: 'Date of birth', from: user.dob || '—', to: next.dob });
   if (next.email && next.email !== (user.email ?? '').toLowerCase()) changes.push({ field: 'email', label: 'Sign-in email', from: user.email ?? '—', to: next.email });
   if (next.rank !== (user.rank ?? '')) changes.push({ field: 'rank', label: 'Rank', from: user.rank || '—', to: next.rank || '—' });
   if (next.agency !== (user.agency ?? '')) changes.push({ field: 'agency', label: 'Agency', from: user.agency || '—', to: next.agency || '—' });
@@ -741,7 +752,12 @@ function EditUserModal({ user, onClose }: { user: WithId<UserDoc>; onClose: () =
  * sign-in. On success we surface the credentials so the admin can hand them off.
  */
 function AddUserModal({ onClose }: { onClose: () => void }) {
+  const { role: myRole, platformOwner } = useAuth();
   const roleLabels = useRoleLabels();
+  // createUserAccount applies the rank ladder to the role being created.
+  const assignableRoles = (Object.keys(roleLabels) as Role[])
+    .filter((r) => platformOwner || mayAssignRole(myRole, r))
+    .sort((a, b) => roleLabels[a].localeCompare(roleLabels[b]));
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<Role>('instructor');
@@ -854,7 +870,7 @@ function AddUserModal({ onClose }: { onClose: () => void }) {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Role">
               <Select value={role} onChange={(e) => setRole(e.target.value as Role)}>
-                {(Object.keys(roleLabels) as Role[]).sort((a, b) => roleLabels[a].localeCompare(roleLabels[b])).map((r) => (
+                {assignableRoles.map((r) => (
                   <option key={r} value={r}>
                     {roleLabels[r]}
                   </option>

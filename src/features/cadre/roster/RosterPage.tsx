@@ -232,8 +232,12 @@ function MembersTab({
     await deleteDoc(doc(db, 'academies', academyId, 'roster', m.id));
   }
   async function reinstate(m: WithId<RosterMemberDoc>) {
+    // Clear the withdrawal marker too: left behind, a LATER withdrawal that
+    // skips the "after which course" pick inherits the old cut-off and the
+    // gradebook/transcript/export read WD from the wrong course.
     await updateDoc(doc(db, 'academies', academyId, 'roster', m.id), {
-      status: 'active', completedAt: deleteField(), dismissalReason: deleteField(), updatedAt: serverTimestamp(),
+      status: 'active', completedAt: deleteField(), dismissalReason: deleteField(),
+      withdrawnAt: deleteField(), withdrawnAfterCourse: deleteField(), updatedAt: serverTimestamp(),
     });
   }
   async function graduate(m: WithId<RosterMemberDoc>) {
@@ -490,7 +494,9 @@ function WithdrawModal({
     await updateDoc(doc(db, 'academies', academyId, 'roster', member.id), {
       status: 'withdrawn',
       withdrawnAt: serverTimestamp(),
-      ...(afterCourse ? { withdrawnAfterCourse: afterCourse } : {}),
+      // "Not specified" must CLEAR any earlier marker (every course reads WD),
+      // not silently keep a stale one from a previous withdrawal.
+      withdrawnAfterCourse: afterCourse || deleteField(),
       updatedAt: serverTimestamp(),
     });
     setBusy(false);

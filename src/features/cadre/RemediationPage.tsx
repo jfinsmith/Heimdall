@@ -526,6 +526,9 @@ function RemediationModal({ existing, onClose }: { existing: WithId<RemediationD
     e.preventDefault();
     const name = personName.trim();
     if (!name) { setError('Cadet name is required.'); return; }
+    // A case stamped with a null orgId is filtered out of the org-scoped list
+    // (and denied by rules) the moment it's written — never create one.
+    if (!orgId) { setError('Your account is still loading its organization — please reload and try again.'); return; }
     const cleanBlocks: RemediationBlock[] = blocks
       .filter((b) => b.course.trim())
       .map((b) => ({
