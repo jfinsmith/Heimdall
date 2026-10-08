@@ -88,31 +88,106 @@ export interface Holiday {
   date: Date;
   name: string;
   key: string;
+  /** True when the date was shifted off a weekend (name carries "(observed)"). */
+  shifted?: boolean;
 }
 
-/** All enabled holidays for a year (disabled keys excluded). */
-export function holidaysForYear(year: number, disabled: Set<string> = new Set()): Holiday[] {
+/**
+ * Fixed-DATE holidays follow the federal observance rule: falling on a
+ * Saturday → observed the Friday before; on a Sunday → observed the Monday
+ * after (July 4 2027 is a Sunday → observed Mon July 5). Weekday-anchored
+ * holidays (MLK, Memorial, Labor, Thanksgiving…) never land on weekends, and
+ * winter break is built from weekdays.
+ */
+const OBSERVANCE_SHIFTED = new Set([
+  'new_years',
+  'juneteenth',
+  'independence',
+  'veterans',
+  'christmas_eve',
+  'christmas',
+  'new_years_eve',
+]);
+
+/**
+ * One year's holidays with weekend observance applied. When the observed slot
+ * is already another holiday's day, step one more weekday in the same
+ * direction (Christmas on a Saturday → Friday collides with Christmas Eve →
+ * observed Thursday). Resolved against the FULL definition list, so the
+ * outcome never depends on which subset a caller later filters to; winter
+ * break stays out of the collision set (a school-only wash may legitimately
+ * share a date with an observed PSO holiday).
+ */
+function resolveYear(year: number): Holiday[] {
+  const taken = new Set<string>();
   const out: Holiday[] = [];
   for (const def of HOLIDAY_DEFS) {
-    if (disabled.has(def.key)) continue;
-    for (const date of def.dates(year)) out.push({ date, name: def.label, key: def.key });
+    if (OBSERVANCE_SHIFTED.has(def.key)) continue;
+    for (const date of def.dates(year)) {
+      if (def.key !== 'winter_break') taken.add(date.toDateString());
+      out.push({ date, name: def.label, key: def.key, shifted: false });
+    }
+  }
+  // Cross-boundary + sibling seeds, so no two holidays ever observe the same
+  // day (a shared day would double the pay credit):
+  //  - next year's New Year's Day blocks NYE's forward shift (NYE on a Sunday
+  //    observes Tue Jan 2, not on New Year's Day itself);
+  //  - LAST year's New Year's Eve blocks THIS New Year's Day's backward shift
+  //    (NYD on a Saturday observes Thu Dec 30, Dec 31 being NYE);
+  //  - every fixed-date holiday that falls on a weekday will keep its literal
+  //    date, so claim those up front — otherwise Christmas Eve on a Sunday
+  //    would shift forward onto Christmas Day itself (it now observes Tue
+  //    Dec 26 instead).
+  taken.add(new Date(year + 1, 0, 1).toDateString());
+  taken.add(new Date(year - 1, 11, 31).toDateString());
+  for (const def of HOLIDAY_DEFS) {
+    if (!OBSERVANCE_SHIFTED.has(def.key)) continue;
+    for (const actual of def.dates(year)) {
+      if (actual.getDay() !== 0 && actual.getDay() !== 6) taken.add(actual.toDateString());
+    }
+  }
+  for (const def of HOLIDAY_DEFS) {
+    if (!OBSERVANCE_SHIFTED.has(def.key)) continue;
+    for (const actual of def.dates(year)) {
+      const day = actual.getDay();
+      let date = actual;
+      let shifted = false;
+      if (day === 6 || day === 0) {
+        const dir = day === 6 ? -1 : 1;
+        date = new Date(actual);
+        do {
+          date.setDate(date.getDate() + dir);
+        } while (date.getDay() === 0 || date.getDay() === 6 || taken.has(date.toDateString()));
+        shifted = true;
+      }
+      taken.add(date.toDateString());
+      out.push({ date, name: shifted ? `${def.label} (observed)` : def.label, key: def.key, shifted });
+    }
   }
   return out;
+}
+
+/** All enabled holidays for a year, observance applied (disabled keys excluded). */
+export function holidaysForYear(year: number, disabled: Set<string> = new Set()): Holiday[] {
+  return resolveYear(year).filter((h) => !disabled.has(h.key));
 }
 
 /** Hours of holiday pay a PSO-observed holiday grants toward the pay period. */
 export const HOLIDAY_PAY_HOURS = 8.5;
 
-/** Observed-holiday dates within [start, end) (inclusive of start day). */
+/** Observed-holiday dates within [start, end) (inclusive of start day),
+ *  OBSERVANCE-SHIFTED — a Sunday July 4 credits its pay on Monday July 5, in
+ *  Monday's pay period, matching when people actually get the day off. The
+ *  year loop starts one year early because a shifted New Year's Eve can land
+ *  on Jan 2 of the following year (and one year late: next year's New Year's
+ *  Day can observe on Dec 30 of this one). */
 export function observedHolidayDatesInRange(start: Date, end: Date, observed: Set<string>): Date[] {
   const out: Date[] = [];
   if (observed.size === 0) return out;
-  for (let y = start.getFullYear(); y <= end.getFullYear(); y++) {
-    for (const def of HOLIDAY_DEFS) {
-      if (!observed.has(def.key)) continue;
-      for (const date of def.dates(y)) {
-        if (date >= start && date < end) out.push(date);
-      }
+  for (let y = start.getFullYear() - 1; y <= end.getFullYear() + 1; y++) {
+    for (const h of resolveYear(y)) {
+      if (!observed.has(h.key)) continue;
+      if (h.date >= start && h.date < end) out.push(h.date);
     }
   }
   return out;
