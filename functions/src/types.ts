@@ -149,6 +149,9 @@ export interface RoleSlot {
 
 export interface SessionDoc {
   orgId?: string;
+  /** Undefined/'session' = instructional block; 'lunch' = non-instructional
+   *  placeholder (hours 0, no roleSlots, never staffed) — see web types. */
+  kind?: 'session' | 'lunch';
   /** Last editor's uid — the actor is skipped for their own change's alerts. */
   updatedBy?: string;
   academyId: string;

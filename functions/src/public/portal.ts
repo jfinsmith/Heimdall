@@ -48,7 +48,12 @@ export const getPublicClassPortal = onCall<PortalRequest>(async (request) => {
   const privRef = db.doc(`academies/${academyId}/private/portal`);
   const privSnap = await privRef.get();
   type PortalCfg = NonNullable<AcademyDoc['portal']> & { acadFails?: number; acadFailsAt?: Timestamp };
-  const portal: PortalCfg | null = privSnap.exists ? (privSnap.data() as PortalCfg) : (a.portal as PortalCfg | undefined) ?? null;
+  const priv = privSnap.exists ? (privSnap.data() as Partial<PortalCfg>) : null;
+  // The private doc is authoritative only once it actually holds the link
+  // config. A failed academic attempt on a LEGACY link writes the fail counters
+  // there first (below), and that counters-only doc must not shadow the legacy
+  // academy.portal config — it turned one wrong password into a dead link.
+  const portal: PortalCfg | null = priv?.token ? (priv as PortalCfg) : (a.portal as PortalCfg | undefined) ?? null;
   if (!portal?.enabled || portal.token !== token || a.isTemplate) {
     throw new HttpsError('permission-denied', 'This class link is not available.');
   }
@@ -73,9 +78,10 @@ export const getPublicClassPortal = onCall<PortalRequest>(async (request) => {
       throw new HttpsError('failed-precondition', 'Academic information is not enabled for this class.');
     }
     // Online brute-force guard: 30 bad passwords per rolling hour, per class.
+    // Counters always live on the private doc (even for legacy links).
     const HOUR = 3600_000;
-    const fails = portal.acadFails ?? 0;
-    const failsAtMs = portal.acadFailsAt?.toMillis?.() ?? 0;
+    const fails = priv?.acadFails ?? 0;
+    const failsAtMs = priv?.acadFailsAt?.toMillis?.() ?? 0;
     const inWindow = Date.now() - failsAtMs < HOUR;
     if (inWindow && fails >= 30) {
       throw new HttpsError('resource-exhausted', 'Too many incorrect attempts — try again later.');

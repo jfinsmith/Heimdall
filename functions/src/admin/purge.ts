@@ -33,16 +33,18 @@ export const accountPurgeDaily = onSchedule(
     for (const doc of snap.docs) {
       const u = doc.data() as {
         orgId?: string; platformOwner?: boolean; email?: string; displayName?: string;
-        createdAt?: Timestamp; purgeWarnedAt?: Timestamp;
+        createdAt?: Timestamp; deniedAt?: Timestamp; purgeWarnedAt?: Timestamp;
       };
       if (u.orgId || u.platformOwner === true) continue;
       const createdMs = u.createdAt?.toMillis?.();
       if (!createdMs) continue;
-      const age = now - createdMs;
+      // The clock restarts when an org denies the account (denyUser stamps
+      // deniedAt + clears purgeWarnedAt) — it became org-less THEN, not at signup.
+      const age = now - Math.max(createdMs, u.deniedAt?.toMillis?.() ?? 0);
 
       if (age >= PURGE_AFTER_MS) {
         await getAuth().deleteUser(doc.id).catch(() => {}); // Auth record may already be gone
-        await doc.ref.delete();
+        await db.recursiveDelete(doc.ref); // + users/{uid}/private/* (verification challenge)
         purged++;
         continue;
       }

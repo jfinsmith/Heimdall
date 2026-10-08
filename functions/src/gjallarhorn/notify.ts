@@ -1,10 +1,10 @@
 /**
  * Gjallarhorn notify() — the single abstraction every alert flows through.
  *
- * Writes an in-app `notifications` doc and (if the recipient's
- * notificationPrefs.email allows) a `mail` doc for the Trigger Email
- * extension. Future channels (SMS via Twilio, push) plug in here without
- * touching any trigger code — that's the extension point promised in §14.
+ * Writes an in-app `notifications` doc and (if the recipient's prefs and the
+ * org's email toggles allow) a `mailQueue` doc that sendQueuedEmail (mailer.ts)
+ * delivers through Resend. Future channels (SMS via Twilio, push) plug in here
+ * without touching any trigger code — that's the extension point promised in §14.
  */
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { renderEmail, detailRows, escapeHtml, EmailContent, MAIL_FROM, MAIL_QUEUE } from './templates';
@@ -16,7 +16,10 @@ export interface NotifyOptions {
   uid?: string;             // recipient uid (resolves email + prefs from users/{uid})
   email?: string;           // direct email (for escalationRecipients given as emails)
   /** Tenant whose settings (email toggles + org name) govern this email. For uid
-   *  recipients it's resolved from the user doc; pass it for raw-email recipients. */
+   *  recipients it's resolved from the user doc; pass it for raw-email recipients.
+   *  When BOTH are known and differ, the uid recipient is skipped entirely — an
+   *  account the owner moved to another org can linger in academy.coordinatorIds
+   *  / escalationRecipients and must not keep receiving the old org's alerts. */
   orgId?: string;
   type: string;
   title: string;
@@ -78,6 +81,7 @@ export async function notify(opts: NotifyOptions): Promise<void> {
     // (no bell doc, no email) — checked before anything is written.
     const userSnap = await db().doc(`users/${opts.uid}`).get();
     const user = userSnap.exists ? (userSnap.data() as UserDoc) : null;
+    if (opts.orgId && user?.orgId && user.orgId !== opts.orgId) return; // cross-tenant: stale recipient list
     if (
       !opts.force &&
       opts.curriculumKey &&
@@ -169,9 +173,13 @@ export async function notifyCoordinators(
 ): Promise<void> {
   const academy = await db().doc(`academies/${academyId}`).get();
   const coordinatorIds: string[] = academy.exists ? (academy.data()!.coordinatorIds ?? []) : [];
+  // The academy's tenant scopes every recipient (see NotifyOptions.orgId).
+  const orgId: string | undefined = payload.orgId ?? (academy.exists ? academy.data()!.orgId : undefined);
   const skip = new Set(excludeUids.filter(Boolean));
   const targets = [...new Set([...coordinatorIds, ...extraUids])].filter((uid) => !skip.has(uid));
-  await Promise.all(targets.map((uid) => notify({ ...payload, uid, dedupeKey: keyFor(payload.dedupeKey, uid) })));
+  await Promise.all(
+    targets.map((uid) => notify({ ...payload, ...(orgId ? { orgId } : {}), uid, dedupeKey: keyFor(payload.dedupeKey, uid) }))
+  );
 }
 
 /** Per-recipient dedupe id from a fan-out base key (undefined base = no dedupe). */
@@ -208,7 +216,7 @@ export async function escalateToCommand(
     recipients.map((r) =>
       r.includes('@')
         ? notify({ ...payload, email: r, orgId, force: true, dedupeKey: keyFor(payload.dedupeKey, r) })
-        : notify({ ...payload, uid: r, force: true, dedupeKey: keyFor(payload.dedupeKey, r) })
+        : notify({ ...payload, uid: r, ...(orgId ? { orgId } : {}), force: true, dedupeKey: keyFor(payload.dedupeKey, r) })
     )
   );
 }
@@ -241,7 +249,7 @@ export function sessionIcs(sessionId: string, session: SessionDoc): string {
     `DTSTART:${icsDate(session.start)}`,
     `DTEND:${icsDate(session.end)}`,
     `SUMMARY:${(session.title || session.courseName).replace(/[,;]/g, ' ')}`,
-    `LOCATION:${`${session.location} ${session.room}`.replace(/[,;]/g, ' ')}`,
+    `LOCATION:${`${session.location ?? ''} ${session.room ?? ''}`.trim().replace(/[,;]/g, ' ')}`,
     'END:VEVENT',
     'END:VCALENDAR',
   ].join('\r\n');

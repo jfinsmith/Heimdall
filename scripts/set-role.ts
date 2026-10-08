@@ -25,7 +25,11 @@ async function main() {
   const user = target.includes('@') ? await auth.getUserByEmail(target) : await auth.getUser(target);
 
   // Preserve other claims (orgId, platformOwner) — claims are replaced wholesale.
-  await auth.setCustomUserClaims(user.uid, { ...(user.customClaims ?? {}), role });
+  // This script ACTIVATES the account, so drop any suspended/inactive status
+  // claim too — rules' activeStatus() would otherwise keep blocking the new role.
+  const claims: Record<string, unknown> = { ...(user.customClaims ?? {}), role };
+  delete claims.status;
+  await auth.setCustomUserClaims(user.uid, claims);
   await getFirestore().doc(`users/${user.uid}`).set(
     { role, status: 'active', updatedAt: FieldValue.serverTimestamp() },
     { merge: true }

@@ -32,10 +32,22 @@ async function main() {
   const org = await db.doc(`orgs/${orgId}`).get();
   if (!org.exists) throw new Error(`orgs/${orgId} does not exist — create the org first.`);
 
-  const existing = user.customClaims ?? {};
-  await auth.setCustomUserClaims(uid, { ...existing, orgId, ...(role ? { role } : {}) });
+  // ORG-LESS accounts only: this is the owner-queue fallback, not a transfer.
+  // Moving a member out of a live org would carry their role claim across tenants.
+  const current = (await db.doc(`users/${uid}`).get()).data()?.orgId as string | undefined;
+  if (current && current !== orgId) {
+    throw new Error(`${user.email ?? uid} already belongs to org '${current}' — deny/remove them there first.`);
+  }
+
+  // Strip any stale role claim/field unless a role is given explicitly (mirrors
+  // the assignUserToOrg callable): rules trust the token role, so a role carried
+  // over from a prior org would grant unapproved access in this one.
+  const claims: Record<string, unknown> = { ...(user.customClaims ?? {}), orgId };
+  delete claims.role;
+  if (role) claims.role = role;
+  await auth.setCustomUserClaims(uid, claims);
   await db.doc(`users/${uid}`).set(
-    { orgId, ...(role ? { role } : {}), updatedAt: FieldValue.serverTimestamp() },
+    { orgId, role: role ?? FieldValue.delete(), deniedFromOrgId: FieldValue.delete(), updatedAt: FieldValue.serverTimestamp() },
     { merge: true }
   );
 

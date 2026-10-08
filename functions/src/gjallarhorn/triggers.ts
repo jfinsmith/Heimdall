@@ -38,6 +38,19 @@ async function getSession(sessionId: string): Promise<SessionDoc | null> {
 }
 
 /**
+ * Stamp a reservation offer as delivered. UPDATE, not merge-set: if the builder
+ * un-reserved the person between the event and this write (deleteDoc), a
+ * merge-set would resurrect an org-less `{offerNotified:true}` stub signup.
+ */
+async function markOfferNotified(sessionId: string, uid: string): Promise<void> {
+  try {
+    await db().doc(`sessions/${sessionId}/signups/${uid}`).update({ offerNotified: true });
+  } catch (e) {
+    if ((e as { code?: number }).code !== 5) throw e; // NOT_FOUND — signup already removed
+  }
+}
+
+/**
  * Promote the oldest waitlisted candidate into a freed slot. Runs on the Admin
  * SDK, which bypasses the client rules that (deliberately) forbid a user from
  * writing another user's signup/assignment — so promotion works no matter who
@@ -120,14 +133,55 @@ async function promoteFromWaitlist(sessionId: string, slotId: string): Promise<b
 export const onSignupWritten = onDocumentWritten('sessions/{sessionId}/signups/{uid}', async (event) => {
   const before = event.data?.before.exists ? (event.data.before.data() as SignupDoc) : null;
   const after = event.data?.after.exists ? (event.data.after.data() as SignupDoc) : null;
-  if (!after) return;
   const { sessionId, uid } = event.params;
+  if (!after) {
+    // DELETE = the builder un-reserved / removed this person. Tell them only
+    // if they'd actually been told they were on it: a delivered reservation
+    // offer or a real (non-quiet) confirmed assignment. Quiet placements and
+    // never-sent offers stay silent; a session deleted outright (cascade) has
+    // no doc to describe and is skipped — cancellation already covers
+    // announced sessions.
+    const told =
+      !!before &&
+      before.status === 'confirmed' &&
+      before.quiet !== true &&
+      (before.reservationState !== 'pending' || before.offerNotified === true);
+    if (!told) return;
+    const gone = await getSession(sessionId);
+    if (!gone || gone.status === 'cancelled') return;
+    const goneSettings = await getSettings(gone.orgId);
+    const when = gone.start.toDate().toLocaleDateString('en-US', { timeZone: 'America/New_York', dateStyle: 'medium' });
+    const roleLabel = before!.role.replace('_', ' ');
+    await notify({
+      uid,
+      dedupeKey: `${event.id}_removed`,
+      type: 'assignment_removed',
+      title: `Removed: ${gone.title || gone.courseName}`,
+      body: `A coordinator removed you from the ${roleLabel} slot on ${when}. You're released from this assignment.`,
+      link: '/my-schedule',
+      emailContent: renderEmail({
+        subject: `[HEIMDALL] Removed — ${gone.title || gone.courseName} (${when})`,
+        heading: 'You were removed from a session',
+        bodyHtml: `<p>${escapeHtml(before!.displayName)}, a coordinator removed you from the <strong>${escapeHtml(roleLabel)}</strong> slot on <strong>${escapeHtml(when)}</strong>. You're released from this assignment — no action needed.</p>${sessionDetails(gone).html}`,
+        bodyText: `${before!.displayName}, a coordinator removed you from the ${roleLabel} slot on ${when}. You're released from this assignment — no action needed.\n\n${sessionDetails(gone).text}`,
+        ctaLabel: 'View My Schedule',
+        ctaUrl: 'https://heimdallscheduling.com/my-schedule',
+        orgName: goneSettings?.orgName,
+        logoUrl: goneSettings?.logoUrl,
+      }),
+    });
+    return;
+  }
   const session = await getSession(sessionId);
   if (!session) return;
   const settings = await getSettings(session.orgId);
 
   const becameConfirmed = after.status === 'confirmed' && before?.status !== 'confirmed';
-  const becameWithdrawn = after.status === 'withdrawn' && before?.status !== 'withdrawn';
+  // Only a CONFIRMED holder leaving vacates a slot. A waitlister leaving the
+  // waitlist (the detail modal offers them the same Withdraw button) frees
+  // nothing — alerting "slot re-opened" / escalating a "lead withdrawal" for
+  // it would be false alarms.
+  const becameWithdrawn = after.status === 'withdrawn' && before?.status === 'confirmed';
 
   // NOTHING about a sign-up is announced before the course is live: a session
   // still 'draft' (unpublished academy) or 'scheduled' (published, sign-ups not
@@ -165,7 +219,7 @@ export const onSignupWritten = onDocumentWritten('sessions/{sessionId}/signups/{
     });
     // Mark the offer as delivered so the course-open batch and the
     // schedule-change filter know this person has actually been told.
-    await db().doc(`sessions/${sessionId}/signups/${uid}`).set({ offerNotified: true }, { merge: true });
+    await markOfferNotified(sessionId, uid);
   } else if (becameConfirmed && after.quiet !== true) {
     if (!sessionLive) return; // defensive: confirmations only make sense on a live course
     // 1) Confirmation to the instructor, with session details + .ics. QUIET
@@ -202,7 +256,10 @@ export const onSignupWritten = onDocumentWritten('sessions/{sessionId}/signups/{
     if (!promoted) {
       // 2) Withdrawal / slot re-opened → coordinators
       // The withdrawn person is excluded — a coordinator who withdrew
-      // themselves doesn't need to hear about their own withdrawal.
+      // themselves doesn't need to hear about their own withdrawal. A declined
+      // reservation already tells the reserving coordinator directly
+      // (withdrawSignup → reservation_declined); don't send them this too.
+      const declinedOfferFrom = after.reservationState === 'pending' ? after.reservedBy : undefined;
       await notifyCoordinators(session.academyId, {
         dedupeKey: `${event.id}_reopen`,
         type: 'slot_reopened',
@@ -211,16 +268,17 @@ export const onSignupWritten = onDocumentWritten('sessions/{sessionId}/signups/{
           .toDate()
           .toLocaleDateString('en-US', { timeZone: 'America/New_York' })}.`,
         link: `/cadre/staffing`,
-      }, [], [uid]);
+      }, [], [uid, ...(declinedOfferFrom ? [declinedOfferFrom] : [])]);
 
       // 3) Lead withdrawal close to the session date → escalate up the chain
       const daysOut = (session.start.toMillis() - Date.now()) / 864e5;
       const escWindow = settings?.escalationWindowDays ?? LEAD_ESCALATION_DAYS;
       if (after.role === 'lead' && daysOut <= escWindow && daysOut > 0) {
+        const nDays = Math.ceil(daysOut);
         await escalateToCommand({
           dedupeKey: `${event.id}_leadesc`,
           type: 'lead_withdrawal_escalation',
-          title: `ESCALATION — lead withdrew ${Math.ceil(daysOut)} days out`,
+          title: `ESCALATION — lead withdrew ${nDays} day${nDays === 1 ? '' : 's'} out`,
           body: `${after.displayName} withdrew as LEAD for "${session.title || session.courseName}" on ${session.start
             .toDate()
             .toLocaleString('en-US', { timeZone: 'America/New_York' })}. Verify the lead slot is still covered.`,
@@ -289,20 +347,24 @@ export const onSessionUpdated = onDocumentUpdated('sessions/{sessionId}', async 
       const neverTold = su.reservationState === 'pending' && su.offerNotified !== true;
       const skipNotify = unannounced || isEditor || neverTold;
       // Keep the assignment mirror in sync for reminders/My Schedule. Stamp
-      // uid/orgId on the cancel path too — a merge-set on a MISSING mirror
-      // would otherwise create an org-less {status} stub (invisible garbage
-      // per the org-stamping rule).
+      // uid/orgId on BOTH paths — a merge-set on a MISSING mirror would
+      // otherwise create an org-less stub (invisible garbage per the
+      // org-stamping rule). Optional display fields are guarded: getFirestore()
+      // runs without ignoreUndefinedProperties, so one legacy session missing
+      // `room` would reject every mirror write and abort the whole fan-out.
+      const stamp = { uid: su.uid, sessionId, ...(after.orgId ? { orgId: after.orgId } : {}) };
       await db()
         .doc(`assignments/${sessionId}_${su.uid}`)
         .set(
           cancelled
-            ? { status: 'withdrawn', uid: su.uid, ...(after.orgId ? { orgId: after.orgId } : {}) }
+            ? { ...stamp, status: 'withdrawn' }
             : {
+                ...stamp,
                 start: after.start,
                 end: after.end,
-                room: after.room,
-                location: after.location,
-                courseName: after.courseName,
+                room: after.room ?? '',
+                location: after.location ?? '',
+                courseName: after.courseName ?? '',
                 // Only re-arm the reminder when the TIME moved — a room-only
                 // edit shouldn't re-send reminders that already went out.
                 ...(timeChanged ? { reminderSent: false } : {}),
@@ -376,8 +438,11 @@ export const onUserCreated = onDocumentCreated('users/{uid}', async (event) => {
   if (!orgId && data.email) {
     try {
       const userRecord = await getAuth().getUser(uid).catch(() => null);
-      if (userRecord?.emailVerified) {
-        const matched = await findOrgIdByEmailDomain(data.email);
+      // Match on the Auth record's VERIFIED address, never the doc field (the
+      // rules now pin them equal, but a forged doc email must never route an
+      // account into a tenant's queue).
+      if (userRecord?.emailVerified && userRecord.email) {
+        const matched = await findOrgIdByEmailDomain(userRecord.email);
         if (matched) {
           await getAuth().setCustomUserClaims(uid, { ...(userRecord.customClaims ?? {}), orgId: matched });
           await db().doc(`users/${uid}`).set({ orgId: matched, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
@@ -431,14 +496,14 @@ export const onUserUpdated = onDocumentUpdated('users/{uid}', async (event) => {
       dedupeKey: `${event.id}_approved`,
       type: 'account_approved',
       title: 'Your HEIMDALL account is active',
-      body: 'A coordinator approved your account. You can now sign up for sessions you qualify for.',
+      body: 'An administrator approved your account. You can now sign up for sessions you qualify for.',
       link: '/open-sessions',
     });
   }
 
   // 6b) Qualification newly verified
-  const beforeVerified = new Set(before.qualifications.filter((q) => q.verified).map((q) => q.key));
-  const newlyVerified = after.qualifications.filter((q) => q.verified && !beforeVerified.has(q.key));
+  const beforeVerified = new Set((before.qualifications ?? []).filter((q) => q.verified).map((q) => q.key));
+  const newlyVerified = (after.qualifications ?? []).filter((q) => q.verified && !beforeVerified.has(q.key));
   for (const q of newlyVerified) {
     await notify({
       uid,
@@ -493,6 +558,9 @@ export const onCoursePublished = onDocumentCreated('coursePublishEvents/{id}', a
   // would make the 'all' query unscoped, so it never sends either.
   const eventOrgId = (data as { orgId?: string }).orgId;
   if (!academy.exists || !academyOrgId || (eventOrgId && eventOrgId !== academyOrgId)) return;
+  // Templates never publish or open sign-ups (UI-enforced) — server backstop so
+  // an event aimed at one can't blast the roster about placeholder sessions.
+  if (academy.data()!.isTemplate === true) return;
   // Base curriculum key (org-namespaced ids are '{orgId}__{key}') — recipients who
   // muted this discipline in their profile are skipped by notify().
   const disciplineId = academy.exists ? ((academy.data()!.discipline as string | undefined) ?? '') : '';
@@ -511,7 +579,7 @@ export const onCoursePublished = onDocumentCreated('coursePublishEvents/{id}', a
     const picked = target.uids ?? [];
     const checks = await Promise.all(picked.map((u) => db().doc(`users/${u}`).get()));
     recipientIds = checks
-      .filter((d) => d.exists && (!academyOrgId || d.data()!.orgId === academyOrgId))
+      .filter((d) => d.exists && d.data()!.status === 'active' && (!academyOrgId || d.data()!.orgId === academyOrgId))
       .map((d) => d.id);
   } else {
     // Scope to the academy's own tenant so a pooled DB doesn't notify other orgs' instructors.
@@ -521,6 +589,7 @@ export const onCoursePublished = onDocumentCreated('coursePublishEvents/{id}', a
     recipientIds = users.docs
       .filter((d) => {
         const u = d.data() as UserDoc;
+        if (u.role === 'guest') return false; // read-only rank — submitSignup rejects guests
         if (target.mode === 'qualification') {
           return (u.verifiedQualKeys ?? []).includes(target.qualificationKey);
         }
@@ -586,10 +655,12 @@ export const onCoursePublished = onDocumentCreated('coursePublishEvents/{id}', a
           .map((i) => `<li>${escapeHtml(fmtDT(i.s.start))} — <strong>${escapeHtml(i.role.replace('_', ' '))}</strong></li>`)
           .join('');
         const rowsText = items.map((i) => `- ${fmtDT(i.s.start)} — ${i.role.replace('_', ' ')}`).join('\n');
+        // No curriculumKey here: this is a PERSONAL offer, not a broadcast. A
+        // discipline mute would make notify() skip it silently while the
+        // offerNotified stamp below told everything downstream it was sent.
         await notify({
           uid,
           dedupeKey: `${event.id}_resv_${uid}`,
-          ...(curriculumKey ? { curriculumKey } : {}),
           type: 'reservation_offer',
           title: `Reserved for you: ${n} session${plural} of ${courseLabel}`,
           body: `A coordinator reserved you for ${n} ${courseLabel} session${plural} — confirm whether you're available on My Schedule.`,
@@ -605,9 +676,7 @@ export const onCoursePublished = onDocumentCreated('coursePublishEvents/{id}', a
             logoUrl: settings?.logoUrl,
           }),
         });
-        await Promise.all(
-          items.map((i) => db().doc(`sessions/${i.sessionId}/signups/${uid}`).set({ offerNotified: true }, { merge: true }))
-        );
+        await Promise.all(items.map((i) => markOfferNotified(i.sessionId, uid)));
       })
     );
   }
@@ -620,10 +689,11 @@ export const onFeedbackCreated = onDocumentCreated('feedbackReports/{id}', async
   const kind = data.kind === 'feature' ? 'Feature request' : 'Bug report';
   const who = data.submittedByName || 'A member';
   const sev = data.severity ? ` · ${data.severity}` : '';
-  // Bug/feature triage is platform-owner-only now → notify the owner(s), not org admins.
+  // Bug/feature triage is platform-owner-only now → notify the owner(s), not org
+  // admins. An owner filing their own report isn't told about it.
   const owners = await db().collection('users').where('platformOwner', '==', true).get();
   await Promise.all(
-    owners.docs.map((o) =>
+    owners.docs.filter((o) => o.id !== data.submittedByUid).map((o) =>
       notify({
         uid: o.id,
         dedupeKey: `${event.id}_${o.id}`,
@@ -654,6 +724,8 @@ export const onBulkMessageCreated = onDocumentCreated('bulkMessages/{id}', async
   // Audience: instructors with upcoming confirmed assignments (optionally per
   // academy). Scoped to the sender's org so an "all academies" blast never
   // reaches another tenant's instructors (dormant until orgId is backfilled).
+  // An unanswered reservation isn't a confirmed assignment (same rule as the
+  // reminder sweep), and the sender never receives their own message.
   let q = db().collection('assignments').where('status', '==', 'confirmed') as FirebaseFirestore.Query;
   if (data.orgId) q = q.where('orgId', '==', data.orgId);
   if (data.academyId) q = q.where('academyId', '==', data.academyId);
@@ -661,9 +733,10 @@ export const onBulkMessageCreated = onDocumentCreated('bulkMessages/{id}', async
   const uids = [
     ...new Set(
       snap.docs
-        .map((d) => d.data() as AssignmentDoc)
-        .filter((a) => a.end.toMillis() > Date.now())
+        .map((d) => d.data() as AssignmentDoc & { reservationState?: string })
+        .filter((a) => a.end.toMillis() > Date.now() && a.reservationState !== 'pending')
         .map((a) => a.uid)
+        .filter((u) => u !== data.requestedBy)
     ),
   ];
 

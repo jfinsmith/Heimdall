@@ -68,9 +68,9 @@ export const gjallarhornDailySweep = onSchedule(
       // A DRAFT session's class was never published — a quiet builder
       // placement (e.g. the coordinator on their own unapproved schedule)
       // shouldn't produce "you teach tomorrow" for an unannounced class.
-      const sessSnap = await db().doc(`sessions/${a.sessionId}`).get();
-      const sessStatus = sessSnap.exists ? (sessSnap.data()!.status as string) : null;
-      if (!sessStatus || sessStatus === 'draft' || sessStatus === 'cancelled') continue;
+      const sessionSnap = await db().doc(`sessions/${a.sessionId}`).get();
+      const session = sessionSnap.exists ? (sessionSnap.data() as SessionDoc) : null;
+      if (!session || session.status === 'draft' || session.status === 'cancelled') continue;
       const orgSettings = a.orgId ? settingsByOrg.get(a.orgId) ?? null : null;
       const defaultLead = orgSettings?.reminderDefaultLeadHours ?? 48;
       const userSnap = await db().doc(`users/${a.uid}`).get();
@@ -78,9 +78,7 @@ export const gjallarhornDailySweep = onSchedule(
       const leadHours = user?.notificationPrefs?.reminderLeadHours ?? defaultLead;
       if (a.start.toMillis() - now > leadHours * 36e5) continue; // not yet inside the user's window
 
-      const sessionSnap = await db().doc(`sessions/${a.sessionId}`).get();
-      const session = sessionSnap.exists ? (sessionSnap.data() as SessionDoc) : null;
-      const details = session ? sessionDetails(session) : { html: '', text: '' };
+      const details = sessionDetails(session);
 
       await notify({
         uid: a.uid,
@@ -168,7 +166,7 @@ export const gjallarhornDailySweep = onSchedule(
         [...recipients.entries()].map(([key, r]) =>
           r.email
             ? notify({ ...payload, email: r.email, orgId, force: true, dedupeKey: `understaff_${dayKey}_${orgId}_${r.email}` })
-            : notify({ ...payload, uid: key, force: r.force, dedupeKey: `understaff_${dayKey}_${orgId}_${key}` })
+            : notify({ ...payload, uid: key, orgId, force: r.force, dedupeKey: `understaff_${dayKey}_${orgId}_${key}` })
         )
       );
     }
@@ -213,7 +211,12 @@ export const gjallarhornWeeklyDigest = onSchedule(
         .where('start', '<=', horizon)
         .get();
 
-      const all = sessions.docs.map((d) => d.data() as SessionDoc).filter((s) => s.status !== 'cancelled');
+      // Calendar-visible instructional blocks only: drafts (unpublished classes
+      // and templates' placeholder-dated sessions) and lunch blocks would
+      // otherwise pad "Sessions scheduled" and list slots nobody can act on.
+      const all = sessions.docs
+        .map((d) => d.data() as SessionDoc)
+        .filter((s) => s.status !== 'cancelled' && s.status !== 'draft' && s.kind !== 'lunch');
       if (all.length === 0) continue;
       const open = all.filter((s) => unfilled(s).length > 0);
       const staffed = all.filter((s) => unfilled(s).length === 0);

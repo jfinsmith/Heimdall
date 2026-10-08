@@ -11,7 +11,6 @@ const BRAND_AMBER = '#d99320';
 /**
  * Brand mark for email headers — hosted PNG (Gmail and many clients strip
  * inline SVG; a hosted image renders reliably and degrades to alt text).
- * TODO(setup): update the host when moving to a custom domain.
  */
 const MARK_IMG = `<img src="https://heimdallscheduling.com/brand/heimdall-mark.png" width="42" height="30" alt="" style="display:block;border:0;" />`;
 
@@ -30,9 +29,9 @@ export function escapeHtml(s: string): string {
  * `bodyText` is the plaintext alternative.
  */
 /**
- * Branded sender for every outbound email. The Trigger Email extension honors
- * a per-document `from`, overriding its install-time default — the domain is
- * verified in Resend (SPF/DKIM via Cloudflare), so this sends cleanly.
+ * Branded sender for every outbound email (mailer.ts falls back to it when a
+ * queue doc carries no `from`) — the domain is verified in Resend (SPF/DKIM via
+ * Cloudflare), so this sends cleanly.
  */
 export const MAIL_FROM = 'HEIMDALL Scheduling <no-reply@heimdallscheduling.com>';
 /** Outgoing-email queue consumed by sendQueuedEmail (mailer.ts). The legacy
@@ -91,7 +90,7 @@ export function renderEmail(opts: {
         </td></tr>
         <!-- Footer -->
         <tr><td style="background:#f4f6fb;padding:16px 28px;font-family:Arial,sans-serif;font-size:11px;color:#6f86b5;">
-          ${escapeHtml(orgName ?? 'Training Academy')} — automated staffing alert.<br/>
+          ${escapeHtml(orgName ?? 'Training Academy')} — automated notification.<br/>
           Sounded by Gjallarhorn · HEIMDALL
         </td></tr>
       </table>

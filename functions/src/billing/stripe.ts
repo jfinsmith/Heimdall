@@ -55,6 +55,11 @@ async function requireOrgAdmin(db: Firestore, uid: string | undefined): Promise<
   if (!role || !ADMIN_ROLES.includes(role) || !orgId) {
     throw new HttpsError('permission-denied', 'Only an organization admin may manage billing.');
   }
+  // The doc role survives suspension (only the claim is stripped) — same
+  // active-caller check as every other admin callable.
+  if (data?.status === 'suspended' || data?.status === 'inactive') {
+    throw new HttpsError('permission-denied', 'Your account is not active.');
+  }
   return { orgId };
 }
 

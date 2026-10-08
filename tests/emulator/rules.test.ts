@@ -94,6 +94,9 @@ beforeEach(async () => {
 // to simulate a token whose orgId claim hasn't propagated yet.
 const as = (uid: string, role: string, orgId: string | null = ORG) =>
   testEnv.authenticatedContext(uid, orgId ? { role, orgId } : { role }).firestore();
+// A brand-new sign-in: no role/org claims yet, only the identity's email (the
+// users create rule pins the profile email to it).
+const asNew = (uid: string, email = 'eve@x.y') => testEnv.authenticatedContext(uid, { email }).firestore();
 
 describe('users — self-edit limits', () => {
   it('instructor CANNOT escalate own role', async () => {
@@ -125,6 +128,12 @@ describe('users — staff verification (SEC-1)', () => {
   });
   it('coordinator CAN approve another account (status active)', async () => {
     await assertSucceeds(updateDoc(doc(as('carol', 'coordinator'), 'users/pat'), { status: 'active' }));
+  });
+  it('even a director CANNOT self-grant own verifiedQualKeys (admin branch)', async () => {
+    await assertFails(updateDoc(doc(as('dave', 'director'), 'users/dave'), { verifiedQualKeys: ['handgun'] }));
+  });
+  it('a director CAN still edit own profile fields', async () => {
+    await assertSucceeds(updateDoc(doc(as('dave', 'director'), 'users/dave'), { phone: '555-0100' }));
   });
   it('SEC-1: coordinator CANNOT self-grant own verifiedQualKeys', async () => {
     await assertFails(updateDoc(doc(as('carol', 'coordinator'), 'users/carol'), { verifiedQualKeys: ['handgun'] }));
@@ -177,6 +186,39 @@ describe('users — tenant/platform claims are server-only', () => {
         platformOwner: true,
       })
     );
+  });
+  it('self-registration CANNOT pre-seed homeOrgId / homeRole (owner-switch anchors)', async () => {
+    await assertFails(
+      setDoc(doc(asNew('eve'), 'users/eve'), { ...user({ role: 'instructor', status: 'pending', email: 'eve@x.y' }), homeOrgId: ORG, homeRole: 'director' })
+    );
+  });
+});
+
+// A self-registered profile is created by the user themselves — the ONLY
+// client write that can set `email` (immutable afterwards). It must be the
+// signed-in identity's address, or a verified Gmail login could pose as
+// someone@tenant.edu to the domain auto-join trigger and to approving admins.
+describe('users — self-registration create', () => {
+  const fresh = (over: Record<string, unknown> = {}) => user({ role: 'instructor', status: 'pending', email: 'eve@x.y', ...over });
+  it('CAN create own pending profile with the token email (positive control)', async () => {
+    await assertSucceeds(setDoc(doc(asNew('eve'), 'users/eve'), fresh()));
+  });
+  it('CANNOT create a profile whose email differs from the signed-in identity', async () => {
+    await assertFails(setDoc(doc(asNew('eve'), 'users/eve'), fresh({ email: 'director@tenant.edu' })));
+  });
+  it('CANNOT create a profile when the token carries no email', async () => {
+    await assertFails(setDoc(doc(as('eve', 'instructor'), 'users/eve'), fresh()));
+  });
+  it('an email-less token CAN create only an EMPTY-email profile (never a chosen one)', async () => {
+    await assertSucceeds(setDoc(doc(as('eve', 'instructor'), 'users/eve'), fresh({ email: '' })));
+  });
+  it('CANNOT pre-seed a verified notification email on create', async () => {
+    await assertFails(setDoc(doc(asNew('eve'), 'users/eve'), fresh({ notificationEmail: 'attacker@evil.test', notificationEmailVerified: true })));
+    await assertFails(setDoc(doc(asNew('eve'), 'users/eve'), fresh({ notificationEmailPending: 'attacker@evil.test' })));
+  });
+  it('CANNOT create as anything but a pending instructor', async () => {
+    await assertFails(setDoc(doc(asNew('eve'), 'users/eve'), fresh({ role: 'director' })));
+    await assertFails(setDoc(doc(asNew('eve'), 'users/eve'), fresh({ status: 'active' })));
   });
 });
 
@@ -421,6 +463,12 @@ describe('curricula + reportConfig — org isolation', () => {
     await assertSucceeds(setDoc(doc(as('dave', 'director'), 'curricula/' + ORG + '__co_brt'), { orgId: ORG, key: 'co_brt' }));
     await assertFails(setDoc(doc(as('dave', 'director'), 'curricula/' + BETA + '__x'), { orgId: BETA, key: 'x' }));
     await assertFails(updateDoc(doc(as('dave', 'director'), 'curricula/' + ORG + '__le_brt'), { orgId: BETA }));
+  });
+  it('a NOT-YET-CREATED curriculum doc may be subscribed to (useCurriculum org-copy listener); lists stay org-scoped', async () => {
+    await assertSucceeds(getDoc(doc(as('alice', 'instructor'), 'curricula/' + ORG + '__nonexistent')));
+    const mine = await assertSucceeds(getDocs(query(collection(as('carol', 'coordinator'), 'curricula'), where('orgId', '==', ORG))));
+    expect((mine as { docs: { id: string }[] }).docs.map((d) => d.id)).toEqual([ORG + '__le_brt']);
+    await assertFails(getDocs(collection(as('carol', 'coordinator'), 'curricula')));
   });
   it('reportConfig: read + write only the OWN-org doc', async () => {
     await assertSucceeds(getDoc(doc(as('dave', 'director'), 'reportConfig/' + ORG)));

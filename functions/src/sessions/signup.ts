@@ -41,6 +41,12 @@ export const submitSignup = onCall<{ sessionId: string; slotId: string; allowWai
     if (session.status === 'cancelled') throw new HttpsError('failed-precondition', 'This session has been cancelled.');
     if (session.status === 'draft') throw new HttpsError('failed-precondition', 'This session is not yet published.');
     if ((session.status as string) === 'scheduled') throw new HttpsError('failed-precondition', 'Sign-ups for this course have not been opened yet.');
+    // Sign-ups are never auto-closed when a day passes — the UI hides the button
+    // ("Session concluded"), so the server must refuse too; past-day staffing is
+    // a coordinator correction, not a self-sign-up.
+    if (session.status === 'completed' || session.end.toMillis() <= Date.now()) {
+      throw new HttpsError('failed-precondition', 'This session has already concluded.');
+    }
 
     const userSnap = await tx.get(db.doc(`users/${uid}`));
     if (!userSnap.exists) throw new HttpsError('not-found', 'User profile not found.');
@@ -112,7 +118,7 @@ export const withdrawSignup = onCall<{ sessionId: string }>(async (request) => {
   if (!sessionId) throw new HttpsError('invalid-argument', 'Missing session.');
 
   let auditOrgId: string | null = null;
-  let declined: { reservedBy: string; displayName: string; courseLabel: string; whenMs: number } | null = null;
+  let declined: { reservedBy: string; displayName: string; courseLabel: string; whenMs: number; offerMs: number } | null = null;
   await db.runTransaction(async (tx) => {
     const sessionRef = db.doc(`sessions/${sessionId}`);
     const sessionSnap = await tx.get(sessionRef);
@@ -127,12 +133,16 @@ export const withdrawSignup = onCall<{ sessionId: string }>(async (request) => {
     // Withdrawing a PENDING reservation = declining the coordinator's offer —
     // tell the person who made it (the generic slot-reopened alert is skipped
     // whenever a waitlisted member auto-promotes, so it can't be relied on).
-    if (signup.reservationState === 'pending' && signup.reservedBy) {
+    // Only a CONFIRMED (never-yet-withdrawn) offer counts: withdrawSignup is
+    // idempotent, so a repeat call must not re-announce the same decline.
+    // A self-reserve has nobody else to tell.
+    if (signup.status === 'confirmed' && signup.reservationState === 'pending' && signup.reservedBy && signup.reservedBy !== uid) {
       declined = {
         reservedBy: signup.reservedBy,
         displayName: signup.displayName,
         courseLabel: session.title || session.courseName,
         whenMs: session.start.toMillis(),
+        offerMs: signup.signedUpAt?.toMillis?.() ?? 0,
       };
     }
     const assignmentRef = db.doc(`assignments/${sessionId}_${uid}`);
@@ -153,7 +163,7 @@ export const withdrawSignup = onCall<{ sessionId: string }>(async (request) => {
     summary: 'Withdrew from session', createdAt: FieldValue.serverTimestamp(),
   });
   if (declined) {
-    const d = declined as { reservedBy: string; displayName: string; courseLabel: string; whenMs: number };
+    const d = declined as { reservedBy: string; displayName: string; courseLabel: string; whenMs: number; offerMs: number };
     const when = new Date(d.whenMs).toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric' });
     await notify({
       uid: d.reservedBy,
@@ -161,7 +171,9 @@ export const withdrawSignup = onCall<{ sessionId: string }>(async (request) => {
       title: `${d.displayName} is NOT available`,
       body: `${d.displayName} declined the reservation for ${d.courseLabel} on ${when} — the slot is open again.`,
       link: '/cadre/staffing',
-      dedupeKey: `resdecl_${sessionId}_${uid}`,
+      // Keyed on the OFFER (signedUpAt): a later re-reservation of the same
+      // person is a new offer whose decline must not be deduped away.
+      dedupeKey: `resdecl_${sessionId}_${uid}_${d.offerMs}`,
     });
   }
   return { ok: true };
@@ -232,6 +244,12 @@ export const confirmReservation = onCall<{ sessionId: string }>(async (request) 
   if (signup.reservationState !== 'pending') {
     throw new HttpsError('failed-precondition', 'This assignment has no pending reservation to confirm.');
   }
+  // A declined offer keeps reservationState:'pending' on its withdrawn signup —
+  // "confirming" it would flip a dead signup to accepted and falsely tell the
+  // coordinator the person is available.
+  if (signup.status !== 'confirmed') {
+    throw new HttpsError('failed-precondition', 'You already declined this reservation.');
+  }
 
   await signupRef.set({ reservationState: 'accepted' }, { merge: true });
   // Update-only on the mirror: a blind merge-set would CREATE an orphan
@@ -239,8 +257,9 @@ export const confirmReservation = onCall<{ sessionId: string }>(async (request) 
   const assignRef = db.doc(`assignments/${sessionId}_${uid}`);
   if ((await assignRef.get()).exists) await assignRef.set({ reservationState: 'accepted' }, { merge: true });
 
-  // Tell the coordinator who reserved them — closing the loop they started.
-  if (signup.reservedBy) {
+  // Tell the coordinator who reserved them — closing the loop they started
+  // (never the acceptor themselves, for a self-reserve).
+  if (signup.reservedBy && signup.reservedBy !== uid) {
     const sessionSnap = await db.doc(`sessions/${sessionId}`).get();
     const session = sessionSnap.exists ? (sessionSnap.data() as SessionDoc) : null;
     const when = session ? session.start.toDate().toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric' }) : '';
@@ -249,7 +268,10 @@ export const confirmReservation = onCall<{ sessionId: string }>(async (request) 
       type: 'reservation_confirmed',
       title: `${signup.displayName} confirmed availability`,
       body: `${signup.displayName} confirmed they are available for ${session?.title || session?.courseName || 'the session'}${when ? ` on ${when}` : ''}.`,
-      dedupeKey: `resconf_${sessionId}_${uid}`,
+      link: '/cadre/staffing',
+      // Keyed on the OFFER (signedUpAt) so accepting a later re-reservation
+      // isn't deduped against the first acceptance.
+      dedupeKey: `resconf_${sessionId}_${uid}_${signup.signedUpAt?.toMillis?.() ?? 0}`,
     });
   }
   return { ok: true };

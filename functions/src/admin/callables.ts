@@ -105,19 +105,25 @@ export const setUserRole = onCall<{ uid: string; role: Role }>(async (request) =
 
   // Preserve the user's tenant + platform claims — setCustomUserClaims REPLACES
   // all claims, so a role change must not drop orgId / platformOwner. When the
-  // target has NO org yet (e.g. a self-registered user being given a role),
-  // they inherit the assigning admin's org — this is the onboarding path that
-  // keeps them from being locked out by the org-isolation rules. An existing
-  // orgId is never reassigned across tenants.
+  // target has NO org yet, they inherit the caller's org — but only the platform
+  // owner may do that (org-less accounts are the owner queue; an org admin
+  // absorbing one by uid is a cross-tenant pull). An existing orgId is never
+  // reassigned across tenants.
   const targetSnap = await getFirestore().doc(`users/${uid}`).get();
+  if (!targetSnap.exists) throw new HttpsError('not-found', 'User not found.');
   const tdata = targetSnap.data() ?? {};
   const callerOrgId = callerDoc.data()?.orgId as string | undefined;
   // Cross-tenant guard: an admin may only change roles for users in their own org
-  // (the platform owner may act anywhere). An org-less target is still allowed —
-  // that's the onboarding inherit path below.
+  // (the platform owner may act anywhere).
   const callerIsPlatformOwner = callerDoc.data()?.platformOwner === true;
   if (!callerIsPlatformOwner && tdata.orgId && tdata.orgId !== callerOrgId) {
     throw new HttpsError('permission-denied', 'That user belongs to another organization.');
+  }
+  if (!callerIsPlatformOwner && !tdata.orgId) {
+    throw new HttpsError('permission-denied', 'That account is not in your organization.');
+  }
+  if (!callerIsPlatformOwner && tdata.platformOwner === true) {
+    throw new HttpsError('permission-denied', "The platform owner's role cannot be changed here.");
   }
   if (!callerIsPlatformOwner) {
     assertMayActOn(callerRole, (tdata.role as Role) ?? null, 'change the role of');
@@ -126,7 +132,13 @@ export const setUserRole = onCall<{ uid: string; role: Role }>(async (request) =
     }
   }
   const effectiveOrgId = (tdata.orgId as string | undefined) ?? callerOrgId;
-  const claims: Record<string, unknown> = { role };
+  // A suspended/deactivated target keeps its lockout: the doc role is recorded
+  // (reinstate/activate re-mint the claim from it) but NO role claim is minted
+  // and the status claim is kept — otherwise a role change silently restored
+  // rules authority to a locked-out account.
+  const targetStatus = tdata.status as string | undefined;
+  const targetLocked = targetStatus === 'suspended' || targetStatus === 'inactive';
+  const claims: Record<string, unknown> = targetLocked ? { status: targetStatus } : { role };
   if (effectiveOrgId) claims.orgId = effectiveOrgId;
   if (tdata.platformOwner === true) claims.platformOwner = true;
   await getAuth().setCustomUserClaims(uid, claims);
@@ -183,13 +195,18 @@ export const createUserAccount = onCall<{
     throw new HttpsError('permission-denied', 'Only sergeants and above may add users.');
   }
   assertActiveCaller(callerDoc.data());
-  // New users inherit the creating admin's tenant (undefined pre-backfill — no change then).
+  // New users inherit the creating admin's tenant. Never create an org-less
+  // member: the isolation rules filter org-less docs out of every list, so the
+  // account would be invisible to the admin who just created it.
   const callerOrgId = callerDoc.data()?.orgId as string | undefined;
+  if (!callerOrgId) {
+    throw new HttpsError('failed-precondition', 'Your account is not linked to an organization yet. Reload and try again, or contact the platform owner.');
+  }
 
-  const email = (request.data.email ?? '').trim().toLowerCase();
-  const displayName = (request.data.displayName ?? '').trim();
+  const email = String(request.data.email ?? '').trim().toLowerCase();
+  const displayName = String(request.data.displayName ?? '').trim();
   const { role } = request.data;
-  const password = (request.data.password ?? '').trim() || DEFAULT_TEMP_PASSWORD;
+  const password = String(request.data.password ?? '').trim() || DEFAULT_TEMP_PASSWORD;
   if (!email || !email.includes('@')) throw new HttpsError('invalid-argument', 'A valid email is required.');
   if (!displayName) throw new HttpsError('invalid-argument', 'A display name is required.');
   if (!VALID_ROLES.includes(role)) throw new HttpsError('invalid-argument', 'Pick a valid role.');
@@ -236,11 +253,11 @@ export const createUserAccount = onCall<{
     // /complete-profile gate on first sign-in.
     ...splitDisplayName(displayName),
     photoURL: '',
-    phone: (request.data.phone ?? '').trim(),
-    rank: (request.data.rank ?? '').trim(),
-    agency: (request.data.agency ?? '').trim(),
+    phone: String(request.data.phone ?? '').trim(),
+    rank: String(request.data.rank ?? '').trim(),
+    agency: String(request.data.agency ?? '').trim(),
     role,
-    ...(callerOrgId ? { orgId: callerOrgId } : {}),
+    orgId: callerOrgId,
     status: 'active',
     qualifications: [],
     verifiedQualKeys: [],
@@ -434,6 +451,10 @@ export const sendActivationEmail = onCall<{ uid: string; password: string }>(asy
   if (!callerIsOwnerAct && user.orgId && user.orgId !== callerDoc.data()?.orgId) {
     throw new HttpsError('permission-denied', 'That user belongs to another organization.');
   }
+  // Org-less accounts belong to the owner queue — not any org admin's to email.
+  if (!callerIsOwnerAct && !user.orgId) {
+    throw new HttpsError('permission-denied', 'That account is not in your organization.');
+  }
   const email = (user.email ?? '').trim();
   const displayName = (user.displayName ?? '').trim() || 'there';
   if (!email) throw new HttpsError('failed-precondition', 'That user has no email on file.');
@@ -522,6 +543,20 @@ export const setUserActive = onCall<{ uid: string; active: boolean }>(async (req
   if (!callerIsOwner && target.orgId && target.orgId !== callerOrgId) {
     throw new HttpsError('permission-denied', 'That user belongs to another organization.');
   }
+  if (!callerIsOwner && !target.orgId) {
+    throw new HttpsError('permission-denied', 'That account is not in your organization.');
+  }
+  if (!callerIsOwner && target.platformOwner === true) {
+    throw new HttpsError('permission-denied', 'The platform owner account cannot be deactivated here.');
+  }
+  // Rank ladder: deactivation strips the role claim + revokes tokens, so without
+  // it a sergeant could lock out a director (upward lockout).
+  if (!callerIsOwner) assertMayActOn(callerRole, (target.role as Role) ?? null, active ? 'activate' : 'deactivate');
+  // A SUSPENDED account is lifted via setUserSuspension (clears the reason and
+  // emails the member) — "activate" must not quietly erase a suspension.
+  if (active && target.status === 'suspended') {
+    throw new HttpsError('failed-precondition', 'That account is suspended — lift the suspension instead.');
+  }
 
   await db.doc(`users/${uid}`).set({ status: active ? 'active' : 'inactive', updatedAt: FieldValue.serverTimestamp() }, { merge: true });
   const claims = { ...((await getAuth().getUser(uid).catch(() => null))?.customClaims ?? {}) } as Record<string, unknown>;
@@ -568,8 +603,28 @@ export const setUserSuspension = onCall<{ uid: string; suspended: boolean; reaso
 
   const userSnap = await db.doc(`users/${uid}`).get();
   if (!userSnap.exists) throw new HttpsError('not-found', 'User not found.');
-  const user = userSnap.data() as { email?: string; displayName?: string; orgId?: string };
+  const user = userSnap.data() as { email?: string; displayName?: string; orgId?: string; role?: Role; status?: string; platformOwner?: boolean };
   const displayName = (user.displayName ?? '').trim() || 'there';
+  // Cross-tenant + rank guards (same as setUserActive): suspension strips the
+  // role claim and revokes tokens, so an unguarded call let ANY org's sergeant
+  // lock out any uid platform-wide — including directors and the owner.
+  const callerOrgIdSusp = callerDoc.data()?.orgId as string | undefined;
+  const callerIsOwnerSusp = callerDoc.data()?.platformOwner === true;
+  if (!callerIsOwnerSusp && user.orgId && user.orgId !== callerOrgIdSusp) {
+    throw new HttpsError('permission-denied', 'That user belongs to another organization.');
+  }
+  if (!callerIsOwnerSusp && !user.orgId) {
+    throw new HttpsError('permission-denied', 'That account is not in your organization.');
+  }
+  if (!callerIsOwnerSusp && user.platformOwner === true) {
+    throw new HttpsError('permission-denied', 'The platform owner account cannot be suspended here.');
+  }
+  if (!callerIsOwnerSusp) assertMayActOn(callerRole, user.role ?? null, suspended ? 'suspend' : 'reinstate');
+  // Lifting a suspension only applies to a suspended account — otherwise this
+  // was a back door that flipped a deactivated (or pending) account to active.
+  if (!suspended && user.status !== 'suspended') {
+    throw new HttpsError('failed-precondition', 'That account is not suspended.');
+  }
 
   await db.doc(`users/${uid}`).set(
     suspended
@@ -697,9 +752,17 @@ export const academyApproval = onCall<{
     let query: FirebaseFirestore.Query = db.collection('users').where('role', '==', role).where('status', '==', 'active');
     if (academy.orgId) query = query.where('orgId', '==', academy.orgId);
     const q = await query.get();
-    if (q.empty) throw new HttpsError('failed-precondition', `No active ${role} exists to route to — add one first.`);
-    if (q.size > 1) throw new HttpsError('failed-precondition', `There must be exactly one ${role}; found ${q.size}.`);
-    return { uid: q.docs[0].id, name: (q.docs[0].data().displayName as string) || role };
+    // A platform owner switched INTO this org (ownerSwitchOrg seats them as
+    // 'director' with homeOrgId elsewhere) is a visitor, not the org's captain —
+    // counting them made every lieutenant approval fail "found 2 directors"
+    // for as long as the owner was looking at the org.
+    const docs = q.docs.filter((d) => {
+      const home = d.data().homeOrgId as string | undefined;
+      return !(d.data().platformOwner === true && home && academy.orgId && home !== academy.orgId);
+    });
+    if (docs.length === 0) throw new HttpsError('failed-precondition', `No active ${role} exists to route to — add one first.`);
+    if (docs.length > 1) throw new HttpsError('failed-precondition', `There must be exactly one ${role}; found ${docs.length}.`);
+    return { uid: docs[0].id, name: (docs[0].data().displayName as string) || role };
   }
 
   async function commit(approval: AcademyDoc['approval'], notifyFn: () => Promise<void>) {
@@ -725,7 +788,17 @@ export const academyApproval = onCall<{
     const sergeantId = request.data.sergeantId;
     if (!sergeantId) throw new HttpsError('invalid-argument', 'Choose a sergeant to route this to.');
     const sgt = await db.doc(`users/${sergeantId}`).get();
-    if (!sgt.exists || sgt.data()!.role !== 'sergeant') throw new HttpsError('invalid-argument', 'Pick a valid sergeant.');
+    // Must be an ACTIVE sergeant of the academy's OWN org — the id is
+    // client-supplied, so without the org check a class could be routed to (and
+    // its label leaked to) another tenant's sergeant, who then can't act on it.
+    if (
+      !sgt.exists ||
+      sgt.data()!.role !== 'sergeant' ||
+      sgt.data()!.status !== 'active' ||
+      (academy.orgId && sgt.data()!.orgId !== academy.orgId)
+    ) {
+      throw new HttpsError('invalid-argument', 'Pick a valid sergeant.');
+    }
     return commit(
       { state: 'pending_sergeant', sergeantId, submittedBy: callerUid, history: [...prevHistory, step('submitted')] },
       () => notify({ uid: sergeantId, type: 'approval_request', title: `Approval needed: ${label}`, body: `${callerName} submitted "${label}" for your sergeant sign-off.`, link })
@@ -892,7 +965,7 @@ export const joinOrgByCode = onCall<{ code: string }>(async (request) => {
   const db = getFirestore();
   const me = (await db.doc(`users/${caller.uid}`).get()).data() ?? {};
   if (me.orgId) throw new HttpsError('failed-precondition', 'Your account already belongs to an organization.');
-  if (me.status === 'suspended') throw new HttpsError('permission-denied', 'This account is suspended.');
+  if (me.status === 'suspended' || me.status === 'inactive') throw new HttpsError('permission-denied', 'This account is not active.');
 
   const code = (request.data.code ?? '').trim();
   if (!code) throw new HttpsError('invalid-argument', 'Enter a join code.');
@@ -937,6 +1010,16 @@ export const assignUserToOrg = onCall<{ uid: string; orgId: string; role?: Role 
   if (!uid || !orgId) throw new HttpsError('invalid-argument', 'Provide a user and an organization.');
   if (role && !VALID_ROLES.includes(role)) throw new HttpsError('invalid-argument', 'Invalid role.');
   if (!(await db.doc(`orgs/${orgId}`).get()).exists) throw new HttpsError('not-found', 'That organization does not exist.');
+  // Only org-less accounts (the platform queue) are assignable — moving a live
+  // member between tenants would leave them in the old org's coordinatorIds /
+  // escalation lists; remove or deny them there first (joinOrgByCode has the
+  // same precondition).
+  const targetSnap = await db.doc(`users/${uid}`).get();
+  if (!targetSnap.exists) throw new HttpsError('not-found', 'That account does not exist.');
+  const currentOrg = targetSnap.data()?.orgId as string | undefined;
+  if (currentOrg && currentOrg !== orgId) {
+    throw new HttpsError('failed-precondition', 'That account already belongs to another organization — remove it there before assigning it here.');
+  }
 
   // Strip any stale role first; set it only if the owner explicitly chose one
   // (otherwise the account lands role-less + pending for the org admin to assign).
@@ -993,7 +1076,18 @@ export const denyUser = onCall<{ uid: string }>(async (request) => {
   delete existing.role;
   await getAuth().setCustomUserClaims(uid, existing);
   await db.doc(`users/${uid}`).set(
-    { orgId: FieldValue.delete(), role: FieldValue.delete(), status: 'pending', ...(fromOrg ? { deniedFromOrgId: fromOrg } : {}), updatedAt: FieldValue.serverTimestamp() },
+    {
+      orgId: FieldValue.delete(),
+      role: FieldValue.delete(),
+      status: 'pending',
+      ...(fromOrg ? { deniedFromOrgId: fromOrg } : {}),
+      // Restart the org-less purge clock (accountPurgeDaily) from the denial —
+      // an account older than 30 days was otherwise deleted the next morning,
+      // with no fresh warning, before it could enter another join code.
+      deniedAt: FieldValue.serverTimestamp(),
+      purgeWarnedAt: FieldValue.delete(),
+      updatedAt: FieldValue.serverTimestamp(),
+    },
     { merge: true }
   );
   await db.collection('auditLog').add({

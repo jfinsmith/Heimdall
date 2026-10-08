@@ -93,14 +93,28 @@ service cloud.firestore {
         && request.resource.data.role == 'instructor'
         && request.resource.data.status == 'pending'
         && request.resource.data.verifiedQualKeys == []
+        // The profile email MUST be the signed-in identity's email: it is the
+        // notify() destination AND what the domain auto-join trigger + admins
+        // see. A forged "someone@tenant.edu" on a verified Gmail login would
+        // otherwise be routed into that tenant's approval queue as that person.
         && request.resource.data.email is string
+        // (A provider token with no email claim — rare — may only create an
+        // EMPTY email, never a chosen one.)
+        && request.resource.data.email == request.auth.token.get('email', '')
         && request.resource.data.displayName is string
         && request.resource.data.qualifications is list
         // Tenant + platform claims are server-managed (Admin SDK only) — never
         // self-set, or a self-registrant could pre-seed platformOwner:true and
         // have it minted into a real claim on their first role assignment.
         && !('orgId' in request.resource.data)
-        && !('platformOwner' in request.resource.data);
+        && !('platformOwner' in request.resource.data)
+        && !('homeOrgId' in request.resource.data)
+        && !('homeRole' in request.resource.data)
+        // Same for the code-verified notification address: update blocks these
+        // (below), so create must too, or they could be pre-seeded unverified.
+        && !('notificationEmail' in request.resource.data)
+        && !('notificationEmailVerified' in request.resource.data)
+        && !('notificationEmailPending' in request.resource.data);
       // orgId / platformOwner / homeOrgId / homeRole are ONLY written by the Admin
       // SDK (callables + scripts), which bypass these rules. No client update — not
       // even an admin — may change them; the role-minting + owner-switch callables
@@ -129,8 +143,11 @@ service cloud.firestore {
         && unchanged('role') && unchanged('email')
         && (unchanged('status')
             || (resource.data.status == 'pending' && request.resource.data.status == 'active')) && (
-        // Admins may edit others' profile fields; self-approval stays blocked.
-        (isAdmin() && inOrg(resource.data) && (request.auth.uid != uid || unchanged('status')))
+        // Admins may edit others' profile fields; self-approval AND
+        // self-verification stay blocked (an admin adding to their OWN
+        // verifiedQualKeys would bypass the staff-verifies-others model).
+        (isAdmin() && inOrg(resource.data)
+            && (request.auth.uid != uid || (unchanged('status') && verifiedQualsOnlyRemoved())))
         // Staff (coordinator/sergeant) may approve accounts and verify quals on
         // OTHER same-tenant users, but may NOT self-grant their own status /
         // verifiedQualKeys (no self-escalation; removal-only self-edits OK).
@@ -199,7 +216,12 @@ service cloud.firestore {
 
     // ── curricula (admin-editable disciplines + minimum hours) ─────────────
     match /curricula/{key} {
-      allow read: if signedIn() && inOrg(resource.data);
+      // `resource == null`: useCurriculum() listens to the org copy of a
+      // platform program (curricula/{orgId}__{key}) that usually doesn't exist;
+      // a denied listener never fires if the copy is created later. Reveals
+      // only nonexistence (get only); LIST stays strictly org-scoped.
+      allow get: if signedIn() && (resource == null || inOrg(resource.data));
+      allow list: if signedIn() && inOrg(resource.data);
       allow create: if isAdmin() && inOrg(request.resource.data);
       allow update: if isAdmin() && inOrg(resource.data) && unchanged('orgId');
       allow delete: if isAdmin() && inOrg(resource.data);
@@ -471,7 +493,11 @@ service cloud.firestore {
       allow create: if isStaff()
         && request.resource.data.requestedBy == request.auth.uid
         && inOrg(request.resource.data)
-        && request.resource.data.status == 'pending';
+        && request.resource.data.status == 'pending'
+        // The fan-out escapes these as HTML AFTER claiming the message — a
+        // non-string would crash it and strand the doc in 'sending'.
+        && request.resource.data.subject is string
+        && request.resource.data.body is string;
       allow update, delete: if false;
     }
 
