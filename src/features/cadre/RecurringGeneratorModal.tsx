@@ -19,6 +19,7 @@ import { Modal } from '../../components/Modal';
 import { logAudit } from '../sessions/audit';
 import { RoomSelect } from './rooms/RoomSelect';
 import { loadRoomBookings, loadRoomReservations, overlaps, roomExemptAcademy, draftHolderAcademy, academyHolderLabel } from './rooms/roomBooking';
+import { friendlyError } from '../../lib/callableError';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const CUSTOM = '__custom__';
@@ -307,7 +308,7 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
       await logAudit(firebaseUser.uid, 'session.bulk_create', 'academy', academy.id, `Generated ${matchingDates.length} recurring "${courseName}" sessions`);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not generate the sessions. Please try again.');
+      setError(friendlyError(err, 'Could not generate the sessions. Please try again.'));
     } finally {
       setBusy(false);
     }

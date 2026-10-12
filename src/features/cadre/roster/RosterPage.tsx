@@ -27,6 +27,7 @@ import { AcademyReports, type LetterSeed } from '../reports/AcademyReports';
 import { enabledRosterModules, ROSTER_MODULE_BY_KEY } from './rosterModules';
 import { formatPhone } from '../../../lib/format';
 import type { RosterModuleKey } from '../../../types';
+import { friendlyError } from '../../../lib/callableError';
 
 const rosterCreateMember = httpsCallable<
   { academyId: string; member: Record<string, unknown> },
@@ -441,7 +442,7 @@ function EditMemberModal({
       });
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save changes.');
+      setError(friendlyError(err, 'Could not save changes.'));
       setBusy(false);
     }
   }
@@ -588,7 +589,7 @@ function IntakeWizard({ academyId, onClose }: { academyId: string; onClose: () =
       });
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not add the member.');
+      setError(friendlyError(err, 'Could not add the member.'));
       setBusy(false);
     }
   }

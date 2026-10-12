@@ -22,6 +22,7 @@ import { Modal } from '../../components/Modal';
 import { missingInstructorRecord } from './sessionEvents';
 import { lastFirst } from './roster/rosterShared';
 import { logAudit } from '../sessions/audit';
+import { friendlyError } from '../../lib/callableError';
 
 const WRITE_IN_ROLES: SlotRole[] = ['lead', 'assistant', 'safety_officer', 'role_player'];
 
@@ -61,7 +62,7 @@ export function PastSessionModal({
     try {
       await fn();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'The correction could not be saved.';
+      const msg = friendlyError(err, 'The correction could not be saved.');
       setError(msg);
       // Loud on purpose: a silently-failed ATMS correction is worse than a nag.
       window.alert(`Correction NOT saved: ${msg}`);

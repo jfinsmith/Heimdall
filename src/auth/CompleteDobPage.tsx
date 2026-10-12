@@ -15,6 +15,7 @@ import { useAuth } from './AuthContext';
 import { WordmarkStacked } from '../brand/Logo';
 import { splitDisplayName } from '../lib/format';
 import { Button, Field, Input } from '../components/ui';
+import { friendlyError } from '../lib/callableError';
 
 export function CompleteDobPage() {
   const { firebaseUser, profile, signOut } = useAuth();
@@ -43,7 +44,7 @@ export function CompleteDobPage() {
       });
       // The profile subscription refreshes and the RequireAuth gate releases.
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save.');
+      setError(friendlyError(err, 'Could not save.'));
       setBusy(false);
     }
   }

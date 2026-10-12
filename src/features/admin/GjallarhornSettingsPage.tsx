@@ -17,6 +17,7 @@ import { useRoleLabels } from '../../app/providers';
 import { Button, Field, Input, PageHeader, Select, Badge } from '../../components/ui';
 import { GjallarhornGlyph } from '../../brand/Logo';
 import { logAudit } from '../sessions/audit';
+import { friendlyError } from '../../lib/callableError';
 
 // Email-automation recipients: every rank except read-only guests (who don't
 // receive operational email). Derived from the single RANKS registry.
@@ -100,7 +101,7 @@ export function GjallarhornSettingsPage() {
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (err) {
-      window.alert(`Save failed: ${err instanceof Error ? err.message : 'unknown error'}`);
+      window.alert(`Save failed: ${friendlyError(err, 'unknown error')}`);
     } finally {
       setBusy(false);
     }

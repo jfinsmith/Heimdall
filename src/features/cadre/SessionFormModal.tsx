@@ -24,6 +24,7 @@ import { instructorCount, requiredInstructors } from './instructorRatio';
 import { logAudit } from '../sessions/audit';
 import { RoomSelect } from './rooms/RoomSelect';
 import { findRoomConflict, roomExemptAcademy, draftHolderAcademy, academyHolderLabel } from './rooms/roomBooking';
+import { friendlyError } from '../../lib/callableError';
 
 const CUSTOM = '__custom__';
 
@@ -624,7 +625,7 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
 
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save the session. Please try again.');
+      setError(friendlyError(err, 'Could not save the session. Please try again.'));
     } finally {
       setBusy(false);
     }
@@ -640,7 +641,7 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
       await logAudit(firebaseUser.uid, 'session.cancel', 'session', session.id, `Cancelled ${session.courseName}`);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not cancel the session.');
+      setError(friendlyError(err, 'Could not cancel the session.'));
     } finally {
       setBusy(false);
     }
@@ -677,7 +678,7 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
       await logAudit(firebaseUser.uid, 'session.delete', 'session', session.id, `Deleted ${session.courseName}`);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not delete the session.');
+      setError(friendlyError(err, 'Could not delete the session.'));
     } finally {
       setBusy(false);
     }

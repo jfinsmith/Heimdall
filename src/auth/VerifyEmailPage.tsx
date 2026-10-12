@@ -11,6 +11,7 @@ import { auth } from '../lib/firebase';
 import { useAuth } from './AuthContext';
 import { WordmarkStacked } from '../brand/Logo';
 import { Button } from '../components/ui';
+import { friendlyError } from '../lib/callableError';
 
 export function VerifyEmailPage() {
   const { firebaseUser, resendVerificationEmail, signOut } = useAuth();
@@ -34,7 +35,7 @@ export function VerifyEmailPage() {
       }
       setMsg("Not verified yet — click the link in the email first, then try again. Check spam if it hasn't arrived.");
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Could not check verification.');
+      setErr(friendlyError(e, 'Could not check verification.'));
     } finally {
       setBusy(false);
     }
@@ -48,7 +49,7 @@ export function VerifyEmailPage() {
       await resendVerificationEmail();
       setMsg(`Verification email re-sent to ${firebaseUser?.email}.`);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Could not send the email — wait a minute and try again.');
+      setErr(friendlyError(e, 'Could not send the email — wait a minute and try again.'));
     } finally {
       setBusy(false);
     }

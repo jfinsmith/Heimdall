@@ -8,13 +8,14 @@
  */
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../lib/firebase';
+import { friendlyError } from '../../lib/callableError';
 
 export class SignupError extends Error {}
 
 const submitSignupFn = httpsCallable<{ sessionId: string; slotId: string; allowWaitlist?: boolean }, { status: 'confirmed' | 'waitlist' }>(functions, 'submitSignup');
 const withdrawSignupFn = httpsCallable<{ sessionId: string }, { ok: boolean }>(functions, 'withdrawSignup');
 
-const cleanMessage = (e: unknown) => (e instanceof Error ? e.message.replace(/^FirebaseError:\s*/, '') : 'Something went wrong.');
+const cleanMessage = (e: unknown) => friendlyError(e);
 
 export interface SignupResult {
   status: 'confirmed' | 'waitlist';

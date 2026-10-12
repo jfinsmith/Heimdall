@@ -19,6 +19,7 @@ import { Badge, Button, Field, Input, PageHeader, Select, TextArea } from '../..
 import { Modal } from '../../components/Modal';
 import { logAudit } from '../sessions/audit';
 import { formatPhone } from '../../lib/format';
+import { friendlyError } from '../../lib/callableError';
 
 const setUserSuspension = httpsCallable<{ uid: string; suspended: boolean; reason?: string }, { ok: boolean }>(
   functions,
@@ -319,7 +320,7 @@ function BulkSuspendModal({
       }
       onDone(users.length);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not suspend one or more members.');
+      setError(friendlyError(err, 'Could not suspend one or more members.'));
       setBusy(false);
     }
   }

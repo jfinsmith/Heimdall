@@ -14,6 +14,7 @@ import { CHAIN_OF_COMMAND, PERMISSION_MATRIX, RANKS, ROLE_SUMMARIES, getRankLabe
 import type { Role } from '../../types';
 import { Button, Field, Input, PageHeader } from '../../components/ui';
 import { logAudit } from '../sessions/audit';
+import { friendlyError } from '../../lib/callableError';
 
 const stripTitle = (label: string) => label.replace(/\s*\(.*\)\s*$/, '');
 
@@ -51,7 +52,7 @@ export function PermissionsPage() {
       if (firebaseUser) await logAudit(firebaseUser.uid, 'settings.role_labels', 'settings', 'global', 'Updated rank labels');
       setSaved(true);
     } catch (err) {
-      window.alert(`Save failed: ${err instanceof Error ? err.message : 'unknown error'}`);
+      window.alert(`Save failed: ${friendlyError(err, 'unknown error')}`);
     } finally {
       setBusy(false);
     }

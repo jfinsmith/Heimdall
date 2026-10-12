@@ -19,6 +19,7 @@ import { Badge, Button, HighLiabilityBadge, StatusPill } from '../../components/
 import { Modal } from '../../components/Modal';
 import { signUpForSlot, withdrawFromSession, SignupError } from './useSignup';
 import { logAudit } from './audit';
+import { friendlyError } from '../../lib/callableError';
 
 interface Props {
   sessionId: string;
@@ -87,7 +88,7 @@ export function SessionDetailModal({ sessionId, onClose, onEdit, variant = 'staf
           await doSignup(slotId, true);
         }
       } else {
-        setError(err instanceof Error ? err.message : 'Sign-up failed.');
+        setError(friendlyError(err, 'Sign-up failed.'));
       }
     } finally {
       setBusy(false);
@@ -101,7 +102,7 @@ export function SessionDetailModal({ sessionId, onClose, onEdit, variant = 'staf
     try {
       await withdrawFromSession(firebaseUser.uid, sessionId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Withdrawal failed.');
+      setError(friendlyError(err, 'Withdrawal failed.'));
     } finally {
       setBusy(false);
     }
@@ -114,7 +115,7 @@ export function SessionDetailModal({ sessionId, onClose, onEdit, variant = 'staf
     try {
       await httpsCallable<{ sessionId: string }, { ok: boolean }>(functions, 'confirmReservation')({ sessionId });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not confirm.');
+      setError(friendlyError(err, 'Could not confirm.'));
     } finally {
       setBusy(false);
     }
@@ -216,7 +217,7 @@ export function SessionDetailModal({ sessionId, onClose, onEdit, variant = 'staf
       await logAudit(firebaseUser.uid, 'session.duplicate', 'session', sessionId, `Duplicated ${session.courseName} to ${nextStart.toLocaleDateString()}`);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not duplicate the session.');
+      setError(friendlyError(err, 'Could not duplicate the session.'));
     } finally {
       setBusy(false);
     }
@@ -253,7 +254,7 @@ export function SessionDetailModal({ sessionId, onClose, onEdit, variant = 'staf
       await logAudit(firebaseUser.uid, 'session.delete', 'session', sessionId, `Deleted ${session.courseName}`);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not delete the session.');
+      setError(friendlyError(err, 'Could not delete the session.'));
     } finally {
       setBusy(false);
     }
@@ -375,7 +376,7 @@ export function SessionDetailModal({ sessionId, onClose, onEdit, variant = 'staf
                     createdAt: serverTimestamp(),
                   });
                 } catch (err) {
-                  setError(err instanceof Error ? err.message : 'Could not open sign-ups.');
+                  setError(friendlyError(err, 'Could not open sign-ups.'));
                 } finally {
                   setBusy(false);
                 }
@@ -394,7 +395,7 @@ export function SessionDetailModal({ sessionId, onClose, onEdit, variant = 'staf
                 try {
                   await updateDoc(doc(db, 'sessions', sessionId), { status: 'scheduled', updatedAt: serverTimestamp() });
                 } catch (err) {
-                  setError(err instanceof Error ? err.message : 'Could not close sign-ups.');
+                  setError(friendlyError(err, 'Could not close sign-ups.'));
                 } finally {
                   setBusy(false);
                 }

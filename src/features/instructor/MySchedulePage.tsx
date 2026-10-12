@@ -22,6 +22,7 @@ import { withdrawFromSession } from '../sessions/useSignup';
 import { SessionDetailModal } from '../sessions/SessionDetailModal';
 import { useGlobalSettings } from '../../app/providers';
 import { holidayBackgroundEvents } from '../../lib/holidays';
+import { friendlyError } from '../../lib/callableError';
 
 // TODO(setup): update if you change Firebase project or move regions.
 const FEED_BASE = 'https://us-east1-heimdall-e1f03.cloudfunctions.net/calendarFeed';
@@ -96,7 +97,7 @@ export function MySchedulePage() {
     try {
       await confirmReservation({ sessionId });
     } catch (err) {
-      window.alert(`Could not confirm: ${err instanceof Error ? err.message : 'unknown error'}`);
+      window.alert(`Could not confirm: ${friendlyError(err, 'unknown error')}`);
     } finally {
       setBusy(null);
     }

@@ -10,6 +10,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { useCollection, type WithId } from '../../lib/firestore';
 import type { FeedbackReportDoc, FeedbackStatus } from '../../types';
 import { Badge, Button, Field, PageHeader, Select } from '../../components/ui';
+import { friendlyError } from '../../lib/callableError';
 
 /** Cross-org report shape from the platform-owner callable (screenshots for
  *  OTHER orgs are stripped server-side; timestamps arrive as millis). */
@@ -220,7 +221,7 @@ function StatusUpdater({
       setComment('');
       onApplied?.(status);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Could not update the status.');
+      setErr(friendlyError(e, 'Could not update the status.'));
     } finally {
       setBusy(false);
     }

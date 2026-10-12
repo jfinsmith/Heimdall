@@ -15,6 +15,7 @@ import { QUALIFICATION_LABELS, isInstructorQual } from '../types';
 import { march31, tsFromDate } from '../lib/time';
 import { formatPhone, splitDisplayName } from '../lib/format';
 import { Button, Field, Input } from '../components/ui';
+import { friendlyError } from '../lib/callableError';
 
 export function CompleteProfilePage() {
   const { firebaseUser, profile } = useAuth();
@@ -73,7 +74,7 @@ export function CompleteProfilePage() {
       });
       navigate('/');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save your profile. Try again.');
+      setError(friendlyError(err, 'Could not save your profile. Try again.'));
       setBusy(false);
     }
   }

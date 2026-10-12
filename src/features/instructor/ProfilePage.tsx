@@ -20,6 +20,7 @@ import { certYearOf, march31, tsFromDate, combineDateTime } from '../../lib/time
 import { useAllCurricula, baseCurriculumKey } from '../../lib/curricula';
 import { formatPhone } from '../../lib/format';
 import { Badge, Button, Field, Input, PageHeader } from '../../components/ui';
+import { friendlyError } from '../../lib/callableError';
 
 export function ProfilePage() {
   const { firebaseUser, profile } = useAuth();
@@ -304,7 +305,7 @@ function ClaimCprModal({ onClose }: { onClose: () => void }) {
       });
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save the claim.');
+      setError(friendlyError(err, 'Could not save the claim.'));
     } finally {
       setBusy(false);
     }
@@ -385,7 +386,7 @@ function NotificationEmailCard() {
     try {
       await fn();
     } catch (err) {
-      setError(err instanceof Error ? err.message.replace(/^Firebase: /, '') : 'Something went wrong.');
+      setError(friendlyError(err, 'Something went wrong.'));
     } finally {
       setBusy(false);
     }

@@ -19,6 +19,7 @@ import { Modal } from '../../components/Modal';
 import { logAudit } from '../sessions/audit';
 import { formatPhone, splitDisplayName } from '../../lib/format';
 import { BulkImportModal, type ImportColumn } from '../../components/BulkImportModal';
+import { friendlyError } from '../../lib/callableError';
 
 const setUserRole = httpsCallable<{ uid: string; role: Role }, { ok: boolean }>(functions, 'setUserRole');
 const createUserAccount = httpsCallable<
@@ -134,7 +135,7 @@ export function UsersAdminPage() {
       await updateDoc(doc(db, 'users', u.id), { status: 'active', updatedAt: serverTimestamp() });
       await logAudit(firebaseUser!.uid, 'user.approve', 'user', u.id, `Approved ${u.displayName} as ${role}`);
     } catch (err) {
-      setError(`Approving ${u.displayName} failed: ${err instanceof Error ? err.message : String(err)}`);
+      setError(`Approving ${u.displayName} failed: ${friendlyError(err)}`);
     } finally {
       setBusy(null);
     }
@@ -152,7 +153,7 @@ export function UsersAdminPage() {
     try {
       await denyUser({ uid: u.id });
     } catch (err) {
-      setError(`Denying ${u.displayName} failed: ${err instanceof Error ? err.message : String(err)}`);
+      setError(`Denying ${u.displayName} failed: ${friendlyError(err)}`);
     } finally {
       setBusy(null);
     }
@@ -165,7 +166,7 @@ export function UsersAdminPage() {
       await setUserRole({ uid: u.id, role }); // callable updates doc + claim atomically
       await logAudit(firebaseUser!.uid, 'user.set_role', 'user', u.id, `Set ${u.displayName} to ${role}`);
     } catch (err) {
-      setError(`Changing ${u.displayName}'s role failed: ${err instanceof Error ? err.message : String(err)}`);
+      setError(`Changing ${u.displayName}'s role failed: ${friendlyError(err)}`);
     } finally {
       setBusy(null);
     }
@@ -181,7 +182,7 @@ export function UsersAdminPage() {
       await setUserActive({ uid: u.id, active: false });
       await logAudit(firebaseUser!.uid, 'user.deactivate', 'user', u.id, `Deactivated ${u.displayName}`);
     } catch (err) {
-      setError(`Deactivating ${u.displayName} failed: ${err instanceof Error ? err.message : String(err)}`);
+      setError(`Deactivating ${u.displayName} failed: ${friendlyError(err)}`);
     } finally {
       setBusy(null);
     }
@@ -194,7 +195,7 @@ export function UsersAdminPage() {
     try {
       await setUserSuspension({ uid: u.id, suspended: false });
     } catch (err) {
-      setError(`Lifting ${u.displayName}'s suspension failed: ${err instanceof Error ? err.message : String(err)}`);
+      setError(`Lifting ${u.displayName}'s suspension failed: ${friendlyError(err)}`);
     } finally {
       setBusy(null);
     }
@@ -466,7 +467,7 @@ function SuspendUserModal({ user, onClose }: { user: WithId<UserDoc>; onClose: (
       await setUserSuspension({ uid: user.id, suspended: true, reason: reason.trim() });
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not suspend the account.');
+      setError(friendlyError(err, 'Could not suspend the account.'));
       setBusy(false);
     }
   }
@@ -588,7 +589,7 @@ function EditUserModal({ user, onClose }: { user: WithId<UserDoc>; onClose: () =
         onClose();
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save the changes.');
+      setError(friendlyError(err, 'Could not save the changes.'));
       setReviewing(false);
     } finally {
       setBusy(false);
@@ -795,7 +796,7 @@ function AddUserModal({ onClose }: { onClose: () => void }) {
       const res = await createUserAccount({ email, displayName, role, rank, agency, phone: formatPhone(phone), password });
       setCreated({ uid: res.data.uid, email: email.trim().toLowerCase(), password: password.trim() || '123456', displayName: displayName.trim() });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not create the account.');
+      setError(friendlyError(err, 'Could not create the account.'));
     } finally {
       setBusy(false);
     }
@@ -809,7 +810,7 @@ function AddUserModal({ onClose }: { onClose: () => void }) {
       await sendActivationEmail({ uid: created.uid, password: created.password });
       setSentTo(created.email);
     } catch (err) {
-      setSendErr(err instanceof Error ? err.message : 'Could not send the activation email.');
+      setSendErr(friendlyError(err, 'Could not send the activation email.'));
     } finally {
       setSending(false);
     }
@@ -932,7 +933,7 @@ function DeleteAccountModal({ user, onClose }: { user: WithId<UserDoc>; onClose:
       await adminDeleteAccount({ uid: user.id });
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message.replace(/^Firebase: /, '') : 'The account could not be deleted.');
+      setError(friendlyError(err, 'The account could not be deleted.'));
       setBusy(false);
     }
   }

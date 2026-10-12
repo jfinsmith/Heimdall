@@ -11,6 +11,7 @@ import { useAuth } from '../../auth/AuthContext';
 import type { GlobalSettings } from '../../types';
 import { Button, Field, Input, PageHeader, Select, TextArea } from '../../components/ui';
 import { logAudit } from '../sessions/audit';
+import { friendlyError } from '../../lib/callableError';
 
 /**
  * TEMPORARY pre-launch switch (remove after go-live). ON = instructors and
@@ -34,7 +35,7 @@ function PreLaunchCard({ orgId, enabled, actorUid }: { orgId: string | null | un
       await setDoc(doc(db, orgConfigPath('settings', orgId)), { preLaunchHideInstructors: next }, { merge: true });
       await logAudit(actorUid, 'settings.prelaunch', 'settings', orgId, next ? 'Pre-launch mode ON (instructor pages hidden)' : 'Pre-launch mode OFF — site LIVE for instructors');
     } catch (err) {
-      window.alert(`Could not update: ${err instanceof Error ? err.message : 'unknown error'}`);
+      window.alert(`Could not update: ${friendlyError(err, 'unknown error')}`);
     } finally {
       setBusy(false);
     }
@@ -133,7 +134,7 @@ export function SettingsAdminPage() {
       setTimeout(() => setSaved(false), 2500);
     } catch (err) {
       // Silent failure here read as "saved" — surface it.
-      window.alert(`Save failed: ${err instanceof Error ? err.message : 'unknown error'}`);
+      window.alert(`Save failed: ${friendlyError(err, 'unknown error')}`);
     }
   }
 

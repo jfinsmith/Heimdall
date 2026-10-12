@@ -21,6 +21,7 @@ import { ROSTER_MODULES, DEFAULT_ROSTER_MODULES } from '../cadre/roster/rosterMo
 import { REPORT_TYPES } from '../cadre/reports/reportTypes';
 import { useOrgLibraryForms } from '../cadre/reports/documentLibrary';
 import { FDLE_DEFAULT_CURRICULA } from './fdleCurricula';
+import { friendlyError } from '../../lib/callableError';
 
 const ownerListOrgs = httpsCallable<void, { orgs: { orgId: string; legalName: string }[] }>(functions, 'ownerListOrgs');
 const importDefaultCurricula = httpsCallable<{ sourceOrgId: string }, { ok: boolean; count: number }>(functions, 'importDefaultCurricula');
@@ -351,7 +352,7 @@ function CurriculumEditorModal({
       onClose();
     } catch (err) {
       // A rejected write used to strand the modal on a disabled Save forever.
-      window.alert(`Save failed: ${err instanceof Error ? err.message : 'unknown error'}`);
+      window.alert(`Save failed: ${friendlyError(err, 'unknown error')}`);
     } finally {
       setBusy(false);
     }

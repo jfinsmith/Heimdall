@@ -14,6 +14,7 @@ import type { AcademyDoc } from '../../types';
 import { useDoc, type WithId } from '../../lib/firestore';
 import { Badge, Button, Input } from '../../components/ui';
 import { logAudit } from '../sessions/audit';
+import { friendlyError } from '../../lib/callableError';
 
 export function PublicLinkSection({ academy, className = '' }: { academy: WithId<AcademyDoc>; className?: string }) {
   const { firebaseUser, orgId } = useAuth();
@@ -48,7 +49,7 @@ export function PublicLinkSection({ academy, className = '' }: { academy: WithId
       }
       if (firebaseUser) await logAudit(firebaseUser.uid, 'academy.portal', 'academy', academy.id, summary);
     } catch (err) {
-      window.alert(`Could not update the public link: ${err instanceof Error ? err.message : 'unknown error'}`);
+      window.alert(`Could not update the public link: ${friendlyError(err, 'unknown error')}`);
     } finally {
       setBusy(false);
     }

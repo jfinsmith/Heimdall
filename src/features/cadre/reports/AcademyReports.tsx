@@ -17,6 +17,7 @@ import { Modal } from '../../../components/Modal';
 import { getReportType, REPORT_TYPES, type DocumentAssignmentDoc, type ReportField, type ReportType } from './reportTypes';
 import { offeredLetterForms, libraryFormToReportType, useOrgLibraryForms } from './documentLibrary';
 import { lastFirst, rosterCompare } from '../roster/rosterShared';
+import { friendlyError } from '../../../lib/callableError';
 
 const today = () => {
   const d = new Date();
@@ -338,7 +339,7 @@ function ReportFormModal({
       }
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save the report.');
+      setError(friendlyError(err, 'Could not save the report.'));
       setBusy(false);
     }
   }

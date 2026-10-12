@@ -31,6 +31,7 @@ import { Modal } from '../../components/Modal';
 import { ACADEMY_COLORS, nextAcademyColor } from '../../lib/academyColors';
 import { logAudit } from '../sessions/audit';
 import { RoomSelect } from './rooms/RoomSelect';
+import { friendlyError } from '../../lib/callableError';
 
 const DEFAULT_LOCATION = 'PHSC — Dade City, FL';
 
@@ -127,7 +128,7 @@ export function AcademiesPage() {
       );
       await logAudit(firebaseUser!.uid, archived ? 'academy.archive' : 'academy.unarchive', 'academy', a.id, a.name);
     } catch (err) {
-      window.alert(`Could not ${archived ? 'archive' : 'unarchive'} "${a.name}": ${err instanceof Error ? err.message : 'unknown error'}`);
+      window.alert(`Could not ${archived ? 'archive' : 'unarchive'} "${a.name}": ${friendlyError(err, 'unknown error')}`);
     }
   }
 
@@ -434,7 +435,7 @@ function DeleteAcademyModal({
     } catch (err) {
       setBusy(false);
       setProgress('');
-      window.alert(`Delete failed: ${err instanceof Error ? err.message : String(err)}`);
+      window.alert(`Delete failed: ${friendlyError(err)}`);
     }
   }
 
@@ -841,7 +842,7 @@ export function CloneAcademyModal({
     } catch (err) {
       // Without this, a rules denial / offline blip left the modal stuck on
       // "Copying…" forever (busy never reset) with a half-created academy.
-      window.alert(`Clone failed partway: ${err instanceof Error ? err.message : 'unknown error'}. Check the new academy and delete it if incomplete, then retry.`);
+      window.alert(`Clone failed partway: ${friendlyError(err, 'unknown error')}. Check the new academy and delete it if incomplete, then retry.`);
     } finally {
       setBusy(false);
     }

@@ -10,6 +10,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { parseCsv } from '../lib/csv';
 import { Modal } from './Modal';
 import { Button } from './ui';
+import { friendlyError } from '../lib/callableError';
 
 export interface ImportColumn {
   key: string;
@@ -98,7 +99,7 @@ export function BulkImportModal({
         await importRow(r.record);
         out.push({ line: r.line, name: rowLabel(r.record), ok: true });
       } catch (err) {
-        out.push({ line: r.line, name: rowLabel(r.record), ok: false, error: err instanceof Error ? err.message : String(err) });
+        out.push({ line: r.line, name: rowLabel(r.record), ok: false, error: friendlyError(err) });
       }
       setProgress({ done: i + 1, total: valid.length });
     }

@@ -9,6 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import { WordmarkHorizontal } from '../brand/Logo';
 import { Button, Field, Input } from '../components/ui';
+import { friendlyError } from '../lib/callableError';
 
 /** Human-readable text for the Firebase auth errors this form can surface. */
 function authErrorMessage(err: unknown): string {
@@ -17,7 +18,7 @@ function authErrorMessage(err: unknown): string {
     return 'That temporary password is incorrect.';
   if (code === 'auth/weak-password') return 'Pick a stronger password (at least 6 characters).';
   if (code === 'auth/too-many-requests') return 'Too many attempts — wait a moment and try again.';
-  return err instanceof Error ? err.message : 'Could not change the password.';
+  return friendlyError(err, 'Could not change the password.');
 }
 
 export function ChangePasswordPage() {

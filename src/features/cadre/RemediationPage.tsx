@@ -21,6 +21,7 @@ import { Modal } from '../../components/Modal';
 import { logAudit } from '../sessions/audit';
 import { lastFirst, rosterCompare } from './roster/rosterShared';
 import { useCurriculum } from '../../lib/curricula';
+import { friendlyError } from '../../lib/callableError';
 
 const STATUS_META: Record<RemediationStatus, { label: string; tone: 'slate' | 'amber' | 'green' | 'red' | 'navy' }> = {
   awaiting: { label: 'Awaiting placement', tone: 'amber' },
@@ -108,7 +109,7 @@ export function RemediationPage() {
         `${b.completed ? 'Un-checked' : 'Completed'} ${b.course} for ${r.personName}`
       );
     } catch (err) {
-      window.alert(`Could not update the block: ${err instanceof Error ? err.message : 'unknown error'}`);
+      window.alert(`Could not update the block: ${friendlyError(err, 'unknown error')}`);
     } finally {
       setBusy(null);
     }
@@ -120,7 +121,7 @@ export function RemediationPage() {
       await updateDoc(doc(db, 'remediations', r.id), { archived: false, updatedAt: serverTimestamp() });
       await logAudit(firebaseUser!.uid, 'remediation.restore', 'remediation', r.id, `Restored remediation case for ${r.personName}`);
     } catch (err) {
-      window.alert(`Could not restore: ${err instanceof Error ? err.message : 'unknown error'}`);
+      window.alert(`Could not restore: ${friendlyError(err, 'unknown error')}`);
     } finally {
       setBusy(null);
     }
@@ -133,7 +134,7 @@ export function RemediationPage() {
       await deleteDoc(doc(db, 'remediations', r.id));
       await logAudit(firebaseUser!.uid, 'remediation.delete', 'remediation', r.id, `Deleted remediation case for ${r.personName}`);
     } catch (err) {
-      window.alert(`Could not delete: ${err instanceof Error ? err.message : 'unknown error'}`);
+      window.alert(`Could not delete: ${friendlyError(err, 'unknown error')}`);
     } finally {
       setBusy(null);
     }
@@ -349,7 +350,7 @@ function ResolveModal({ caseDoc, onClose }: { caseDoc: WithId<RemediationDoc>; o
       );
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not resolve.');
+      setError(friendlyError(err, 'Could not resolve.'));
       setBusy(false);
     }
   }
@@ -585,7 +586,7 @@ function RemediationModal({ existing, onClose }: { existing: WithId<RemediationD
       }
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save.');
+      setError(friendlyError(err, 'Could not save.'));
       setBusy(false);
     }
   }
@@ -599,7 +600,7 @@ function RemediationModal({ existing, onClose }: { existing: WithId<RemediationD
       await logAudit(firebaseUser!.uid, 'remediation.delete', 'remediation', existing.id, `Removed remediation case for ${existing.personName}`);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not delete.');
+      setError(friendlyError(err, 'Could not delete.'));
       setBusy(false);
     }
   }

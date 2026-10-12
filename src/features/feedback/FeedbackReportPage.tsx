@@ -12,6 +12,7 @@ import { useCollection } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import type { FeedbackKind, FeedbackReportDoc, FeedbackSeverity } from '../../types';
 import { Badge, Button, Field, Input, PageHeader } from '../../components/ui';
+import { friendlyError } from '../../lib/callableError';
 
 const SEVERITIES: { value: FeedbackSeverity; bug: string; feature: string }[] = [
   { value: 'low', bug: 'Low — minor annoyance', feature: 'Nice to have' },
@@ -149,7 +150,7 @@ export function FeedbackReportPage() {
       setShotsDropped(uploadFailed);
       setDone(true);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not submit. Please try again.');
+      setError(friendlyError(e, 'Could not submit. Please try again.'));
       setBusy(false);
     }
   }

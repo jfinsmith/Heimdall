@@ -490,6 +490,7 @@ export function HowToPage() {
             <><B>Something looks stale or a button is missing?</B> Hard-refresh (Cmd/Ctrl+Shift+R) — you&apos;re likely on an older cached version after an update.</>,
             <><B>&quot;Site can&apos;t be reached&quot; on one device</B> while others work: quit and reopen the browser — it&apos;s a local network/browser cache issue, not an outage.</>,
             <><B>A list looks empty that shouldn&apos;t be:</B> check your filters first; then hard-refresh.</>,
+            <><B>&quot;Couldn&apos;t reach HEIMDALL&apos;s server&quot; (or a bare &quot;internal&quot;) when signing up or saving</B> — the page loads but actions fail: an agency or college web filter is blocking the server address. Try cellular or home Wi-Fi; to fix it on the network, IT needs to allow <B>*.run.app</B> and <B>*.cloudfunctions.net</B>.</>,
             <><B>Found a bug or want a feature?</B> Use <B>Report a Problem</B> in the sidebar — screenshots attach directly and reports go straight to the developers with your page context. <B>Your reports</B> at the bottom of that page shows each submission&apos;s current status (and any note from the developer); status changes also email you.</>,
             <>Anything else: contact your Academy Director or coordinator; platform issues reach HEIMDALL through the feedback channel.</>,
           ]} />

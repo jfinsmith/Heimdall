@@ -17,6 +17,7 @@ import { Button, Field, Input, Select, TextArea } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import type { ReportField, DocBlock } from '../cadre/reports/reportTypes';
 import type { LibraryFormDoc } from '../cadre/reports/documentLibrary';
+import { friendlyError } from '../../lib/callableError';
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 
@@ -137,7 +138,7 @@ export function DocumentBuilderModal({
       }
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save the document.');
+      setError(friendlyError(err, 'Could not save the document.'));
       setBusy(false);
     }
   }

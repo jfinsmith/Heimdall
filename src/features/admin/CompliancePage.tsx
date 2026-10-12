@@ -16,6 +16,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { useOrg } from '../../lib/useOrg';
 import { DPA_VERSION, COMPUTE_REGION, PII_INVENTORY, DPA_CLAUSES } from '../../lib/compliance';
 import { Badge, Button, PageHeader, Spinner } from '../../components/ui';
+import { friendlyError } from '../../lib/callableError';
 
 const acceptOrgDpa = httpsCallable<{ version: string }, { ok: boolean }>(functions, 'acceptOrgDpa');
 
@@ -113,7 +114,7 @@ export function CompliancePage() {
     try {
       await acceptOrgDpa({ version: DPA_VERSION });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not record acceptance.');
+      setError(friendlyError(err, 'Could not record acceptance.'));
     } finally {
       setBusy(null);
     }
@@ -127,7 +128,7 @@ export function CompliancePage() {
       const data = await gatherOrgData(orgId);
       downloadJson(`heimdall-${orgId}-export-${new Date().toISOString().slice(0, 10)}.json`, data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Export failed.');
+      setError(friendlyError(err, 'Export failed.'));
     } finally {
       setBusy(null);
     }
