@@ -577,6 +577,11 @@ describe('remediations — staff-only (instructors blocked), org isolation', () 
 describe('security-audit hardening (sergeant tier, portal secrets, feedback triage)', () => {
   it('portal secrets subdoc: staff read OK, instructor DENIED', async () => {
     await assertSucceeds(getDoc(doc(as('carol', 'coordinator'), 'academies/acadA/private/portal')));
+    // Limbo activities live on the org settings doc: staff may edit THAT field only.
+    await assertSucceeds(updateDoc(doc(as('carol', 'coordinator'), 'settings/' + ORG), { limboActivities: ['Range', 'SOCE'] }));
+    await assertFails(updateDoc(doc(as('carol', 'coordinator'), 'settings/' + ORG), { limboActivities: ['Range'], orgName: 'Hijacked' }));
+    await assertFails(updateDoc(doc(as('alice', 'instructor'), 'settings/' + ORG), { limboActivities: ['Range'] }));
+    await assertFails(updateDoc(doc(as('erin', 'director', BETA), 'settings/' + ORG), { limboActivities: ['Range'] }));
     // Limbo plan: staff may subscribe before the first save, create with their org, never cross-org; instructors denied.
     await assertSucceeds(getDoc(doc(as('carol', 'coordinator'), 'academies/aA/limbo/plan')));
     await assertFails(getDoc(doc(as('alice', 'instructor'), 'academies/aA/limbo/plan')));

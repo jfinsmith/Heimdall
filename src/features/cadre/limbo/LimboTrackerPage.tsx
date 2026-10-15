@@ -12,6 +12,7 @@
 import React, { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { deleteField, doc, serverTimestamp, setDoc, type FieldValue } from 'firebase/firestore';
+import { Modal } from '../../../components/Modal';
 import { db } from '../../../lib/firebase';
 import { useCollection, useDoc, type WithId } from '../../../lib/firestore';
 import { useAuth } from '../../../auth/AuthContext';
@@ -25,7 +26,6 @@ import { friendlyError } from '../../../lib/callableError';
 
 const CLEAR = '__clear__';
 const CUSTOM = '__custom__';
-const MAX_DAYS = 200;
 /** Stable per-activity colors (index into the activity list). */
 const PALETTE = [
   'bg-sky-200 text-sky-950',
@@ -51,7 +51,7 @@ const isWeekend = (d: Date) => d.getDay() === 0 || d.getDay() === 6;
 
 export function LimboTrackerPage() {
   const { academyId = '' } = useParams();
-  const { firebaseUser } = useAuth();
+  const { firebaseUser, orgId } = useAuth();
   const settings = useGlobalSettings();
   const { data: academy } = useDoc<AcademyDoc>(academyId ? `academies/${academyId}` : null);
   const { data: plan } = useDoc<LimboPlanDoc>(academyId ? `academies/${academyId}/limbo/plan` : null);
@@ -80,32 +80,42 @@ export function LimboTrackerPage() {
     [roster, chosenAgencies.join('|')]
   );
 
-  // Window: the day after the class ends through NMT (+3 days) or 8 weeks.
+  // Window: a rolling two weeks — today on the far left, 14 days to the right;
+  // each new day the oldest drops off. Assignments beyond it are kept and roll
+  // into view as the days arrive (the bulk panel can place them ahead of time).
   const today = toDateInputValue(new Date());
-  const defaultFrom = academy ? toDateInputValue(addDays(academy.endDate.toDate(), 1)) : today;
-  const defaultTo = plan?.nmtStart ? toDateInputValue(addDays(localDate(plan.nmtStart), 3)) : toDateInputValue(addDays(localDate(defaultFrom), 56));
-  const [fromOverride, setFromOverride] = useState('');
-  const [toOverride, setToOverride] = useState('');
-  const windowFrom = fromOverride || defaultFrom;
-  const windowTo = toOverride || defaultTo;
   const days = useMemo(() => {
-    const out: { key: string; date: Date }[] = [];
-    let d = localDate(windowFrom);
-    const end = localDate(windowTo);
-    while (d <= end && out.length < MAX_DAYS) {
-      out.push({ key: toDateInputValue(d), date: d });
-      d = addDays(d, 1);
-    }
-    return out;
-  }, [windowFrom, windowTo]);
+    const start = localDate(today);
+    return Array.from({ length: 15 }, (_, i) => {
+      const date = addDays(start, i);
+      return { key: toDateInputValue(date), date };
+    });
+  }, [today]);
+  // NMT countdown — shown with the date so it's glaring even when the start
+  // sits outside the two-week window.
+  const nmtIn = plan?.nmtStart ? Math.round((localDate(plan.nmtStart).getTime() - localDate(today).getTime()) / 864e5) : null;
+  const nmtHint =
+    nmtIn == null
+      ? 'The gold column everyone is counting down to'
+      : nmtIn === 0
+        ? 'NMT starts TODAY'
+        : nmtIn > 0
+          ? `NMT starts in ${nmtIn} day${nmtIn === 1 ? '' : 's'} (${localDate(plan!.nmtStart!).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })})`
+          : `NMT started ${-nmtIn} day${nmtIn === -1 ? '' : 's'} ago`;
 
-  // Activities = the defaults + anything custom already on the chart.
+  // Activities = the org's managed list (Manage activities…; defaults until
+  // set) + anything custom already painted on this chart.
   const cells = useMemo(() => plan?.cells ?? {}, [plan?.cells]);
+  const managedActivities = useMemo(
+    () => (settings?.limboActivities?.length ? settings.limboActivities : [...LIMBO_ACTIVITIES]),
+    [settings?.limboActivities]
+  );
   const activities = useMemo(() => {
-    const seen = new Set<string>(LIMBO_ACTIVITIES);
+    const seen = new Set<string>(managedActivities);
     for (const row of Object.values(cells)) for (const v of Object.values(row)) if (v) seen.add(v);
     return [...seen];
-  }, [cells]);
+  }, [cells, managedActivities]);
+  const [manageOpen, setManageOpen] = useState(false);
   const colorOf = (label: string) => PALETTE[Math.max(0, activities.indexOf(label)) % PALETTE.length];
 
   // Brush + bulk panel state.
@@ -209,14 +219,14 @@ export function LimboTrackerPage() {
         }
       />
       <p className="mb-4 text-sm text-slate-500">
-        Class ended {fmtDate(academy.endDate)}. Pick an activity, then click a day on the chart — or select cadets
-        and apply it to a date range at once.
+        Class ended {fmtDate(academy.endDate)}. Pick an activity, then click a day on the chart — or tick cadets
+        and apply it to a date range at once (the range may run past the two-week view; those days roll in).
       </p>
       {error && <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
 
       {/* NMT date + agency filter + window */}
-      <div className="mb-4 grid gap-4 rounded-lg border border-watch-100 bg-white p-4 shadow-sm lg:grid-cols-[14rem_1fr_auto]">
-        <Field label="NMT start date" hint="The gold column everyone is counting down to">
+      <div className="mb-4 grid gap-4 rounded-lg border border-watch-100 bg-white p-4 shadow-sm lg:grid-cols-[16rem_1fr]">
+        <Field label="NMT start date" hint={nmtHint}>
           <Input
             type="date"
             value={plan?.nmtStart ?? ''}
@@ -248,14 +258,6 @@ export function LimboTrackerPage() {
             })}
           </div>
         </Field>
-        <div className="grid grid-cols-2 gap-2">
-          <Field label="Show from">
-            <Input type="date" value={windowFrom} onChange={(e) => setFromOverride(e.target.value)} />
-          </Field>
-          <Field label="to">
-            <Input type="date" value={windowTo} onChange={(e) => setToOverride(e.target.value)} />
-          </Field>
-        </div>
       </div>
 
       {/* Brush + bulk assignment */}
@@ -274,6 +276,9 @@ export function LimboTrackerPage() {
             {brushPick === CUSTOM && (
               <Input className="mt-2" value={customLabel} onChange={(e) => setCustomLabel(e.target.value)} placeholder="e.g. Property TDY" autoFocus />
             )}
+            <button type="button" className="mt-1.5 text-xs text-bifrost-700 hover:underline" onClick={() => setManageOpen(true)}>
+              Manage activities…
+            </button>
           </Field>
           <Field label="Apply from">
             <Input type="date" value={bulkFrom} onChange={(e) => setBulkFrom(e.target.value)} />
@@ -299,15 +304,7 @@ export function LimboTrackerPage() {
             </span>
           ))}
           <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-500">Unassigned {todaySummary.unassigned}</span>
-          <span className="ml-auto">
-            <button type="button" className="text-bifrost-700 hover:underline" onClick={() => setSelected(new Set(members.map((m) => m.id)))}>
-              Select all
-            </button>
-            {' · '}
-            <button type="button" className="text-bifrost-700 hover:underline" onClick={() => setSelected(new Set())}>
-              None
-            </button>
-          </span>
+          <span className="ml-auto text-slate-400">Chart shows today + 14 days; the checkbox beside &quot;Cadet&quot; selects everyone.</span>
         </div>
       </div>
 
@@ -324,7 +321,14 @@ export function LimboTrackerPage() {
             <thead>
               <tr>
                 <th className="sticky left-0 z-20 min-w-[14rem] border-b border-r border-watch-200 bg-watch-50 px-3 py-2 text-left font-semibold text-watch-700">
-                  Cadet
+                  <label className="flex items-center gap-2" title="Select / clear every cadet on the chart">
+                    <input
+                      type="checkbox"
+                      checked={members.length > 0 && selected.size === members.length}
+                      onChange={(e) => setSelected(e.target.checked ? new Set(members.map((m) => m.id)) : new Set())}
+                    />
+                    Cadet
+                  </label>
                 </th>
                 {days.map(({ key, date }) => {
                   const nmt = key === nmtKey;
@@ -383,6 +387,18 @@ export function LimboTrackerPage() {
           </table>
         </div>
       )}
+      {manageOpen && orgId && (
+        <ManageActivitiesModal
+          current={managedActivities}
+          extras={activities.filter((a) => !managedActivities.includes(a))}
+          onClose={() => setManageOpen(false)}
+          onSave={async (list) => {
+            // Rules let staff touch exactly this field on the org settings doc.
+            await setDoc(doc(db, 'settings', orgId), { limboActivities: list, updatedAt: serverTimestamp() }, { merge: true });
+            if (!list.includes(brushPick) && brushPick !== CUSTOM && brushPick !== CLEAR) setBrushPick(list[0] ?? CLEAR);
+          }}
+        />
+      )}
       <p className="mt-3 text-xs text-slate-500">
         Legend:{' '}
         {activities.map((a) => (
@@ -392,5 +408,112 @@ export function LimboTrackerPage() {
         ))}
       </p>
     </div>
+  );
+}
+
+/**
+ * Org-wide activity list editor. Removing an activity only drops it from the
+ * dropdown — days already painted with it keep their label (and it still
+ * shows in the legend as a chart custom), so nothing silently disappears.
+ */
+function ManageActivitiesModal({
+  current,
+  extras,
+  onClose,
+  onSave,
+}: {
+  current: string[];
+  /** Labels painted on this chart that aren't in the managed list (one-off customs) — offered for promotion. */
+  extras: string[];
+  onClose: () => void;
+  onSave: (list: string[]) => Promise<void>;
+}) {
+  const [list, setList] = useState<string[]>(current);
+  const [draft, setDraft] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const add = (label: string) => {
+    const v = label.trim();
+    if (!v) return;
+    if (list.some((x) => x.toLowerCase() === v.toLowerCase())) {
+      setError(`"${v}" is already in the list.`);
+      return;
+    }
+    setError(null);
+    setList((l) => [...l, v]);
+    setDraft('');
+  };
+  const move = (i: number, dir: -1 | 1) =>
+    setList((l) => {
+      const j = i + dir;
+      if (j < 0 || j >= l.length) return l;
+      const next = [...l];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      await onSave(list);
+      onClose();
+    } catch (err) {
+      setError(friendlyError(err, 'Could not save the activity list.'));
+      setBusy(false);
+    }
+  }
+  return (
+    <Modal open onClose={onClose} title="Manage activities">
+      <div className="space-y-3">
+        <p className="text-sm text-slate-600">
+          These are the choices in the activity dropdown for every class&apos;s Limbo chart. Removing one keeps the
+          days already painted with it.
+        </p>
+        {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
+        <ul className="divide-y divide-watch-100 rounded-md border border-watch-100">
+          {list.map((a, i) => (
+            <li key={a} className="flex items-center gap-2 px-3 py-1.5 text-sm">
+              <span className="flex-1 text-watch-900">{a}</span>
+              <button type="button" className="px-1 text-slate-400 hover:text-watch-900 disabled:opacity-30" disabled={i === 0} onClick={() => move(i, -1)} aria-label={`Move ${a} up`}>↑</button>
+              <button type="button" className="px-1 text-slate-400 hover:text-watch-900 disabled:opacity-30" disabled={i === list.length - 1} onClick={() => move(i, 1)} aria-label={`Move ${a} down`}>↓</button>
+              <button type="button" className="px-1 text-red-600 hover:underline" onClick={() => setList((l) => l.filter((x) => x !== a))}>
+                Remove
+              </button>
+            </li>
+          ))}
+          {list.length === 0 && <li className="px-3 py-2 text-sm text-slate-400">No activities yet — add one below.</li>}
+        </ul>
+        <form
+          className="flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            add(draft);
+          }}
+        >
+          <Input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="New activity, e.g. Property TDY" />
+          <Button type="submit" variant="secondary" disabled={!draft.trim()}>
+            Add
+          </Button>
+        </form>
+        {extras.length > 0 && (
+          <div className="text-xs text-slate-500">
+            Used on this chart but not in the list:{' '}
+            {extras.map((x) => (
+              <button key={x} type="button" className="mr-1.5 rounded border border-watch-200 px-1.5 py-0.5 hover:bg-watch-50" onClick={() => add(x)}>
+                + {x}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="button" variant="primary" disabled={busy} onClick={() => void save()}>
+            Save list
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }

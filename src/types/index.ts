@@ -176,6 +176,8 @@ export interface UserDoc {
   /** Personal ordering of the curriculum groups on the Academies page
    *  (discipline keys, first = shown on top). Set via the ↑/↓ arrows there. */
   academyGroupOrder?: string[];
+  /** Curriculum (discipline id) the Limbo index is filtered to; '' = all. Remembered per user. */
+  limboCurriculum?: string;
   /** Random token for the personal ICS calendar-feed URL (user-generated). */
   icsToken?: string;
   /**
@@ -375,6 +377,9 @@ export interface GlobalSettings {
   /** Agencies whose cadets attend this academy — the roster intake picklist and
    *  the Limbo tracker's agency filter. Absent/empty = the built-in legacy list. */
   agencies?: string[];
+  /** Limbo activity dropdown (Range, Validations, SOCE…). Managed by staff from
+   *  the tracker itself; absent/empty = LIMBO_ACTIVITIES defaults. */
+  limboActivities?: string[];
   /** Master kill-switch for ALL outbound email (in-app notifications still fire). */
   emailMasterEnabled: boolean;
   /** Per-automation email toggles; missing key = enabled. */
