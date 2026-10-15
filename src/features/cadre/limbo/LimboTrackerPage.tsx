@@ -26,6 +26,7 @@ import { friendlyError } from '../../../lib/callableError';
 
 const CLEAR = '__clear__';
 const CUSTOM = '__custom__';
+const MAX_DAYS = 200;
 /** Stable per-activity colors (index into the activity list). */
 const PALETTE = [
   'bg-sky-200 text-sky-950',
@@ -80,17 +81,19 @@ export function LimboTrackerPage() {
     [roster, chosenAgencies.join('|')]
   );
 
-  // Window: a rolling two weeks — today on the far left, 14 days to the right;
-  // each new day the oldest drops off. Assignments beyond it are kept and roll
-  // into view as the days arrive (the bulk panel can place them ahead of time).
+  // Window: today on the far left, then every day through the NMT start (a
+  // few days past it so the gold column isn't the edge) — or 60 days when no
+  // NMT date is set. Rolls forward daily; scrolls horizontally.
   const today = toDateInputValue(new Date());
+  const nmtStart = plan?.nmtStart ?? '';
   const days = useMemo(() => {
     const start = localDate(today);
-    return Array.from({ length: 15 }, (_, i) => {
-      const date = addDays(start, i);
-      return { key: toDateInputValue(date), date };
-    });
-  }, [today]);
+    const nmt = nmtStart ? localDate(nmtStart) : null;
+    const end = nmt && nmt > start ? addDays(nmt, 3) : addDays(start, 60);
+    const out: { key: string; date: Date }[] = [];
+    for (let d = start; d <= end && out.length < MAX_DAYS; d = addDays(d, 1)) out.push({ key: toDateInputValue(d), date: d });
+    return out;
+  }, [today, nmtStart]);
   // NMT countdown — shown with the date so it's glaring even when the start
   // sits outside the two-week window.
   const nmtIn = plan?.nmtStart ? Math.round((localDate(plan.nmtStart).getTime() - localDate(today).getTime()) / 864e5) : null;
@@ -113,13 +116,19 @@ export function LimboTrackerPage() {
   const activities = useMemo(() => {
     const seen = new Set<string>(managedActivities);
     for (const row of Object.values(cells)) for (const v of Object.values(row)) if (v) seen.add(v);
-    return [...seen];
+    return [...seen].sort((a, b) => a.localeCompare(b));
   }, [cells, managedActivities]);
   const [manageOpen, setManageOpen] = useState(false);
-  const colorOf = (label: string) => PALETTE[Math.max(0, activities.indexOf(label)) % PALETTE.length];
+  // Hash the label (not its position) so adding or removing an activity never
+  // recolors the rest of the chart.
+  const colorOf = (label: string) => {
+    let h = 0;
+    for (const ch of label.toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    return PALETTE[h % PALETTE.length];
+  };
 
   // Brush + bulk panel state.
-  const [brushPick, setBrushPick] = useState<string>(LIMBO_ACTIVITIES[0]);
+  const [brushPick, setBrushPick] = useState<string>(CLEAR);
   const [customLabel, setCustomLabel] = useState('');
   const brush = brushPick === CUSTOM ? customLabel.trim() : brushPick;
   const [bulkFrom, setBulkFrom] = useState(today);
@@ -265,13 +274,13 @@ export function LimboTrackerPage() {
         <div className="grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto]">
           <Field label="Activity (the brush)" hint="Click any day on the chart to paint it">
             <Select value={brushPick} onChange={(e) => setBrushPick(e.target.value)}>
+              <option value={CLEAR}>— Clear (unassigned) —</option>
               {activities.map((a) => (
                 <option key={a} value={a}>
                   {a}
                 </option>
               ))}
               <option value={CUSTOM}>Custom…</option>
-              <option value={CLEAR}>— Clear (unassigned) —</option>
             </Select>
             {brushPick === CUSTOM && (
               <Input className="mt-2" value={customLabel} onChange={(e) => setCustomLabel(e.target.value)} placeholder="e.g. Property TDY" autoFocus />
@@ -304,7 +313,7 @@ export function LimboTrackerPage() {
             </span>
           ))}
           <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-500">Unassigned {todaySummary.unassigned}</span>
-          <span className="ml-auto text-slate-400">Chart shows today + 14 days; the checkbox beside &quot;Cadet&quot; selects everyone.</span>
+          <span className="ml-auto text-slate-400">Chart runs from today through NMT (60 days when unset); the checkbox beside &quot;Cadet&quot; selects everyone.</span>
         </div>
       </div>
 
@@ -443,14 +452,6 @@ function ManageActivitiesModal({
     setList((l) => [...l, v]);
     setDraft('');
   };
-  const move = (i: number, dir: -1 | 1) =>
-    setList((l) => {
-      const j = i + dir;
-      if (j < 0 || j >= l.length) return l;
-      const next = [...l];
-      [next[i], next[j]] = [next[j], next[i]];
-      return next;
-    });
   async function save() {
     setBusy(true);
     setError(null);
@@ -466,16 +467,14 @@ function ManageActivitiesModal({
     <Modal open onClose={onClose} title="Manage activities">
       <div className="space-y-3">
         <p className="text-sm text-slate-600">
-          These are the choices in the activity dropdown for every class&apos;s Limbo chart. Removing one keeps the
-          days already painted with it.
+          These are the choices in the activity dropdown for every class&apos;s Limbo chart (listed alphabetically).
+          Removing one keeps the days already painted with it.
         </p>
         {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
         <ul className="divide-y divide-watch-100 rounded-md border border-watch-100">
-          {list.map((a, i) => (
+          {[...list].sort((a, b) => a.localeCompare(b)).map((a) => (
             <li key={a} className="flex items-center gap-2 px-3 py-1.5 text-sm">
               <span className="flex-1 text-watch-900">{a}</span>
-              <button type="button" className="px-1 text-slate-400 hover:text-watch-900 disabled:opacity-30" disabled={i === 0} onClick={() => move(i, -1)} aria-label={`Move ${a} up`}>↑</button>
-              <button type="button" className="px-1 text-slate-400 hover:text-watch-900 disabled:opacity-30" disabled={i === list.length - 1} onClick={() => move(i, 1)} aria-label={`Move ${a} down`}>↓</button>
               <button type="button" className="px-1 text-red-600 hover:underline" onClick={() => setList((l) => l.filter((x) => x !== a))}>
                 Remove
               </button>
