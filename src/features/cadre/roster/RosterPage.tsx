@@ -13,9 +13,10 @@ import { useCollection, useDoc, type WithId } from '../../../lib/firestore';
 import { useCurriculum } from '../../../lib/curricula';
 import type { AcademyDoc, CurriculumDoc, RosterAgency, RosterMemberDoc } from '../../../types';
 import { ROSTER_AGENCIES } from '../../../types';
+import { useGlobalSettings } from '../../../app/providers';
 import { Badge, Button, Field, Input, PageHeader, Select, Spinner } from '../../../components/ui';
 import { Modal } from '../../../components/Modal';
-import { agencyLabel, courseKey, lastFirst, memberStanding, rosterCompare } from './rosterShared';
+import { agencyLabel, agencyOptions, courseKey, lastFirst, memberStanding, rosterCompare } from './rosterShared';
 import { buildCadetRecords } from './exportRecords';
 import { downloadCsv } from '../../../lib/csv';
 import { BulkImportModal, type ImportColumn } from '../../../components/BulkImportModal';
@@ -196,9 +197,9 @@ function validateCadetRow(r: Record<string, string>): string[] {
 
 /** Map a CSV row to a rosterCreateMember payload. An unrecognized agency name is
  *  preserved as agencyOther under the 'Other' bucket (matches the intake wizard). */
-function toCadetMember(r: Record<string, string>): Record<string, unknown> {
+function toCadetMember(r: Record<string, string>, known: { key: string; label: string }[] = ROSTER_AGENCIES): Record<string, unknown> {
   const raw = (r.agency ?? '').trim();
-  const match = ROSTER_AGENCIES.find((a) => a.key.toLowerCase() === raw.toLowerCase() || a.label.toLowerCase() === raw.toLowerCase());
+  const match = known.find((a) => a.key.toLowerCase() === raw.toLowerCase() || a.label.toLowerCase() === raw.toLowerCase());
   return {
     fullName: r.fullName.trim(),
     agency: match?.key ?? (raw ? 'Other' : 'PSO'),
@@ -222,6 +223,7 @@ function MembersTab({
   members: WithId<RosterMemberDoc>[];
   curriculum: WithId<CurriculumDoc> | null;
 }) {
+  const settings = useGlobalSettings();
   const [addOpen, setAddOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [withdrawTarget, setWithdrawTarget] = useState<WithId<RosterMemberDoc> | null>(null);
@@ -316,7 +318,7 @@ function MembersTab({
           exampleRow="Jane Cadet,PSO,FL0512345,S-1042,03/05/2001,jane@example.com,727-555-0142"
           rowLabel={(r) => r.fullName || '—'}
           validateRow={validateCadetRow}
-          importRow={async (r) => { await rosterCreateMember({ academyId, member: toCadetMember(r) }); }}
+          importRow={async (r) => { await rosterCreateMember({ academyId, member: toCadetMember(r, agencyOptions(settings)) }); }}
           onClose={() => setBulkOpen(false)}
         />
       )}
@@ -409,6 +411,7 @@ function EditMemberModal({
 }) {
   const [fullName, setFullName] = useState(member.fullName ?? '');
   const [agency, setAgency] = useState<RosterAgency>((member.agency as RosterAgency) ?? 'PSO');
+  const agencies = agencyOptions(useGlobalSettings(), member.agency);
   const [agencyOther, setAgencyOther] = useState(member.agencyOther ?? '');
   const [cjis, setCjis] = useState(member.cjis ?? '');
   const [studentId, setStudentId] = useState(member.studentId ?? '');
@@ -456,7 +459,7 @@ function EditMemberModal({
         </Field>
         <Field label="Sponsoring agency">
           <Select value={agency} onChange={(e) => setAgency(e.target.value as RosterAgency)}>
-            {ROSTER_AGENCIES.map((a) => <option key={a.key} value={a.key}>{a.label}</option>)}
+            {agencies.map((a) => <option key={a.key} value={a.key}>{a.label}</option>)}
           </Select>
           {agency === 'Other' && (
             <Input className="mt-2" value={agencyOther} onChange={(e) => setAgencyOther(e.target.value)} placeholder="Agency name" />
@@ -543,6 +546,7 @@ function IntakeWizard({ academyId, onClose }: { academyId: string; onClose: () =
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
+  const agencies = agencyOptions(useGlobalSettings(), draft.agency);
 
   // One field per step (the agency step has a conditional "other" box).
   const steps: { label: string; hint?: string; valid: () => boolean; render: () => React.ReactNode }[] = [
@@ -555,7 +559,7 @@ function IntakeWizard({ academyId, onClose }: { academyId: string; onClose: () =
       render: () => (
         <div className="space-y-2">
           <Select autoFocus value={draft.agency} onChange={(e) => set({ agency: e.target.value as RosterAgency })}>
-            {ROSTER_AGENCIES.map((a) => <option key={a.key} value={a.key}>{a.label}</option>)}
+            {agencies.map((a) => <option key={a.key} value={a.key}>{a.label}</option>)}
           </Select>
           {draft.agency === 'Other' && (
             <Input value={draft.agencyOther} onChange={(e) => set({ agencyOther: e.target.value })} placeholder="Agency name" />

@@ -376,6 +376,16 @@ service cloud.firestore {
           && request.resource.data.get('ssnLast4', '') == resource.data.get('ssnLast4', '');
       }
 
+      // ── limbo plan — post-academy day-by-day whereabouts (staff-only) ──
+      // `resource == null` lets the tracker SUBSCRIBE before its first save
+      // (same dead-listener trap as private/portal below).
+      match /limbo/{docId} {
+        allow read: if isStaff() && (resource == null || inOrg(resource.data));
+        allow create: if isStaff() && inOrg(request.resource.data);
+        allow update: if isStaff() && inOrg(resource.data) && unchanged('orgId');
+        allow delete: if isStaff() && inOrg(resource.data);
+      }
+
       // ── voluntary attendance log (one doc per day; staff-only, org-scoped) ──
       match /attendance/{date} {
         allow read: if isStaff() && inOrg(resource.data);

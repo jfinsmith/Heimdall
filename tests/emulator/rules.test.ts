@@ -577,6 +577,12 @@ describe('remediations — staff-only (instructors blocked), org isolation', () 
 describe('security-audit hardening (sergeant tier, portal secrets, feedback triage)', () => {
   it('portal secrets subdoc: staff read OK, instructor DENIED', async () => {
     await assertSucceeds(getDoc(doc(as('carol', 'coordinator'), 'academies/acadA/private/portal')));
+    // Limbo plan: staff may subscribe before the first save, create with their org, never cross-org; instructors denied.
+    await assertSucceeds(getDoc(doc(as('carol', 'coordinator'), 'academies/aA/limbo/plan')));
+    await assertFails(getDoc(doc(as('alice', 'instructor'), 'academies/aA/limbo/plan')));
+    await assertSucceeds(setDoc(doc(as('carol', 'coordinator'), 'academies/aA/limbo/plan'), { orgId: ORG, academyId: 'aA', cells: {} }));
+    await assertFails(setDoc(doc(as('erin', 'director', BETA), 'academies/aA/limbo/plan'), { orgId: BETA, academyId: 'aA', nmtStart: '2027-01-04' }, { merge: true }));
+    await assertFails(getDoc(doc(as('erin', 'director', BETA), 'academies/aA/limbo/plan')));
     await assertFails(getDoc(doc(as('alice', 'instructor'), 'academies/acadA/private/portal')));
     // Staff may read a NOT-YET-CREATED private doc (the builder subscribes to
     // private/portal before the link exists — a denial kills the listener and

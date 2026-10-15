@@ -33,6 +33,8 @@ const AcademyBuilderPage = lazy(() => import('../features/cadre/AcademyBuilderPa
 const AcademyRosterPage = lazy(() => import('../features/cadre/roster/RosterPage').then((m) => ({ default: m.RosterPage })));
 const StaffingBoardPage = lazy(() => import('../features/cadre/StaffingBoardPage').then((m) => ({ default: m.StaffingBoardPage })));
 const RoomsPage = lazy(() => import('../features/cadre/rooms/RoomsPage').then((m) => ({ default: m.RoomsPage })));
+const LimboPage = lazy(() => import('../features/cadre/limbo/LimboPage').then((m) => ({ default: m.LimboPage })));
+const LimboTrackerPage = lazy(() => import('../features/cadre/limbo/LimboTrackerPage').then((m) => ({ default: m.LimboTrackerPage })));
 const RemediationPage = lazy(() => import('../features/cadre/RemediationPage').then((m) => ({ default: m.RemediationPage })));
 const BrowseOpenSessionsPage = lazy(() => import('../features/instructor/BrowseOpenSessionsPage').then((m) => ({ default: m.BrowseOpenSessionsPage })));
 const MySchedulePage = lazy(() => import('../features/instructor/MySchedulePage').then((m) => ({ default: m.MySchedulePage })));
@@ -169,6 +171,8 @@ export function AppRouter() {
                 <Route path="/cadre/staffing" element={<StaffingBoardPage />} />
                 <Route path="/cadre/rooms" element={<RoomsPage />} />
                 <Route path="/cadre/remediation" element={<RemediationPage />} />
+                <Route path="/cadre/limbo" element={<LimboPage />} />
+                <Route path="/cadre/limbo/:academyId" element={<LimboTrackerPage />} />
                 <Route path="/cadet-reports" element={<CadetReportsPage />} />
                 <Route path="/reports" element={<ReportsPage />} />
               </Route>

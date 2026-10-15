@@ -372,6 +372,9 @@ export interface GlobalSettings {
   holidayPayHours?: number;
   /** Required hours per bi-weekly pay period before overtime (PSO default 85). */
   payPeriodTargetHours?: number;
+  /** Agencies whose cadets attend this academy — the roster intake picklist and
+   *  the Limbo tracker's agency filter. Absent/empty = the built-in legacy list. */
+  agencies?: string[];
   /** Master kill-switch for ALL outbound email (in-app notifications still fire). */
   emailMasterEnabled: boolean;
   /** Per-automation email toggles; missing key = enabled. */
@@ -444,6 +447,26 @@ export interface CourseDoc {
 
 // ── Academies (cohorts) ────────────────────────────────────────────────────
 export type AcademyStatus = 'draft' | 'published' | 'in_progress' | 'completed' | 'archived';
+
+/**
+ * Limbo — where each agency cadet is, day by day, between the academy ending
+ * and New Member Training starting (range support, validations, SOCE, TDY…).
+ * One doc per academy at academies/{id}/limbo/plan; cells[memberId][yyyy-mm-dd]
+ * = activity label. Staff-only (see rules).
+ */
+export interface LimboPlanDoc {
+  orgId: string;
+  academyId: string;
+  /** NMT start date (yyyy-mm-dd) — the glaring marker on the chart. */
+  nmtStart?: string;
+  /** Agencies whose cadets appear on the chart (absent = every agency on the roster). */
+  agencies?: string[];
+  cells?: Record<string, Record<string, string>>;
+  updatedAt?: Timestamp;
+  updatedBy?: string;
+}
+/** Default activity brushes on the Limbo chart (custom labels are typed in). */
+export const LIMBO_ACTIVITIES = ['Range', 'Validations', 'SOCE', 'Studying', 'TDY', 'Admin', 'Leave'] as const;
 
 /**
  * Chain-of-command sign-off a class goes through before it can be published.
@@ -550,7 +573,11 @@ export interface AcademyDoc {
 
 // ── Academy roster (per-academy: academies/{id}/roster/{memberId}) ─────────
 /** Sponsoring agency for a cadet. "other" carries a free-text agencyOther. */
-export type RosterAgency = 'PSO' | 'ZPD' | 'DCPD' | 'BOCC' | 'Self' | 'Other';
+/** Sponsoring-agency key on a roster member. Orgs manage their own list under
+ *  Org Settings → Agencies (free strings); the built-in ROSTER_AGENCIES below
+ *  is the legacy default used when that list is empty. 'Other' + agencyOther
+ *  always remains available. */
+export type RosterAgency = string;
 export const ROSTER_AGENCIES: { key: RosterAgency; label: string }[] = [
   { key: 'PSO', label: 'PSO' },
   { key: 'ZPD', label: 'ZPD' },

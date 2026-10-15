@@ -5,6 +5,24 @@
 import type { CurriculumCourse, GradeCell, RosterMemberDoc, ViolationEntry } from '../../../types';
 import { DEMERIT_POINTS, letterFor, PASS_MARK, ROSTER_AGENCIES } from '../../../types';
 
+/** Picklist for the roster intake/edit forms: the org's managed agencies
+ *  (Org Settings → Agencies) plus 'Other', or the legacy built-ins when the
+ *  org hasn't set any. A member whose stored agency isn't in the list keeps
+ *  it as an option so editing them never silently re-labels it. */
+export function agencyOptions(settings: { agencies?: string[] } | null | undefined, current?: string): { key: string; label: string }[] {
+  const managed = (settings?.agencies ?? []).map((a) => a.trim()).filter(Boolean);
+  const base = managed.length
+    ? [...managed.map((a) => ({ key: a, label: a })), { key: 'Other', label: 'Other' }]
+    : [...ROSTER_AGENCIES];
+  if (current && !base.some((o) => o.key === current)) base.unshift({ key: current, label: current });
+  return base;
+}
+
+/** The agency a member actually belongs to — 'Other' resolves to the typed name. */
+export function memberAgency(m: Pick<RosterMemberDoc, 'agency' | 'agencyOther'>): string {
+  return m.agency === 'Other' ? m.agencyOther?.trim() || 'Other' : m.agency;
+}
+
 export function agencyLabel(m: Pick<RosterMemberDoc, 'agency' | 'agencyOther'>): string {
   if (m.agency === 'Other') return m.agencyOther?.trim() || 'Other';
   return ROSTER_AGENCIES.find((a) => a.key === m.agency)?.label ?? m.agency;

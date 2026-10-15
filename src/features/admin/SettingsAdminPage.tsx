@@ -3,6 +3,7 @@
  * runtime by BrandProvider (CSS custom properties), no code edit needed.
  */
 import React, { useEffect, useState } from 'react';
+import { ROSTER_AGENCIES } from '../../types';
 import { doc, setDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../lib/firebase';
@@ -75,6 +76,7 @@ export function SettingsAdminPage() {
   const [tagline, setTagline] = useState('');
   const [addressLines, setAddressLines] = useState('');
   const [siteCode, setSiteCode] = useState('');
+  const [agencies, setAgencies] = useState('');
   const [saved, setSaved] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -108,6 +110,9 @@ export function SettingsAdminPage() {
     setTagline(settings.letterheadTagline ?? '');
     setAddressLines((settings.letterheadAddressLines ?? []).join('\n'));
     setSiteCode(settings.siteCode ?? '');
+    // Legacy orgs without a managed list see the built-ins pre-filled so the
+    // first save simply persists what they already had.
+    setAgencies((settings.agencies?.length ? settings.agencies : ROSTER_AGENCIES.map((a) => a.key).filter((k) => k !== 'Other')).join('\n'));
   }, [settings, orgId]);
 
   async function save(e: React.FormEvent) {
@@ -126,6 +131,7 @@ export function SettingsAdminPage() {
           letterheadTagline: tagline,
           letterheadAddressLines: addressLines.split('\n').map((l) => l.trim()).filter(Boolean),
           siteCode: siteCode.trim(),
+          agencies: [...new Set(agencies.split('\n').map((a) => a.trim()).filter(Boolean))],
         },
         { merge: true }
       );
@@ -244,6 +250,12 @@ export function SettingsAdminPage() {
           hint="Comma-separated, e.g. sheriff.example.gov, statecollege.edu — new sign-ups from these domains are routed to this organization (still pending your approval). Blank = no auto-join (add members manually)."
         >
           <Input value={domains} onChange={(e) => setDomains(e.target.value)} />
+        </Field>
+        <Field
+          label="Agencies attending your academy"
+          hint="One per line. This is the Sponsoring agency picklist on cadet rosters and the agency filter in Limbo (an Other / free-text option always stays available)."
+        >
+          <TextArea rows={5} value={agencies} onChange={(e) => setAgencies(e.target.value)} placeholder={'PSO\nZPD\nDCPD'} />
         </Field>
         <Field
           label="Pay-period target hours"
