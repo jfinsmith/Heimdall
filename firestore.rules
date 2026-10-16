@@ -177,10 +177,10 @@ service cloud.firestore {
     match /settings/{docId} {
       allow read: if signedIn() && docId == tokenOrgId();
       allow write: if isAdmin() && docId == tokenOrgId();
-      // Coordinators manage the Limbo activity dropdown in place — that ONE
-      // field (plus the timestamp); everything else stays admin-only.
+      // Coordinators manage the Limbo activity dropdown + its colors in place
+      // — those fields (plus the timestamp); everything else stays admin-only.
       allow update: if isStaff() && docId == tokenOrgId()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['limboActivities', 'updatedAt']);
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['limboActivities', 'limboActivityColors', 'updatedAt']);
     }
 
     // ── reportConfig/{orgId} (per-tenant report categories + name overrides) ─

@@ -578,7 +578,7 @@ describe('security-audit hardening (sergeant tier, portal secrets, feedback tria
   it('portal secrets subdoc: staff read OK, instructor DENIED', async () => {
     await assertSucceeds(getDoc(doc(as('carol', 'coordinator'), 'academies/acadA/private/portal')));
     // Limbo activities live on the org settings doc: staff may edit THAT field only.
-    await assertSucceeds(updateDoc(doc(as('carol', 'coordinator'), 'settings/' + ORG), { limboActivities: ['Range', 'SOCE'] }));
+    await assertSucceeds(updateDoc(doc(as('carol', 'coordinator'), 'settings/' + ORG), { limboActivities: ['Range', 'SOCE'], limboActivityColors: { Range: 'amber' } }));
     await assertFails(updateDoc(doc(as('carol', 'coordinator'), 'settings/' + ORG), { limboActivities: ['Range'], orgName: 'Hijacked' }));
     await assertFails(updateDoc(doc(as('alice', 'instructor'), 'settings/' + ORG), { limboActivities: ['Range'] }));
     await assertFails(updateDoc(doc(as('erin', 'director', BETA), 'settings/' + ORG), { limboActivities: ['Range'] }));

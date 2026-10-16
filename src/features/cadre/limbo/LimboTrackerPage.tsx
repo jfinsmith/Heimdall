@@ -27,21 +27,31 @@ import { friendlyError } from '../../../lib/callableError';
 const CLEAR = '__clear__';
 const CUSTOM = '__custom__';
 const MAX_DAYS = 200;
-/** Stable per-activity colors (index into the activity list). */
-const PALETTE = [
-  'bg-sky-200 text-sky-950',
-  'bg-emerald-200 text-emerald-950',
-  'bg-violet-200 text-violet-950',
-  'bg-rose-200 text-rose-950',
-  'bg-amber-200 text-amber-950',
-  'bg-teal-200 text-teal-950',
-  'bg-indigo-200 text-indigo-950',
-  'bg-orange-200 text-orange-950',
-  'bg-lime-200 text-lime-950',
-  'bg-fuchsia-200 text-fuchsia-950',
-  'bg-cyan-200 text-cyan-950',
-  'bg-pink-200 text-pink-950',
+/** Activity colors — picked per activity in Manage activities (stored by key);
+ *  unpicked labels fall back to a stable hash of the name. */
+const PALETTE: { key: string; name: string; cls: string }[] = [
+  { key: 'sky', name: 'Sky', cls: 'bg-sky-200 text-sky-950' },
+  { key: 'emerald', name: 'Green', cls: 'bg-emerald-200 text-emerald-950' },
+  { key: 'violet', name: 'Violet', cls: 'bg-violet-200 text-violet-950' },
+  { key: 'rose', name: 'Rose', cls: 'bg-rose-200 text-rose-950' },
+  { key: 'amber', name: 'Amber', cls: 'bg-amber-200 text-amber-950' },
+  { key: 'teal', name: 'Teal', cls: 'bg-teal-200 text-teal-950' },
+  { key: 'indigo', name: 'Indigo', cls: 'bg-indigo-200 text-indigo-950' },
+  { key: 'orange', name: 'Orange', cls: 'bg-orange-200 text-orange-950' },
+  { key: 'lime', name: 'Lime', cls: 'bg-lime-200 text-lime-950' },
+  { key: 'fuchsia', name: 'Fuchsia', cls: 'bg-fuchsia-200 text-fuchsia-950' },
+  { key: 'cyan', name: 'Cyan', cls: 'bg-cyan-200 text-cyan-950' },
+  { key: 'pink', name: 'Pink', cls: 'bg-pink-200 text-pink-950' },
+  { key: 'slate', name: 'Grey', cls: 'bg-slate-300 text-slate-950' },
+  { key: 'red', name: 'Red', cls: 'bg-red-300 text-red-950' },
 ];
+const paletteCls = (key: string | undefined) => PALETTE.find((p) => p.key === key)?.cls;
+/** Fallback color for a label with no picked color — stable across list edits. */
+function hashCls(label: string): string {
+  let h = 0;
+  for (const ch of label.toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return PALETTE[h % 12].cls;
+}
 const localDate = (s: string) => new Date(`${s}T00:00:00`);
 /** What a save may carry: plan fields plus nested cell writes (deleteField clears). */
 type PlanPatch = Omit<Partial<LimboPlanDoc>, 'cells' | 'nmtStart'> & {
@@ -119,13 +129,8 @@ export function LimboTrackerPage() {
     return [...seen].sort((a, b) => a.localeCompare(b));
   }, [cells, managedActivities]);
   const [manageOpen, setManageOpen] = useState(false);
-  // Hash the label (not its position) so adding or removing an activity never
-  // recolors the rest of the chart.
-  const colorOf = (label: string) => {
-    let h = 0;
-    for (const ch of label.toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-    return PALETTE[h % PALETTE.length];
-  };
+  const activityColors = settings?.limboActivityColors ?? {};
+  const colorOf = (label: string) => paletteCls(activityColors[label]) ?? hashCls(label);
 
   // Brush + bulk panel state.
   const [brushPick, setBrushPick] = useState<string>(CLEAR);
@@ -399,12 +404,17 @@ export function LimboTrackerPage() {
       {manageOpen && orgId && (
         <ManageActivitiesModal
           current={managedActivities}
+          colors={activityColors}
           extras={activities.filter((a) => !managedActivities.includes(a))}
           onClose={() => setManageOpen(false)}
-          onSave={async (list) => {
-            // Rules let staff touch exactly this field on the org settings doc.
-            await setDoc(doc(db, 'settings', orgId), { limboActivities: list, updatedAt: serverTimestamp() }, { merge: true });
-            if (!list.includes(brushPick) && brushPick !== CUSTOM && brushPick !== CLEAR) setBrushPick(list[0] ?? CLEAR);
+          onSave={async (list, colors) => {
+            // Rules let staff touch exactly these fields on the org settings doc.
+            await setDoc(
+              doc(db, 'settings', orgId),
+              { limboActivities: list, limboActivityColors: colors, updatedAt: serverTimestamp() },
+              { merge: true }
+            );
+            if (!list.includes(brushPick) && brushPick !== CUSTOM && brushPick !== CLEAR) setBrushPick(CLEAR);
           }}
         />
       )}
@@ -427,17 +437,21 @@ export function LimboTrackerPage() {
  */
 function ManageActivitiesModal({
   current,
+  colors: initialColors,
   extras,
   onClose,
   onSave,
 }: {
   current: string[];
+  /** Picked palette key per label (unpicked = hashed fallback). */
+  colors: Record<string, string>;
   /** Labels painted on this chart that aren't in the managed list (one-off customs) — offered for promotion. */
   extras: string[];
   onClose: () => void;
-  onSave: (list: string[]) => Promise<void>;
+  onSave: (list: string[], colors: Record<string, string>) => Promise<void>;
 }) {
   const [list, setList] = useState<string[]>(current);
+  const [colors, setColors] = useState<Record<string, string>>(initialColors);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -456,7 +470,9 @@ function ManageActivitiesModal({
     setBusy(true);
     setError(null);
     try {
-      await onSave(list);
+      // Drop colors for labels no longer in the list (keeps the map tidy).
+      const kept = Object.fromEntries(Object.entries(colors).filter(([label]) => list.includes(label)));
+      await onSave(list, kept);
       onClose();
     } catch (err) {
       setError(friendlyError(err, 'Could not save the activity list.'));
@@ -468,14 +484,25 @@ function ManageActivitiesModal({
       <div className="space-y-3">
         <p className="text-sm text-slate-600">
           These are the choices in the activity dropdown for every class&apos;s Limbo chart (listed alphabetically).
-          Removing one keeps the days already painted with it.
+          Click a swatch to set each one&apos;s color. Removing an activity keeps the days already painted with it.
         </p>
         {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
         <ul className="divide-y divide-watch-100 rounded-md border border-watch-100">
           {[...list].sort((a, b) => a.localeCompare(b)).map((a) => (
-            <li key={a} className="flex items-center gap-2 px-3 py-1.5 text-sm">
-              <span className="flex-1 text-watch-900">{a}</span>
-              <button type="button" className="px-1 text-red-600 hover:underline" onClick={() => setList((l) => l.filter((x) => x !== a))}>
+            <li key={a} className="flex flex-wrap items-center gap-2 px-3 py-1.5 text-sm">
+              <span className={`min-w-[8rem] rounded px-1.5 py-0.5 font-medium ${paletteCls(colors[a]) ?? hashCls(a)}`}>{a}</span>
+              <span className="flex flex-wrap gap-1" aria-label={`Color for ${a}`}>
+                {PALETTE.map((p) => (
+                  <button
+                    key={p.key}
+                    type="button"
+                    title={p.name}
+                    onClick={() => setColors((c) => ({ ...c, [a]: p.key }))}
+                    className={`h-5 w-5 rounded ${p.cls.split(' ')[0]} ${colors[a] === p.key ? 'ring-2 ring-watch-900 ring-offset-1' : 'ring-1 ring-black/10 hover:ring-watch-400'}`}
+                  />
+                ))}
+              </span>
+              <button type="button" className="ml-auto px-1 text-red-600 hover:underline" onClick={() => setList((l) => l.filter((x) => x !== a))}>
                 Remove
               </button>
             </li>

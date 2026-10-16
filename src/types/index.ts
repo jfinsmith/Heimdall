@@ -380,6 +380,8 @@ export interface GlobalSettings {
   /** Limbo activity dropdown (Range, Validations, SOCE…). Managed by staff from
    *  the tracker itself; absent/empty = LIMBO_ACTIVITIES defaults. */
   limboActivities?: string[];
+  /** Picked chart color per Limbo activity label (palette key); unpicked = stable hash fallback. */
+  limboActivityColors?: Record<string, string>;
   /** Master kill-switch for ALL outbound email (in-app notifications still fire). */
   emailMasterEnabled: boolean;
   /** Per-automation email toggles; missing key = enabled. */
