@@ -91,19 +91,21 @@ export function LimboTrackerPage() {
     [roster, chosenAgencies.join('|')]
   );
 
-  // Window: today on the far left, then every day through the NMT start (a
-  // few days past it so the gold column isn't the edge) — or 60 days when no
-  // NMT date is set. Rolls forward daily; scrolls horizontally.
+  // Window: the academy's END date (from the class itself) through the NMT
+  // start date — the whole limbo. Once today passes the end date the left edge
+  // becomes today, so passed days drop off and the chart rolls right. No NMT
+  // date yet = 60 days from the start. Scrolls horizontally.
   const today = toDateInputValue(new Date());
   const nmtStart = plan?.nmtStart ?? '';
+  const academyEnd = academy ? toDateInputValue(academy.endDate.toDate()) : '';
   const days = useMemo(() => {
-    const start = localDate(today);
+    const start = localDate(academyEnd && academyEnd > today ? academyEnd : today);
     const nmt = nmtStart ? localDate(nmtStart) : null;
-    const end = nmt && nmt > start ? addDays(nmt, 3) : addDays(start, 60);
+    const end = nmt && nmt >= start ? nmt : addDays(start, 60);
     const out: { key: string; date: Date }[] = [];
     for (let d = start; d <= end && out.length < MAX_DAYS; d = addDays(d, 1)) out.push({ key: toDateInputValue(d), date: d });
     return out;
-  }, [today, nmtStart]);
+  }, [today, nmtStart, academyEnd]);
   // NMT countdown — shown with the date so it's glaring even when the start
   // sits outside the two-week window.
   const nmtIn = plan?.nmtStart ? Math.round((localDate(plan.nmtStart).getTime() - localDate(today).getTime()) / 864e5) : null;
@@ -197,6 +199,18 @@ export function LimboTrackerPage() {
     await write({ cells: patch });
   }
 
+  /** One click paints every listed cadet for that day with the current brush. */
+  function paintAll(dayKey: string) {
+    if (brushPick === CUSTOM && !brush) {
+      setError('Type the custom activity first.');
+      return;
+    }
+    const value = brushPick === CLEAR ? deleteField() : brush;
+    const patch: Record<string, Record<string, string | FieldValue>> = {};
+    for (const m of members) patch[m.id] = { [dayKey]: value };
+    void write({ cells: patch });
+  }
+
   // Today's headcount by activity — the "where is everyone right now" line.
   const todaySummary = useMemo(() => {
     const counts = new Map<string, number>();
@@ -239,7 +253,10 @@ export function LimboTrackerPage() {
       {error && <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
 
       {/* NMT date + agency filter + window */}
-      <div className="mb-4 grid gap-4 rounded-lg border border-watch-100 bg-white p-4 shadow-sm lg:grid-cols-[16rem_1fr]">
+      <div className="mb-4 grid gap-4 rounded-lg border border-watch-100 bg-white p-4 shadow-sm lg:grid-cols-[11rem_16rem_1fr]">
+        <Field label="Academy end date" hint="From the class itself (Edit academy)">
+          <Input type="date" value={academyEnd} disabled />
+        </Field>
         <Field label="NMT start date" hint={nmtHint}>
           <Input
             type="date"
@@ -318,7 +335,7 @@ export function LimboTrackerPage() {
             </span>
           ))}
           <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-500">Unassigned {todaySummary.unassigned}</span>
-          <span className="ml-auto text-slate-400">Chart runs from today through NMT (60 days when unset); the checkbox beside &quot;Cadet&quot; selects everyone.</span>
+          <span className="ml-auto text-slate-400">Chart runs from the academy end date through NMT (passed days drop off); the &quot;Everyone&quot; row paints a whole day in one click.</span>
         </div>
       </div>
 
@@ -363,6 +380,29 @@ export function LimboTrackerPage() {
               </tr>
             </thead>
             <tbody>
+              {/* Paint-everyone row: one click assigns the brush to every cadet
+                  listed for that day (the 17-clicks problem). */}
+              <tr className="bg-watch-50/70">
+                <td className="sticky left-0 z-10 border-b border-r border-watch-200 bg-watch-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-watch-600">
+                  Everyone ↓ <span className="font-normal normal-case tracking-normal text-slate-400">(click a day)</span>
+                </td>
+                {days.map(({ key, date }) => {
+                  const nmt = key === nmtKey;
+                  return (
+                    <td key={key} className={`border-b border-watch-200 p-0 ${nmt ? 'border-l-2 border-l-bifrost-500 bg-bifrost-50' : isWeekend(date) ? 'bg-slate-100' : ''}`}>
+                      <button
+                        type="button"
+                        disabled={busy || members.length === 0}
+                        onClick={() => paintAll(key)}
+                        title={`Set every cadet to "${brushPick === CLEAR ? 'clear' : brush || '…'}" on ${date.toLocaleDateString()}`}
+                        className="block h-5 w-full text-[10px] leading-5 text-slate-400 hover:bg-bifrost-100 hover:text-bifrost-800"
+                      >
+                        all
+                      </button>
+                    </td>
+                  );
+                })}
+              </tr>
               {members.map((m: WithId<RosterMemberDoc>) => (
                 <tr key={m.id} className="group">
                   <td className="sticky left-0 z-10 border-b border-r border-watch-100 bg-white px-3 py-1.5 group-hover:bg-watch-50">
