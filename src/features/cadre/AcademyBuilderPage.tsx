@@ -23,7 +23,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { can } from '../../lib/rbac';
 import { hoursBetween, tsFromDate, toTimeInputValue, toDateInputValue, fmtDate, isValidDuration, isSameLocalDay } from '../../lib/time';
 import { holidaysForYear, holidayBackgroundEvents, observedHolidayDatesInRange, HOLIDAY_PAY_HOURS } from '../../lib/holidays';
-import type { AcademyDoc, CoursePublishTarget, QualificationKey, RosterMemberDoc, SessionDoc, UserDoc } from '../../types';
+import type { AcademyDoc, CoursePublishTarget, QualificationKey, RosterMemberDoc, SessionDoc, UserDoc, ScheduleChangeQueueDoc } from '../../types';
 import { QUALIFICATION_LABELS, ADMIN_ROLES } from '../../types';
 import { Badge, Button, Field, Input, PageHeader, Select } from '../../components/ui';
 import { Modal } from '../../components/Modal';
@@ -109,6 +109,15 @@ export function AcademyBuilderPage() {
   } | null>(null);
 
   const liveSessions = useMemo(() => sessions.filter((s) => s.status !== 'cancelled'), [sessions]);
+  // Schedule-change notices waiting out the org's quiet period (server-owned
+  // queue; one entry per edited session). Shown so a coordinator knows the
+  // email is coming — and that another adjustment simply restarts the clock.
+  const { data: pendingNotices } = useCollection<ScheduleChangeQueueDoc>(
+    academyId ? 'scheduleChangeQueue' : null,
+    academyId ? [where('academyId', '==', academyId)] : [],
+    [academyId]
+  );
+  const quietMinutes = settings?.scheduleChangeQuietMinutes ?? 5;
   // Anything (session OR lunch block) landing on a Saturday/Sunday — surfaced as
   // a dismissable heads-up (often a clone/recurring artifact), like the holiday alert.
   const weekendItems = useMemo(
@@ -866,6 +875,17 @@ export function AcademyBuilderPage() {
 
       {/* Weekend scheduling — dismissable heads-up (a class/lunch on Sat/Sun is
           often an unintended clone/recurring artifact). */}
+      {/* Pending schedule-change notices — the quiet period in action. */}
+      {pendingNotices.length > 0 && (
+        <section className="mb-4 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+          <span className="font-semibold">
+            {pendingNotices.length} schedule-change notice{pendingNotices.length === 1 ? '' : 's'} queued
+          </span>{' '}
+          — signed-up instructors get ONE email per changed session once it has sat untouched for {quietMinutes} minute
+          {quietMinutes === 1 ? '' : 's'}, describing the net change. Adjust again now and the clock restarts; move it
+          back and nothing is sent.
+        </section>
+      )}
       {weekendItems.length > 0 && !weekendDismissed && (
         <section className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
           <div className="mb-2 flex items-center justify-between gap-2">

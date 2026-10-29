@@ -27,6 +27,7 @@ import {
 } from './notify';
 import { renderEmail, escapeHtml } from './templates';
 import { fillConflictReason } from '../sessions/validation';
+import { enqueueScheduleChange } from './changeQueue';
 import type { AssignmentDoc, SessionDoc, SignupDoc, UserDoc } from '../types';
 
 const db = () => getFirestore();
@@ -331,21 +332,15 @@ export const onSessionUpdated = onDocumentUpdated('sessions/{sessionId}', async 
     .get();
   if (signups.empty) return;
 
-  const settings = await getSettings(after.orgId);
-  const details = sessionDetails(after);
-  const what = cancelled ? 'CANCELLED' : timeChanged ? 'rescheduled' : 'moved rooms';
+  // The NOTICE is deferred: queued per session and sent by
+  // gjallarhornChangeFlush once the session has sat untouched for the org's
+  // quiet period, as ONE email describing the net change (editor + never-told
+  // reservees excluded there). Mirrors below still sync immediately.
+  if (!unannounced) await enqueueScheduleChange(sessionId, before, after);
 
   await Promise.all(
     signups.docs.map(async (d) => {
       const su = d.data() as SignupDoc;
-      // The EDITOR is skipped (they made the change — rescheduling or
-      // cancelling a session they're also signed up for shouldn't email them),
-      // but their assignment mirror below must still update. Same for a
-      // reservee whose offer was never sent (course not opened yet): they
-      // don't know the session exists, so there's no "change" to report.
-      const isEditor = su.uid === after.updatedBy;
-      const neverTold = su.reservationState === 'pending' && su.offerNotified !== true;
-      const skipNotify = unannounced || isEditor || neverTold;
       // Keep the assignment mirror in sync for reminders/My Schedule. Stamp
       // uid/orgId on BOTH paths — a merge-set on a MISSING mirror would
       // otherwise create an org-less stub (invisible garbage per the
@@ -371,28 +366,6 @@ export const onSessionUpdated = onDocumentUpdated('sessions/{sessionId}', async 
               },
           { merge: true }
         );
-      if (skipNotify) return;
-      await notify({
-        uid: su.uid,
-        dedupeKey: `${event.id}_sched_${su.uid}`,
-        type: 'schedule_change',
-        title: `Schedule change: ${after.title || after.courseName} ${what}`,
-        body: cancelled
-          ? 'This session has been cancelled. You are released from this assignment.'
-          : `Your session has been ${what}. Check the updated details.`,
-        link: '/my-schedule',
-        force: cancelled, // cancellations always email
-        emailContent: renderEmail({
-          subject: `[HEIMDALL] ${cancelled ? 'CANCELLED' : 'Schedule change'} — ${after.title || after.courseName}`,
-          heading: cancelled ? 'Session cancelled' : `Session ${what}`,
-          bodyHtml: `<p>${escapeHtml(su.displayName)}, your assigned session has been <strong>${what}</strong>.</p>${details.html}`,
-          bodyText: `${su.displayName}, your assigned session has been ${what}.\n\n${details.text}`,
-          ctaLabel: 'View My Schedule',
-          ctaUrl: 'https://heimdallscheduling.com/my-schedule',
-          orgName: settings?.orgName,
-          logoUrl: settings?.logoUrl,
-        }),
-      });
     })
   );
 });

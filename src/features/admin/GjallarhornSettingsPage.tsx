@@ -38,6 +38,7 @@ export function GjallarhornSettingsPage() {
   const [leadHours, setLeadHours] = useState(48);
   const [alertDays, setAlertDays] = useState(7);
   const [escalationDays, setEscalationDays] = useState(7);
+  const [quietMinutes, setQuietMinutes] = useState(5);
   const [recipients, setRecipients] = useState<string[]>([]);
   const [digest, setDigest] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -51,6 +52,7 @@ export function GjallarhornSettingsPage() {
     setLeadHours(settings.reminderDefaultLeadHours ?? 48);
     setAlertDays(settings.understaffingAlertDays ?? 7);
     setEscalationDays(settings.escalationWindowDays ?? 7);
+    setQuietMinutes(settings.scheduleChangeQuietMinutes ?? 5);
     setRecipients(settings.escalationRecipients ?? []);
     setDigest(settings.weeklyDigestEnabled !== false);
   }, [settings]);
@@ -92,6 +94,7 @@ export function GjallarhornSettingsPage() {
           reminderDefaultLeadHours: leadHours,
           understaffingAlertDays: alertDays,
           escalationWindowDays: escalationDays,
+          scheduleChangeQuietMinutes: quietMinutes,
           escalationRecipients: recipients,
           weeklyDigestEnabled: digest,
         },
@@ -114,12 +117,13 @@ export function GjallarhornSettingsPage() {
       leadHours !== (settings.reminderDefaultLeadHours ?? 48) ||
       alertDays !== (settings.understaffingAlertDays ?? 7) ||
       escalationDays !== (settings.escalationWindowDays ?? 7) ||
+      quietMinutes !== (settings.scheduleChangeQuietMinutes ?? 5) ||
       digest !== (settings.weeklyDigestEnabled !== false) ||
       JSON.stringify(recipients) !== JSON.stringify(settings.escalationRecipients ?? []) ||
       EMAIL_AUTOMATIONS.some((a) => automations[a.key] !== (settings.emailAutomations?.[a.key] !== false)) ||
       EMAIL_AUTOMATIONS.some((a) => JSON.stringify(roles[a.key] ?? []) !== JSON.stringify(settings.emailAutomationRoles?.[a.key] ?? []))
     );
-  }, [settings, masterOn, leadHours, alertDays, escalationDays, digest, recipients, automations, roles]);
+  }, [settings, masterOn, leadHours, alertDays, escalationDays, quietMinutes, digest, recipients, automations, roles]);
 
   return (
     <form onSubmit={save} className="max-w-3xl pb-24">
@@ -226,6 +230,12 @@ export function GjallarhornSettingsPage() {
           </Field>
           <Field label="Escalation window (days)" hint="A lead withdrawing within this many days escalates to command">
             <Input type="number" min={1} max={60} value={escalationDays} onChange={(e) => setEscalationDays(Number(e.target.value))} />
+          </Field>
+          <Field
+            label="Schedule-change quiet period (minutes)"
+            hint="A moved/re-roomed/cancelled session waits this long untouched before signed-up instructors are emailed ONE notice of the net change — a drag-and-correct never sends two"
+          >
+            <Input type="number" min={1} max={60} value={quietMinutes} onChange={(e) => setQuietMinutes(Number(e.target.value))} />
           </Field>
         </div>
         <Field label="Escalation recipients" hint="Command staff who receive critical alerts (lead withdrawals, understaffing)">

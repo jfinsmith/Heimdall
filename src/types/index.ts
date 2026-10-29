@@ -241,7 +241,7 @@ export const EMAIL_AUTOMATIONS = [
   { key: 'slot_reopened', label: 'Withdrawal / slot re-opened', description: 'Emails the academy coordinators when an instructor withdraws (never the withdrawer themselves).', audience: 'staff' },
   { key: 'session_fully_staffed', label: 'Session fully staffed', description: 'Emails coordinators when the last required slot fills (except whoever filled it).', audience: 'staff' },
   { key: 'lead_withdrawal_escalation', label: 'Lead withdrawal escalation', description: 'Emails command when a lead withdraws inside the escalation window.', audience: 'admin', priority: true },
-  { key: 'schedule_change', label: 'Schedule change', description: 'Emails signed-up instructors when a session is moved, re-roomed, or cancelled — everyone except the person who made the change.', audience: 'everyone', priority: true },
+  { key: 'schedule_change', label: 'Schedule change', description: 'Emails signed-up instructors when a session is moved, re-roomed, or cancelled — everyone except the person who made the change. Sent once the session has sat untouched for the quiet period below, as ONE notice of the net change (a drag-and-correct never sends two).', audience: 'everyone', priority: true },
   { key: 'qualification_approved', label: 'Qualification verified', description: 'Emails the instructor when a coordinator verifies a qualification.', audience: 'everyone' },
   { key: 'course_published', label: 'Course opened for sign-up', description: 'Emails eligible instructors when coordinators open a course’s sessions for sign-up (the opener is not emailed).', audience: 'everyone' },
   { key: 'account_approved', label: 'Account approved', description: 'Emails a new user when their account is activated.', audience: 'everyone', priority: true },
@@ -374,6 +374,10 @@ export interface GlobalSettings {
   holidayPayHours?: number;
   /** Required hours per bi-weekly pay period before overtime (PSO default 85). */
   payPeriodTargetHours?: number;
+  /** Minutes a session must sit untouched before its schedule-change notice
+   *  emails signed-up instructors — a drag-and-correct sends ONE correct
+   *  notice instead of two contradictory ones. Default 5. */
+  scheduleChangeQuietMinutes?: number;
   /** Agencies whose cadets attend this academy — the roster intake picklist and
    *  the Limbo tracker's agency filter. Absent/empty = the built-in legacy list. */
   agencies?: string[];
@@ -471,6 +475,15 @@ export interface LimboPlanDoc {
   cells?: Record<string, Record<string, string>>;
   updatedAt?: Timestamp;
   updatedBy?: string;
+}
+/** scheduleChangeQueue/{sessionId} — a burst of edits awaiting its quiet period (server-written). */
+export interface ScheduleChangeQueueDoc {
+  orgId?: string;
+  academyId: string;
+  sessionId: string;
+  notifyAfter: Timestamp;
+  firstChangedAt: Timestamp;
+  lastChangedAt: Timestamp;
 }
 /** Default activity brushes on the Limbo chart (custom labels are typed in). */
 export const LIMBO_ACTIVITIES = ['Range', 'Validations', 'SOCE', 'Studying', 'TDY', 'Admin', 'Leave'] as const;

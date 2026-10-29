@@ -20,6 +20,8 @@ export { saveRoomReservation, deleteRoomReservation } from './rooms/reservations
 export { calendarFeed } from './gjallarhorn/icsFeed';
 // Gjallarhorn — scheduled sweeps (2 Cloud Scheduler jobs, within the 3 free)
 export { gjallarhornDailySweep, gjallarhornWeeklyDigest } from './gjallarhorn/sweeps';
+// Schedule-change quiet period (4th Cloud Scheduler job — ~$0.10/mo beyond the free 3).
+export { gjallarhornChangeFlush } from './gjallarhorn/changeQueue';
 export { sendQueuedEmail } from './gjallarhorn/mailer';
 export { accountPurgeDaily } from './admin/purge';
 // Admin callables

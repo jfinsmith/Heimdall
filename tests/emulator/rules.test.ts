@@ -679,3 +679,22 @@ describe('documentLibrary — availability gating', () => {
     await assertSucceeds(updateDoc(doc(owner, 'documentLibrary/specBeta'), { orgIds: [ORG, BETA] }));
   });
 });
+
+// scheduleChangeQueue — server-owned; staff read their own org's pending notices.
+describe('scheduleChangeQueue — staff read, no client writes, org-isolated', () => {
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'scheduleChangeQueue/s1'), { orgId: ORG, academyId: 'aA', sessionId: 's1', notifyAfter: new Date(), firstChangedAt: new Date(), lastChangedAt: new Date(), before: {} });
+    });
+  });
+  it('coordinator CAN read + list own org entries by academy', async () => {
+    await assertSucceeds(getDoc(doc(as('carol', 'coordinator'), 'scheduleChangeQueue/s1')));
+    await assertSucceeds(getDocs(query(collection(as('carol', 'coordinator'), 'scheduleChangeQueue'), where('orgId', '==', ORG), where('academyId', '==', 'aA'))));
+  });
+  it('instructor CANNOT read; other org CANNOT read; nobody writes', async () => {
+    await assertFails(getDoc(doc(as('alice', 'instructor'), 'scheduleChangeQueue/s1')));
+    await assertFails(getDoc(doc(as('erin', 'director', BETA), 'scheduleChangeQueue/s1')));
+    await assertFails(deleteDoc(doc(as('dave', 'director'), 'scheduleChangeQueue/s1')));
+    await assertFails(setDoc(doc(as('dave', 'director'), 'scheduleChangeQueue/s2'), { orgId: ORG, academyId: 'aA', sessionId: 's2' }));
+  });
+});

@@ -93,6 +93,22 @@ export interface GlobalSettings {
   emailAutomationRoles?: Record<string, Role[]>;
   /** Lead-withdrawal escalation window (days before a session) — default 7. */
   escalationWindowDays?: number;
+  /** Minutes a session must sit untouched before its schedule-change notice
+   *  goes out (coalesces a drag-and-correct into ONE email). Default 5. */
+  scheduleChangeQuietMinutes?: number;
+}
+
+/** scheduleChangeQueue/{sessionId} — a burst of edits awaiting its quiet period. */
+export interface ScheduleChangeQueueDoc {
+  orgId?: string;
+  academyId: string;
+  sessionId: string;
+  /** What instructors last knew: the `before` of the FIRST edit in the burst. */
+  before: { start: Timestamp; end: Timestamp; room: string; location: string; status: SessionDoc['status'] };
+  firstChangedAt: Timestamp;
+  lastChangedAt: Timestamp;
+  notifyAfter: Timestamp;
+  editedBy?: string;
 }
 
 /**

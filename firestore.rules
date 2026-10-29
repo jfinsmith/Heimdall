@@ -501,6 +501,17 @@ service cloud.firestore {
       allow write: if false; // functions/Admin SDK only
     }
 
+    // ── scheduleChangeQueue/{sessionId} — pending schedule-change notices ───
+    // Server-owned (trigger + flush job). Staff read their org's entries so the
+    // builder can show "notice queued" — DIRECT field compare (list-safe).
+    match /scheduleChangeQueue/{sessionId} {
+      allow read: if request.auth != null
+        && request.auth.token.role in ['coordinator', 'sergeant', 'lieutenant', 'director']
+        && request.auth.token.orgId != null
+        && resource.data.orgId == request.auth.token.orgId;
+      allow write: if false;
+    }
+
     // ── bulkMessages ───────────────────────────────────────────────────────
     match /bulkMessages/{id} {
       allow read: if isStaff() && inOrg(resource.data);
