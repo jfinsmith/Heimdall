@@ -83,12 +83,17 @@ export function ReportLetter({
       fromName,
       directorName: director,
       memoDate: display._memoDate,
-      reSubject: type.reSubject,
+      reSubject: '',
     };
     const resolve = (tpl: string) => tpl.replace(/\{(\w+)\}/g, (_, k) => ctx[k] ?? '');
+    // The Re: line is itself a template ("Injury / Illness Report — {cadetSubject}")
+    // — resolve it FIRST so header rows that embed {reSubject} receive the
+    // finished text. A single-pass replace never re-scans what it inserts, so
+    // seeding ctx with the raw template printed "{cadetSubject}" on the memo.
+    ctx.reSubject = resolve(type.reSubject);
 
     const memo: MemoDocument = {
-      reSubject: resolve(type.reSubject),
+      reSubject: ctx.reSubject,
       titleLines: doc.titleLines?.map(resolve),
       // Resolve each header value; trim orphan commas/space left by a blank
       // optional token (e.g. an unfilled CC) and drop rows that end up empty.
@@ -121,14 +126,18 @@ export function ReportLetter({
   const renderBody = !fl && type.bodyNeutral ? type.bodyNeutral : type.body;
   if (!renderBody) return null;
 
+  // Same token pass as the block model, so a legacy Re: line may embed
+  // {cadetName} / field keys too.
+  const legacyCtx: Record<string, string> = { ...display, cadetName: report.cadetName ?? '', fromName, directorName: director, memoDate: display._memoDate };
+  const legacySubject = type.reSubject.replace(/\{(\w+)\}/g, (_, k) => legacyCtx[k] ?? '');
   const memo: MemoDocument = {
-    reSubject: type.reSubject,
+    reSubject: legacySubject,
     headerFields: [
       { label: 'To:', value: report.cadetName ?? '' },
       { label: 'From:', value: fromName },
       { label: 'CC:', value: directorLine },
       { label: 'Date:', value: display._memoDate },
-      { label: 'Re:', value: type.reSubject },
+      { label: 'Re:', value: legacySubject },
     ],
     blocks: [{ kind: 'jsx', render: () => renderBody(display) }],
     signerLine: directorLine,
