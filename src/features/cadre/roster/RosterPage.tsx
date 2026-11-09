@@ -12,11 +12,11 @@ import { db, functions } from '../../../lib/firebase';
 import { useCollection, useDoc, type WithId } from '../../../lib/firestore';
 import { useCurriculum } from '../../../lib/curricula';
 import type { AcademyDoc, CurriculumDoc, RosterAgency, RosterMemberDoc } from '../../../types';
-import { ROSTER_AGENCIES } from '../../../types';
+import { AUTO_DISMISSAL_POINTS, ROSTER_AGENCIES } from '../../../types';
 import { useGlobalSettings } from '../../../app/providers';
-import { Badge, Button, Field, Input, PageHeader, Select, Spinner } from '../../../components/ui';
+import { Badge, Button, Field, Input, PageHeader, Select, Spinner, TextArea } from '../../../components/ui';
 import { Modal } from '../../../components/Modal';
-import { agencyLabel, agencyOptions, courseKey, defaultAgency, lastFirst, memberStanding, rosterCompare } from './rosterShared';
+import { agencyLabel, agencyOptions, courseKey, defaultAgency, disciplineTally, lastFirst, memberStanding, rosterCompare } from './rosterShared';
 import { buildCadetRecords } from './exportRecords';
 import { downloadCsv } from '../../../lib/csv';
 import { BulkImportModal, type ImportColumn } from '../../../components/BulkImportModal';
@@ -231,6 +231,7 @@ function MembersTab({
   const [addOpen, setAddOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [withdrawTarget, setWithdrawTarget] = useState<WithId<RosterMemberDoc> | null>(null);
+  const [dismissTarget, setDismissTarget] = useState<WithId<RosterMemberDoc> | null>(null);
   const [editTarget, setEditTarget] = useState<WithId<RosterMemberDoc> | null>(null);
   const [emergencyTarget, setEmergencyTarget] = useState<WithId<RosterMemberDoc> | null>(null);
 
@@ -253,7 +254,7 @@ function MembersTab({
     // skips the "after which course" pick inherits the old cut-off and the
     // gradebook/transcript/export read WD from the wrong course.
     await attempt(updateDoc(doc(db, 'academies', academyId, 'roster', m.id), {
-      status: 'active', completedAt: deleteField(), dismissalReason: deleteField(),
+      status: 'active', completedAt: deleteField(), dismissalReason: deleteField(), dismissalType: deleteField(),
       withdrawnAt: deleteField(), withdrawnAfterCourse: deleteField(), updatedAt: serverTimestamp(),
     }), `Could not reinstate ${m.fullName} — try again.`);
   }
@@ -266,13 +267,6 @@ function MembersTab({
       updateDoc(doc(db, 'academies', academyId, 'roster', m.id), { status: 'graduated', completedAt: serverTimestamp(), updatedAt: serverTimestamp() }),
       `Could not mark ${m.fullName} as graduated — try again.`
     );
-  }
-  async function dismiss(m: WithId<RosterMemberDoc>) {
-    const reason = window.prompt(`Reason for dismissing ${m.fullName}? (kept on the record)`);
-    if (reason == null) return; // cancelled
-    await attempt(updateDoc(doc(db, 'academies', academyId, 'roster', m.id), {
-      status: 'dismissed', completedAt: serverTimestamp(), ...(reason.trim() ? { dismissalReason: reason.trim() } : {}), updatedAt: serverTimestamp(),
-    }), `Could not dismiss ${m.fullName} — try again.`);
   }
 
   const full = members.filter((m) => !m.blockTaker);
@@ -307,7 +301,7 @@ function MembersTab({
               <MemberRow key={m.id} m={m} displayNo={i + 1} academyId={academyId}
                 onWithdraw={() => setWithdrawTarget(m)} onReinstate={() => reinstate(m)} onRemove={() => remove(m)}
                 onEdit={() => setEditTarget(m)} onEmergency={() => setEmergencyTarget(m)}
-                onGraduate={() => graduate(m)} onDismiss={() => dismiss(m)} />
+                onGraduate={() => graduate(m)} onDismiss={() => setDismissTarget(m)} />
             ))}
             {full.length === 0 && (
               <tr><td colSpan={9} className="px-3 py-10 text-center text-slate-400">No members yet — add the first cadet.</td></tr>
@@ -320,7 +314,7 @@ function MembersTab({
                 <MemberRow key={m.id} m={m} displayNo={i + 1} academyId={academyId}
                   onWithdraw={() => setWithdrawTarget(m)} onReinstate={() => reinstate(m)} onRemove={() => remove(m)}
                   onEdit={() => setEditTarget(m)} onEmergency={() => setEmergencyTarget(m)}
-                  onGraduate={() => graduate(m)} onDismiss={() => dismiss(m)} />
+                  onGraduate={() => graduate(m)} onDismiss={() => setDismissTarget(m)} />
               ))}
             </tbody>
           )}
@@ -340,7 +334,10 @@ function MembersTab({
         />
       )}
       {withdrawTarget && (
-        <WithdrawModal academyId={academyId} member={withdrawTarget} curriculum={curriculum} onClose={() => setWithdrawTarget(null)} />
+        <SeparationModal mode="withdraw" academyId={academyId} member={withdrawTarget} curriculum={curriculum} onClose={() => setWithdrawTarget(null)} />
+      )}
+      {dismissTarget && (
+        <SeparationModal mode="dismiss" academyId={academyId} member={dismissTarget} curriculum={curriculum} onClose={() => setDismissTarget(null)} />
       )}
       {editTarget && <EditMemberModal academyId={academyId} member={editTarget} onClose={() => setEditTarget(null)} />}
       {emergencyTarget && <EmergencyModal member={emergencyTarget} onClose={() => setEmergencyTarget(null)} />}
@@ -361,7 +358,10 @@ function MemberRow({
   const hasEmergency = !!(m.emergencyName?.trim() || m.emergencyPhone?.trim());
   const statusBadge =
     m.status === 'graduated' ? <Badge tone="navy">graduated</Badge>
-    : m.status === 'dismissed' ? <Badge tone="red">dismissed</Badge>
+    : m.status === 'dismissed' ? (
+        // Hover shows why — the grounds and any detail recorded at dismissal.
+        <span title={dismissalSummary(m) || undefined}><Badge tone="red">dismissed</Badge></span>
+      )
     : m.status === 'withdrawn' ? <Badge tone="slate">withdrawn</Badge>
     : <Badge tone="green">active</Badge>;
   return (
@@ -500,54 +500,118 @@ function EditMemberModal({
   );
 }
 
-// ── Withdraw modal ───────────────────────────────────────────────────────────
-function WithdrawModal({
-  academyId, member, curriculum, onClose,
+// ── Withdraw / Dismiss modal ─────────────────────────────────────────────────
+// Dismissal mirrors withdrawal: the cadet stays on the roster, grades through
+// the chosen course are kept, and every later course reads DISM (WD for a
+// withdrawal). A dismissal additionally records its GROUNDS — a cadet is
+// dismissed either academically (too many failed exams) or for conduct (too
+// many, or serious, rule violations) — because that decides which notice is
+// issued from the Reports tab.
+const DISMISSAL_GROUNDS = [
+  { key: 'academic', label: 'Academic — failed exams', letter: 'Academy Dismissal' },
+  { key: 'conduct', label: 'Conduct — rule violations', letter: 'Dismissal — Conduct / Administrative' },
+] as const;
+type DismissalGrounds = (typeof DISMISSAL_GROUNDS)[number]['key'];
+
+/** "Academic — failed exams: <detail>" for the roster badge tooltip. */
+function dismissalSummary(m: Pick<RosterMemberDoc, 'dismissalType' | 'dismissalReason'>): string {
+  const grounds = DISMISSAL_GROUNDS.find((g) => g.key === m.dismissalType)?.label ?? '';
+  const detail = (m.dismissalReason ?? '').trim();
+  return [grounds, detail].filter(Boolean).join(': ');
+}
+
+function SeparationModal({
+  mode, academyId, member, curriculum, onClose,
 }: {
+  mode: 'withdraw' | 'dismiss';
   academyId: string; member: WithId<RosterMemberDoc>; curriculum: WithId<CurriculumDoc> | null; onClose: () => void;
 }) {
+  const dismissing = mode === 'dismiss';
+  const tested = (curriculum?.courses ?? []).filter((c) => c.tested);
+  // What the record already shows — it usually settles the grounds.
+  const standing = memberStanding(member, curriculum?.courses ?? []);
+  const fails = standing.hlFails + standing.nonHlFails;
+  const points = disciplineTally(member.violations).points;
   const [afterCourse, setAfterCourse] = useState('');
+  const [grounds, setGrounds] = useState<DismissalGrounds | ''>(() =>
+    points >= AUTO_DISMISSAL_POINTS && fails === 0 ? 'conduct' : fails > 0 && points < AUTO_DISMISSAL_POINTS ? 'academic' : ''
+  );
+  const [detail, setDetail] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const tested = (curriculum?.courses ?? []).filter((c) => c.tested);
+  const letter = DISMISSAL_GROUNDS.find((g) => g.key === grounds)?.letter;
 
   async function submit() {
+    if (dismissing && !grounds) {
+      setError('Choose the grounds for the dismissal.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
       await updateDoc(doc(db, 'academies', academyId, 'roster', member.id), {
-        status: 'withdrawn',
-        withdrawnAt: serverTimestamp(),
-        // "Not specified" must CLEAR any earlier marker (every course reads WD),
-        // not silently keep a stale one from a previous withdrawal.
+        ...(dismissing
+          ? {
+              status: 'dismissed',
+              completedAt: serverTimestamp(),
+              dismissalType: grounds,
+              dismissalReason: detail.trim() || deleteField(),
+            }
+          : { status: 'withdrawn', withdrawnAt: serverTimestamp() }),
+        // "Not specified" must CLEAR any earlier marker (every course reads
+        // WD / DISM), not silently keep a stale one from a previous separation.
         withdrawnAfterCourse: afterCourse || deleteField(),
         updatedAt: serverTimestamp(),
       });
       onClose();
     } catch (err) {
       // Without this a failed write left the dialog stuck on "Withdrawing…".
-      setError(friendlyError(err, 'Could not withdraw the cadet.'));
+      setError(friendlyError(err, dismissing ? 'Could not dismiss the cadet.' : 'Could not withdraw the cadet.'));
       setBusy(false);
     }
   }
 
+  const code = dismissing ? 'DISM' : 'WD';
   return (
-    <Modal open onClose={onClose} title={`Withdraw ${member.fullName}`}>
+    <Modal open onClose={busy ? () => {} : onClose} title={`${dismissing ? 'Dismiss' : 'Withdraw'} ${member.fullName}`}>
       <div className="space-y-4 text-sm">
         {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">{error}</div>}
         <p className="text-slate-600">
-          They stay on the roster (clearly marked withdrawn) so the record is kept. Their grades up to the
-          withdrawal point are retained; everything after reads WD.
+          They stay on the roster (clearly marked {dismissing ? 'dismissed' : 'withdrawn'}) so the record is kept. Their grades up to the
+          {dismissing ? ' dismissal' : ' withdrawal'} point are retained; everything after reads {code}.
         </p>
-        <Field label="Withdrawn after which course? (optional)" hint="Grades for courses after this one show WD.">
+        {dismissing && (
+          <>
+            <Field label="Grounds for dismissal" hint={`On record: ${fails} course failure${fails === 1 ? '' : 's'} · ${points} discipline point${points === 1 ? '' : 's'} (${AUTO_DISMISSAL_POINTS} is automatic dismissal).`}>
+              <Select value={grounds} onChange={(e) => setGrounds(e.target.value as DismissalGrounds | '')}>
+                <option value="">— select —</option>
+                {DISMISSAL_GROUNDS.map((g) => <option key={g.key} value={g.key}>{g.label}</option>)}
+              </Select>
+            </Field>
+            <Field label="Details (optional)" hint="Kept on the record — e.g. the courses failed, or the violation.">
+              <TextArea rows={2} value={detail} onChange={(e) => setDetail(e.target.value)} maxLength={500} />
+            </Field>
+          </>
+        )}
+        <Field
+          label={`${dismissing ? 'Dismissed' : 'Withdrawn'} after which course? (optional)`}
+          hint={`Grades through this course are kept; courses after it show ${code}. Not specified = every course shows ${code}.`}
+        >
           <Select value={afterCourse} onChange={(e) => setAfterCourse(e.target.value)}>
             <option value="">— not specified —</option>
             {tested.map((c) => <option key={courseKey(c)} value={courseKey(c)}>{c.name}</option>)}
           </Select>
         </Field>
+        {dismissing && letter && (
+          <p className="rounded-md bg-watch-50 px-3 py-2 text-xs text-slate-600">
+            Next: issue the <strong>{letter}</strong> notice from this class&apos;s Reports tab.
+          </p>
+        )}
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button variant="danger" onClick={submit} disabled={busy}>{busy ? 'Withdrawing…' : 'Withdraw'}</Button>
+          <Button variant="danger" onClick={submit} disabled={busy}>
+            {busy ? (dismissing ? 'Dismissing…' : 'Withdrawing…') : dismissing ? 'Dismiss' : 'Withdraw'}
+          </Button>
         </div>
       </div>
     </Modal>

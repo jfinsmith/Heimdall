@@ -8,7 +8,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { WordmarkHorizontal } from '../../brand/Logo';
 
-const EFFECTIVE_DATE = 'August 5, 2026';
+const EFFECTIVE_DATE = 'November 9, 2026';
 const CONTACT = 'support@heimdallscheduling.com';
 /** The support address as a clickable mailto link. */
 const CONTACT_LINK = (
@@ -82,12 +82,15 @@ export function TermsPage() {
         <Link to="/privacy" className="text-bifrost-700 underline">Privacy Policy</Link>. Each Organization&apos;s
         records are logically isolated from every other Organization&apos;s. Organization administrators are
         responsible for the accuracy of the records they keep and for their own regulatory obligations (including
-        records-retention rules that apply to training academies).
+        records-retention rules that apply to training academies). An Organization whose administrator accepts the
+        Data Processing Agreement presented in the Service (Admin → Compliance &amp; Data) is also covered by that
+        agreement for the handling of its records.
       </p>
 
       <h2>5. Subscriptions &amp; billing</h2>
       <ul>
-        <li>Paid plans are billed per Organization at the published flat monthly rate, via our payment processor (Stripe). Taxes may apply.</li>
+        <li>Paid plans are billed per Organization at the flat monthly rate published at heimdallscheduling.com/pricing, via our payment processor (Stripe). Taxes may apply.</li>
+        <li>Organizations we have designated in writing as complimentary are not billed and are not subject to payment-related restrictions.</li>
         <li>Subscriptions renew monthly until cancelled. Cancellation stops future charges; access continues through the paid period.</li>
         <li>Missed payments may restrict creation of new classes after a grace period. Existing records remain accessible for export.</li>
       </ul>
@@ -133,63 +136,80 @@ export function PrivacyPage() {
         This Privacy Policy explains what HEIMDALL Scheduling (&ldquo;HEIMDALL,&rdquo; &ldquo;we&rdquo;) collects,
         how it is used, and the choices you have. HEIMDALL is used by training-academy Organizations; much of the
         data in the Service is entered and controlled by your Organization, which acts as the data controller for
-        its records.
+        its records. HEIMDALL processes those records on the Organization&apos;s behalf.
       </p>
 
       <h2>1. What we collect</h2>
       <ul>
-        <li><strong>Account information:</strong> name, email address, phone (optional), rank/agency, sign-in provider identifiers, and qualification claims you make.</li>
-        <li><strong>Organization records:</strong> schedules, sign-ups, rosters, attendance, grades, disciplinary notes, and documents entered by your Organization&apos;s staff.</li>
-        <li><strong>Usage &amp; technical data:</strong> log and device information needed to operate and secure the Service (e.g. authentication events, error reports, and page context attached to bug reports you submit).</li>
-        <li><strong>We do not collect Social Security Numbers.</strong> The Service is designed so SSNs are never stored.</li>
+        <li><strong>Account information:</strong> name, email address, date of birth (your academy uses it to verify training credentials against state records), phone (optional), rank and agency, sign-in provider identifiers, the instructor qualifications you claim and their expiration dates, an optional separate address for notifications, and — if you claim a First Aid / CPR qualification — a photo of your certification card.</li>
+        <li><strong>Organization records:</strong> schedules and room reservations; instructor sign-ups and assignments; cadet rosters (name, date of birth, contact details, emergency contact, and an optional student or training-record number); attendance, grades, and disciplinary notes; return-to-training tracking, which can include injury dates, follow-up dates, and work restrictions entered by staff; and documents your Organization&apos;s staff generate or file.</li>
+        <li><strong>Usage &amp; technical data:</strong> information needed to operate and secure the Service — authentication events, error information, and the page context and any screenshots you attach to a problem report.</li>
+        <li><strong>Browser storage:</strong> the Service keeps your sign-in state and a few display preferences in your browser. We do not use advertising cookies or third-party analytics trackers.</li>
+        <li><strong>We do not collect Social Security Numbers.</strong> The Service is designed so SSNs are never stored. Payment-card details are handled by our payment processor and never reach HEIMDALL.</li>
       </ul>
 
       <h2>2. How we use it</h2>
       <ul>
-        <li>To provide the Service: scheduling, rosters, records, printouts, and the notifications you or your Organization enable (email today; optional SMS reminders if offered and opted into).</li>
-        <li>To secure the Service: authentication, abuse prevention, audit logging of administrative actions.</li>
-        <li>To support you: responding to bug reports and requests you submit.</li>
+        <li>To provide the Service: scheduling, rosters, records, printouts, and the notifications you or your Organization enable, which are sent by email and shown in the Service.</li>
+        <li>To secure the Service: authentication, abuse prevention, and audit logging of administrative actions.</li>
+        <li>To support you: responding to problem reports and requests you submit.</li>
         <li>We do <strong>not</strong> sell personal information, and we do not use Organization records for advertising.</li>
       </ul>
 
       <h2>3. Who can see your data</h2>
       <ul>
-        <li>Members of your Organization, according to their role (e.g. staff can see rosters; instructors see schedules and their own assignments).</li>
-        <li>Each Organization&apos;s records are logically isolated — one Organization can never access another&apos;s data.</li>
-        <li>Optional public class links, if a coordinator creates one, expose a limited, sanitized schedule (and, behind a separate password, a read-only gradebook) — never contact information, dates of birth, or identification numbers.</li>
+        <li>Members of your Organization, according to their role (for example, staff can see rosters; instructors see published schedules and their own assignments).</li>
+        <li>Each Organization&apos;s records are logically isolated — one Organization cannot access another&apos;s data.</li>
+        <li>HEIMDALL&apos;s operator may access an Organization&apos;s data only as needed to provide support the Organization requests, to maintain and secure the Service, or to comply with law.</li>
+        <li>Optional public class links, if a coordinator creates one, show that class&apos;s schedule (including any session notes staff entered) to anyone with the link and its access code. If the coordinator also sets a separate password, the link additionally shows a read-only gradebook and discipline tally listed by cadet name. Public links never show contact information, dates of birth, or identification numbers, and a coordinator can disable or regenerate a link at any time.</li>
+        <li>A personal calendar-feed link, if you create one, shows your own teaching assignments to anyone who has that link. Treat it like a password.</li>
       </ul>
 
       <h2>4. Service providers</h2>
       <p>
-        We use vetted processors to run the Service: Google Firebase (hosting, database, authentication), Stripe
-        (billing), Resend (email delivery), and — if SMS is enabled — Twilio (text messages). Each receives only
-        what it needs to perform its function.
+        We use the following processors to run the Service, and each receives only what it needs to perform its
+        function: Google Cloud / Firebase (hosting, database, authentication, file storage, and server functions),
+        Resend (email delivery), Stripe (subscription billing), and Cloudflare (domain name service, and routing of
+        email sent to our support address to a Google-hosted mailbox). If you choose to sign in with Google or Microsoft, that provider
+        authenticates you and shares your name and email address with us.
       </p>
 
       <h2>5. Where data lives &amp; how long</h2>
       <ul>
-        <li>Data is hosted in the United States.</li>
-        <li>Accounts never linked to an Organization are deleted automatically after 30 days.</li>
-        <li>Organization records are retained while the Organization subscribes; on termination, records are exportable on request and then deleted from production systems.</li>
+        <li>Data is hosted in the United States, in Google Cloud&apos;s <em>us-east1</em> region.</li>
+        <li>Accounts never linked to an Organization are deleted automatically after 30 days; we email a warning about a week beforehand.</li>
+        <li>Copies of the email the Service sends are deleted after 30 days.</li>
+        <li>Organization records are kept for as long as the Organization uses the Service, or until its staff delete them. When an Organization leaves, its records are exportable on request for 30 days and are then deleted from production systems.</li>
+        <li>An Organization&apos;s top administrator may ask us in writing to delete all of the Organization&apos;s data; we complete that within 30 days.</li>
       </ul>
 
       <h2>6. Security</h2>
       <p>
-        Access is controlled by per-Organization isolation enforced at the database layer, role-based permissions,
-        server-validated administrative actions, and audit logging. No system is perfectly secure; report suspected
-        issues to {CONTACT_LINK} and we will investigate promptly.
+        Data is encrypted in transit and at rest by the underlying cloud platform. Access is controlled by
+        per-Organization isolation enforced at the database layer, role-based permissions, server-validated
+        administrative actions, and audit logging. No system is perfectly secure; report suspected issues to{' '}
+        {CONTACT_LINK} and we will investigate promptly. If we confirm a security breach affecting an
+        Organization&apos;s data, we notify that Organization&apos;s administrators without undue delay and no later
+        than 72 hours after confirming it.
       </p>
 
       <h2>7. Your choices</h2>
       <ul>
         <li>You can edit your profile information and notification preferences in the Service.</li>
-        <li>You can unsubscribe from non-essential email categories; essential account and security messages are always delivered.</li>
-        <li>For access, correction, or deletion of records your Organization controls, contact your Organization&apos;s administrators; for account-level requests, contact {CONTACT_LINK}.</li>
+        <li>You can turn off non-essential email categories in your profile. Time-critical messages — such as schedule changes, reservation requests, and account notices — cannot be turned off individually.</li>
+        <li>For access, correction, or deletion of records your Organization controls — including your account within that Organization — contact your Organization&apos;s administrators. For anything else, contact {CONTACT_LINK}.</li>
       </ul>
 
-      <h2>8. Changes &amp; contact</h2>
+      <h2>8. Children</h2>
       <p>
-        We will announce material changes to this policy in the Service. Questions or requests: {CONTACT_LINK}.
+        The Service is for academy staff, instructors, and adult recruits. It is not directed to children under 13,
+        and we do not knowingly collect their information.
+      </p>
+
+      <h2>9. Changes &amp; contact</h2>
+      <p>
+        We will announce material changes to this policy in the Service and update the effective date above.
+        Questions or requests: {CONTACT_LINK}.
       </p>
     </LegalShell>
   );

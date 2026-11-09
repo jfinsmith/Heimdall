@@ -132,7 +132,7 @@ export interface UserDoc {
   /**
    * Legal first/last name, split for ATMS credential verification. Required at
    * registration (Aug 2026+); legacy accounts are backfilled by
-   * scripts/backfill-names.ts and corrected via the admin Edit modal.
+   * a one-time script (since removed) and corrected via the admin Edit modal.
    * displayName stays the canonical rendered "First Last".
    */
   firstName?: string;
@@ -639,9 +639,13 @@ export interface RosterMemberDoc {
   withdrawnAt?: Timestamp;
   /** Set when the cadet reaches a terminal outcome (graduated or dismissed). */
   completedAt?: Timestamp;
-  /** Reason recorded when status === 'dismissed'. */
+  /** Grounds recorded when status === 'dismissed': academic (failed exams) or
+   *  conduct (rule violations). Absent on dismissals recorded before Nov 2026. */
+  dismissalType?: 'academic' | 'conduct';
+  /** Optional free-text detail recorded with a dismissal. */
   dismissalReason?: string;
-  /** Curriculum course KEY (see courseKey) the cadet was withdrawn after (grades past it show WD). */
+  /** Curriculum course KEY (see courseKey) the cadet was withdrawn OR dismissed
+   *  after: grades through it are kept, later courses read WD / DISM. */
   withdrawnAfterCourse?: string;
   /** Additional block taker (printed in a separate roster section), not a full cadet. */
   blockTaker?: boolean;

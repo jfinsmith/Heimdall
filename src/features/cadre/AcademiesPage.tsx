@@ -23,6 +23,7 @@ import { useCollection, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import { useOrg } from '../../lib/useOrg';
 import { billingActive } from '../../lib/subscription';
+import { mayDeleteAcademy } from '../../lib/rbac';
 import { fmtDate, tsFromDate, addDays, toDateInputValue, isValidDuration } from '../../lib/time';
 import { useAllCurricula, baseCurriculumKey } from '../../lib/curricula';
 import { loadRoomBookings, loadRoomReservations, overlaps, roomExemptAcademy, academyHolderLabel } from './rooms/roomBooking';
@@ -37,7 +38,10 @@ import { friendlyError } from '../../lib/callableError';
 const DEFAULT_LOCATION = 'PHSC — Dade City, FL';
 
 export function AcademiesPage() {
-  const { firebaseUser, profile } = useAuth();
+  const { firebaseUser, profile, role } = useAuth();
+  // Permanent deletion is for sergeant and above, plus the coordinator who
+  // created the class (the rules enforce the same). Everyone else archives.
+  const mayDelete = (a: WithId<AcademyDoc>) => mayDeleteAcademy(role, firebaseUser?.uid, a);
   const [params, setParams] = useSearchParams();
   const [createOpen, setCreateOpen] = useState(false);
   const [templateCreateOpen, setTemplateCreateOpen] = useState(false);
@@ -248,9 +252,11 @@ export function AcademiesPage() {
                           Archive
                         </Button>
                       )}
-                      <Button variant="ghost" className="text-red-700" onClick={() => setDeleteSource(a)}>
-                        Delete
-                      </Button>
+                      {mayDelete(a) && (
+                        <Button variant="ghost" className="text-red-700" onClick={() => setDeleteSource(a)}>
+                          Delete
+                        </Button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -346,9 +352,11 @@ export function AcademiesPage() {
                           >
                             Use template
                           </Button>
-                          <Button variant="ghost" className="text-red-700" onClick={() => setDeleteSource(t)}>
-                            Delete
-                          </Button>
+                          {mayDelete(t) && (
+                            <Button variant="ghost" className="text-red-700" onClick={() => setDeleteSource(t)}>
+                              Delete
+                            </Button>
+                          )}
                         </td>
                       </tr>
                     ))}

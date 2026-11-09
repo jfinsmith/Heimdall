@@ -1,6 +1,6 @@
 /** The rank ladder the UI uses — must mirror assertMayActOn on the server. */
 import { describe, it, expect } from 'vitest';
-import { can, isTopAdmin, mayActOn, mayAssignRole, PERMISSION_MATRIX, RANKS, RANK_ORDER_ASC, CHAIN_OF_COMMAND } from './rbac';
+import { can, isTopAdmin, mayActOn, mayAssignRole, mayDeleteAcademy, PERMISSION_MATRIX, RANKS, RANK_ORDER_ASC, CHAIN_OF_COMMAND } from './rbac';
 import type { Role } from '../types';
 
 const ROLES: Role[] = ['guest', 'instructor', 'coordinator', 'sergeant', 'lieutenant', 'director'];
@@ -27,6 +27,29 @@ describe('lieutenant == director, everywhere', () => {
   });
   it('the documented permission matrix never separates them', () => {
     for (const row of PERMISSION_MATRIX) expect(row.roles.lieutenant, row.capability).toBe(row.roles.director);
+  });
+});
+
+describe('deleting an academy: sergeant and above, or the coordinator who created it', () => {
+  const mine = { createdBy: 'me' };
+  const theirs = { createdBy: 'someone-else' };
+  it('sergeant, lieutenant and director delete any class', () => {
+    for (const r of ['sergeant', 'lieutenant', 'director'] as Role[]) {
+      expect(mayDeleteAcademy(r, 'me', theirs)).toBe(true);
+      expect(mayDeleteAcademy(r, 'me', {})).toBe(true);
+    }
+  });
+  it('a coordinator deletes only a class they created', () => {
+    expect(mayDeleteAcademy('coordinator', 'me', mine)).toBe(true);
+    expect(mayDeleteAcademy('coordinator', 'me', theirs)).toBe(false);
+    expect(mayDeleteAcademy('coordinator', 'me', {})).toBe(false); // no creator on file
+    expect(mayDeleteAcademy('coordinator', null, mine)).toBe(false);
+    expect(mayDeleteAcademy('coordinator', '', { createdBy: '' })).toBe(false);
+  });
+  it('instructors and guests never delete, even a class stamped with their uid', () => {
+    expect(mayDeleteAcademy('instructor', 'me', mine)).toBe(false);
+    expect(mayDeleteAcademy('guest', 'me', mine)).toBe(false);
+    expect(mayDeleteAcademy(null, 'me', mine)).toBe(false);
   });
 });
 

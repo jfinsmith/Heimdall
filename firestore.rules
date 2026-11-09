@@ -336,7 +336,13 @@ service cloud.firestore {
         && request.resource.data.status == 'draft'
         && request.resource.data.get(['approval', 'state'], 'not_submitted') != 'approved'
         && billingAllows(request.resource.data.orgId);
-      allow delete: if isStaff() && inOrg(resource.data);
+      // Permanently deleting a class (the client cascades its sessions, roster,
+      // grades and filed reports) is for command — sergeant and above — and for
+      // the coordinator who CREATED it. It used to be any coordinator, so one
+      // mis-click could erase a colleague's published class and its records.
+      // createdBy is immutable (update rule below), so it can't be claimed.
+      allow delete: if inOrg(resource.data)
+        && (isAdmin() || (isStaff() && resource.data.get('createdBy', null) == request.auth.uid));
       // Staff edit freely within their org, EXCEPT moving into a published
       // lifecycle state, which requires the captain's approval (templates exempt).
       // orgId is immutable. Approval transitions are written by the academyApproval
@@ -349,7 +355,7 @@ service cloud.firestore {
       // the exemption from this gate, so a mutable flag was a three-write
       // self-publish — mark a pending draft as a template, publish it (exempt),
       // then clear the flag.
-      allow update: if isStaff() && inOrg(resource.data) && unchanged('orgId') && unchanged('approval') && unchanged('isTemplate') && (
+      allow update: if isStaff() && inOrg(resource.data) && unchanged('orgId') && unchanged('approval') && unchanged('isTemplate') && unchanged('createdBy') && (
         !(request.resource.data.status in ['published', 'in_progress', 'completed'])
         || resource.data.status in ['published', 'in_progress', 'completed']
         || resource.data.get('isTemplate', false) == true

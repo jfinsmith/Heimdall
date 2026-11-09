@@ -113,6 +113,19 @@ export function rankLabels(settings?: GlobalSettings | null): Record<Role, strin
 }
 
 /**
+ * May this person permanently delete this academy (class or template)?
+ * Sergeant and above, or the coordinator who created it — everyone else
+ * archives instead. MUST match the academies delete rule in firestore.rules.
+ */
+export function mayDeleteAcademy(
+  role: Role | null | undefined,
+  uid: string | null | undefined,
+  academy: { createdBy?: string }
+): boolean {
+  return isAdmin(role) || (isStaff(role) && !!uid && academy.createdBy === uid);
+}
+
+/**
  * The capability matrix rendered (read-only) at Admin → Roles & Permissions.
  * Enforcement lives in firestore.rules + the callable functions — this table
  * is documentation and must be kept in sync with them.
@@ -123,6 +136,7 @@ export const PERMISSION_MATRIX: { capability: string; roles: Record<Role, boolea
   { capability: 'Edit own profile & claim qualifications', roles: { director: true, lieutenant: true, sergeant: true, coordinator: true, instructor: true, guest: true } },
   { capability: 'View draft academies, staffing board & reports', roles: { director: true, lieutenant: true, sergeant: true, coordinator: true, instructor: false, guest: false } },
   { capability: 'Create / edit / clone academies & schedules', roles: { director: true, lieutenant: true, sergeant: true, coordinator: true, instructor: false, guest: false } },
+  { capability: 'Delete an academy (coordinators: only classes they created)', roles: { director: true, lieutenant: true, sergeant: true, coordinator: false, instructor: false, guest: false } },
   { capability: 'Create / edit / cancel sessions & role slots', roles: { director: true, lieutenant: true, sergeant: true, coordinator: true, instructor: false, guest: false } },
   { capability: 'Approve / override instructor sign-ups', roles: { director: true, lieutenant: true, sergeant: true, coordinator: true, instructor: false, guest: false } },
   { capability: 'Verify instructor qualifications', roles: { director: true, lieutenant: true, sergeant: true, coordinator: true, instructor: false, guest: false } },

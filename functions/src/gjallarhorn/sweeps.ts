@@ -228,11 +228,11 @@ export const gjallarhornDailySweep = onSchedule(
     // ── 3. Mail retention ──────────────────────────────────────────────────
     // Sent/failed queue docs carry full email bodies (one-time verification
     // codes, activation details) — don't keep them forever. Delete docs older
-    // than 30 days from the live queue AND the retired extension's legacy
-    // `mail` collection (the single-field createdAt range needs no composite
-    // index). Up to 10 batches a night: a single 450-doc pass falls behind for
-    // good once more than 450 emails a day are being queued.
-    for (const coll of [MAIL_QUEUE, 'mail']) {
+    // than 30 days (the single-field createdAt range needs no composite index).
+    // Up to 10 batches a night: a single 450-doc pass falls behind for good
+    // once more than 450 emails a day are being queued. (The retired Trigger
+    // Email extension's `mail` collection is empty and no longer swept.)
+    for (const coll of [MAIL_QUEUE]) {
       try {
         const cutoff = Timestamp.fromMillis(now - 30 * 864e5);
         let deleted = 0;

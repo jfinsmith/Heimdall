@@ -24,7 +24,7 @@ import { friendlyError } from '../../lib/callableError';
 const setUserRole = httpsCallable<{ uid: string; role: Role }, { ok: boolean }>(functions, 'setUserRole');
 const createUserAccount = httpsCallable<
   { email: string; displayName: string; role: Role; rank?: string; agency?: string; phone?: string; password?: string },
-  { ok: boolean; uid: string }
+  { ok: boolean; uid: string; tempPassword?: string }
 >(functions, 'createUserAccount');
 const sendActivationEmail = httpsCallable<{ uid: string; password: string }, { ok: boolean }>(functions, 'sendActivationEmail');
 const setUserSuspension = httpsCallable<{ uid: string; suspended: boolean; reason?: string }, { ok: boolean }>(functions, 'setUserSuspension');
@@ -43,11 +43,19 @@ const PASSWORD_WORDS = [
   'Lagoon', 'Lumen', 'Maple', 'Meadow', 'Nimbus', 'Orchid', 'Pioneer', 'Quartz', 'Quill', 'Ranger',
   'River', 'Sierra', 'Summit', 'Tango', 'Timber', 'Umber', 'Valley', 'Vector', 'Willow', 'Yonder', 'Zephyr',
 ];
+/** Uniform random integer in [0, n) from the browser's crypto source — a
+ *  temporary password guards a live, pre-approved account until first sign-in. */
+function randomInt(n: number): number {
+  const buf = new Uint32Array(1);
+  const limit = Math.floor(0x100000000 / n) * n; // reject the biased tail
+  do crypto.getRandomValues(buf); while (buf[0] >= limit);
+  return buf[0] % n;
+}
+/** Memorable one-time password, e.g. "Cedar-Quartz-Harbor-4821". */
 function randomPassword(): string {
   const words = new Set<string>();
-  while (words.size < 3) words.add(PASSWORD_WORDS[Math.floor(Math.random() * PASSWORD_WORDS.length)]);
-  const num = Math.floor(100 + Math.random() * 900);
-  return [...words, num].join('-');
+  while (words.size < 3) words.add(PASSWORD_WORDS[randomInt(PASSWORD_WORDS.length)]);
+  return [...words, 1000 + randomInt(9000)].join('-');
 }
 
 const STAFF_IMPORT_COLUMNS: ImportColumn[] = [
@@ -826,7 +834,10 @@ function AddUserModal({ onClose }: { onClose: () => void }) {
   const [rank, setRank] = useState('');
   const [agency, setAgency] = useState('');
   const [phone, setPhone] = useState('');
-  const [password, setPassword] = useState('123456');
+  // Every new account gets its own generated temporary password. (The old
+  // shared default, "123456", let anyone who knew a new member's email sign in
+  // first — the account is active with its rank the moment it is created.)
+  const [password, setPassword] = useState(() => randomPassword());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<{ uid: string; email: string; password: string; displayName: string } | null>(null);
@@ -841,7 +852,7 @@ function AddUserModal({ onClose }: { onClose: () => void }) {
     setRank('');
     setAgency('');
     setPhone('');
-    setPassword('123456');
+    setPassword(randomPassword());
     setError(null);
     setCreated(null);
     setSending(false);
@@ -855,7 +866,8 @@ function AddUserModal({ onClose }: { onClose: () => void }) {
     setBusy(true);
     try {
       const res = await createUserAccount({ email, displayName, role, rank, agency, phone: formatPhone(phone), password });
-      setCreated({ uid: res.data.uid, email: email.trim().toLowerCase(), password: password.trim() || '123456', displayName: displayName.trim() });
+      // The server reports the password it actually set (it generates one if none was sent).
+      setCreated({ uid: res.data.uid, email: email.trim().toLowerCase(), password: res.data.tempPassword ?? password.trim(), displayName: displayName.trim() });
     } catch (err) {
       setError(friendlyError(err, 'Could not create the account.'));
     } finally {
@@ -951,9 +963,9 @@ function AddUserModal({ onClose }: { onClose: () => void }) {
               <Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} onBlur={() => setPhone(formatPhone(phone))} />
             </Field>
           </div>
-          <Field label="Temporary password" hint="At least 6 characters — they’ll change it on first sign-in. Default is 123456; Generate makes a memorable random one.">
+          <Field label="Temporary password" hint="Generated for this account — they’ll change it on first sign-in. Generate makes another; you can type your own (at least 8 characters).">
             <div className="flex gap-2">
-              <Input value={password} onChange={(e) => setPassword(e.target.value)} required className="flex-1" />
+              <Input value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} className="flex-1 font-mono" />
               <Button type="button" variant="secondary" onClick={() => setPassword(randomPassword())}>
                 Generate
               </Button>

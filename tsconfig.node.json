@@ -8,5 +8,5 @@
     "strict": true,
     "skipLibCheck": true
   },
-  "include": ["vite.config.ts", "seed", "scripts"]
+  "include": ["vite.config.ts", "scripts"]
 }

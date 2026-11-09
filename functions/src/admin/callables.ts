@@ -158,14 +158,18 @@ export const setUserRole = onCall<{ uid: string; role: Role }>(async (request) =
 
 /**
  * Admin-created account. Creates the Firebase Auth user with a temporary
- * password (default "123456" — Firebase's 6-char minimum) and the matching
+ * password (the one the admin's form generated, or a random one minted here
+ * when none is sent — never a shared default) and the matching
  * users/{uid} profile, pre-approved (status:'active') with the chosen role and
  * mustChangePassword:true so the recruit is forced to set their own password on
  * first sign-in. Runs on the Admin SDK, so the calling admin stays signed in as
  * themselves (unlike client-side createUserWithEmailAndPassword). This is the
  * single entry point the bulk spreadsheet import will loop over.
  */
-const DEFAULT_TEMP_PASSWORD = '123456';
+/** A one-off temporary password for a call that supplied none. The account is
+ *  ACTIVE with its rank the moment it exists, so a guessable shared default
+ *  ("123456", as this used to be) let anyone who knew the email sign in first. */
+const generateTempPassword = () => `Heimdall-${randomBytes(6).toString('hex')}`;
 
 export const createUserAccount = onCall<{
   email: string;
@@ -196,7 +200,7 @@ export const createUserAccount = onCall<{
   const email = String(request.data.email ?? '').trim().toLowerCase();
   const displayName = String(request.data.displayName ?? '').trim();
   const { role } = request.data;
-  const password = String(request.data.password ?? '').trim() || DEFAULT_TEMP_PASSWORD;
+  const password = String(request.data.password ?? '').trim() || generateTempPassword();
   if (!email || !email.includes('@')) throw new HttpsError('invalid-argument', 'A valid email is required.');
   if (!displayName) throw new HttpsError('invalid-argument', 'A display name is required.');
   if (!VALID_ROLES.includes(role)) throw new HttpsError('invalid-argument', 'Pick a valid role.');
@@ -270,7 +274,10 @@ export const createUserAccount = onCall<{
     createdAt: FieldValue.serverTimestamp(),
   });
 
-  return { ok: true, uid };
+  // tempPassword: the password actually set — the caller hands it to the member
+  // (and passes it to sendActivationEmail). Returned to the admin who just
+  // chose or triggered it, never logged or stored.
+  return { ok: true, uid, tempPassword: password };
 });
 
 /**
@@ -1310,7 +1317,7 @@ export const acceptOrgDpa = onCall<{ version: string }>(async (request) => {
   // Only a server-known version can be recorded, so a client can't stamp a forged
   // or never-presented attestation. Keep in sync with DPA_VERSION in
   // src/lib/compliance.ts (functions can't import from the web src tree).
-  const KNOWN_DPA_VERSIONS = ['2026-06-19'];
+  const KNOWN_DPA_VERSIONS = ['2026-06-19', '2026-11-09'];
   if (!KNOWN_DPA_VERSIONS.includes(version)) {
     throw new HttpsError('invalid-argument', 'Unknown agreement version.');
   }

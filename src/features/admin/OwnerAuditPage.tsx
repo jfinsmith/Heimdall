@@ -1,9 +1,8 @@
 /**
  * Platform-owner cross-organization audit log. Spans every organization via
  * the platformOwner-gated listAllAuditLog callable (the owner's token can't
- * read other orgs directly). The per-org view (/admin/audit, AuditLogPage) is
- * owner-only too since the audit log left the Admin section — it shows just
- * the org the owner is currently switched into.
+ * read other orgs directly). This is the only audit viewer: the old per-org
+ * page (/admin/audit) had no navigation entry left and was removed.
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import { httpsCallable } from 'firebase/functions';

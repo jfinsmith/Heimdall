@@ -44,7 +44,6 @@ const CurriculumAdminPage = lazy(() => import('../features/admin/CurriculumAdmin
 const HolidaysAdminPage = lazy(() => import('../features/admin/HolidaysAdminPage').then((m) => ({ default: m.HolidaysAdminPage })));
 const SettingsAdminPage = lazy(() => import('../features/admin/SettingsAdminPage').then((m) => ({ default: m.SettingsAdminPage })));
 const GjallarhornSettingsPage = lazy(() => import('../features/admin/GjallarhornSettingsPage').then((m) => ({ default: m.GjallarhornSettingsPage })));
-const AuditLogPage = lazy(() => import('../features/admin/AuditLogPage').then((m) => ({ default: m.AuditLogPage })));
 const ReportsPage = lazy(() => import('../features/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })));
 const PrintableSchedulePage = lazy(() => import('../features/reports/PrintableSchedulePage').then((m) => ({ default: m.PrintableSchedulePage })));
 const CadetReportsPage = lazy(() => import('../features/cadre/reports/CadetReportsPage').then((m) => ({ default: m.CadetReportsPage })));
@@ -174,8 +173,6 @@ export function AppRouter() {
               {/* Platform owner only — cross-org HEIMDALL operator console */}
               <Route element={<RequirePlatformOwner />}>
                 <Route path="/owner" element={<OwnerConsolePage />} />
-                {/* Org-scoped audit view — pulled from the Admin section (owner-only now). */}
-                <Route path="/admin/audit" element={<AuditLogPage />} />
                 <Route path="/owner/curricula" element={<CurriculumAdminPage scope="defaults" />} />
                 <Route path="/owner/report-forms" element={<ReportFormsAdminPage />} />
                 <Route path="/owner/feedback" element={<FeedbackAdminPage />} />

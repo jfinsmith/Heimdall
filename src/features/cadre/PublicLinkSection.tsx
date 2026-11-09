@@ -23,20 +23,17 @@ export function PublicLinkSection({ academy, className = '' }: { academy: WithId
   const [copied, setCopied] = useState(false);
   // Portal secrets live in a STAFF-ONLY subdoc — the academy doc itself is
   // readable by every org member once published, which would expose the token
-  // and password hash. Legacy configs (pre-move) fall back to academy.portal
-  // and migrate on the next save.
+  // and password hash.
   const { data: privatePortal, loading: portalLoading } = useDoc<NonNullable<AcademyDoc['portal']> & { orgId: string }>(
     `academies/${academy.id}/private/portal`
   );
 
   if (academy.isTemplate) return null;
 
-  // Mirrors getPublicClassPortal: the private doc is authoritative only once it
-  // holds the link config. A wrong academic password on a LEGACY link makes the
-  // server write its fail counters there first; treating that counters-only doc
-  // as the config showed a live link as "off" — and "Create public link" then
-  // minted a new token (killing every copy handed out) and dropped the password.
-  const portal = privatePortal?.token ? privatePortal : academy.portal;
+  // Mirrors getPublicClassPortal: the private doc counts only once it holds the
+  // link config (a doc with nothing but the server's fail counters is not a
+  // link). The old copy on the academy doc is no longer honoured anywhere.
+  const portal = privatePortal?.token ? privatePortal : undefined;
   const codeDigits = (academy.shortName ?? '').replace(/\D+/g, '');
   const link = portal?.token ? `${window.location.origin}/class/${academy.id}/${portal.token}` : '';
 

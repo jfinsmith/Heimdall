@@ -835,6 +835,43 @@ describe('cross-tenant parent binding — academy subcollections + session.acade
   });
 });
 
+// Deleting a class cascades its sessions, roster and records, so it is limited
+// to command (sergeant+) and the coordinator who created that class.
+describe('academies — delete is sergeant+ or the creating coordinator', () => {
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, 'academies/aMine'), { orgId: ORG, status: 'draft', isTemplate: false, title: 'Mine', createdBy: 'carol' });
+      await setDoc(doc(db, 'academies/aTheirs'), { orgId: ORG, status: 'published', isTemplate: false, title: 'Theirs', createdBy: 'someone-else' });
+      await setDoc(doc(db, 'academies/aLegacy'), { orgId: ORG, status: 'draft', isTemplate: false, title: 'No creator on file' });
+    });
+  });
+  it('a coordinator deletes a class they created', async () => {
+    await assertSucceeds(deleteDoc(doc(as('carol', 'coordinator'), 'academies/aMine')));
+  });
+  it("a coordinator CANNOT delete a colleague's class, nor one with no creator on file", async () => {
+    await assertFails(deleteDoc(doc(as('carol', 'coordinator'), 'academies/aTheirs')));
+    await assertFails(deleteDoc(doc(as('carol', 'coordinator'), 'academies/aLegacy')));
+  });
+  it('a coordinator cannot claim a class by rewriting createdBy, then delete it', async () => {
+    await assertFails(updateDoc(doc(as('carol', 'coordinator'), 'academies/aTheirs'), { createdBy: 'carol' }));
+    await assertFails(updateDoc(doc(as('carol', 'coordinator'), 'academies/aLegacy'), { createdBy: 'carol' }));
+    // …while ordinary edits to someone else's class still work.
+    await assertSucceeds(updateDoc(doc(as('carol', 'coordinator'), 'academies/aTheirs'), { title: 'Renamed' }));
+  });
+  it('sergeant, lieutenant and director delete any class in their org', async () => {
+    await assertSucceeds(deleteDoc(doc(as('sam', 'sergeant'), 'academies/aTheirs')));
+    await assertSucceeds(deleteDoc(doc(as('lee', 'lieutenant'), 'academies/aLegacy')));
+    await assertSucceeds(deleteDoc(doc(as('dave', 'director'), 'academies/aMine')));
+  });
+  it('nobody deletes across tenants; instructors and locked-out staff never delete', async () => {
+    await assertFails(deleteDoc(doc(as('erin', 'director', BETA), 'academies/aMine')));
+    await assertFails(deleteDoc(doc(as('alice', 'instructor'), 'academies/aMine')));
+    const suspendedCreator = testEnv.authenticatedContext('carol', { orgId: ORG, status: 'suspended' }).firestore();
+    await assertFails(deleteDoc(doc(suspendedCreator, 'academies/aMine')));
+  });
+});
+
 // Every client logAudit() call site is a staff surface; members' own actions
 // (sign-up, withdraw) are logged server-side by the callables.
 describe('auditLog — staff-only create', () => {

@@ -5,8 +5,8 @@
  *  - FERPA right-to-access: one-click export of THIS org's records (client-side,
  *    so it can only ever pull data the admin is already allowed to read).
  *
- * The DPA text is a DRAFT template for your counsel (see src/lib/compliance.ts);
- * nothing here asserts a CJIS/FERPA certification.
+ * The DPA text (src/lib/compliance.ts) is the agreement in force; nothing here
+ * asserts a CJIS/FERPA certification.
  */
 import React, { useState } from 'react';
 import { collection, doc, getDoc, getDocs, query, where, type QueryConstraint } from 'firebase/firestore';
@@ -146,9 +146,9 @@ export function CompliancePage() {
         <h2 className="text-sm font-semibold uppercase tracking-wider text-watch-600">Data residency</h2>
         <p className="mt-2 text-sm text-slate-600">
           Your organization’s data is stored and processed in the <strong>United States</strong>. The database
-          (Firestore) and application compute (Cloud Functions) run in <code>{org?.dataRegion || COMPUTE_REGION}</code>.
-          File storage (Cloud Storage, used for uploaded screenshots and logos) is configured for a US location —
-          confirm the bucket location before relying on it for a CJIS-bound tenant.
+          (Firestore), application compute (Cloud Functions), and file storage (Cloud Storage — uploaded
+          certification cards, screenshots, room diagrams, and logos) all run in Google Cloud’s{' '}
+          <code>{org?.dataRegion || COMPUTE_REGION}</code> region.
         </p>
       </section>
 
@@ -177,8 +177,9 @@ export function CompliancePage() {
           <h2 className="text-sm font-semibold uppercase tracking-wider text-watch-600">Data Processing Agreement</h2>
           {accepted ? <Badge tone="green">Accepted</Badge> : acceptedOld ? <Badge tone="amber">Update required</Badge> : <Badge tone="red">Not accepted</Badge>}
         </div>
-        <p className="mt-2 text-xs text-amber-700">
-          Draft template — have your counsel review and replace the bracketed items before relying on it.
+        <p className="mt-2 text-xs text-slate-500">
+          Version {DPA_VERSION}. This agreement describes how HEIMDALL handles your organization’s data. An
+          administrator accepts it on the organization’s behalf; the acceptance is recorded with their name and the date.
         </p>
         <dl className="mt-3 space-y-2 text-sm">
           {DPA_CLAUSES.map((c) => (
