@@ -50,7 +50,7 @@ CJIS agreement become that tenant's responsibility.
 Pooled multi-tenancy isolated by an `orgId` custom-claim match enforced in
 `firestore.rules` (`inOrg()`), proven by the emulator suite in
 `tests/emulator/rules.test.ts` (includes cross-tenant read/write/list denial for
-academies, roster, sessions, settings, audit, `documentForms`, and `orgs`). CI
+academies, roster, sessions, settings, audit, and `orgs`). CI
 blocks any deploy whose rules tests fail.
 
 ## FERPA — access, portability, deletion

@@ -19,7 +19,6 @@ import { logAudit } from '../sessions/audit';
 import { ROSTER_MODULES, DEFAULT_ROSTER_MODULES } from '../cadre/roster/rosterModules';
 import { courseKey } from '../cadre/roster/rosterShared';
 import { REPORT_TYPES, type DocumentAssignmentDoc } from '../cadre/reports/reportTypes';
-import { useOrgLibraryForms } from '../cadre/reports/documentLibrary';
 import { friendlyError } from '../../lib/callableError';
 
 
@@ -327,32 +326,21 @@ function CurriculumEditorModal({
   const [uploadErr, setUploadErr] = useState<string | null>(null);
   // Per-discipline document overrides.
   const [disabledForms, setDisabledForms] = useState<string[]>(curriculum?.disabledForms ?? []);
-  const [formOverrides, setFormOverrides] = useState<Record<string, string>>(curriculum?.formOverrides ?? {});
-  const [addedForms, setAddedForms] = useState<string[]>(curriculum?.addedForms ?? []);
-  const { forms: libraryForms } = useOrgLibraryForms();
   const { data: assignments } = useCollection<DocumentAssignmentDoc>('documentAssignments');
   const [busy, setBusy] = useState(false);
 
-  // Base general forms (built-ins + library general letters) and the org's
-  // assigned specialized letters available as overrides/additions for this discipline.
-  // Built-ins are filtered by the owner's per-org assignments exactly as
-  // AcademyReports does — otherwise a document scoped to OTHER organizations was
-  // listed here (by name) as if this org's classes offered it.
+  // The documents this discipline can hide: the built-ins, filtered by the
+  // owner's per-org assignments exactly as AcademyReports does — otherwise a
+  // document scoped to OTHER organizations was listed here (by name) as if this
+  // org's classes offered it.
   const baseGeneral = useMemo(() => {
     const asgById = new Map(assignments.map((a) => [a.id, a]));
     const offered = REPORT_TYPES.filter((t) => {
       const a = asgById.get(String(t.id));
       return !a || a.scope === 'all' || !orgId || (a.orgIds ?? []).includes(orgId);
     });
-    return [
-      ...offered.map((t) => ({ id: t.id, name: t.name })),
-      ...libraryForms.filter((f) => f.availability === 'general' && (f.kind ?? 'letter') === 'letter').map((f) => ({ id: f.id, name: f.name })),
-    ];
-  }, [libraryForms, assignments, orgId]);
-  const specializedForms = useMemo(
-    () => libraryForms.filter((f) => f.availability === 'specialized' && (f.kind ?? 'letter') === 'letter').map((f) => ({ id: f.id, name: f.name })),
-    [libraryForms]
-  );
+    return offered.map((t) => ({ id: t.id, name: t.name }));
+  }, [assignments, orgId]);
 
   const total = courses.reduce((sum, c) => sum + (Number(c.minHours) || 0), 0);
 
@@ -363,15 +351,6 @@ function CurriculumEditorModal({
     setRosterModules((p) => (p.includes(k) ? p.filter((x) => x !== k) : [...p, k]));
   const toggleDisabled = (id: string) =>
     setDisabledForms((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
-  const setOverride = (baseId: string, specId: string) =>
-    setFormOverrides((p) => {
-      const n = { ...p };
-      if (specId) n[baseId] = specId;
-      else delete n[baseId];
-      return n;
-    });
-  const toggleAdded = (id: string) =>
-    setAddedForms((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
 
   async function uploadLogo(file: File) {
     if (!orgId) return;
@@ -464,8 +443,6 @@ function CurriculumEditorModal({
         ...(brandTagline.trim() ? { brandTagline: brandTagline.trim() } : {}),
         ...(brandAddress.trim() ? { brandAddressLines: brandAddress.split('\n').map((l) => l.trim()).filter(Boolean) } : {}),
         ...(disabledForms.length ? { disabledForms } : {}),
-        ...(Object.keys(formOverrides).length ? { formOverrides } : {}),
-        ...(addedForms.length ? { addedForms } : {}),
       } satisfies CurriculumDoc);
       if (!isDefaults) await logAudit(firebaseUser!.uid, 'curriculum.save', 'curriculum', id, `${label} (${total} hrs)`);
       onClose();
@@ -700,8 +677,8 @@ function CurriculumEditorModal({
             <fieldset className="rounded-md border border-watch-100 p-3">
               <legend className="px-1 text-sm font-medium text-watch-800">Forms for this discipline</legend>
               <p className="mb-2 text-xs text-slate-500">
-                Every general document is offered by default. Uncheck to hide one here, or swap it for a specialized
-                version assigned to your org. Which documents your organization is offered is set by HEIMDALL.
+                Every general document is offered by default. Uncheck to hide one here. Which documents your
+                organization is offered is set by HEIMDALL.
               </p>
               <div className="max-h-56 space-y-1 overflow-y-auto pr-1">
                 {baseGeneral.map((f) => (
@@ -710,30 +687,9 @@ function CurriculumEditorModal({
                       <input type="checkbox" checked={!disabledForms.includes(f.id)} onChange={() => toggleDisabled(f.id)} />
                       <span className={disabledForms.includes(f.id) ? 'text-slate-400 line-through' : ''}>{f.name}</span>
                     </label>
-                    {specializedForms.length > 0 && !disabledForms.includes(f.id) && (
-                      <Select className="!w-48 text-xs" value={formOverrides[f.id] ?? ''} onChange={(e) => setOverride(f.id, e.target.value)}>
-                        <option value="">Use default</option>
-                        {specializedForms.map((s) => <option key={s.id} value={s.id}>↳ {s.name}</option>)}
-                      </Select>
-                    )}
                   </div>
                 ))}
               </div>
-              {specializedForms.length > 0 && (
-                <div className="mt-3 border-t border-watch-50 pt-2">
-                  <p className="mb-1 text-xs font-medium text-watch-700">Add specialized forms</p>
-                  <div className="grid gap-1 sm:grid-cols-2">
-                    {specializedForms
-                      .filter((s) => !Object.values(formOverrides).includes(s.id))
-                      .map((s) => (
-                        <label key={s.id} className="flex items-center gap-2 text-sm text-watch-800">
-                          <input type="checkbox" checked={addedForms.includes(s.id)} onChange={() => toggleAdded(s.id)} />
-                          {s.name}
-                        </label>
-                      ))}
-                  </div>
-                </div>
-              )}
             </fieldset>
           </>
         )}

@@ -43,8 +43,8 @@ export function ReportLetter({
   report: Pick<AcademyReportDoc, 'type' | 'cadetName' | 'data'> & Partial<WithId<AcademyReportDoc>>;
   directorName: string;
   fromName: string;
-  /** Resolved type for owner-library documents whose id isn't in the code
-   *  registry. When omitted, the type is looked up by report.type. */
+  /** Already-resolved type (the owner's document preview passes the registry
+   *  entry). When omitted, the type is looked up by report.type. */
   reportType?: ReportType;
   /** The class's curriculum — drives the unified header's branding + program. */
   curriculum?: WithId<CurriculumDoc> | null;

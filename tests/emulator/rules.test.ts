@@ -61,26 +61,19 @@ beforeEach(async () => {
     await setDoc(doc(db, 'auditLog/lB'), { actorUid: 'erin', action: 'x', summary: 's', orgId: BETA });
     await setDoc(doc(db, 'orgs/' + ORG), { orgId: ORG, legalName: 'PHSC' });
     await setDoc(doc(db, 'orgs/' + BETA), { orgId: BETA, legalName: 'Beta College' });
-    // documentForms (Phase 12) — one per tenant, for the isolation suite.
-    await setDoc(doc(db, 'documentForms/dfA'), { orgId: ORG, name: 'A doc', active: true });
-    await setDoc(doc(db, 'documentForms/dfB'), { orgId: BETA, name: 'B doc', active: true });
     // curricula are org-namespaced ({orgId}__{key}); same base key across tenants.
     await setDoc(doc(db, 'curricula/' + ORG + '__le_brt'), { orgId: ORG, key: 'le_brt', label: 'LE' });
     await setDoc(doc(db, 'curricula/' + BETA + '__le_brt'), { orgId: BETA, key: 'le_brt', label: 'LE' });
     // defaultCurricula: the platform FDLE programs (no orgId — shared across orgs).
     await setDoc(doc(db, 'defaultCurricula/le_brt'), { key: 'le_brt', label: 'LE platform', courses: [], totalHours: 770 });
-    await setDoc(doc(db, 'reportConfig/' + ORG), { categories: [] });
-    await setDoc(doc(db, 'reportConfig/' + BETA), { categories: [] });
-    // documentLibrary: a general form + one specialized per tenant.
+    await setDoc(doc(db, 'reportConfig/' + ORG), { examInfo: {} });
+    await setDoc(doc(db, 'reportConfig/' + BETA), { examInfo: {} });
     await setDoc(doc(db, 'roomCategories/catA'), { orgId: ORG, name: 'College' });
     await setDoc(doc(db, 'roomCategories/catB'), { orgId: BETA, name: 'College' });
     await setDoc(doc(db, 'rooms/roomA'), { orgId: ORG, categoryId: 'catA', name: 'E-120', active: true });
     await setDoc(doc(db, 'rooms/roomB'), { orgId: BETA, categoryId: 'catB', name: 'E-120', active: true });
     await setDoc(doc(db, 'roomReservations/resA'), { orgId: ORG, roomId: 'roomA', title: 'Maintenance', start: new Date(), end: new Date() });
     await setDoc(doc(db, 'roomReservations/resB'), { orgId: BETA, roomId: 'roomB', title: 'Maintenance', start: new Date(), end: new Date() });
-    await setDoc(doc(db, 'documentLibrary/genA'), { name: 'General A', availability: 'general', kind: 'letter', active: true });
-    await setDoc(doc(db, 'documentLibrary/specOrg'), { name: 'Spec ORG', availability: 'specialized', kind: 'letter', orgIds: [ORG], active: true });
-    await setDoc(doc(db, 'documentLibrary/specBeta'), { name: 'Spec BETA', availability: 'specialized', kind: 'letter', orgIds: [BETA], active: true });
     // remediations — staff-only (holds injury/assignment details).
     await setDoc(doc(db, 'remediations/remA'), { orgId: ORG, personName: 'Case A', originalClass: 'LE 132', reason: 'injury', blocks: [], status: 'awaiting' });
     await setDoc(doc(db, 'remediations/remB'), { orgId: BETA, personName: 'Case B', originalClass: 'LE 900', reason: 'block_failure', blocks: [], status: 'awaiting' });
@@ -274,16 +267,6 @@ describe('users — reads', () => {
   });
 });
 
-describe('mail — server-only', () => {
-  it('no client (even director) can write mail', async () => {
-    await assertFails(setDoc(doc(as('alice', 'instructor'), 'mail/m1'), { to: ['x@y.z'], message: {}, orgId: ORG }));
-    await assertFails(setDoc(doc(as('dave', 'director'), 'mail/m2'), { to: ['x@y.z'], message: {}, orgId: ORG }));
-  });
-  it('non-admin cannot read mail', async () => {
-    await assertFails(getDoc(doc(as('alice', 'instructor'), 'mail/m1')));
-  });
-});
-
 describe('auditLog — owner-attributed create only', () => {
   it('staff CAN create an entry attributed to self', async () => {
     await assertSucceeds(addDoc(collection(as('carol', 'coordinator'), 'auditLog'), { actorUid: 'carol', action: 'x', summary: 's', orgId: ORG }));
@@ -416,42 +399,6 @@ describe('tenant isolation (orgId)', () => {
   });
 });
 
-// ── Phase 12/13: in-app document builder collection isolation. Staff read their
-// own org's documents; only command (admin) may author; orgId is immutable. ──
-describe('documentForms — org isolation', () => {
-  it('staff reads OWN-tenant document, NOT another tenant\'s', async () => {
-    await assertSucceeds(getDoc(doc(as('carol', 'coordinator'), 'documentForms/dfA')));
-    await assertFails(getDoc(doc(as('carol', 'coordinator'), 'documentForms/dfB')));
-  });
-  it('a non-staff instructor cannot read documentForms', async () => {
-    await assertFails(getDoc(doc(as('alice', 'instructor'), 'documentForms/dfA')));
-  });
-  it('admin creates in OWN org; not a foreign org; not orgless', async () => {
-    await assertSucceeds(setDoc(doc(as('dave', 'director'), 'documentForms/n1'), { orgId: ORG, name: 'x', active: true }));
-    await assertFails(setDoc(doc(as('dave', 'director'), 'documentForms/n2'), { orgId: BETA, name: 'x', active: true }));
-    await assertFails(setDoc(doc(as('dave', 'director'), 'documentForms/n3'), { name: 'x', active: true }));
-  });
-  it('a coordinator (staff, non-admin) cannot create a documentForm', async () => {
-    await assertFails(setDoc(doc(as('carol', 'coordinator'), 'documentForms/n4'), { orgId: ORG, name: 'x', active: true }));
-  });
-  it('cannot update another tenant\'s doc; orgId is immutable; own-tenant edit OK', async () => {
-    await assertFails(updateDoc(doc(as('dave', 'director'), 'documentForms/dfB'), { name: 'hijack' }));
-    await assertFails(updateDoc(doc(as('dave', 'director'), 'documentForms/dfA'), { orgId: BETA, name: 'x' }));
-    await assertSucceeds(updateDoc(doc(as('dave', 'director'), 'documentForms/dfA'), { name: 'ok' }));
-  });
-  it('admin deletes own-tenant doc, not another tenant\'s', async () => {
-    await assertFails(deleteDoc(doc(as('dave', 'director'), 'documentForms/dfB')));
-    await assertSucceeds(deleteDoc(doc(as('dave', 'director'), 'documentForms/dfA')));
-  });
-  it('platform owner acts ONLY within the org their claim points to (no isolation bypass)', async () => {
-    const owner = testEnv.authenticatedContext('owner', { role: 'director', orgId: ORG, platformOwner: true }).firestore();
-    await assertSucceeds(getDoc(doc(owner, 'documentForms/dfA')));
-    await assertSucceeds(setDoc(doc(owner, 'documentForms/ownNew'), { orgId: ORG, name: 'o', active: true }));
-    await assertFails(getDoc(doc(owner, 'documentForms/dfB')));
-    await assertFails(deleteDoc(doc(owner, 'documentForms/dfB')));
-  });
-});
-
 // ── Phase 13 hardening: isolation coverage for the multi-tenant-reworked
 // curricula (org-namespaced doc ids) and per-org reportConfig. ──
 describe('curricula + reportConfig — org isolation', () => {
@@ -473,8 +420,8 @@ describe('curricula + reportConfig — org isolation', () => {
   it('reportConfig: read + write only the OWN-org doc', async () => {
     await assertSucceeds(getDoc(doc(as('dave', 'director'), 'reportConfig/' + ORG)));
     await assertFails(getDoc(doc(as('dave', 'director'), 'reportConfig/' + BETA)));
-    await assertSucceeds(setDoc(doc(as('dave', 'director'), 'reportConfig/' + ORG), { categories: [] }, { merge: true }));
-    await assertFails(setDoc(doc(as('dave', 'director'), 'reportConfig/' + BETA), { categories: [] }, { merge: true }));
+    await assertSucceeds(setDoc(doc(as('dave', 'director'), 'reportConfig/' + ORG), { examInfo: {} }, { merge: true }));
+    await assertFails(setDoc(doc(as('dave', 'director'), 'reportConfig/' + BETA), { examInfo: {} }, { merge: true }));
   });
 });
 
@@ -645,41 +592,6 @@ describe('academies — publish gate', () => {
   });
 });
 
-// ── Owner-managed document library: availability-gated, owner-only writes. ──
-describe('documentLibrary — availability gating', () => {
-  it('staff read GENERAL + own-org SPECIALIZED, NOT another org\'s', async () => {
-    await assertSucceeds(getDoc(doc(as('carol', 'coordinator'), 'documentLibrary/genA')));
-    await assertSucceeds(getDoc(doc(as('carol', 'coordinator'), 'documentLibrary/specOrg')));
-    await assertFails(getDoc(doc(as('carol', 'coordinator'), 'documentLibrary/specBeta')));
-  });
-  it('constrained lists return ONLY this org\'s forms (general + own specialized)', async () => {
-    const gen = await assertSucceeds(getDocs(query(collection(as('dave', 'director'), 'documentLibrary'), where('availability', '==', 'general'))));
-    expect((gen as { docs: { id: string }[] }).docs.map((d) => d.id).sort()).toEqual(['genA']);
-    const mine = await assertSucceeds(getDocs(query(collection(as('dave', 'director'), 'documentLibrary'), where('orgIds', 'array-contains', ORG))));
-    expect((mine as { docs: { id: string }[] }).docs.map((d) => d.id).sort()).toEqual(['specOrg']);
-  });
-  it('an UNCONSTRAINED list by staff is denied (another org\'s specialized sibling fails the rule)', async () => {
-    await assertFails(getDocs(collection(as('dave', 'director'), 'documentLibrary')));
-  });
-  it('orgless staff (stale token) read GENERAL only — never a specialized form', async () => {
-    await assertSucceeds(getDoc(doc(as('dave', 'director', null), 'documentLibrary/genA')));
-    await assertSucceeds(getDocs(query(collection(as('dave', 'director', null), 'documentLibrary'), where('availability', '==', 'general'))));
-    await assertFails(getDoc(doc(as('dave', 'director', null), 'documentLibrary/specOrg')));
-  });
-  it('a client — even an admin — cannot write the library', async () => {
-    await assertFails(setDoc(doc(as('dave', 'director'), 'documentLibrary/x'), { name: 'x', availability: 'general', kind: 'letter', active: true }));
-    await assertFails(updateDoc(doc(as('dave', 'director'), 'documentLibrary/genA'), { name: 'hijack' }));
-    await assertFails(deleteDoc(doc(as('dave', 'director'), 'documentLibrary/genA')));
-  });
-  it('platform owner reads ALL + writes', async () => {
-    const owner = testEnv.authenticatedContext('owner', { role: 'director', orgId: ORG, platformOwner: true }).firestore();
-    await assertSucceeds(getDoc(doc(owner, 'documentLibrary/specBeta')));
-    await assertSucceeds(getDocs(collection(owner, 'documentLibrary')));
-    await assertSucceeds(setDoc(doc(owner, 'documentLibrary/ownNew'), { name: 'o', availability: 'general', kind: 'letter', active: true }));
-    await assertSucceeds(updateDoc(doc(owner, 'documentLibrary/specBeta'), { orgIds: [ORG, BETA] }));
-  });
-});
-
 // scheduleChangeQueue — server-owned; staff read their own org's pending notices.
 describe('scheduleChangeQueue — staff read, no client writes, org-isolated', () => {
   beforeEach(async () => {
@@ -703,24 +615,21 @@ describe('scheduleChangeQueue — staff read, no client writes, org-isolated', (
 
 // Queued mail bodies carry temporary passwords (createUserAccount /
 // createOrgAdmin / sendActivationEmail) and notification-email verification
-// codes, kept 30 days. No client surface reads either queue, so reads are
+// codes, kept 30 days. No client surface reads the queue, so reads are
 // closed outright — a same-org sergeant could otherwise lift a new director's
 // temp password and sign in as them before they do (rank-ladder bypass).
-describe('mail + mailQueue — no client reads (bodies carry temp passwords / codes)', () => {
+describe('mailQueue — no client reads (bodies carry temp passwords / codes)', () => {
   beforeEach(async () => {
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       const db = ctx.firestore();
       const msg = { subject: 's', html: 'Temporary password: Heimdall-deadbeef', text: 't' };
       await setDoc(doc(db, 'mailQueue/mq1'), { orgId: ORG, to: ['new.director@x.y'], message: msg });
-      await setDoc(doc(db, 'mail/ml1'), { orgId: ORG, to: ['new.director@x.y'], message: msg });
     });
   });
   it('even a same-org director/sergeant CANNOT get or list queued mail', async () => {
     for (const [uid, role] of [['dave', 'director'], ['sgt', 'sergeant']] as const) {
       await assertFails(getDoc(doc(as(uid, role), 'mailQueue/mq1')));
       await assertFails(getDocs(query(collection(as(uid, role), 'mailQueue'), where('orgId', '==', ORG))));
-      await assertFails(getDoc(doc(as(uid, role), 'mail/ml1')));
-      await assertFails(getDocs(query(collection(as(uid, role), 'mail'), where('orgId', '==', ORG))));
     }
   });
   it('the platform owner cannot read it from a client either', async () => {

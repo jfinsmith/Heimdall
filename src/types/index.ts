@@ -678,20 +678,8 @@ export type ReportTypeId =
   | 'use_of_force' | 'disciplinary' | 'dismissal_conduct' | 'cadet_acknowledgment'
   | 'crossover_transfer';
 
-/**
- * Admin-managed report configuration (doc `reportConfig/global`): the custom
- * category list (LE, CO, NMT, ARGUS…) and per-report-type overrides (display
- * name + which category it belongs to). The report's fields and letter body
- * stay in the code registry (reportTypes.tsx) — only name/category are editable.
- */
-export interface ReportCategory {
-  key: string;
-  label: string;
-}
+/** Admin-managed, per-org report configuration (doc `reportConfig/{orgId}`). */
 export interface ReportConfigDoc {
-  categories: ReportCategory[];
-  /** Per report-type-id: optional display-name override + category assignment. */
-  overrides?: Record<string, { name?: string; categoryKey?: string }>;
   /**
    * THIS org's written-exam facts, per curriculum id → course key (courseKey:
    * CJK or name): question count + time limit. Org-owned even for the platform
@@ -703,7 +691,7 @@ export interface ReportConfigDoc {
 
 /** A filed academic-action report (e.g., exam-failure letter) for one cadet. */
 export interface AcademyReportDoc {
-  /** Built-in report id (ReportTypeId) or an in-app builder doc's id (string). */
+  /** Code-registry document id (see ReportType.id in reportTypes.tsx). */
   type: ReportTypeId | string;
   /** Roster member id, if filed against a roster cadet. */
   cadetId?: string;
@@ -861,17 +849,9 @@ export interface CurriculumDoc {
   brandOrgName?: string;
   brandTagline?: string;
   brandAddressLines?: string[];
-  /** Swap a general/base form for a specialized library form on this discipline
-   *  (base form id → documentLibrary form id). */
-  formOverrides?: Record<string, string>;
-  /** General/base form ids hidden from this discipline's Reports tab. */
+  /** Registry document ids hidden from this discipline's Reports tab. */
   disabledForms?: string[];
-  /** Org-assigned specialized library form ids ADDED to this discipline. */
-  addedForms?: string[];
 }
-// Note: the owner document library type (LibraryFormDoc) lives in
-// src/features/cadre/reports/documentLibrary.ts so it can reference ReportField/
-// DocBlock from the reports feature without a circular import.
 
 // ── Sessions & staffing slots ──────────────────────────────────────────────
 /**

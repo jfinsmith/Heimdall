@@ -115,8 +115,8 @@ export function MemoRenderer({
   const data = memo.data ?? {};
 
   // Safety net: the built-in documents carry no [bracketed placeholders] anymore,
-  // but legacy owner-library forms can — any unresolved bracket in a rendered
-  // document surfaces a banner that PRINTS, so nothing incomplete gets issued.
+  // but any unresolved bracket in a rendered document still surfaces a banner
+  // that PRINTS, so nothing incomplete gets issued.
   const placeholderTexts = [
     ...memo.headerFields.map((f) => f.value),
     ...memo.blocks.flatMap((b) => (b.spans ?? []).map((s) => (typeof s === 'string' ? s : ''))),

@@ -13,7 +13,7 @@
  * DocumentAssignmentDoc below.
  */
 import React from 'react';
-import type { ReportTypeId } from '../../../types';
+import type { CurriculumDoc, ReportTypeId } from '../../../types';
 import { DOCUMENT_TYPES } from './documentTypes';
 
 export interface ReportField {
@@ -81,8 +81,8 @@ export interface DocumentSpec {
 }
 
 export interface ReportType {
-  /** Built-in code ids are ReportTypeId; legacy owner-library forms
-   *  (documentLibrary) use their Firestore doc id — so this is a plain string. */
+  /** Registry id. ReportTypeId names the original set; later entries (e.g.
+   *  'exam_rules') are plain strings. */
   id: ReportTypeId | string;
   name: string;
   purpose: string;
@@ -270,9 +270,16 @@ const ACADEMIC_REPORT_TYPES: ReportType[] = [
 
 /** The code registry: the four academic-action letters + the Phase-11 general &
  *  conduct documents. Each is offered to every org unless the owner scopes it
- *  (documentAssignments); a discipline can further disable/swap forms in
+ *  (documentAssignments); a discipline can further disable forms in
  *  Curriculum & Hours. These remain the legal source of the verbatim FDLE/CJSTC
  *  letter bodies. */
 export const REPORT_TYPES: ReportType[] = [...ACADEMIC_REPORT_TYPES, ...DOCUMENT_TYPES];
 
 export const getReportType = (id: string): ReportType | undefined => REPORT_TYPES.find((r) => r.id === id);
+
+/** The documents offered to a class: the registry documents the owner assigned
+ *  to this org (`assigned`), minus the ones this discipline's curriculum hides. */
+export function offeredReportTypes(curriculum: CurriculumDoc | null | undefined, assigned: ReportType[]): ReportType[] {
+  const disabled = new Set(curriculum?.disabledForms ?? []);
+  return assigned.filter((t) => !disabled.has(t.id));
+}

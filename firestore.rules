@@ -204,7 +204,7 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['limboActivities', 'limboActivityColors', 'updatedAt']);
     }
 
-    // ── reportConfig/{orgId} (per-tenant report categories + name overrides) ─
+    // ── reportConfig/{orgId} (per-tenant written-exam facts) ───────────────
     match /reportConfig/{docId} {
       allow read: if signedIn() && activeStatus() && docId == tokenOrgId();
       allow write: if isAdmin() && docId == tokenOrgId();
@@ -229,14 +229,6 @@ service cloud.firestore {
         && unchanged('orgId') && unchanged('submittedByUid') && unchanged('submittedByEmail')
         && unchanged('status') && unchanged('statusComment') && unchanged('resolvedByUid');
       allow delete: if isAdmin() && inOrg(resource.data);
-    }
-
-    // ── courseCatalog ──────────────────────────────────────────────────────
-    match /courseCatalog/{courseId} {
-      allow read: if signedIn() && inOrg(resource.data);
-      allow create: if isStaff() && inOrg(request.resource.data);
-      allow update: if isStaff() && inOrg(resource.data) && unchanged('orgId');
-      allow delete: if isStaff() && inOrg(resource.data);
     }
 
     // ── curricula (admin-editable disciplines + minimum hours) ─────────────
@@ -295,19 +287,6 @@ service cloud.firestore {
       allow write: if isPlatformOwner();
     }
 
-    // ── documentLibrary (owner-managed forms library) ─────────────────────
-    // General forms are readable by any org's staff; specialized forms only by an
-    // assigned org. NOT tenant-scoped — only the platform owner may write.
-    match /documentLibrary/{id} {
-      // The specialized branch uses the canonical array-membership form
-      // (`<authValue> in resource.data.field`) directly — not via tokenOrgId() or an
-      // `is list` guard — so Firestore can prove the array-contains LIST query safe.
-      allow read: if isPlatformOwner()
-        || (isStaff() && (resource.data.availability == 'general'
-            || request.auth.token.orgId in resource.data.orgIds));
-      allow write: if isPlatformOwner();
-    }
-
     // ── documentAssignments (owner-set per-document org availability) ──────
     // documentAssignments/{reportTypeId}: which orgs a registry document is
     // offered to. Absent doc / scope 'all' = every org. Any signed-in user may
@@ -318,17 +297,6 @@ service cloud.firestore {
       // signedIn() read let any member enumerate other tenants' org ids.
       allow read: if isStaff() || isPlatformOwner();
       allow write: if isPlatformOwner();
-    }
-
-    // ── documentForms (in-app document builder, Phase 12) ──────────────────
-    // Org-scoped admin/owner-authored documents; staff read them to file reports.
-    // Writers must be command (or the platform owner) AND in the doc's org — so an
-    // owner can only author for the org they're currently switched into.
-    match /documentForms/{id} {
-      allow read: if (isStaff() || isPlatformOwner()) && inOrg(resource.data);
-      allow create: if (isAdmin() || isPlatformOwner()) && inOrg(request.resource.data);
-      allow update: if (isAdmin() || isPlatformOwner()) && inOrg(resource.data) && unchanged('orgId');
-      allow delete: if (isAdmin() || isPlatformOwner()) && inOrg(resource.data);
     }
 
     // ── coursePublishEvents ────────────────────────────────────────────────
@@ -513,19 +481,15 @@ service cloud.firestore {
       allow delete: if signedIn() && resource.data.uid == request.auth.uid;
     }
 
-    // ── mail / mailQueue ───────────────────────────────────────────────────
-    // Outgoing email. `mailQueue` is consumed by our sendQueuedEmail function;
-    // `mail` is the retired Trigger Email extension's legacy queue (the daily
-    // sweep purges old docs from both). SERVER-ONLY, reads included: queued
-    // bodies carry temporary passwords (createUserAccount / createOrgAdmin /
-    // sendActivationEmail) and notification-email verification codes for 30
-    // days, so a same-tenant admin read let a sergeant lift a new director's
-    // temp password and sign in as them first. No client surface reads either
-    // collection. A future admin mail log must go through a callable that
-    // returns metadata only (to / subject / delivery state) — never the body.
-    match /mail/{mailId} {
-      allow read, write: if false; // functions/Admin SDK only
-    }
+    // ── mailQueue ──────────────────────────────────────────────────────────
+    // Outgoing email, consumed by our sendQueuedEmail function. SERVER-ONLY,
+    // reads included: queued bodies carry temporary passwords
+    // (createUserAccount / createOrgAdmin / sendActivationEmail) and
+    // notification-email verification codes for 30 days, so a same-tenant admin
+    // read let a sergeant lift a new director's temp password and sign in as
+    // them first. No client surface reads the collection. A future admin mail
+    // log must go through a callable that returns metadata only (to / subject /
+    // delivery state) — never the body.
     match /mailQueue/{mailId} {
       allow read, write: if false; // functions/Admin SDK only
     }
