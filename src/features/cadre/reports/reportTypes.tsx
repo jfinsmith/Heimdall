@@ -6,8 +6,11 @@
  *                 (11B-35.001(10)(b), (13)(b); 11B-35.002(5)). Rendered for orgs
  *                 whose jurisdiction is 'FL' (the founding PHSC org).
  * `bodyNeutral` — a state-agnostic equivalent (no F.A.C./Florida-specific
- *                 citations) rendered for every other jurisdiction. A reasonable
- *                 default; orgs can author their own once the document builder ships.
+ *                 citations) rendered for every other jurisdiction.
+ *
+ * Documents are added ONLY here / in documentTypes.tsx (the in-app builder was
+ * retired Aug 2026); which orgs are offered each one is data — see
+ * DocumentAssignmentDoc below.
  */
 import React from 'react';
 import type { ReportTypeId } from '../../../types';
@@ -78,8 +81,8 @@ export interface DocumentSpec {
 }
 
 export interface ReportType {
-  /** Built-in code ids are ReportTypeId; in-app builder docs (Phase 12) use their
-   *  Firestore doc id — so this is a plain string. */
+  /** Built-in code ids are ReportTypeId; legacy owner-library forms
+   *  (documentLibrary) use their Firestore doc id — so this is a plain string. */
   id: ReportTypeId | string;
   name: string;
   purpose: string;
@@ -95,13 +98,6 @@ export interface ReportType {
    * use `body`/`bodyNeutral`; the general & conduct documents use `document`.
    */
   document?: DocumentSpec;
-  /**
-   * Availability scope. undefined = GLOBAL (offered to every organization). A
-   * specific orgId = offered ONLY to that org — used for documents custom-built
-   * for one organization (e.g. the four PHSC academic-action letters are
-   * 'phsc'-only). Set on the registry entry; AcademyReports filters on it.
-   */
-  orgScope?: string;
   /** yyyy-mm-dd the document's CONTENT was last added or edited in the code
    *  registry — stamped by whoever edits the entry; shown on the owner's
    *  Report Forms page. */
@@ -113,7 +109,7 @@ export interface ReportType {
  * NO doc (or scope 'all') = the document is offered to every organization —
  * which means anything newly added to the code registry appears everywhere
  * automatically until the owner scopes it. Written only by the platform owner;
- * readable by any signed-in user (AcademyReports filters the offering with it).
+ * readable by staff (AcademyReports filters the offering with it).
  */
 export interface DocumentAssignmentDoc {
   scope: 'all' | 'orgs';
@@ -272,11 +268,11 @@ const ACADEMIC_REPORT_TYPES: ReportType[] = [
   },
 ];
 
-/** The built-in GENERAL forms: the four academic-action letters + the Phase-11
- *  general & conduct documents. All are available to every org (the FDLE letters
- *  are standard academy paperwork); orgs further tailor via the owner document
- *  library + per-curriculum overrides. These remain the legal source of the
- *  verbatim FDLE/CJSTC letter bodies. */
+/** The code registry: the four academic-action letters + the Phase-11 general &
+ *  conduct documents. Each is offered to every org unless the owner scopes it
+ *  (documentAssignments); a discipline can further disable/swap forms in
+ *  Curriculum & Hours. These remain the legal source of the verbatim FDLE/CJSTC
+ *  letter bodies. */
 export const REPORT_TYPES: ReportType[] = [...ACADEMIC_REPORT_TYPES, ...DOCUMENT_TYPES];
 
 export const getReportType = (id: string): ReportType | undefined => REPORT_TYPES.find((r) => r.id === id);

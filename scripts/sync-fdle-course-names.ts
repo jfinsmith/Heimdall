@@ -15,7 +15,7 @@
  *   npx tsx scripts/sync-fdle-course-names.ts --fix    # apply
  *
  * Re-runnable and idempotent — for FUTURE renames, update the canonical names
- * in src/features/admin/fdleCurricula.ts AND this table, then run again.
+ * in scripts/data/fdleCurricula.ts AND this table, then run again.
  */
 import { initializeApp, cert } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';

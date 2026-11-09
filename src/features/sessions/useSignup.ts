@@ -15,8 +15,6 @@ export class SignupError extends Error {}
 const submitSignupFn = httpsCallable<{ sessionId: string; slotId: string; allowWaitlist?: boolean }, { status: 'confirmed' | 'waitlist' }>(functions, 'submitSignup');
 const withdrawSignupFn = httpsCallable<{ sessionId: string }, { ok: boolean }>(functions, 'withdrawSignup');
 
-const cleanMessage = (e: unknown) => friendlyError(e);
-
 export interface SignupResult {
   status: 'confirmed' | 'waitlist';
 }
@@ -28,14 +26,16 @@ export async function signUpForSlot(
   _uid: string,
   sessionId: string,
   slotId: string,
-  opts: { allowWaitlist?: boolean; orgId?: string } = {}
+  opts: { allowWaitlist?: boolean } = {}
 ): Promise<SignupResult> {
   try {
-    const res = await submitSignupFn({ sessionId, slotId, allowWaitlist: opts.allowWaitlist });
+    const res = await submitSignupFn({ sessionId, slotId, allowWaitlist: !!opts.allowWaitlist });
     return { status: res.data.status };
   } catch (e) {
-    const msg = cleanMessage(e);
-    throw new SignupError(/FULL/.test(msg) ? 'FULL' : msg);
+    // friendlyError turns a blocked/failed transport into plain language and
+    // passes the server's own messages through — including the exact 'FULL'
+    // sentinel (slot at capacity, waitlist not requested).
+    throw new SignupError(friendlyError(e, 'Sign-up failed.'));
   }
 }
 
@@ -43,6 +43,6 @@ export async function withdrawFromSession(_uid: string, sessionId: string): Prom
   try {
     await withdrawSignupFn({ sessionId });
   } catch (e) {
-    throw new SignupError(cleanMessage(e));
+    throw new SignupError(friendlyError(e, 'Withdrawal failed.'));
   }
 }

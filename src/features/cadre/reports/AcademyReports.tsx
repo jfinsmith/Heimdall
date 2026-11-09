@@ -1,11 +1,12 @@
 /**
  * Reports for a single academy — report-type cards, the filed-reports list, and
  * the fill/edit form. Shared by the standalone Cadet Reports page and the Roster
- * module's Reports tab. Report types are discipline-scoped (LE only for now).
+ * module's Reports tab. The offering = the code registry filtered by the owner's
+ * per-org documentAssignments, then this discipline's form overrides.
  */
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { addDoc, collection, deleteDoc, doc, serverTimestamp, updateDoc, where } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, deleteField, doc, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { useCollection, type WithId } from '../../../lib/firestore';
 import { useCurriculum, baseCurriculumKey } from '../../../lib/curricula';
@@ -73,7 +74,9 @@ export function AcademyReports({ academy, seed, onSeedConsumed }: { academy: Wit
   const academyId = academy.id;
   // Org-scoped in useCollection; sorted client-side (no orderBy → single-field index).
   const { data: rosterRaw } = useCollection<RosterMemberDoc>(`academies/${academyId}/roster`, [], [academyId]);
-  const roster = useMemo(() => [...rosterRaw].sort((a, b) => (a.no ?? 0) - (b.no ?? 0)), [rosterRaw]);
+  // Canonical roster order (A–Z by last name, withdrawn/dismissed last) — the
+  // pickers list "Last, First", so intake order made a cadet hard to find.
+  const roster = useMemo(() => [...rosterRaw].sort(rosterCompare), [rosterRaw]);
   const { data: reportsRaw, error: reportsError } = useCollection<AcademyReportDoc>(`academies/${academyId}/reports`, [], [academyId]);
   const reports = useMemo(
     () => [...reportsRaw].sort((a, b) => ((b.createdAt as { toMillis?: () => number })?.toMillis?.() ?? 0) - ((a.createdAt as { toMillis?: () => number })?.toMillis?.() ?? 0)),
@@ -112,7 +115,11 @@ export function AcademyReports({ academy, seed, onSeedConsumed }: { academy: Wit
 
   async function remove(r: WithId<AcademyReportDoc>) {
     if (!window.confirm(`Delete this ${typeFor(r.type)?.name ?? 'report'} report for ${r.cadetName}?`)) return;
-    await deleteDoc(doc(db, 'academies', academyId, 'reports', r.id));
+    try {
+      await deleteDoc(doc(db, 'academies', academyId, 'reports', r.id));
+    } catch (err) {
+      window.alert(friendlyError(err, 'Could not delete the report — try again.'));
+    }
   }
 
   return (
@@ -136,8 +143,8 @@ export function AcademyReports({ academy, seed, onSeedConsumed }: { academy: Wit
         </>
       ) : (
         <p className="mb-6 rounded-md bg-watch-50 px-3 py-2 text-sm text-slate-600">
-          No forms are enabled for this discipline. Manage the document library under <strong>Owner → Report Forms</strong>,
-          or adjust this discipline's forms under <strong>Admin → Curriculum &amp; Hours</strong>.
+          No forms are enabled for this discipline. An admin can re-enable this discipline&apos;s forms under{' '}
+          <strong>Admin → Curriculum &amp; Hours</strong>.
         </p>
       )}
 
@@ -170,7 +177,14 @@ export function AcademyReports({ academy, seed, onSeedConsumed }: { academy: Wit
                   <Link to={`/cadet-reports/print/${academyId}/${r.id}`} target="_blank" rel="noopener" className="mr-3 text-sm text-bifrost-700 hover:underline">
                     Print ↗
                   </Link>
-                  <Button variant="ghost" onClick={() => { const t = typeFor(r.type); if (t) { setEditing(r); setFormType(t); } }}>Edit</Button>
+                  <Button
+                    variant="ghost"
+                    disabled={!typeFor(r.type)}
+                    title={typeFor(r.type) ? undefined : 'This document’s form is no longer available to your organization'}
+                    onClick={() => { const t = typeFor(r.type); if (t) { setEditing(r); setFormType(t); } }}
+                  >
+                    Edit
+                  </Button>
                   <Button variant="ghost" className="text-red-700" onClick={() => remove(r)}>Delete</Button>
                 </td>
               </tr>
@@ -244,6 +258,17 @@ function ReportFormModal({
 
   const set = (k: string, v: string) => setValues((p) => ({ ...p, [k]: v }));
 
+  // Course choices come from THIS academy's curriculum so the CJK list matches
+  // the discipline (LE / CO / crossover), not a hardcoded LE list.
+  const courseLabels = useMemo(
+    () => courses.filter((c) => c.cjk).map((c) => `${c.cjk!.replace(/^CJK\s*/, 'CJK ')} — ${c.name}`),
+    [courses]
+  );
+  // A stored value that is no longer in the list (the course was renamed after
+  // filing, or a legacy "0040 Title" value) stays selectable — otherwise the box
+  // read "— select course —" while the old value was still what printed.
+  const courseChoices = (current?: string) => (current && !courseLabels.includes(current) ? [current, ...courseLabels] : courseLabels);
+
   // Crossover memo helper: the cadet belongs to ANOTHER class — pick their
   // ORIGINAL class, then the cadet. The class fills the To line (its Sequence
   // No.), the cadet fills the Re line; every field stays manually editable.
@@ -251,7 +276,7 @@ function ReportFormModal({
   const { data: allAcademies } = useCollection<AcademyDoc>(isCrossover ? 'academies' : null);
   const [xClassId, setXClassId] = useState('');
   const [xCadetId, setXCadetId] = useState('');
-  const { data: xRoster } = useCollection<RosterMemberDoc>(
+  const { data: xRoster, loading: xRosterLoading } = useCollection<RosterMemberDoc>(
     isCrossover && xClassId ? `academies/${xClassId}/roster` : null,
     [],
     [xClassId]
@@ -272,7 +297,10 @@ function ReportFormModal({
         .sort((a, b) => (a.shortName || a.name).localeCompare(b.shortName || b.name)),
     [allAcademies, academy.id, academy.discipline]
   );
-  const xRosterSorted = useMemo(() => [...xRoster].sort(rosterCompare), [xRoster]);
+  // Offer cadets only once the PICKED class's roster has arrived — a cadet
+  // chosen from the previously selected class would be attributed to the wrong
+  // original class on a transfer memo.
+  const xRosterSorted = useMemo(() => (xRosterLoading ? [] : [...xRoster].sort(rosterCompare)), [xRoster, xRosterLoading]);
   function pickXClass(id: string) {
     setXClassId(id);
     setXCadetId('');
@@ -281,7 +309,7 @@ function ReportFormModal({
   }
   function pickXCadet(id: string) {
     setXCadetId(id);
-    const m = xRoster.find((r) => r.id === id);
+    const m = xRosterSorted.find((r) => r.id === id);
     if (m) { setCadetName(m.fullName); setCadetId(''); }
   }
   const missing =
@@ -327,7 +355,12 @@ function ReportFormModal({
         updatedAt: serverTimestamp(),
       };
       if (editing) {
-        await updateDoc(doc(db, 'academies', academy.id, 'reports', editing.id), payload);
+        // updateDoc MERGES: when the cadet was re-typed by hand (no roster pick),
+        // omitting cadetId left the PREVIOUS cadet's id linked to the record.
+        await updateDoc(doc(db, 'academies', academy.id, 'reports', editing.id), {
+          ...payload,
+          ...(appliesTo === 'cadet' && cadetId ? {} : { cadetId: deleteField() }),
+        });
       } else {
         await addDoc(collection(db, 'academies', academy.id, 'reports'), {
           ...payload,
@@ -374,8 +407,8 @@ function ReportFormModal({
                         </Select>
                       </Field>
                       <Field label="Cadet">
-                        <Select value={xCadetId} onChange={(e) => pickXCadet(e.target.value)} disabled={!xClassId}>
-                          <option value="">{xClassId ? '— select cadet —' : 'pick a class first'}</option>
+                        <Select value={xCadetId} onChange={(e) => pickXCadet(e.target.value)} disabled={!xClassId || xRosterLoading}>
+                          <option value="">{!xClassId ? 'pick a class first' : xRosterLoading ? 'loading roster…' : '— select cadet —'}</option>
                           {xRosterSorted.map((m) => (
                             <option key={m.id} value={m.id}>{lastFirst(m.fullName)}</option>
                           ))}
@@ -416,14 +449,7 @@ function ReportFormModal({
               {f.type === 'course' ? (
                 <Select value={values[f.key] ?? ''} onChange={(e) => set(f.key, e.target.value)}>
                   <option value="">— select course —</option>
-                  {/* Pull from THIS academy's curriculum so the CJK list matches the
-                      discipline (LE / CO / crossover), not a hardcoded LE list. */}
-                  {courses
-                    .filter((c) => c.cjk)
-                    .map((c) => {
-                      const label = `${c.cjk!.replace(/^CJK\s*/, 'CJK ')} — ${c.name}`;
-                      return <option key={c.cjk} value={label}>{label}</option>;
-                    })}
+                  {courseChoices(values[f.key]).map((label) => <option key={label} value={label}>{label}</option>)}
                 </Select>
               ) : f.type === 'cadet' ? (
                 <Select value={values[f.key] ?? ''} onChange={(e) => set(f.key, e.target.value)}>

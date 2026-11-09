@@ -19,7 +19,9 @@
  * doc RETRY and THROW, so Eventarc redelivers with backoff (`retry: true`);
  * permanent errors (bad address, validation) mark ERROR and return. Attempts
  * are capped — the cap converts to a terminal ERROR instead of retrying for
- * the full 7-day event retention.
+ * the platform's whole retry window (24 h for 2nd-gen functions). A doc whose
+ * window runs out first (a quota outage outlasting it — those attempts are
+ * refunded) is left in RETRY and never sent: nothing re-drives it.
  */
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { defineSecret } from 'firebase-functions/params';

@@ -11,6 +11,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { orgConfigPath, useDoc, type WithId } from '../../../lib/firestore';
 import { useAuth } from '../../../auth/AuthContext';
+import { can } from '../../../lib/rbac';
 import type { AcademyDoc, CurriculumDoc, ReportConfigDoc, SessionDoc, UserDoc } from '../../../types';
 import { ReportLetter } from '../reports/ReportLetter';
 import { examCoursesOnDay } from './attendanceRoster';
@@ -46,7 +47,7 @@ export function DayExamDocuments({
   /** True when rosters precede these docs in the same print job. */
   pageBreakFirst: boolean;
 }) {
-  const { orgId } = useAuth();
+  const { orgId, role } = useAuth();
   const { data: cfg } = useDoc<ReportConfigDoc>(orgId ? orgConfigPath('reportConfig', orgId) : null);
   const testCourses = examCoursesOnDay(sessions, dateStr);
   if (testCourses.length === 0) return null;
@@ -87,7 +88,12 @@ export function DayExamDocuments({
               {missing && (
                 <span className="mt-1 block text-amber-800">
                   No question count / time limit on file for this course — those blanks will print empty.{' '}
-                  <Link to="/admin/curriculum" className="font-semibold underline">Add them under Admin → Curriculum &amp; Hours → Test info</Link>.
+                  {can.manageOrg(role) ? (
+                    <><Link to="/admin/curriculum" className="font-semibold underline">Add them under Admin → Curriculum &amp; Hours → Test info</Link>.</>
+                  ) : (
+                    // Coordinators can't open Admin (sergeant+) — the link bounced them to the dashboard.
+                    <>An admin can add them under Admin → Curriculum &amp; Hours → Test info.</>
+                  )}
                 </span>
               )}
             </div>

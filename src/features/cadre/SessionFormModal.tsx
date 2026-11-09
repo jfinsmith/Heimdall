@@ -1,13 +1,13 @@
 /**
- * CADRE — Session editor. Pick a course from the catalog (auto-fills hours +
- * default role slots) or add a CUSTOM agency assignment (PSO assignment,
+ * CADRE — Session editor. Pick a course from the academy's curriculum (auto-fills
+ * hours + default role slots) or add a CUSTOM agency assignment (PSO assignment,
  * resiliency day, …) that does not count toward FDLE hours and defaults to a
  * single pre-assigned coordinator slot. Coordinator slots carry an assignee
  * picker (defaulting to the academy's #1 coordinator) — no open registration
  * needed for those blocks.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { addDoc, collection, deleteDoc, deleteField, doc, serverTimestamp, setDoc, Timestamp, updateDoc, where } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, deleteField, doc, getDoc, getDocs, query, serverTimestamp, setDoc, Timestamp, updateDoc, where } from 'firebase/firestore';
 import { db, functions } from '../../lib/firebase';
 import { httpsCallable } from 'firebase/functions';
 import { shortId, useCollection, type WithId } from '../../lib/firestore';
@@ -27,6 +27,13 @@ import { findRoomConflict, roomExemptAcademy, draftHolderAcademy, academyHolderL
 import { friendlyError } from '../../lib/callableError';
 
 const CUSTOM = '__custom__';
+
+/** Who holds which slot — order-independent, for spotting a staffing change. */
+const staffingKey = (slots: RoleSlot[] | undefined): string =>
+  (slots ?? [])
+    .map((s) => `${s.slotId}:${[...(s.filledBy ?? [])].sort().join(',')}`)
+    .sort()
+    .join('|');
 
 // Server-side cross-session double-booking check — clients can't query other
 // users' assignments, so the reserve picker asks the server before reserving.
@@ -372,6 +379,14 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
       setError('Enter a name for the custom assignment.');
       return;
     }
+    // A new session must carry a tenant: academy.orgId is optional on legacy
+    // docs, and `undefined` aborts the write while an org-less session is
+    // invisible to every org-scoped list.
+    const sessionOrgId = academy.orgId ?? orgId;
+    if (!session && !sessionOrgId) {
+      setError('Your account is still loading its organization — please reload and try again.');
+      return;
+    }
     setBusy(true);
     const start = combineDateTime(date, startTime);
     const end = combineDateTime(date, endTime);
@@ -508,6 +523,19 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
     try {
       let sessionId = session?.id;
       if (session) {
+        // Lost-update guard. The slots in this form were seeded from the
+        // session as it was when the dialog opened, and Save writes the WHOLE
+        // roleSlots array. If someone signed up, withdrew, or was promoted
+        // from the waitlist in the meantime, saving would silently erase that:
+        // their sign-up and My Schedule entry survive while the slot reads
+        // empty again (and can be filled a second time). Refuse and reopen.
+        const fresh = await getDoc(doc(db, 'sessions', session.id)).catch(() => null);
+        if (fresh?.exists() && staffingKey((fresh.data() as SessionDoc).roleSlots) !== staffingKey(session.roleSlots)) {
+          setError(
+            'The staffing on this session changed while you were editing (someone signed up, withdrew, or was promoted from the waitlist). Nothing was saved — close this dialog and reopen the session to work from the current staffing.'
+          );
+          return;
+        }
         // Mirror the server's recomputeStatus: a coordinator filling (or
         // vacating) the last slot flips open ↔ fully_staffed, so the
         // fully-staffed alert fires and the staffing board stays honest —
@@ -534,7 +562,7 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
           ...payload,
           ...(roomId ? { roomId } : {}),
           ...(allRoomIds.length ? { roomIds: allRoomIds } : {}),
-          orgId: academy.orgId,
+          ...(sessionOrgId ? { orgId: sessionOrgId } : {}),
           // Visible on the calendar once the academy is published, but sign-ups
           // stay closed until the coordinator opens the course.
           status: academy.status === 'draft' ? 'draft' : 'scheduled',
@@ -667,14 +695,26 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
     setBusy(true);
     setError(null);
     try {
-      // Clean up any pre-assigned coordinator mirror docs so they don't orphan.
-      for (const slot of session.roleSlots) {
-        for (const uid of slot.filledBy) {
-          await deleteDoc(doc(db, 'assignments', `${session.id}_${uid}`)).catch(() => {});
-          await deleteDoc(doc(db, 'sessions', session.id, 'signups', uid)).catch(() => {});
-        }
+      // Sign-up docs still under this session — read BEFORE the delete. Covers
+      // withdrawn and waitlisted people, who are no longer in roleSlots and so
+      // used to be left behind as orphans. Advisory: on a failed list the slot
+      // holders below are still cleaned up.
+      const uids = new Set(session.roleSlots.flatMap((slot) => slot.filledBy));
+      const signupOrg = session.orgId ?? academy.orgId ?? orgId;
+      if (signupOrg) {
+        const snap = await getDocs(query(collection(db, 'sessions', session.id, 'signups'), where('orgId', '==', signupOrg))).catch(() => null);
+        snap?.forEach((d) => uids.add(d.id));
       }
+      // Session FIRST, then its mirrors. Gjallarhorn treats a sign-up delete as
+      // "a coordinator removed you" and emails the instructor unless the session
+      // is already gone — deleting the mirrors first raced that check and could
+      // mail the very notices the confirm above says will NOT go out. (Same
+      // order as the session detail view's Delete.)
       await deleteDoc(doc(db, 'sessions', session.id));
+      for (const uid of uids) {
+        await deleteDoc(doc(db, 'assignments', `${session.id}_${uid}`)).catch(() => {});
+        await deleteDoc(doc(db, 'sessions', session.id, 'signups', uid)).catch(() => {});
+      }
       await logAudit(firebaseUser.uid, 'session.delete', 'session', session.id, `Deleted ${session.courseName}`);
       onClose();
     } catch (err) {
@@ -1009,12 +1049,12 @@ export function SessionFormModal({ academy, session, defaultDate, defaultTime, o
         <div className="flex items-center justify-between">
           <div className="flex gap-2">
             {session && session.status !== 'cancelled' && (
-              <Button type="button" variant="danger" onClick={cancelSession}>
+              <Button type="button" variant="danger" onClick={cancelSession} disabled={busy}>
                 Cancel session
               </Button>
             )}
             {session && (
-              <Button type="button" variant="ghost" onClick={deleteSession}>
+              <Button type="button" variant="ghost" onClick={deleteSession} disabled={busy}>
                 Delete
               </Button>
             )}

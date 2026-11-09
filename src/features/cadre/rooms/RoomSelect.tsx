@@ -32,7 +32,7 @@ export function RoomSelect({
   /** Class headcount — when set and the picked room has a smaller capacity, warns. */
   headcount?: number;
 }) {
-  const { data: rooms } = useCollection<RoomDoc>('rooms');
+  const { data: rooms, loading: roomsLoading } = useCollection<RoomDoc>('rooms');
   const { data: cats } = useCollection<RoomCategoryDoc>('roomCategories');
   const activeRooms = useMemo(() => rooms.filter((r) => r.active !== false), [rooms]);
   const matched = useMemo(() => (roomId ? activeRooms.find((r) => r.id === roomId) : undefined), [activeRooms, roomId]);
@@ -43,7 +43,15 @@ export function RoomSelect({
   // with that text instead of "— none —" while silently holding the name.
   const [custom, setCustom] = useState<boolean>(() => !roomId && !!value);
 
-  const selectValue = matched ? matched.id : custom || roomId || value ? CUSTOM : '';
+  // A managed roomId can't be matched until the room list arrives. Hold the
+  // select on the stored name for that moment instead of flashing "Custom room…"
+  // plus an (autofocused, editable) text box that would drop the roomId if typed in.
+  const pending = roomsLoading && !!roomId && !matched;
+  // Managed-only pickers (allowCustom=false) have no Custom row to fall back to:
+  // an unmatched id (room since hidden/deleted) reads as "nothing picked" — a
+  // value with no matching <option> falls back to the first enabled option,
+  // which without a "none" row is a room nobody chose.
+  const selectValue = matched ? matched.id : pending ? roomId! : allowCustom && (custom || roomId || value) ? CUSTOM : '';
   const showCustomInput = selectValue === CUSTOM;
 
   const groups = useMemo(() => {
@@ -78,6 +86,7 @@ export function RoomSelect({
           // showed the first room while nothing was actually selected.
           <option value="" disabled>Select a room…</option>
         )}
+        {pending && <option value={roomId}>{value || 'Loading…'}</option>}
         {groups.map((g) => (
           <optgroup key={g.key} label={g.label}>
             {g.rooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}

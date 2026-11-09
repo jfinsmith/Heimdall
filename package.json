@@ -11,8 +11,7 @@
     "lint": "eslint src --ext .ts,.tsx",
     "test": "vitest run src",
     "test:emulator": "vitest run tests/emulator",
-    "seed": "tsx seed/seed.ts",
-    "reminders:cron": "tsx scripts/gjallarhorn-cron.ts"
+    "seed": "tsx seed/seed.ts"
   },
   "dependencies": {
     "@fullcalendar/core": "^6.1.15",

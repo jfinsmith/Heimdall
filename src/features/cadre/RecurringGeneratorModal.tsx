@@ -1,13 +1,13 @@
 /**
  * CADRE — Recurring block generator. Generates one session per matching
  * weekday between two dates. Supports:
- *  - catalog courses OR a custom/agency block (e.g. daily 0645–0700 Formation)
+ *  - curriculum courses OR a custom/agency block (e.g. daily 0645–0700 Formation)
  *  - auto day-count math: pick a course and the tool sizes the date range from
  *    course hours ÷ hours-per-day (24 hrs @ 8/day → 3 days)
  *  - a configurable lunch carved out of each block (not counted)
  */
 import React, { useMemo, useState } from 'react';
-import { collection, doc, serverTimestamp, writeBatch, Timestamp, setDoc, where } from 'firebase/firestore';
+import { collection, doc, serverTimestamp, writeBatch, Timestamp, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { shortId, useCollection, type WithId } from '../../lib/firestore';
 import { useCurriculum } from '../../lib/curricula';
@@ -23,9 +23,13 @@ import { friendlyError } from '../../lib/callableError';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const CUSTOM = '__custom__';
+/** Most sessions one run may create. A full academy is ~130 weekdays; a typo'd
+ *  year in From/Until used to offer "Generate 40,000 sessions" (and walked every
+ *  day of the range on each keystroke). */
+const MAX_RUN = 400;
 
 export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<AcademyDoc>; onClose: () => void }) {
-  const { firebaseUser } = useAuth();
+  const { firebaseUser, orgId } = useAuth();
   const { data: coordinatorUsers } = useCollection<UserDoc>('users', [where('role', '==', 'coordinator')]);
   const { data: academies } = useCollection<AcademyDoc>('academies');
   // Courses come entirely from THIS academy's discipline (its curriculum blocks)
@@ -72,12 +76,14 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
     if (!from || !until) return out;
     let d = new Date(`${from}T00:00:00`);
     const end = new Date(`${until}T00:00:00`);
-    while (d <= end) {
+    // Stops one past the cap — enough to know the run is too long.
+    while (d <= end && out.length <= MAX_RUN) {
       if (days.has(d.getDay())) out.push(new Date(d));
       d = addDays(d, 1);
     }
     return out;
   }, [from, until, days]);
+  const tooMany = matchingDates.length > MAX_RUN;
 
   /** Pick a course → auto-size the date range from hours ÷ per-day. */
   function pickCourse(id: string) {
@@ -130,6 +136,17 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
       setError('No matching days in the selected range.');
       return;
     }
+    if (tooMany) {
+      setError(`That range would create more than ${MAX_RUN} sessions — check the From / Until dates.`);
+      return;
+    }
+    // Every generated session (and its mirrors) must carry a tenant:
+    // academy.orgId is optional on legacy docs and `undefined` aborts the batch.
+    const runOrgId = academy.orgId ?? orgId;
+    if (!runOrgId) {
+      setError('Your account is still loading its organization — please reload and try again.');
+      return;
+    }
     // Every generated day shares the same start/end time-of-day, so one check up
     // front rejects the whole run rather than minting hundreds of zero/negative-
     // duration sessions.
@@ -167,14 +184,23 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
     // SOFT hits (draft holders — or everything when THIS academy is a draft)
     // confirm with a generate-anyway; bypassed conflicts stay flagged in the
     // builder's room-conflict banner.
-    if (roomId && academy.orgId && !roomExemptAcademy(academy)) {
+    if (roomId && !roomExemptAcademy(academy)) {
       const acadById = new Map(academies.map((a) => [a.id, a]));
       const savingDraft = academy.status === 'draft';
-      const [bookings, reservations] = await Promise.all([
-        loadRoomBookings(academy.orgId, roomId),
-        loadRoomReservations(academy.orgId, roomId),
-      ]);
-      const live = bookings.filter((b) => b.status !== 'cancelled' && !roomExemptAcademy(acadById.get(b.academyId)));
+      let bookings: Awaited<ReturnType<typeof loadRoomBookings>>;
+      let reservations: Awaited<ReturnType<typeof loadRoomReservations>>;
+      try {
+        [bookings, reservations] = await Promise.all([loadRoomBookings(runOrgId, roomId), loadRoomReservations(runOrgId, roomId)]);
+      } catch {
+        // A query failure (offline, index still building) used to escape here
+        // with `busy` stuck on — Generate disabled forever and no message.
+        setBusy(false);
+        setError('Couldn’t verify room availability right now — please try again in a moment.');
+        return;
+      }
+      const live = bookings.filter(
+        (b) => b.status !== 'cancelled' && !!b.start && !!b.end && !roomExemptAcademy(acadById.get(b.academyId))
+      );
       const hardHits: string[] = [];
       const softHits: string[] = [];
       for (const date of matchingDates) {
@@ -208,11 +234,14 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
 
     const courseName = isCustom ? customName.trim() : selectedOption?.name ?? '';
     const defaultCoord = academy.coordinatorIds[0];
+    // Blocks whose only slot is the pre-assigned coordinator: custom/agency
+    // blocks AND curriculum courses flagged coordinator-run.
+    const coordinatorOwned = isCustom || !!selectedOption?.coordinatorRun;
 
     // Sanitize slots — Firestore rejects undefined, so only include the
     // qualification key when set.
     const buildSlots = (): Record<string, unknown>[] => {
-      const raw: RoleSlot[] = isCustom || selectedOption?.coordinatorRun
+      const raw: RoleSlot[] = coordinatorOwned
         ? [{ slotId: shortId(), role: 'coordinator', count: 1, filledBy: defaultCoord ? [defaultCoord] : [] }]
         : [
             { slotId: shortId(), role: 'lead', count: 1, requiredQualificationKey: selectedOption?.leadQualification ?? undefined, filledBy: [] },
@@ -236,7 +265,7 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
         const ref = doc(collection(db, 'sessions'));
         const roleSlots = buildSlots();
         batch.set(ref, {
-          orgId: academy.orgId,
+          orgId: runOrgId,
           academyId: academy.id,
           courseId: isCustom ? 'custom' : selectedOption?.value ?? courseId,
           courseName,
@@ -258,7 +287,7 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
           createdBy: firebaseUser.uid,
           updatedAt: serverTimestamp(),
         });
-        if (isCustom && defaultCoord) created.push({ ref, slotId: roleSlots[0].slotId as string, start, end });
+        if (coordinatorOwned && defaultCoord) created.push({ ref, slotId: roleSlots[0].slotId as string, start, end });
         if (++count % 300 === 0) {
           await batch.commit();
           batch = writeBatch(db);
@@ -266,42 +295,51 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
       }
       await batch.commit();
 
-      // Mirror coordinator placements for custom blocks so they hit My Schedule —
-      // BOTH the signup (quiet: the coordinator inherently knows) and the
-      // assignment, exactly like the session editor's sync. The signup is what
-      // Gjallarhorn's schedule-change trigger iterates to keep the assignment's
-      // times in step with a later drag, and what the detail modal lists.
+      // Mirror coordinator placements so they hit My Schedule — BOTH the signup
+      // (quiet: the coordinator inherently knows) and the assignment, exactly
+      // like the session editor's sync. The signup is what Gjallarhorn's
+      // schedule-change trigger iterates to keep the assignment's times in step
+      // with a later drag, and what the detail modal lists. Covers custom blocks
+      // AND coordinator-run curriculum courses — the latter used to get the
+      // coordinator in the slot but no mirror, and the editor never back-filled
+      // it (it only creates mirrors for people NEWLY added to a slot).
       // NEVER for a template — an assignment there would put a phantom session
       // on the coordinator's My Schedule and send them Gjallarhorn reminders.
-      if (isCustom && defaultCoord && !academy.isTemplate) {
+      if (created.length && defaultCoord && !academy.isTemplate) {
         const coordName = coordinatorUsers.find((u) => u.id === defaultCoord)?.displayName ?? defaultCoord;
-        for (const { ref, slotId, start, end } of created) {
-          const now = Timestamp.now();
-          await setDoc(doc(db, 'sessions', ref.id, 'signups', defaultCoord), {
-            uid: defaultCoord,
-            orgId: academy.orgId,
-            displayName: coordName,
-            role: 'coordinator',
-            slotId,
-            status: 'confirmed',
-            signedUpAt: now,
-            quiet: true,
-          });
-          await setDoc(doc(db, 'assignments', `${ref.id}_${defaultCoord}`), {
-            orgId: academy.orgId,
-            uid: defaultCoord,
-            sessionId: ref.id,
-            academyId: academy.id,
-            role: 'coordinator',
-            courseName,
-            location: academy.location,
-            room,
-            start: tsFromDate(start),
-            end: tsFromDate(end),
-            status: 'confirmed',
-            reminderSent: false,
-            createdAt: now,
-          });
+        const now = Timestamp.now();
+        // Batched (2 writes per session): one round-trip per doc made a
+        // semester of daily Formation blocks sit on "busy" for half a minute.
+        for (let i = 0; i < created.length; i += 200) {
+          const mirrors = writeBatch(db);
+          for (const { ref, slotId, start, end } of created.slice(i, i + 200)) {
+            mirrors.set(doc(db, 'sessions', ref.id, 'signups', defaultCoord), {
+              uid: defaultCoord,
+              orgId: runOrgId,
+              displayName: coordName,
+              role: 'coordinator',
+              slotId,
+              status: 'confirmed',
+              signedUpAt: now,
+              quiet: true,
+            });
+            mirrors.set(doc(db, 'assignments', `${ref.id}_${defaultCoord}`), {
+              orgId: runOrgId,
+              uid: defaultCoord,
+              sessionId: ref.id,
+              academyId: academy.id,
+              role: 'coordinator',
+              courseName,
+              location: academy.location,
+              room,
+              start: tsFromDate(start),
+              end: tsFromDate(end),
+              status: 'confirmed',
+              reminderSent: false,
+              createdAt: now,
+            });
+          }
+          await mirrors.commit();
         }
       }
 
@@ -315,7 +353,7 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
   }
 
   return (
-    <Modal open onClose={onClose} title="Recurring block generator">
+    <Modal open onClose={busy ? () => {} : onClose} title="Recurring block generator">
       <form onSubmit={submit} className="space-y-4">
         {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
         <div className="grid gap-4 sm:grid-cols-2">
@@ -379,7 +417,7 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
           </Field>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
           <Field label="Start">
             <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} required />
           </Field>
@@ -415,19 +453,25 @@ export function RecurringGeneratorModal({ academy, onClose }: { academy: WithId<
           </div>
         )}
 
-        <p className="text-sm text-slate-500">
-          Will create <strong className="text-watch-900">{matchingDates.length}</strong> sessions
-          {' '}× <strong className="text-watch-900">{perBlockHours}</strong> hrs ={' '}
-          <strong className="text-watch-900">{(matchingDates.length * perBlockHours).toFixed(1)}</strong> total hrs
-          {!isCustom && selectedOption ? ` (course needs ${selectedOption.hours})` : ''}.
-        </p>
+        {tooMany ? (
+          <p className="text-sm text-red-700">
+            That range would create more than {MAX_RUN} sessions — check the From / Until dates.
+          </p>
+        ) : (
+          <p className="text-sm text-slate-500">
+            Will create <strong className="text-watch-900">{matchingDates.length}</strong> sessions
+            {' '}× <strong className="text-watch-900">{perBlockHours}</strong> hrs ={' '}
+            <strong className="text-watch-900">{(matchingDates.length * perBlockHours).toFixed(1)}</strong> total hrs
+            {!isCustom && selectedOption ? ` (course needs ${selectedOption.hours})` : ''}.
+          </p>
+        )}
 
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={onClose}>
+          <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button type="submit" variant="primary" disabled={busy || (!courseId) || matchingDates.length === 0}>
-            Generate {matchingDates.length} sessions
+          <Button type="submit" variant="primary" disabled={busy || (!courseId) || matchingDates.length === 0 || tooMany}>
+            {busy ? 'Generating…' : tooMany ? 'Too many sessions' : `Generate ${matchingDates.length} sessions`}
           </Button>
         </div>
       </form>

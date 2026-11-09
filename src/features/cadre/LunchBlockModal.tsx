@@ -19,6 +19,7 @@ import { Button, Field, Input } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import { BlockModeToggle } from './blockMode';
 import { logAudit } from '../sessions/audit';
+import { friendlyError } from '../../lib/callableError';
 
 /** Round a Date's minutes to the nearest 15 (lunch blocks live on 15-min intervals). */
 function snap15(d: Date): Date {
@@ -43,8 +44,12 @@ export function LunchBlockModal({
   onSwitchToSession?: () => void;
   onClose: () => void;
 }) {
-  const { firebaseUser } = useAuth();
+  const { firebaseUser, orgId } = useAuth();
   const editing = !!lunch;
+  // Tenant for NEW blocks: academy.orgId is optional on legacy docs, and an
+  // undefined orgId aborts the write (an org-less block is invisible anyway).
+  const blockOrgId = academy.orgId ?? orgId;
+  const NO_ORG_MSG = 'Your account is still loading its organization — please reload and try again.';
 
   const initialDate = lunch ? toDateInputValue(lunch.start.toDate()) : defaultDate || '';
   const initialTime = lunch ? toTimeInputValue(lunch.start.toDate()) : defaultTime || '12:00';
@@ -100,17 +105,23 @@ export function LunchBlockModal({
         await updateDoc(doc(db, 'sessions', lunch.id), base);
         await logAudit(firebaseUser.uid, 'session.update', 'session', lunch.id, `Updated lunch block on ${date}`);
       } else {
-        await addDoc(collection(db, 'sessions'), {
+        if (!blockOrgId) {
+          setError(NO_ORG_MSG);
+          setBusy(false);
+          return;
+        }
+        const ref = await addDoc(collection(db, 'sessions'), {
           ...base,
-          orgId: academy.orgId,
+          orgId: blockOrgId,
           status: academy.status === 'draft' ? 'draft' : 'scheduled',
           createdBy: firebaseUser.uid,
         });
-        await logAudit(firebaseUser.uid, 'session.create', 'session', academy.id, `Added lunch block on ${date}`);
+        // Target = the new block (this used to log the ACADEMY's id as a session id).
+        await logAudit(firebaseUser.uid, 'session.create', 'session', ref.id, `Added lunch block on ${date}`);
       }
       onClose();
     } catch (e) {
-      setError((e as Error).message || 'Could not save the lunch block.');
+      setError(friendlyError(e, 'Could not save the lunch block.'));
       setBusy(false);
     }
   }
@@ -124,7 +135,7 @@ export function LunchBlockModal({
       await logAudit(firebaseUser.uid, 'session.delete', 'session', lunch.id, 'Deleted lunch block');
       onClose();
     } catch (e) {
-      setError((e as Error).message || 'Could not delete the lunch block.');
+      setError(friendlyError(e, 'Could not delete the lunch block.'));
       setBusy(false);
     }
   }
@@ -133,6 +144,10 @@ export function LunchBlockModal({
    *  same logic as duplicating a session. */
   async function duplicateToNextDay() {
     if (!firebaseUser || !lunch) return;
+    if (!blockOrgId) {
+      setError(NO_ORG_MSG);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -161,7 +176,7 @@ export function LunchBlockModal({
         countsTowardFdle: false,
         roleSlots: [],
         notes: '',
-        orgId: academy.orgId,
+        orgId: blockOrgId,
         status: academy.status === 'draft' ? 'draft' : 'scheduled',
         createdBy: firebaseUser.uid,
         updatedAt: serverTimestamp(),
@@ -169,7 +184,7 @@ export function LunchBlockModal({
       await logAudit(firebaseUser.uid, 'session.duplicate', 'session', lunch.id, `Duplicated lunch block to ${nextStart.toLocaleDateString()}`);
       onClose();
     } catch (e) {
-      setError((e as Error).message || 'Could not duplicate the lunch block.');
+      setError(friendlyError(e, 'Could not duplicate the lunch block.'));
       setBusy(false);
     }
   }

@@ -24,16 +24,19 @@ function HeaderRow({ label, children }: { label: string; children: React.ReactNo
   );
 }
 
-/** Underlined fill-in blank, mirroring the form's blanks. */
+/** Underlined fill-in blank, mirroring the form's blanks. `whitespace-pre-line`
+ *  keeps the line breaks typed into a multi-line field (a memo body, a
+ *  narrative) — they used to collapse into one run-on paragraph in print. */
 function U({ children }: { children?: React.ReactNode }) {
   const empty = children === undefined || children === null || children === '';
-  return <span className="border-b border-black px-1 font-medium">{empty ? '     ' : children}</span>;
+  return <span className="whitespace-pre-line border-b border-black px-1 font-medium">{empty ? '     ' : children}</span>;
 }
 
 function Span({ span, data }: { span: MemoSpan; data: Record<string, string> }) {
   if (typeof span === 'string') return <>{span}</>;
-  const raw = data[span.field] ?? '';
-  const val = span.transform === 'code' ? (raw ? raw.split(' ')[0] : '') : raw;
+  // Trimmed so a trailing newline in a textarea value doesn't print a blank
+  // line. String(): stored data is typed string, but never trust a legacy value.
+  const val = String(data[span.field] ?? '').trim();
   return <U>{val || undefined}</U>;
 }
 
@@ -90,8 +93,8 @@ function Block({ block, data }: { block: MemoBlock; data: Record<string, string>
       </div>
     );
   }
-  // paragraph and clause render identically here; 'clause' is metadata that
-  // marks the text as locked (uneditable) for the future document builder.
+  // paragraph and clause render identically here; 'clause' only marks the text
+  // as the locked liability / due-process wording of record.
   return (
     <p>
       {(block.spans ?? []).map((s, i) => (
@@ -112,7 +115,7 @@ export function MemoRenderer({
   const data = memo.data ?? {};
 
   // Safety net: the built-in documents carry no [bracketed placeholders] anymore,
-  // but owner-authored library forms can — any unresolved bracket in a rendered
+  // but legacy owner-library forms can — any unresolved bracket in a rendered
   // document surfaces a banner that PRINTS, so nothing incomplete gets issued.
   const placeholderTexts = [
     ...memo.headerFields.map((f) => f.value),

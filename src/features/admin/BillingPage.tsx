@@ -14,6 +14,7 @@ import { functions } from '../../lib/firebase';
 import { useOrg } from '../../lib/useOrg';
 import { billingState } from '../../lib/subscription';
 import { Badge, Button, PageHeader, Spinner } from '../../components/ui';
+import { friendlyError } from '../../lib/callableError';
 
 const createCheckoutSession = httpsCallable<Record<string, never>, { url: string | null }>(functions, 'createCheckoutSession');
 const createBillingPortalSession = httpsCallable<Record<string, never>, { url: string | null }>(functions, 'createBillingPortalSession');
@@ -47,7 +48,7 @@ export function BillingPage() {
       setError(
         fe?.code === 'functions/failed-precondition'
           ? 'Billing isn’t enabled for your organization yet. Contact HEIMDALL to turn it on.'
-          : fe?.message || 'Something went wrong starting the billing session.'
+          : friendlyError(err, 'Something went wrong starting the billing session.')
       );
     } finally {
       setBusy(null);
@@ -57,6 +58,15 @@ export function BillingPage() {
   if (loading) return <div className="flex justify-center py-16"><Spinner className="text-bifrost-400" /></div>;
 
   const hasCustomer = !!org?.stripeCustomerId;
+  // Checkout is offered only when it can succeed and is safe:
+  //  • never for a complimentary org — createCheckoutSession always refuses it
+  //    (and the refusal used to surface as "billing isn't enabled yet");
+  //  • never while a Stripe subscription already exists in any live state —
+  //    Checkout would create a SECOND subscription on the same customer (there
+  //    is one price; nothing to "change" to). Those orgs use Manage billing.
+  const complimentary = org?.complimentary === true;
+  const hasLiveSubscription = ['active', 'trialing', 'incomplete', 'past_due', 'unpaid', 'paused'].includes(bs.status);
+  const canCheckout = !complimentary && !hasLiveSubscription;
 
   return (
     <div className="max-w-2xl">
@@ -80,7 +90,7 @@ export function BillingPage() {
             <div className="text-xs uppercase tracking-wider text-watch-500">Current plan</div>
             <div className="mt-1 flex items-center gap-2 text-lg font-semibold text-watch-900">
               {bs.label}
-              {!bs.gated && <Badge tone="green">Complimentary</Badge>}
+              {!bs.gated && !complimentary && <Badge tone="green">No charge</Badge>}
               {bs.gated && bs.active && !bs.inGrace && <Badge tone="green">Active</Badge>}
               {bs.gated && bs.inGrace && <Badge tone="amber">Grace period</Badge>}
               {bs.gated && !bs.active && <Badge tone="red">Inactive</Badge>}
@@ -99,8 +109,9 @@ export function BillingPage() {
 
         {!bs.gated && (
           <p className="mt-3 text-sm text-slate-600">
-            Your organization currently has full access at no charge. You can start a paid subscription at any
-            time below.
+            {complimentary
+              ? 'Your organization has complimentary access — full use at no charge, and no subscription is needed.'
+              : 'Your organization currently has full access at no charge. You can start a paid subscription at any time below.'}
           </p>
         )}
         {bs.gated && !bs.active && (
@@ -111,11 +122,13 @@ export function BillingPage() {
         )}
 
         <div className="mt-5 flex flex-wrap gap-3">
-          <Button variant="primary" disabled={busy !== null} onClick={() => go('checkout')}>
-            {busy === 'checkout' ? 'Opening…' : bs.active && bs.gated ? 'Change plan' : 'Start subscription'}
-          </Button>
+          {canCheckout && (
+            <Button variant="primary" disabled={busy !== null} onClick={() => go('checkout')}>
+              {busy === 'checkout' ? 'Opening…' : 'Start subscription'}
+            </Button>
+          )}
           {hasCustomer && (
-            <Button variant="ghost" disabled={busy !== null} onClick={() => go('portal')}>
+            <Button variant={canCheckout ? 'ghost' : 'primary'} disabled={busy !== null} onClick={() => go('portal')}>
               {busy === 'portal' ? 'Opening…' : 'Manage billing'}
             </Button>
           )}

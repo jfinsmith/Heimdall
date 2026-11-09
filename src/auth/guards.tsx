@@ -5,10 +5,25 @@
  */
 import React from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import type { User as FirebaseUser } from 'firebase/auth';
 import { useAuth } from './AuthContext';
 import { useOrg } from '../lib/useOrg';
 import { can } from '../lib/rbac';
-import { Spinner } from '../components/Spinner';
+import { Spinner } from '../components/ui';
+
+/**
+ * Email verification applies to the SELF-SIGNUP funnel only: password accounts
+ * still outside any org. It proves deliverability before an organization
+ * relies on the address. Never applied once an org holds the account
+ * (admin-created members were provisioned deliberately) and never to OAuth
+ * sign-ins. Shared with AwaitingOrgPage, which lives outside RequireAuth and
+ * must not let an unverified account apply a join code.
+ */
+export function needsEmailVerification(firebaseUser: FirebaseUser, profile: { orgId?: string | null }): boolean {
+  const passwordOnly =
+    firebaseUser.providerData.length === 1 && firebaseUser.providerData[0]?.providerId === 'password';
+  return !profile.orgId && passwordOnly && !firebaseUser.emailVerified;
+}
 
 export function RequireAuth() {
   const { firebaseUser, profile, loading, platformOwner } = useAuth();
@@ -33,13 +48,8 @@ export function RequireAuth() {
   // /change-password forever, and an unverified self-signup was skipped past
   // /verify-email straight to /awaiting-org by the org gate below).
   const gate = (path: string) => (location.pathname === path ? <Outlet /> : <Navigate to={path} replace />);
-  // Email verification — SELF-SIGNUP funnel only (password accounts still
-  // outside any org). Proves deliverability before an organization relies on
-  // the address. Never applied once an org holds the account (admin-created
-  // members were provisioned deliberately) and never to OAuth sign-ins.
-  const passwordOnly =
-    firebaseUser.providerData.length === 1 && firebaseUser.providerData[0]?.providerId === 'password';
-  if (!profile.orgId && passwordOnly && !firebaseUser.emailVerified) return gate('/verify-email');
+  // Email verification — self-signup funnel only (see needsEmailVerification).
+  if (needsEmailVerification(firebaseUser, profile)) return gate('/verify-email');
   // ATMS-verification gate: every account needs a date of birth on file.
   // New registrations collect it up front; accounts that predate the
   // requirement (admin-created and OAuth sign-ups, which never asked)
@@ -81,7 +91,8 @@ export function RequirePlatformOwner() {
   return <Outlet />;
 }
 
-function FullPageSpinner() {
+/** Also used by the holding pages outside RequireAuth while auth resolves. */
+export function FullPageSpinner() {
   return (
     <div className="flex h-screen items-center justify-center bg-watch-950">
       <Spinner className="text-bifrost-400" />

@@ -78,6 +78,26 @@ describe('buildDayRosters', () => {
     expect(r.writeInAdditional).toEqual(['B. Ortiz']); // role player excluded
   });
 
+  it('cancelled blocks never print a roster, pad hours, split a run, or list instructors', () => {
+    const sessions = [
+      sess({ id: 'i1', courseName: 'Intro', start: ts(8), end: ts(10), hours: 2 }),
+      // A cancelled block of ANOTHER course in the middle must not split Intro in two…
+      sess({ id: 'x', courseName: 'Legal', start: ts(10), end: ts(11), hours: 1, status: 'cancelled' }),
+      sess({ id: 'i2', courseName: 'Intro', start: ts(11), end: ts(13), hours: 2 }),
+      // …and a cancelled late block of the SAME course must not stretch the span/hours.
+      sess({ id: 'i3', courseName: 'Intro', start: ts(15), end: ts(19), hours: 4, status: 'cancelled', roleSlots: [
+        { slotId: 's1', role: 'lead', count: 1, filledBy: ['ghost'] },
+      ] }),
+    ];
+    const rosters = buildDayRosters(sessions, DAY, new Set(['Intro', 'Legal']));
+    expect(rosters.map((r) => r.courseName)).toEqual(['Intro']);
+    expect(rosters[0].classHours).toBe(4);
+    expect(rosters[0].timeLabel).toBe('0800 - 1300');
+    expect(rosters[0].leadUids).toEqual([]);
+    // A day whose only block was cancelled prints nothing.
+    expect(buildDayRosters([sessions[1]], DAY, new Set(['Legal']))).toEqual([]);
+  });
+
   it('rosters ONLY official curriculum courses — custom/agency blocks excluded', () => {
     const sessions = [
       sess({ id: 'pso', courseName: 'PSO Assignment', countsTowardFdle: false, start: ts(8), end: ts(9), hours: 1 }),

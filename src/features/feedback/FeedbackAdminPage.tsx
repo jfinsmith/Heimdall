@@ -90,6 +90,9 @@ export function FeedbackAdminPage() {
   const [ownerReports, setOwnerReports] = useState<OwnerReport[] | null>(null);
   const [ownerLoading, setOwnerLoading] = useState(false);
   const [ownerError, setOwnerError] = useState<string | null>(null);
+  // Bumped by Refresh — the cross-org list is a one-shot callable fetch, not a
+  // live listener, so new reports (and a failed load) need a way to re-pull.
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (!allOrgs || !platformOwner || ownerReports) return;
@@ -97,9 +100,9 @@ export function FeedbackAdminPage() {
     setOwnerError(null);
     listAllFeedback()
       .then((res) => setOwnerReports(res.data.reports))
-      .catch((e) => setOwnerError((e as Error).message || 'Could not load cross-org feedback.'))
+      .catch((e) => setOwnerError(friendlyError(e, 'Could not load cross-org feedback.')))
       .finally(() => setOwnerLoading(false));
-  }, [allOrgs, platformOwner, ownerReports]);
+  }, [allOrgs, platformOwner, ownerReports, reloadKey]);
 
   const shown = useMemo(
     () =>
@@ -122,7 +125,11 @@ export function FeedbackAdminPage() {
   ).length;
 
   async function saveNotes(r: WithId<FeedbackReportDoc>, adminNotes: string) {
-    await updateDoc(doc(db, 'feedbackReports', r.id), { adminNotes, updatedAt: serverTimestamp() });
+    try {
+      await updateDoc(doc(db, 'feedbackReports', r.id), { adminNotes, updatedAt: serverTimestamp() });
+    } catch (e) {
+      window.alert(`Could not save the triage notes: ${friendlyError(e, 'please try again.')}`);
+    }
   }
 
   return (
@@ -146,10 +153,24 @@ export function FeedbackAdminPage() {
           </Select>
         </Field>
         {platformOwner && (
-          <label className="ml-auto flex items-center gap-2 self-center text-sm text-watch-700" title="Platform owner: view reports across all organizations (other orgs' screenshots are withheld)">
-            <input type="checkbox" checked={allOrgs} onChange={(e) => setAllOrgs(e.target.checked)} />
-            All organizations
-          </label>
+          <div className="ml-auto flex items-center gap-3 self-center">
+            {allOrgs && (
+              <Button
+                variant="ghost"
+                disabled={ownerLoading}
+                onClick={() => {
+                  setOwnerReports(null);
+                  setReloadKey((k) => k + 1);
+                }}
+              >
+                Refresh
+              </Button>
+            )}
+            <label className="flex items-center gap-2 text-sm text-watch-700" title="Platform owner: view reports across all organizations (other orgs' screenshots are withheld)">
+              <input type="checkbox" checked={allOrgs} onChange={(e) => setAllOrgs(e.target.checked)} />
+              All organizations
+            </label>
+          </div>
         )}
       </div>
 

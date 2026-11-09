@@ -74,5 +74,3 @@ export function WordmarkStacked({ size = 120, className, title = 'HEIMDALL Sched
     />
   );
 }
-
-export default GjallarhornGlyph;

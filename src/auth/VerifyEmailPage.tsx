@@ -29,6 +29,9 @@ export function VerifyEmailPage() {
     try {
       await auth.currentUser?.reload();
       if (auth.currentUser?.emailVerified) {
+        // reload() updates the user record but NOT the ID token — refresh it
+        // (best-effort) so the token's email_verified claim is true as well.
+        await auth.currentUser.getIdToken(true).catch(() => {});
         // Hard reload so every auth consumer sees the fresh flag.
         window.location.assign('/');
         return;
@@ -75,7 +78,11 @@ export function VerifyEmailPage() {
             Re-send the email
           </Button>
         </div>
-        <div className="mt-4">
+        <p className="mt-4 text-xs text-slate-500">
+          Wrong address? Sign out and request an account again with the correct one — an account that never
+          joins an organization is removed automatically after 30 days.
+        </p>
+        <div className="mt-2">
           <Button variant="ghost" onClick={() => signOut()}>Sign out</Button>
         </div>
       </div>

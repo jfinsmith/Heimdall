@@ -22,7 +22,7 @@ function authErrorMessage(err: unknown): string {
 }
 
 export function ChangePasswordPage() {
-  const { firebaseUser, profile, changePassword } = useAuth();
+  const { firebaseUser, profile, changePassword, signOut } = useAuth();
   const navigate = useNavigate();
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
@@ -90,6 +90,11 @@ export function ChangePasswordPage() {
           {busy ? 'Saving…' : 'Save password & continue'}
         </Button>
       </form>
+      {/* The only way off this page besides finishing it — without it a member
+          on a shared computer (or one who lost the temporary password) is stuck. */}
+      <div className="mt-6 text-xs text-watch-600">
+        <button type="button" className="hover:underline" onClick={() => signOut()}>Sign out</button>
+      </div>
     </div>
   );
 }

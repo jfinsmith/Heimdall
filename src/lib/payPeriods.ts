@@ -1,10 +1,9 @@
 /**
  * Pay-period math for the Pasco Sheriff's Office cadence.
  *
- * Pay periods are bi-weekly and fixed to the calendar (ISO weeks), NOT to the
- * academy start: an EVEN ISO week is the first week of a pay period and the
- * following ODD week is the second — so weeks 2–3 of the year form the first
- * pay period, weeks 4–5 the second, etc.
+ * Pay periods are bi-weekly and fixed to the calendar, NOT to the academy
+ * start: continuous 14-day blocks, Monday to Sunday twice, counted from a known
+ * pay-period Monday (see PP_ANCHOR below).
  *
  * Sworn members must put 85 hours on each bi-weekly check; everything over is
  * overtime. ALL scheduled time-on-the-clock counts toward the 85 (FDLE
@@ -17,18 +16,6 @@ import type { SessionDoc } from '../types';
 import type { WithId } from './firestore';
 
 export const DEFAULT_PAY_PERIOD_TARGET = 85;
-
-/** ISO-8601 week number + week-year for a local date. */
-export function isoWeek(d: Date): { year: number; week: number } {
-  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  const dayNum = (date.getUTCDay() + 6) % 7; // Mon=0 … Sun=6
-  date.setUTCDate(date.getUTCDate() - dayNum + 3); // Thursday of this week
-  const firstThursday = new Date(Date.UTC(date.getUTCFullYear(), 0, 4));
-  const fdn = (firstThursday.getUTCDay() + 6) % 7;
-  firstThursday.setUTCDate(firstThursday.getUTCDate() - fdn + 3);
-  const week = 1 + Math.round((date.getTime() - firstThursday.getTime()) / (7 * 864e5));
-  return { year: date.getUTCFullYear(), week };
-}
 
 /**
  * Pay periods are continuous 14-day blocks anchored to a known pay-period start.

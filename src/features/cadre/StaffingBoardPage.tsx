@@ -1,9 +1,9 @@
 /**
  * CADRE — Staffing Dashboard (coordinator/command).
- * Kanban board (Draft / Open / Understaffed / Fully Staffed), "needs
- * attention" panel, per-instructor load, per-course coverage, and bulk
- * messaging via Gjallarhorn (writes a `bulkMessages` doc that a Cloud
- * Function fans out to mail + notifications).
+ * Kanban board (Draft / Scheduled / Understaffed / Fully Staffed), "needs
+ * attention" panel, per-instructor load, the hardest-to-staff recruitment
+ * history, and bulk messaging via Gjallarhorn (writes a `bulkMessages` doc
+ * that a Cloud Function fans out to mail + notifications).
  */
 import React, { useMemo, useState } from 'react';
 import { addDoc, collection, orderBy, serverTimestamp, Timestamp, where } from 'firebase/firestore';
@@ -12,6 +12,7 @@ import { useCollection, type WithId } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import { useGlobalSettings } from '../../app/providers';
 import { fmtRange } from '../../lib/time';
+import { friendlyError } from '../../lib/callableError';
 import type { AcademyDoc, AssignmentDoc, SessionDoc } from '../../types';
 import { unfilledSlots } from '../../types';
 import { Badge, Button, EmptyState, Field, HighLiabilityBadge, PageHeader, Select, TextArea, Input } from '../../components/ui';
@@ -26,15 +27,29 @@ export function StaffingBoardPage() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [messageOpen, setMessageOpen] = useState(false);
 
-  const { data: allAcademies } = useCollection<AcademyDoc>('academies');
+  const { data: allAcademies, loading: academiesLoading } = useCollection<AcademyDoc>('academies');
   const academies = useMemo(() => allAcademies.filter((a) => !a.isTemplate), [allAcademies]);
+  const academyById = useMemo(() => new Map(academies.map((a) => [a.id, a])), [academies]);
   const templateIds = useMemo(() => new Set(allAcademies.filter((a) => a.isTemplate).map((a) => a.id)), [allAcademies]);
   const { data: allSessions } = useCollection<SessionDoc>(
     'sessions',
     [where('start', '>=', Timestamp.now()), orderBy('start')],
     []
   );
-  const sessions = useMemo(() => allSessions.filter((s) => !templateIds.has(s.academyId)), [allSessions, templateIds]);
+  // Templates never reach the board. Hold the sessions back until the academy
+  // list has loaded — otherwise a template's sessions flash onto the columns
+  // whenever the sessions snapshot lands first (templateIds is still empty).
+  // Archived classes are shelved too: instructors can no longer see or sign up
+  // for them and the staffing alerts skip them, so their leftover "open"
+  // sessions would only pad the Understaffed column.
+  const shelvedIds = useMemo(
+    () => new Set(allAcademies.filter((a) => a.isTemplate || a.status === 'archived').map((a) => a.id)),
+    [allAcademies]
+  );
+  const sessions = useMemo(
+    () => (academiesLoading ? [] : allSessions.filter((s) => !shelvedIds.has(s.academyId))),
+    [allSessions, shelvedIds, academiesLoading]
+  );
   const { data: assignments } = useCollection<AssignmentDoc>(
     'assignments',
     [where('status', '==', 'confirmed')],
@@ -99,8 +114,12 @@ export function StaffingBoardPage() {
    */
   const recruitment = useMemo(() => {
     const map = new Map<string, { sessions: number; seats: number; filled: number; short: number }>();
+    if (academiesLoading) return [];
     for (const s of pastSessionsRaw) {
-      if (s.status === 'cancelled' || s.kind === 'lunch') continue;
+      // Draft sessions were never visible to instructors, so they could not
+      // attract sign-ups — an unpublished (or abandoned) class whose dates have
+      // passed must not read as "0 of N seats filled".
+      if (s.status === 'cancelled' || s.status === 'draft' || s.kind === 'lunch') continue;
       if (templateIds.has(s.academyId)) continue;
       const slots = s.roleSlots.filter((sl) => sl.role !== 'coordinator');
       const seats = slots.reduce((n, sl) => n + sl.count, 0);
@@ -116,7 +135,7 @@ export function StaffingBoardPage() {
     return [...map.entries()]
       .sort((a, b) => a[1].filled / a[1].seats - b[1].filled / b[1].seats)
       .slice(0, 10);
-  }, [pastSessionsRaw, templateIds]);
+  }, [pastSessionsRaw, templateIds, academiesLoading]);
 
   const colMeta: Record<Column, { title: string; tone: string }> = {
     draft: { title: 'Draft', tone: 'border-t-status-draft' },
@@ -180,7 +199,7 @@ export function StaffingBoardPage() {
                   >
                     <div className="font-medium text-watch-900">
                       <span className="mr-1.5 rounded bg-watch-100 px-1 py-0.5 text-[10px] font-bold text-watch-700">
-                        {academies.find((a) => a.id === s.academyId)?.shortName || '—'}
+                        {academyById.get(s.academyId)?.shortName || '—'}
                       </span>
                       {s.title || s.courseName}
                     </div>
@@ -288,7 +307,7 @@ function InstructorLoadTable({ load }: { load: Map<string, { name: string; sessi
 /**
  * Bulk message: writes a `bulkMessages` doc; the Gjallarhorn
  * `onBulkMessageCreated` function fans it out to email + in-app notifications
- * (clients cannot write to `mail/` directly — rules forbid it).
+ * (clients can never write to the mail queue directly — rules forbid it).
  */
 function BulkMessageModal({ academies, onClose }: { academies: WithId<AcademyDoc>[]; onClose: () => void }) {
   const { firebaseUser, orgId } = useAuth();
@@ -297,21 +316,33 @@ function BulkMessageModal({ academies, onClose }: { academies: WithId<AcademyDoc
   const [body, setBody] = useState('');
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (busy) return;
+    if (!subject.trim() || !body.trim()) { setError('Enter a subject and a message.'); return; }
+    // The rules require the sender's org on the doc (it scopes the fan-out to
+    // this tenant's instructors) — never queue an org-less blast.
+    if (!firebaseUser || !orgId) { setError('Your account is still loading its organization — please reload and try again.'); return; }
     setBusy(true);
-    await addDoc(collection(db, 'bulkMessages'), {
-      academyId,                       // '' = all signed-up instructors everywhere
-      ...(orgId ? { orgId } : {}),     // tenant scope (dormant until backfill)
-      subject,
-      body,
-      requestedBy: firebaseUser?.uid ?? '',
-      status: 'pending',               // function flips to 'sent'
-      createdAt: serverTimestamp(),
-    });
-    setBusy(false);
-    setSent(true);
+    setError(null);
+    try {
+      await addDoc(collection(db, 'bulkMessages'), {
+        academyId,                       // '' = all signed-up instructors in this org
+        orgId,                           // tenant scope of the fan-out
+        subject: subject.trim(),
+        body: body.trim(),
+        requestedBy: firebaseUser.uid,
+        status: 'pending',               // function flips to 'sent'
+        createdAt: serverTimestamp(),
+      });
+      setSent(true);
+    } catch (err) {
+      setError(friendlyError(err, 'Could not queue the message — please try again.'));
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -323,6 +354,7 @@ function BulkMessageModal({ academies, onClose }: { academies: WithId<AcademyDoc
         </div>
       ) : (
         <form onSubmit={submit} className="space-y-4">
+          {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
           <Field label="Audience">
             <Select value={academyId} onChange={(e) => setAcademyId(e.target.value)}>
               <option value="">All instructors with upcoming assignments</option>
@@ -344,7 +376,7 @@ function BulkMessageModal({ academies, onClose }: { academies: WithId<AcademyDoc
               Cancel
             </Button>
             <Button type="submit" variant="primary" disabled={busy}>
-              Sound Gjallarhorn
+              {busy ? 'Queuing…' : 'Sound Gjallarhorn'}
             </Button>
           </div>
         </form>

@@ -18,6 +18,11 @@ export function Modal({
   wide?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  // True only while a press that STARTED on the backdrop is in progress.
+  const pressedBackdrop = useRef(false);
+  // Latest `open` prop, readable from the deferred check in the close handler.
+  const openRef = useRef(open);
+  openRef.current = open;
 
   useEffect(() => {
     const dialog = ref.current;
@@ -29,7 +34,18 @@ export function Modal({
   return (
     <dialog
       ref={ref}
-      onClose={onClose}
+      onClose={() => {
+        onClose();
+        // The browser can close a <dialog> by itself even though Escape was
+        // prevented below: Chrome honors that preventDefault only once per user
+        // interaction, so a SECOND Escape closes it natively. If the owner
+        // declined to close (a no-op while busy), put the dialog back — otherwise
+        // it is invisible while still "open", and nothing can reopen it.
+        setTimeout(() => {
+          const dialog = ref.current;
+          if (dialog && dialog.isConnected && openRef.current && !dialog.open) dialog.showModal();
+        }, 0);
+      }}
       onCancel={(e) => {
         // Escape: don't let the native <dialog> close itself — route through
         // onClose so an owner passing a no-op while busy (e.g. mid bulk-import)
@@ -37,9 +53,16 @@ export function Modal({
         e.preventDefault();
         onClose();
       }}
+      onMouseDown={(e) => {
+        pressedBackdrop.current = e.target === ref.current;
+      }}
       onClick={(e) => {
-        // Click on the backdrop (the dialog element itself) closes.
-        if (e.target === ref.current) onClose();
+        // Click on the backdrop (the dialog element itself) closes — but only
+        // when the press also STARTED there. Drag-selecting text in a field and
+        // releasing outside the box reports a click on the dialog element too,
+        // which used to close the modal and throw away the form.
+        if (e.target === ref.current && pressedBackdrop.current) onClose();
+        pressedBackdrop.current = false;
       }}
       className={`w-[calc(100%-2rem)] rounded-lg p-0 shadow-xl backdrop:bg-watch-950/60 ${wide ? 'max-w-4xl' : 'max-w-xl'}`}
     >
@@ -55,7 +78,7 @@ export function Modal({
           </svg>
         </button>
       </div>
-      <div className="max-h-[75vh] overflow-y-auto px-5 py-4">{children}</div>
+      <div className="max-h-[75vh] overflow-y-auto overscroll-contain px-5 py-4">{children}</div>
     </dialog>
   );
 }

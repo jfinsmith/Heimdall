@@ -87,6 +87,23 @@ export const createCheckoutSession = onCall<Record<string, never>>(
     // Reuse the org's Stripe customer, or create one keyed back to the org so the
     // webhook can always map an event to a tenant.
     let customerId = org.stripeCustomerId as string | undefined;
+    if (customerId) {
+      // One subscription per org. Checkout in 'subscription' mode ALWAYS creates
+      // a new subscription — Stripe does not de-duplicate — so a second run (a
+      // second admin's stale tab, or the page's "Change plan" button on an
+      // active plan) billed the org twice. Ask Stripe rather than trust our
+      // mirrored status, so a missed webhook can't wedge an org out of checkout.
+      // ('already-exists', not 'failed-precondition': the Billing page turns
+      // every failed-precondition into "billing isn't enabled yet".)
+      const LIVE: string[] = ['active', 'trialing', 'past_due', 'unpaid', 'incomplete', 'paused'];
+      const existing = await stripe.subscriptions.list({ customer: customerId, status: 'all', limit: 20 });
+      if (existing.data.some((s) => LIVE.includes(s.status))) {
+        throw new HttpsError(
+          'already-exists',
+          'Your organization already has a subscription — use "Manage billing" to update or cancel it.'
+        );
+      }
+    }
     if (!customerId) {
       const customer = await stripe.customers.create({
         name: (org.legalName as string) || orgId,
@@ -153,13 +170,19 @@ async function applySubscription(db: Firestore, stripe: Stripe, eventSub: Stripe
     console.warn('stripeWebhook: could not re-fetch subscription, using event payload', eventSub.id, err);
   }
   const orgId = await resolveOrgId(db, stripe, sub);
-  if (!orgId) {
+  if (!orgId || orgId.includes('/')) {
     console.warn('stripeWebhook: no org for subscription', sub.id);
+    return;
+  }
+  const orgDoc = await db.doc(`orgs/${orgId}`).get();
+  // The id comes from Stripe metadata. A stale or mistyped one must not create
+  // a ghost org doc through the merge-write below.
+  if (!orgDoc.exists) {
+    console.warn('stripeWebhook: subscription names an org that does not exist — ignoring', orgId, sub.id);
     return;
   }
   // Complimentary orgs (the founding PHSC beta) are never billed — never flip
   // commercialization on for them, even if a Stripe customer/subscription exists.
-  const orgDoc = await db.doc(`orgs/${orgId}`).get();
   if (orgDoc.data()?.complimentary === true) {
     console.log('stripeWebhook: org is complimentary — skipping billing write', orgId);
     return;

@@ -10,6 +10,7 @@ import { useCurriculum } from '../../../lib/curricula';
 import type { AcademyDoc, AcademyReportDoc } from '../../../types';
 import { Button, Spinner } from '../../../components/ui';
 import { ReportLetter } from './ReportLetter';
+import { getReportType } from './reportTypes';
 import { useDirectorName } from './AcademyReports';
 import { libraryFormToReportType, useOrgLibraryForms, type LibraryFormDoc } from './documentLibrary';
 
@@ -25,16 +26,33 @@ export function CadetReportPrintPage() {
   // page previously had no active filter, so a suspended director could print.
   const directorName = useDirectorName();
   // Library forms aren't in the code registry — resolve the report's type by id.
-  const { forms } = useOrgLibraryForms();
+  const { forms, loading: formsLoading } = useOrgLibraryForms();
   // Fallback by-id read so a report filed against a form later deactivated (but
-  // still assigned to the org) still resolves + prints, not a blank page.
-  const { data: libFallback } = useDoc<LibraryFormDoc>(report?.type ? `documentLibrary/${report.type}` : null);
+  // still assigned to the org) still resolves + prints, not a blank page. ONLY
+  // for a type that isn't in the code registry: for a built-in document the id
+  // names no library doc, and reading a missing doc is denied by the rules — a
+  // wasted read and a console error on every print of a built-in letter.
+  const isCodeType = !!report?.type && !!getReportType(report.type);
+  const { data: libFallback, loading: fallbackLoading } = useDoc<LibraryFormDoc>(
+    report?.type && !isCodeType ? `documentLibrary/${report.type}` : null
+  );
 
   if (aLoading || rLoading) return <div className="flex h-screen items-center justify-center"><Spinner className="text-bifrost-400" /></div>;
   if (!academy || !report) return <p className="p-8 text-sm text-slate-500">Report not found.</p>;
 
   const libForm = forms.find((f) => f.id === report.type) ?? libFallback ?? undefined;
   const reportType = libForm ? libraryFormToReportType(libForm) : undefined;
+  // Neither a built-in nor a readable library form: say so instead of showing a
+  // blank sheet under a Print button (ReportLetter renders nothing without a type).
+  if (!isCodeType && !reportType) {
+    if (formsLoading || fallbackLoading) return <div className="flex h-screen items-center justify-center"><Spinner className="text-bifrost-400" /></div>;
+    return (
+      <p className="p-8 text-sm text-slate-500">
+        This document can’t be displayed — its form is no longer available to your organization. The filed record is
+        unchanged; contact your administrator if you need it reprinted.
+      </p>
+    );
+  }
 
   return (
     <div>

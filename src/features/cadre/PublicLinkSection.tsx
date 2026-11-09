@@ -31,15 +31,23 @@ export function PublicLinkSection({ academy, className = '' }: { academy: WithId
 
   if (academy.isTemplate) return null;
 
-  const portal = privatePortal ?? academy.portal;
+  // Mirrors getPublicClassPortal: the private doc is authoritative only once it
+  // holds the link config. A wrong academic password on a LEGACY link makes the
+  // server write its fail counters there first; treating that counters-only doc
+  // as the config showed a live link as "off" — and "Create public link" then
+  // minted a new token (killing every copy handed out) and dropped the password.
+  const portal = privatePortal?.token ? privatePortal : academy.portal;
   const codeDigits = (academy.shortName ?? '').replace(/\D+/g, '');
   const link = portal?.token ? `${window.location.origin}/class/${academy.id}/${portal.token}` : '';
 
   async function save(next: NonNullable<AcademyDoc['portal']>, summary: string) {
     setBusy(true);
     try {
+      // `next` is usually spread from the live doc, which carries the hook's
+      // synthetic `id` — keep that out of the stored document.
+      const { id: _id, ...config } = next as NonNullable<AcademyDoc['portal']> & { id?: string };
       await setDoc(doc(db, 'academies', academy.id, 'private', 'portal'), {
-        ...next,
+        ...config,
         orgId: academy.orgId ?? orgId, // non-null orgId on every create (tenant rules)
         updatedAt: serverTimestamp(),
       });
@@ -95,9 +103,15 @@ export function PublicLinkSection({ academy, className = '' }: { academy: WithId
             <Button
               variant="ghost"
               onClick={async () => {
-                await navigator.clipboard.writeText(link);
-                setCopied(true);
-                setTimeout(() => setCopied(false), 2000);
+                try {
+                  await navigator.clipboard.writeText(link);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                } catch {
+                  // Clipboard blocked (permissions / managed browser) — hand the
+                  // link over for a manual copy instead of failing silently.
+                  window.prompt('Copy the class link:', link);
+                }
               }}
             >
               {copied ? 'Copied ✓' : 'Copy link'}

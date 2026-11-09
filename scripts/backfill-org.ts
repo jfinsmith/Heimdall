@@ -4,6 +4,14 @@
  * Phases 2–3d activates. Idempotent and re-runnable. DRY-RUN BY DEFAULT — it only
  * reports; pass --execute to write.
  *
+ * ⚠ SINGLE-TENANT ONLY. NEVER run with --execute once a second organization
+ * exists: stamp() and the user loop re-stamp everything whose orgId is not
+ * 'phsc' — not just docs that LACK an orgId — so every other tenant's
+ * academies, sessions, users and auth claims would be moved into PHSC. Before
+ * using this as a repair tool again, change both filters to "orgId is missing"
+ * (and note TOP_COLLECTIONS predates rooms, roomCategories, roomReservations,
+ * remediations and the limbo / attendance / private subcollections).
+ *
  *   Prereqs (in order):
  *     1. Deploy functions first:  firebase deploy --only functions
  *     2. service-account.json present in the repo root (gitignored).
@@ -91,6 +99,13 @@ function encWithAad(plain: string, orgId: string): string {
 }
 
 async function main() {
+  // Hard stop: this was the one-time single-tenant migration. With a second
+  // organization present, --execute would move that tenant's data and members
+  // into PHSC (see the warning at the top of this file).
+  const orgCount = (await db.collection('orgs').count().get()).data().count;
+  if (EXECUTE && orgCount > 1) {
+    throw new Error(`Refusing to --execute: ${orgCount} organizations exist. This script re-stamps other tenants' data as '${ORG_ID}'.`);
+  }
   log(`\n=== PHSC backfill → org '${ORG_ID}' ${EXECUTE ? '(EXECUTE — WRITING)' : '(DRY RUN — no writes)'} ===\n`);
 
   // 1. Org registry doc (idempotent).

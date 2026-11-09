@@ -12,9 +12,9 @@
  * write — only the notification is deferred.
  */
 import { onSchedule } from 'firebase-functions/v2/scheduler';
-import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
+import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions/v2';
-import { getSettings, notify, sessionDetails } from './notify';
+import { academyIsSilent, getSettings, notify, sessionDetails } from './notify';
 import { renderEmail, escapeHtml } from './templates';
 import type { ScheduleChangeQueueDoc, SessionDoc, SignupDoc } from '../types';
 
@@ -57,6 +57,31 @@ export async function enqueueScheduleChange(sessionId: string, before: SessionDo
   });
 }
 
+/**
+ * Retire a processed entry — unless an edit landed while it was being worked.
+ * The trigger then found THIS doc and only pushed its timer, so deleting it
+ * would drop that edit's notice entirely and leave instructors holding the
+ * details just announced, now superseded. Keep it instead; when a notice went
+ * out, rebase it on what was announced so the next flush describes only the
+ * newer change (new firstChangedAt = new dedupe key).
+ */
+async function settle(
+  ref: FirebaseFirestore.DocumentReference,
+  seen: ScheduleChangeQueueDoc,
+  announced?: ScheduleChangeQueueDoc['before']
+): Promise<void> {
+  await db().runTransaction(async (tx) => {
+    const cur = await tx.get(ref);
+    if (!cur.exists) return;
+    const live = cur.data() as ScheduleChangeQueueDoc;
+    if (live.lastChangedAt.toMillis() === seen.lastChangedAt.toMillis()) {
+      tx.delete(ref);
+      return;
+    }
+    if (announced) tx.update(ref, { before: announced, firstChangedAt: live.lastChangedAt });
+  });
+}
+
 const fmtTime = (t: Timestamp) => t.toDate().toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' });
 const fmtDay = (t: Timestamp) => t.toDate().toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric' });
 const span = (start: Timestamp, end: Timestamp) => `${fmtDay(start)}, ${fmtTime(start)}–${fmtTime(end)}`;
@@ -65,8 +90,14 @@ const span = (start: Timestamp, end: Timestamp) => `${fmtDay(start)}, ${fmtTime(
 export const gjallarhornChangeFlush = onSchedule({ schedule: FLUSH_EVERY, timeZone: 'America/New_York' }, async () => {
   const due = await db().collection('scheduleChangeQueue').where('notifyAfter', '<=', Timestamp.now()).limit(100).get();
   for (const qDoc of due.docs) {
-    const q = qDoc.data() as ScheduleChangeQueueDoc;
     try {
+      // Entries are worked one at a time, so an edit may have pushed this one's
+      // timer since the query ran — re-read it and let it wait out the new
+      // quiet period instead of announcing a change that is still in motion.
+      const fresh = await qDoc.ref.get();
+      if (!fresh.exists) continue;
+      const q = fresh.data() as ScheduleChangeQueueDoc;
+      if (q.notifyAfter.toMillis() > Date.now()) continue;
       const sessionSnap = await db().doc(`sessions/${q.sessionId}`).get();
       if (!sessionSnap.exists) {
         await qDoc.ref.delete(); // deleted outright — nothing to describe
@@ -78,8 +109,15 @@ export const gjallarhornChangeFlush = onSchedule({ schedule: FLUSH_EVERY, timeZo
       const roomChanged = before.room !== (after.room ?? '') || before.location !== (after.location ?? '');
       const cancelled = before.status !== 'cancelled' && after.status === 'cancelled';
       // Drag-and-undo (or edited straight back): net nothing — say nothing.
-      if (!timeChanged && !roomChanged && !cancelled) {
-        await qDoc.ref.delete();
+      // Also silent: a record that was cancelled BEFORE the burst (its people
+      // were already told it is off — "rescheduled" would read as back on), and
+      // template / archived academies, which never notify anyone.
+      if (
+        (!timeChanged && !roomChanged && !cancelled) ||
+        (after.status === 'cancelled' && !cancelled) ||
+        (await academyIsSilent(after.academyId))
+      ) {
+        await settle(qDoc.ref, q);
         continue;
       }
       const signups = await db().collection(`sessions/${q.sessionId}/signups`).where('status', '==', 'confirmed').get();
@@ -125,7 +163,7 @@ export const gjallarhornChangeFlush = onSchedule({ schedule: FLUSH_EVERY, timeZo
           });
         })
       );
-      await qDoc.ref.delete();
+      await settle(qDoc.ref, q, changeSnapshot(after));
     } catch (err) {
       // One bad entry must not block the rest; it stays queued and retries
       // next run (the dedupe key makes a partial fan-out safe to repeat).

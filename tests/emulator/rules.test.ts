@@ -13,7 +13,7 @@ import {
   assertSucceeds,
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { doc, getDoc, getDocs, query, where, setDoc, updateDoc, addDoc, deleteDoc, collection } from 'firebase/firestore';
+import { doc, getDoc, getDocs, query, where, orderBy, limit, setDoc, updateDoc, addDoc, deleteDoc, collection, writeBatch } from 'firebase/firestore';
 
 let testEnv: RulesTestEnvironment;
 
@@ -285,11 +285,11 @@ describe('mail — server-only', () => {
 });
 
 describe('auditLog — owner-attributed create only', () => {
-  it('signed-in user CAN create an entry attributed to self', async () => {
-    await assertSucceeds(addDoc(collection(as('alice', 'instructor'), 'auditLog'), { actorUid: 'alice', action: 'x', summary: 's', orgId: ORG }));
+  it('staff CAN create an entry attributed to self', async () => {
+    await assertSucceeds(addDoc(collection(as('carol', 'coordinator'), 'auditLog'), { actorUid: 'carol', action: 'x', summary: 's', orgId: ORG }));
   });
   it('CANNOT forge another actor\'s entry', async () => {
-    await assertFails(addDoc(collection(as('alice', 'instructor'), 'auditLog'), { actorUid: 'bob', action: 'x', summary: 's', orgId: ORG }));
+    await assertFails(addDoc(collection(as('carol', 'coordinator'), 'auditLog'), { actorUid: 'bob', action: 'x', summary: 's', orgId: ORG }));
   });
   it('non-admin cannot read; cannot delete', async () => {
     let id = '';
@@ -398,8 +398,8 @@ describe('tenant isolation (orgId)', () => {
     await assertFails(setDoc(doc(as('alice', 'instructor'), 'sessions/s1/signups/alice'), { uid: 'alice', status: 'confirmed', slotId: 'x', role: 'lead', orgId: BETA }));
   });
   it('auditLog: CANNOT create with a foreign or ABSENT orgId', async () => {
-    await assertFails(addDoc(collection(as('alice', 'instructor'), 'auditLog'), { actorUid: 'alice', action: 'x', summary: 's', orgId: BETA }));
-    await assertFails(addDoc(collection(as('alice', 'instructor'), 'auditLog'), { actorUid: 'alice', action: 'x', summary: 's' }));
+    await assertFails(addDoc(collection(as('carol', 'coordinator'), 'auditLog'), { actorUid: 'carol', action: 'x', summary: 's', orgId: BETA }));
+    await assertFails(addDoc(collection(as('carol', 'coordinator'), 'auditLog'), { actorUid: 'carol', action: 'x', summary: 's' }));
   });
   it('an orgless token cannot CREATE even into the right org', async () => {
     await assertFails(addDoc(collection(as('dave', 'director', null), 'academies'), { orgId: ORG, status: 'draft', isTemplate: false, title: 'x' }));
@@ -696,5 +696,248 @@ describe('scheduleChangeQueue — staff read, no client writes, org-isolated', (
     await assertFails(getDoc(doc(as('erin', 'director', BETA), 'scheduleChangeQueue/s1')));
     await assertFails(deleteDoc(doc(as('dave', 'director'), 'scheduleChangeQueue/s1')));
     await assertFails(setDoc(doc(as('dave', 'director'), 'scheduleChangeQueue/s2'), { orgId: ORG, academyId: 'aA', sessionId: 's2' }));
+  });
+});
+
+// ── Polish sweep (Nov 2026) ─────────────────────────────────────────────────
+
+// Queued mail bodies carry temporary passwords (createUserAccount /
+// createOrgAdmin / sendActivationEmail) and notification-email verification
+// codes, kept 30 days. No client surface reads either queue, so reads are
+// closed outright — a same-org sergeant could otherwise lift a new director's
+// temp password and sign in as them before they do (rank-ladder bypass).
+describe('mail + mailQueue — no client reads (bodies carry temp passwords / codes)', () => {
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      const msg = { subject: 's', html: 'Temporary password: Heimdall-deadbeef', text: 't' };
+      await setDoc(doc(db, 'mailQueue/mq1'), { orgId: ORG, to: ['new.director@x.y'], message: msg });
+      await setDoc(doc(db, 'mail/ml1'), { orgId: ORG, to: ['new.director@x.y'], message: msg });
+    });
+  });
+  it('even a same-org director/sergeant CANNOT get or list queued mail', async () => {
+    for (const [uid, role] of [['dave', 'director'], ['sgt', 'sergeant']] as const) {
+      await assertFails(getDoc(doc(as(uid, role), 'mailQueue/mq1')));
+      await assertFails(getDocs(query(collection(as(uid, role), 'mailQueue'), where('orgId', '==', ORG))));
+      await assertFails(getDoc(doc(as(uid, role), 'mail/ml1')));
+      await assertFails(getDocs(query(collection(as(uid, role), 'mail'), where('orgId', '==', ORG))));
+    }
+  });
+  it('the platform owner cannot read it from a client either', async () => {
+    const owner = testEnv.authenticatedContext('owner', { role: 'director', orgId: ORG, platformOwner: true }).firestore();
+    await assertFails(getDoc(doc(owner, 'mailQueue/mq1')));
+  });
+});
+
+// isTemplate exempts a class from the captain's-approval publish gate, so it
+// must be fixed at create. Otherwise: mark a pending draft as a template,
+// publish it (exempt), then clear the flag — a live class nobody approved.
+describe('academies — isTemplate is immutable (approval-gate bypass)', () => {
+  it('staff CANNOT turn an un-approved draft into a template to publish it', async () => {
+    await assertFails(updateDoc(doc(as('carol', 'coordinator'), 'academies/aDraft'), { isTemplate: true }));
+    await assertFails(updateDoc(doc(as('dave', 'director'), 'academies/aDraft'), { isTemplate: true, status: 'draft' }));
+  });
+  it('a real template still publishes without approval, but can never become a real class', async () => {
+    await assertSucceeds(setDoc(doc(as('carol', 'coordinator'), 'academies/aTpl'), { orgId: ORG, status: 'draft', isTemplate: true, title: 'Tpl' }));
+    await assertSucceeds(updateDoc(doc(as('carol', 'coordinator'), 'academies/aTpl'), { status: 'published' }));
+    await assertFails(updateDoc(doc(as('carol', 'coordinator'), 'academies/aTpl'), { isTemplate: false }));
+  });
+  it('edits that leave isTemplate alone (or re-send the same value) still pass', async () => {
+    await assertSucceeds(updateDoc(doc(as('carol', 'coordinator'), 'academies/aDraft'), { name: 'Renamed', isTemplate: false }));
+    await assertSucceeds(updateDoc(doc(as('carol', 'coordinator'), 'academies/aA'), { signupsEnabled: false }));
+  });
+});
+
+// Same gate, session side: a session may be created already-visible under a
+// template; re-pointing it at an un-approved class would surface it there.
+describe('sessions — academyId is immutable', () => {
+  it('staff CANNOT move a session to another academy', async () => {
+    await assertFails(updateDoc(doc(as('carol', 'coordinator'), 'sessions/s1'), { academyId: 'aDraft' }));
+  });
+  it('an edit that re-sends the same academyId (every form does) still passes', async () => {
+    await assertSucceeds(updateDoc(doc(as('carol', 'coordinator'), 'sessions/s1'), { academyId: 'a1', title: 'Edited' }));
+  });
+});
+
+// A suspended / deactivated member's role claim is stripped and a status claim
+// minted, but the Auth login is not disabled — they can sign in again and hold a
+// token with their orgId. Member-level reads must not survive that.
+// 'pending' is the same gate for a NOT-YET-APPROVED joiner: the join callables
+// mint it with the orgId claim, and approval (setUserRole) drops it.
+describe('activeStatus — a suspended/inactive/pending member loses ORG reads, not just staff writes', () => {
+  const locked = (status: string) => testEnv.authenticatedContext('alice', { orgId: ORG, status }).firestore();
+  for (const status of ['suspended', 'inactive', 'pending']) {
+    it(`${status}: no schedule, rooms, settings or org reads; no feedback/audit writes`, async () => {
+      const db = locked(status);
+      await assertFails(getDoc(doc(db, 'academies/aA')));
+      await assertFails(getDoc(doc(db, 'sessions/s1')));
+      await assertFails(getDocs(query(collection(db, 'sessions'), where('orgId', '==', ORG), where('status', '==', 'open'))));
+      await assertFails(getDoc(doc(db, 'rooms/roomA')));
+      await assertFails(getDoc(doc(db, 'roomReservations/resA')));
+      await assertFails(getDoc(doc(db, 'curricula/' + ORG + '__le_brt')));
+      await assertFails(getDoc(doc(db, 'settings/' + ORG)));
+      await assertFails(getDoc(doc(db, 'reportConfig/' + ORG)));
+      await assertFails(getDoc(doc(db, 'orgs/' + ORG)));
+      await assertFails(addDoc(collection(db, 'auditLog'), { actorUid: 'alice', action: 'x', summary: 's', orgId: ORG }));
+      await assertFails(addDoc(collection(db, 'feedbackReports'), { orgId: ORG, kind: 'bug', title: 'T', description: 'D', submittedByUid: 'alice', status: 'new' }));
+    });
+    it(`${status}: still reads their OWN profile (the sign-in page shows the suspended/deactivated notice from it)`, async () => {
+      await assertSucceeds(getDoc(doc(locked(status), 'users/alice')));
+    });
+  }
+  it('pending: can still finish their own profile (date of birth) while awaiting approval', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'users/pat'), user({ orgId: ORG, status: 'pending' }));
+    });
+    const pat = testEnv.authenticatedContext('pat', { orgId: ORG, status: 'pending' }).firestore();
+    await assertSucceeds(updateDoc(doc(pat, 'users/pat'), { dob: '1990-01-01' }));
+    // …but cannot approve themselves.
+    await assertFails(updateDoc(doc(pat, 'users/pat'), { status: 'active' }));
+  });
+  it('once approved (role + orgId, no status claim) the same account reads the org', async () => {
+    const pat = testEnv.authenticatedContext('pat', { orgId: ORG, role: 'instructor' }).firestore();
+    await assertSucceeds(getDoc(doc(pat, 'settings/' + ORG)));
+    await assertSucceeds(getDoc(doc(pat, 'sessions/s1')));
+  });
+  it('an ACTIVE instructor keeps every one of those reads (positive control)', async () => {
+    const db = as('alice', 'instructor');
+    await assertSucceeds(getDoc(doc(db, 'academies/aA')));
+    await assertSucceeds(getDoc(doc(db, 'sessions/s1')));
+    await assertSucceeds(getDoc(doc(db, 'rooms/roomA')));
+    await assertSucceeds(getDoc(doc(db, 'roomReservations/resA')));
+    await assertSucceeds(getDoc(doc(db, 'settings/' + ORG)));
+    await assertSucceeds(getDoc(doc(db, 'reportConfig/' + ORG)));
+    await assertSucceeds(getDoc(doc(db, 'orgs/' + ORG)));
+  });
+});
+
+// The LIST queries the app actually runs for a plain instructor / staff / the
+// owner. A legitimate query the rules deny is a live bug (blank page), so each
+// shape is pinned here exactly as the client builds it (useCollection injects
+// the orgId filter first).
+describe('client query shapes — the lists the app runs are allowed', () => {
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, 'assignments/s1_alice'), { orgId: ORG, uid: 'alice', sessionId: 's1', academyId: 'aA', status: 'confirmed', start: new Date(), end: new Date() });
+      await setDoc(doc(db, 'assignments/s1_bob'), { orgId: ORG, uid: 'bob', sessionId: 's1', academyId: 'aA', status: 'confirmed', start: new Date(), end: new Date() });
+      await setDoc(doc(db, 'sessions/s1/signups/alice'), { orgId: ORG, uid: 'alice', status: 'confirmed', slotId: 'x', role: 'lead' });
+      await setDoc(doc(db, 'notifications/n1'), { uid: 'alice', title: 't', read: false, createdAt: new Date() });
+      await setDoc(doc(db, 'notifications/n2'), { uid: 'bob', title: 't', read: false, createdAt: new Date() });
+    });
+  });
+  it('instructor: published academies (status in …) — and the unconstrained list is denied', async () => {
+    const db = as('alice', 'instructor');
+    const got = await assertSucceeds(getDocs(query(collection(db, 'academies'), where('orgId', '==', ORG), where('status', 'in', ['published', 'in_progress', 'completed']))));
+    expect((got as { docs: { id: string }[] }).docs.map((d) => d.id)).toEqual(['aA']);
+    await assertFails(getDocs(query(collection(db, 'academies'), where('orgId', '==', ORG))));
+  });
+  it('instructor: open sessions from now, ordered by start', async () => {
+    const db = as('alice', 'instructor');
+    await assertSucceeds(getDocs(query(collection(db, 'sessions'), where('orgId', '==', ORG), where('status', '==', 'open'), where('start', '>=', new Date(0)), orderBy('start'))));
+    // …but not "every session in the org" (drafts must stay hidden).
+    await assertFails(getDocs(query(collection(db, 'sessions'), where('orgId', '==', ORG))));
+  });
+  it('instructor: OWN confirmed assignments only', async () => {
+    const db = as('alice', 'instructor');
+    const mine = await assertSucceeds(getDocs(query(collection(db, 'assignments'), where('orgId', '==', ORG), where('uid', '==', 'alice'), where('status', '==', 'confirmed'), orderBy('start'))));
+    expect((mine as { docs: { id: string }[] }).docs.map((d) => d.id)).toEqual(['s1_alice']);
+    await assertFails(getDocs(query(collection(db, 'assignments'), where('orgId', '==', ORG), where('status', '==', 'confirmed'))));
+  });
+  it('instructor: a session\'s sign-ups, own feedback reports, own notifications', async () => {
+    const db = as('alice', 'instructor');
+    await assertSucceeds(getDocs(query(collection(db, 'sessions/s1/signups'), where('orgId', '==', ORG), where('status', 'in', ['confirmed', 'waitlist']))));
+    await assertSucceeds(getDocs(query(collection(db, 'feedbackReports'), where('orgId', '==', ORG), where('submittedByUid', '==', 'alice'))));
+    const mine = await assertSucceeds(getDocs(query(collection(db, 'notifications'), where('uid', '==', 'alice'), orderBy('createdAt', 'desc'), limit(20))));
+    expect((mine as { docs: { id: string }[] }).docs.map((d) => d.id)).toEqual(['n1']);
+    await assertFails(getDocs(query(collection(db, 'notifications'), where('uid', '==', 'bob'))));
+  });
+  it('staff: org users (by name / role / status), all org sessions, confirmed assignments', async () => {
+    const db = as('carol', 'coordinator');
+    await assertSucceeds(getDocs(query(collection(db, 'users'), where('orgId', '==', ORG), orderBy('displayName'), limit(2000))));
+    await assertSucceeds(getDocs(query(collection(db, 'users'), where('orgId', '==', ORG), where('role', 'in', ['director', 'lieutenant']), where('status', '==', 'active'))));
+    await assertSucceeds(getDocs(query(collection(db, 'sessions'), where('orgId', '==', ORG), where('academyId', '==', 'a1'), orderBy('start'))));
+    await assertSucceeds(getDocs(query(collection(db, 'assignments'), where('orgId', '==', ORG), where('status', '==', 'confirmed'))));
+    await assertSucceeds(getDocs(query(collection(db, 'academies'), where('orgId', '==', ORG), orderBy('startDate', 'desc'))));
+    // An instructor may not enumerate the org's users.
+    await assertFails(getDocs(query(collection(as('alice', 'instructor'), 'users'), where('orgId', '==', ORG))));
+  });
+  it('owner: the org-scoped audit list; feedback triage list for an admin', async () => {
+    const owner = testEnv.authenticatedContext('owner', { role: 'director', orgId: ORG, platformOwner: true }).firestore();
+    await assertSucceeds(getDocs(query(collection(owner, 'auditLog'), where('orgId', '==', ORG), orderBy('createdAt', 'desc'), limit(200))));
+    await assertSucceeds(getDocs(query(collection(as('dave', 'director'), 'feedbackReports'), where('orgId', '==', ORG), orderBy('createdAt', 'desc'))));
+  });
+});
+
+// A subdocument's own orgId stamp is caller-supplied, so by itself it proves
+// nothing about the PARENT. Without a parent check, staff of one tenant could
+// plant docs under another tenant's academy: a private/portal doc carrying
+// their own token + password (the public-portal callable trusts that doc, so it
+// would serve the other tenant's roster and grades to anyone), fake roster
+// rows, or a squatted attendance / limbo doc the real owner can then never save.
+describe('cross-tenant parent binding — academy subcollections + session.academyId', () => {
+  const erin = () => as('erin', 'director', BETA);
+  it('another tenant\'s staff CANNOT create subdocs under OUR academy, even stamped with their own org', async () => {
+    await assertFails(setDoc(doc(erin(), 'academies/aA/private/portal'), { orgId: BETA, enabled: true, token: 'theirs', academicHash: 'h' }));
+    await assertFails(setDoc(doc(erin(), 'academies/aA/roster/fake'), { orgId: BETA, fullName: 'Planted Cadet', status: 'active' }));
+    await assertFails(setDoc(doc(erin(), 'academies/aA/attendance/2026-11-10'), { orgId: BETA, date: '2026-11-10', entries: {} }));
+    await assertFails(setDoc(doc(erin(), 'academies/aA/limbo/squat'), { orgId: BETA, academyId: 'aA', cells: {} }));
+    await assertFails(addDoc(collection(erin(), 'academies/aA/reports'), { orgId: BETA, type: 'general_memo', cadetName: 'X' }));
+  });
+  it('our own staff still create every one of them under OUR academy', async () => {
+    const db = as('carol', 'coordinator');
+    await assertSucceeds(setDoc(doc(db, 'academies/aA/private/portal'), { orgId: ORG, enabled: true, token: 'ours', academicHash: 'h' }));
+    await assertSucceeds(setDoc(doc(db, 'academies/aA/roster/c1'), { orgId: ORG, fullName: 'Cadet One', status: 'active' }));
+    await assertSucceeds(setDoc(doc(db, 'academies/aA/attendance/2026-11-10'), { orgId: ORG, date: '2026-11-10', entries: {} }));
+    await assertSucceeds(setDoc(doc(db, 'academies/aA/limbo/plan'), { orgId: ORG, academyId: 'aA', cells: {} }));
+    await assertSucceeds(addDoc(collection(db, 'academies/aA/reports'), { orgId: ORG, type: 'general_memo', cadetName: 'X' }));
+    // …and keep editing them afterwards (update needs no parent read).
+    await assertSucceeds(setDoc(doc(db, 'academies/aA/limbo/plan'), { nmtStart: '2027-01-04' }, { merge: true }));
+    await assertSucceeds(updateDoc(doc(db, 'academies/aA/roster/c1'), { status: 'withdrawn' }));
+  });
+  it('no subdoc can be created under an academy that does not exist', async () => {
+    await assertFails(setDoc(doc(as('carol', 'coordinator'), 'academies/ghost/roster/c1'), { orgId: ORG, fullName: 'X', status: 'active' }));
+  });
+  it('a session cannot be created against ANOTHER tenant\'s academy (it would show on their public class page)', async () => {
+    const base = { roleSlots: [], start: new Date(), end: new Date(), orgId: BETA };
+    // aApproved is ORG's approved class — exactly the case the publish gate alone let through.
+    await assertFails(addDoc(collection(erin(), 'sessions'), { ...base, academyId: 'aApproved', status: 'open' }));
+    await assertFails(addDoc(collection(erin(), 'sessions'), { ...base, academyId: 'aA', status: 'draft' }));
+    await assertFails(addDoc(collection(erin(), 'sessions'), { ...base, academyId: 'ghost', status: 'draft' }));
+  });
+  it('the app\'s BULK shapes still commit: 300 sessions in one batch under one academy (recurring generator / clone)', async () => {
+    // Each write reads the SAME academy doc, which rules cache per request — the
+    // 20-access-call batch limit only bites on distinct documents.
+    const db = as('carol', 'coordinator');
+    for (const [academyId, status] of [['aDraft', 'draft'], ['aApproved', 'scheduled']] as const) {
+      const batch = writeBatch(db);
+      for (let i = 0; i < 300; i++) {
+        batch.set(doc(collection(db, 'sessions')), { orgId: ORG, academyId, status, roleSlots: [], start: new Date(), end: new Date() });
+      }
+      await assertSucceeds(batch.commit());
+    }
+  });
+  it('our own staff still create draft sessions anywhere and visible ones under an approved class', async () => {
+    const db = as('carol', 'coordinator');
+    const base = { roleSlots: [], start: new Date(), end: new Date(), orgId: ORG };
+    await assertSucceeds(addDoc(collection(db, 'sessions'), { ...base, academyId: 'aDraft', status: 'draft' }));
+    await assertSucceeds(addDoc(collection(db, 'sessions'), { ...base, academyId: 'aApproved', status: 'scheduled' }));
+    await assertFails(addDoc(collection(db, 'sessions'), { ...base, academyId: 'aDraft', status: 'open' }));
+  });
+});
+
+// Every client logAudit() call site is a staff surface; members' own actions
+// (sign-up, withdraw) are logged server-side by the callables.
+describe('auditLog — staff-only create', () => {
+  it('a plain member (or a not-yet-approved join) CANNOT append audit entries', async () => {
+    await assertFails(addDoc(collection(as('alice', 'instructor'), 'auditLog'), { actorUid: 'alice', action: 'user.approve', summary: 'forged', orgId: ORG }));
+    const pending = testEnv.authenticatedContext('pat', { orgId: ORG }).firestore();
+    await assertFails(addDoc(collection(pending, 'auditLog'), { actorUid: 'pat', action: 'x', summary: 's', orgId: ORG }));
+  });
+  it('staff still log their own actions, in their own org only', async () => {
+    await assertSucceeds(addDoc(collection(as('carol', 'coordinator'), 'auditLog'), { actorUid: 'carol', action: 'x', summary: 's', orgId: ORG }));
+    await assertFails(addDoc(collection(as('carol', 'coordinator'), 'auditLog'), { actorUid: 'dave', action: 'x', summary: 's', orgId: ORG }));
+    await assertFails(addDoc(collection(as('carol', 'coordinator'), 'auditLog'), { actorUid: 'carol', action: 'x', summary: 's', orgId: BETA }));
+    await assertFails(addDoc(collection(as('carol', 'coordinator'), 'auditLog'), { actorUid: 'carol', action: 'x', summary: 's' }));
   });
 });

@@ -56,9 +56,6 @@ export const QUALIFICATION_LABELS: Record<QualificationKey, string> = {
  * expiration on the user (UserDoc.instructorCertExpires).
  */
 export const isInstructorQual = (key: QualificationKey): boolean => key !== 'role_player';
-export const INSTRUCTOR_QUAL_KEYS: QualificationKey[] = (
-  Object.keys(QUALIFICATION_LABELS) as QualificationKey[]
-).filter(isInstructorQual);
 
 /** True while the member's single FDLE instructor cert is on file and unexpired. */
 export function instructorCertActive(
@@ -74,13 +71,28 @@ export function instructorCertActive(
  * have lapsed. Role Player never expires (but still must be verified).
  */
 export function activeVerifiedQualKeys(
-  user: { qualifications?: Qualification[]; instructorCertExpires?: Timestamp },
+  user: { qualifications?: Qualification[]; verifiedQualKeys?: QualificationKey[]; instructorCertExpires?: Timestamp },
   now: Date = new Date()
 ): QualificationKey[] {
   const certOk = instructorCertActive(user, now);
-  return (user.qualifications ?? [])
+  return trustedQualifications(user)
     .filter((q) => q.verified && (certOk || !isInstructorQual(q.key)))
     .map((q) => q.key);
+}
+
+/**
+ * A member's claims with `verified` taken from the AUTHORITY. The flag on each
+ * `qualifications[]` entry sits in a member-writable array; the staff-only
+ * `verifiedQualKeys` list is what the server enforces at sign-up. Staff screens
+ * must read claims through this: otherwise a member who set their own flag
+ * shows a green "verified" badge, and the next staff save in the
+ * qualifications editor would copy the forged flag into `verifiedQualKeys`.
+ */
+export function trustedQualifications(
+  user: { qualifications?: Qualification[]; verifiedQualKeys?: QualificationKey[] }
+): Qualification[] {
+  const trusted = new Set<string>(user.verifiedQualKeys ?? []);
+  return (user.qualifications ?? []).map((q) => (q.verified && !trusted.has(q.key) ? { ...q, verified: false } : q));
 }
 
 export interface Qualification {
@@ -265,13 +277,7 @@ export const PRIORITY_EMAIL_TYPES: ReadonlySet<string> = new Set(
   EMAIL_AUTOMATIONS.filter((a) => 'priority' in a && a.priority === true).map((a) => a.key)
 );
 
-// ── Pre-launch switch (TEMPORARY — remove after go-live) ───────────────────
-// When true, instructors/guests see ONLY Overview, How To, and Profile &
-// Qualifications (so they can register + claim certs ahead of launch) while
-// staff build out schedules. Flipped in Admin → Org Settings. Absent/false =
-// the site is fully live for everyone.
-
-// ── Org settings (settings/global singleton) ───────────────────────────────
+// ── Orgs + per-org settings (orgs/{orgId}, settings/{orgId}) ───────────────
 /**
  * A tenant (college/agency). Doc id == orgId. Isolation is enforced by an orgId
  * custom-claim match in security rules (added at the Phase-5 cutover); the id is
@@ -338,8 +344,6 @@ export interface GlobalSettings {
   brandPrimaryColor: string;
   brandAccentColor: string;
   logoUrl?: string;
-  /** TEMPORARY pre-launch switch — see the block comment above this interface. */
-  preLaunchHideInstructors?: boolean;
   /**
    * Document jurisdiction for academic-action letters. 'FL' renders the
    * Florida FDLE/CJSTC statutory clauses (F.A.C. rule citations); 'neutral'
@@ -408,15 +412,6 @@ export type CoursePublishTarget =
   | { mode: 'users'; uids: string[] };
 
 // ── Curriculum ─────────────────────────────────────────────────────────────
-export type Discipline = 'law_enforcement' | 'corrections' | 'cross_over' | 'all';
-
-export const DISCIPLINE_LABELS: Record<Discipline, string> = {
-  law_enforcement: 'Law Enforcement',
-  corrections: 'Corrections',
-  cross_over: 'Cross-Over',
-  all: 'All Disciplines',
-};
-
 export type SlotRole = 'lead' | 'assistant' | 'role_player' | 'safety_officer' | 'coordinator';
 
 export const SLOT_ROLE_LABELS: Record<SlotRole, string> = {
@@ -441,19 +436,6 @@ export interface DefaultRoleSlot {
   role: SlotRole;
   count: number;
   requiredQualificationKey?: QualificationKey;
-}
-
-export interface CourseDoc {
-  name: string;
-  fdleCourseCode: string;
-  /** Category tag: 'all' (cross-discipline) or a program tag like 'argus' that
-   * scopes the course to that program's academies in the session picker. */
-  discipline: Discipline | string;
-  defaultHours: number;
-  highLiability: boolean;
-  description: string;
-  defaultRoleSlots: DefaultRoleSlot[];
-  leadRequiredQualificationKey?: QualificationKey;
 }
 
 // ── Academies (cohorts) ────────────────────────────────────────────────────
@@ -687,17 +669,6 @@ export function letterFor(pct: number): string {
 }
 
 // ── Academic action reports (per-academy: academies/{id}/reports/{id}) ──────
-/** FDLE Law Enforcement CJK course list (from the official forms' dropdown). */
-// Official CJSTC Law Enforcement Basic Recruit course titles.
-export const FDLE_LE_COURSES: { code: string; name: string }[] = [
-  ['0096', 'Criminal Justice Officer Physical Fitness Training (Law Enforcement)'], ['0002', 'Introduction to Law Enforcement'], ['0031', 'First Aid for Criminal Justice Officers'],
-  ['0051', 'Criminal Justice Defensive Tactics'], ['0040', 'Criminal Justice Firearms'], ['0020', 'Law Enforcement Vehicle Operations'],
-  ['0421', 'Conducted Electrical Weapon/Dart-Firing Stun Gun'], ['0016', 'Communication'], ['0021', 'Serving Your Community'],
-  ['0018', 'Legal'], ['0073', 'Crimes Involving Property and Society'], ['0072', 'Crimes Against Persons'],
-  ['0079', 'Crime Scene Follow-up Investigations'], ['0019', 'Interviewing and Report Writing'], ['0063', 'Fundamentals of Patrol'],
-  ['0093', 'Critical Incidents'], ['0400', 'Traffic Incidents'], ['0401', 'Traffic Stops'],
-  ['0403', 'DUI Traffic Stops'], ['0402', 'Traffic Crash Investigations'],
-].map(([code, name]) => ({ code, name }));
 
 export type ReportTypeId =
   // Academic-action letters (verbatim FL/neutral bodies; see reportTypes.tsx)
@@ -881,11 +852,6 @@ export interface CurriculumDoc {
    * Curriculum & Hours.
    */
   signupsDefaultEnabled?: boolean;
-  /** @deprecated category model removed; superseded by the document library + the
-   *  form-override fields below. Kept for back-compat read only. */
-  reportCategories?: string[];
-  /** @deprecated superseded by the form-override fields below — back-compat read only. */
-  reportTypeIds?: string[];
 
   // ── Per-discipline document overrides (unified-documents redesign) ──
   /** Branding overrides for THIS discipline's printed documents; each falls back
@@ -1130,13 +1096,6 @@ export interface NotificationDoc {
   createdAt: Timestamp;
 }
 
-/** Watched by the Trigger Email extension. Server-written only. */
-export interface MailDoc {
-  to: string[];
-  message: { subject: string; html: string; text: string };
-  createdAt: Timestamp;
-}
-
 export interface AuditLogDoc {
   /** Tenant (orgs/{orgId}); set at provisioning/backfill. */
   orgId?: string;
@@ -1171,10 +1130,6 @@ export function unfilledSlots(session: SessionDoc): RoleSlot[] {
     if (use > 0) spare[s.role] = (spare[s.role] ?? 0) - use;
     return need - use > 0;
   });
-}
-
-export function isFullyStaffed(session: SessionDoc): boolean {
-  return unfilledSlots(session).length === 0;
 }
 
 /* ── Remediation tracker (staff-only) ─────────────────────────────────────

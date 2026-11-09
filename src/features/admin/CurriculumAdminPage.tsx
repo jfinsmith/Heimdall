@@ -9,7 +9,7 @@ import { deleteDoc, doc, FieldPath, setDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../lib/firebase';
 import { orgConfigPath, useCollection, useDoc, type WithId } from '../../lib/firestore';
-import { useAllCurricula } from '../../lib/curricula';
+import { PLATFORM_CURRICULUM_KEYS, baseCurriculumKey, isPlatformCurriculum, useAllCurricula } from '../../lib/curricula';
 import { useAuth } from '../../auth/AuthContext';
 import type { CurriculumCourse, CurriculumDoc, QualificationKey, ReportConfigDoc, RosterModuleKey } from '../../types';
 import { QUALIFICATION_LABELS } from '../../types';
@@ -18,22 +18,23 @@ import { Modal } from '../../components/Modal';
 import { logAudit } from '../sessions/audit';
 import { ROSTER_MODULES, DEFAULT_ROSTER_MODULES } from '../cadre/roster/rosterModules';
 import { courseKey } from '../cadre/roster/rosterShared';
-import { REPORT_TYPES } from '../cadre/reports/reportTypes';
+import { REPORT_TYPES, type DocumentAssignmentDoc } from '../cadre/reports/reportTypes';
 import { useOrgLibraryForms } from '../cadre/reports/documentLibrary';
 import { friendlyError } from '../../lib/callableError';
 
 
 /**
- * Curriculum & Hours editor. scope='org' edits the active org's curricula;
- * scope='defaults' (owner only) edits the platform DEFAULT templates that every
- * new organization is seeded from.
+ * Curriculum & Hours editor. scope='org' edits the active org's OWN curricula
+ * (the platform programs show read-only); scope='defaults' (owner only) edits
+ * the platform FDLE programs in `defaultCurricula`, which every organization
+ * reads live — they are not copied into orgs.
  */
 export function CurriculumAdminPage({ scope = 'org' }: { scope?: 'org' | 'defaults' }) {
   const { firebaseUser, orgId } = useAuth();
   const isDefaults = scope === 'defaults';
   // This org's written-exam facts (question count + time limit per course) —
   // org-owned even for the read-only platform programs.
-  const { data: reportCfg } = useDoc<ReportConfigDoc>(!isDefaults && orgId ? orgConfigPath('reportConfig', orgId) : null);
+  const { data: reportCfg, loading: reportCfgLoading } = useDoc<ReportConfigDoc>(!isDefaults && orgId ? orgConfigPath('reportConfig', orgId) : null);
   const [testInfoFor, setTestInfoFor] = useState<WithId<CurriculumDoc> | null>(null);
   const coll = isDefaults ? 'defaultCurricula' : 'curricula';
   // Owner edits the five platform FDLE programs (defaultCurricula). An org sees
@@ -48,12 +49,24 @@ export function CurriculumAdminPage({ scope = 'org' }: { scope?: 'org' | 'defaul
   const [editing, setEditing] = useState<WithId<CurriculumDoc> | 'new' | null>(null);
 
   async function toggleActive(c: WithId<CurriculumDoc>) {
-    await setDoc(doc(db, coll, c.id), { active: !c.active }, { merge: true });
+    try {
+      await setDoc(doc(db, coll, c.id), { active: !c.active }, { merge: true });
+    } catch (err) {
+      window.alert(`Could not update "${c.label}": ${friendlyError(err, 'unknown error')}`);
+    }
   }
 
   async function remove(c: WithId<CurriculumDoc>) {
-    if (!window.confirm(`Delete the "${c.label}" discipline?${isDefaults ? '' : ' Existing academies keep their data; new academies can no longer pick it.'}`)) return;
-    await deleteDoc(doc(db, coll, c.id));
+    const consequence = isDefaults
+      ? ' This removes the platform program for EVERY organization — their existing classes of this program lose its course list and hours.'
+      : ' Existing academies keep their data; new academies can no longer pick it.';
+    if (!window.confirm(`Delete the "${c.label}" discipline?${consequence}`)) return;
+    try {
+      await deleteDoc(doc(db, coll, c.id));
+    } catch (err) {
+      window.alert(`Could not delete "${c.label}": ${friendlyError(err, 'unknown error')}`);
+      return;
+    }
     if (!isDefaults) await logAudit(firebaseUser!.uid, 'curriculum.delete', 'curriculum', c.id, c.label);
   }
 
@@ -92,13 +105,13 @@ export function CurriculumAdminPage({ scope = 'org' }: { scope?: 'org' | 'defaul
       </ul>
       {readOnly ? (
         <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={() => setTestInfoFor(c)} title="Your organization's question counts and time limits for this program's written exams">Test info</Button>
+          <Button disabled={reportCfgLoading} onClick={() => setTestInfoFor(c)} title="Your organization's question counts and time limits for this program's written exams">Test info</Button>
           <p className="text-xs text-slate-400">Courses managed by the platform owner — identical across every organization.</p>
         </div>
       ) : (
         <div className="flex gap-2">
           <Button onClick={() => setEditing(c)}>Edit</Button>
-          {!isDefaults && <Button onClick={() => setTestInfoFor(c)} title="Question counts and time limits for this curriculum's written exams">Test info</Button>}
+          {!isDefaults && <Button disabled={reportCfgLoading} onClick={() => setTestInfoFor(c)} title="Question counts and time limits for this curriculum's written exams">Test info</Button>}
           <Button variant="ghost" onClick={() => toggleActive(c)}>
             {c.active ? 'Deactivate' : 'Activate'}
           </Button>
@@ -114,7 +127,7 @@ export function CurriculumAdminPage({ scope = 'org' }: { scope?: 'org' | 'defaul
     <div>
       <PageHeader
         kicker={isDefaults ? 'Platform Owner' : 'Admin'}
-        title={isDefaults ? 'Default Curricula (new organizations)' : 'Curriculum & Hours'}
+        title={isDefaults ? 'Default Curricula (all organizations)' : 'Curriculum & Hours'}
         actions={
           <Button variant="primary" onClick={() => setEditing('new')}>
             New discipline
@@ -142,13 +155,16 @@ export function CurriculumAdminPage({ scope = 'org' }: { scope?: 'org' | 'defaul
         <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Your organization’s curricula</h2>
       )}
       <div className="grid gap-4 lg:grid-cols-2">
-        {!isDefaults && editable.length === 0 && (
+        {!isDefaults && !orgView.loading && editable.length === 0 && (
           <p className="text-sm text-slate-500">No organization-specific curricula yet — the platform programs above are available to every class. Use “New discipline” to add your own.</p>
         )}
         {[...editable].sort((a, b) => a.label.localeCompare(b.label)).map((c) => renderCard(c, false))}
       </div>
 
-      {testInfoFor && orgId && (
+      {testInfoFor && orgId && !reportCfgLoading && (
+        // Never opened before reportConfig has loaded: the modal seeds its rows
+        // ONCE from `current`, and Save replaces this curriculum's whole sub-map —
+        // an early open would save blanks over every stored value.
         <TestInfoModal
           curriculum={testInfoFor}
           orgId={orgId}
@@ -160,6 +176,7 @@ export function CurriculumAdminPage({ scope = 'org' }: { scope?: 'org' | 'defaul
         <CurriculumEditorModal
           scope={scope}
           curriculum={editing === 'new' ? null : editing}
+          existing={editable}
           onClose={() => setEditing(null)}
         />
       )}
@@ -276,10 +293,13 @@ function TestInfoModal({
 function CurriculumEditorModal({
   scope,
   curriculum,
+  existing,
   onClose,
 }: {
   scope: 'org' | 'defaults';
   curriculum: WithId<CurriculumDoc> | null;
+  /** The editable curricula already in this scope — a NEW key must not collide. */
+  existing: WithId<CurriculumDoc>[];
   onClose: () => void;
 }) {
   const { firebaseUser, orgId } = useAuth();
@@ -304,22 +324,31 @@ function CurriculumEditorModal({
   const [brandTagline, setBrandTagline] = useState(curriculum?.brandTagline ?? '');
   const [brandAddress, setBrandAddress] = useState((curriculum?.brandAddressLines ?? []).join('\n'));
   const [uploading, setUploading] = useState(false);
+  const [uploadErr, setUploadErr] = useState<string | null>(null);
   // Per-discipline document overrides.
   const [disabledForms, setDisabledForms] = useState<string[]>(curriculum?.disabledForms ?? []);
   const [formOverrides, setFormOverrides] = useState<Record<string, string>>(curriculum?.formOverrides ?? {});
   const [addedForms, setAddedForms] = useState<string[]>(curriculum?.addedForms ?? []);
   const { forms: libraryForms } = useOrgLibraryForms();
+  const { data: assignments } = useCollection<DocumentAssignmentDoc>('documentAssignments');
   const [busy, setBusy] = useState(false);
 
   // Base general forms (built-ins + library general letters) and the org's
   // assigned specialized letters available as overrides/additions for this discipline.
-  const baseGeneral = useMemo(
-    () => [
-      ...REPORT_TYPES.map((t) => ({ id: t.id, name: t.name })),
+  // Built-ins are filtered by the owner's per-org assignments exactly as
+  // AcademyReports does — otherwise a document scoped to OTHER organizations was
+  // listed here (by name) as if this org's classes offered it.
+  const baseGeneral = useMemo(() => {
+    const asgById = new Map(assignments.map((a) => [a.id, a]));
+    const offered = REPORT_TYPES.filter((t) => {
+      const a = asgById.get(String(t.id));
+      return !a || a.scope === 'all' || !orgId || (a.orgIds ?? []).includes(orgId);
+    });
+    return [
+      ...offered.map((t) => ({ id: t.id, name: t.name })),
       ...libraryForms.filter((f) => f.availability === 'general' && (f.kind ?? 'letter') === 'letter').map((f) => ({ id: f.id, name: f.name })),
-    ],
-    [libraryForms]
-  );
+    ];
+  }, [libraryForms, assignments, orgId]);
   const specializedForms = useMemo(
     () => libraryForms.filter((f) => f.availability === 'specialized' && (f.kind ?? 'letter') === 'letter').map((f) => ({ id: f.id, name: f.name })),
     [libraryForms]
@@ -346,14 +375,20 @@ function CurriculumEditorModal({
 
   async function uploadLogo(file: File) {
     if (!orgId) return;
+    setUploadErr(null);
+    // Mirror the Storage rule (images only, under 5 MB) before uploading.
+    if (!file.type.startsWith('image/')) { setUploadErr('Choose an image file (PNG, JPG, SVG…).'); return; }
+    if (file.size >= 5 * 1024 * 1024) { setUploadErr('That image is too large — logos must be under 5 MB.'); return; }
     setUploading(true);
     try {
       const ext = (file.name.split('.').pop() || 'png').replace(/[^a-z0-9]/gi, '').toLowerCase();
       const r = ref(storage, `branding/${orgId}/curriculum-${Date.now()}.${ext}`);
       await uploadBytes(r, file, { contentType: file.type });
       setBrandLogoUrl(await getDownloadURL(r));
-    } catch {
-      /* admin can paste a URL instead */
+    } catch (err) {
+      // Was swallowed ("admin can paste a URL instead") — but this field has no
+      // URL box, so a failed upload simply did nothing.
+      setUploadErr(`Upload failed: ${friendlyError(err, 'unknown error')}`);
     } finally {
       setUploading(false);
     }
@@ -365,12 +400,35 @@ function CurriculumEditorModal({
       alert('Your account is still loading its organization — reload and try again.');
       return;
     }
-    setBusy(true);
     // Base key (e.g. le_brt) vs. doc id. Org curricula get an org-namespaced doc
     // id ({orgId}__{key}) so two tenants can both have an 'le_brt' without colliding
     // on a shared global doc; existing bare-id curricula keep their id when edited.
-    const baseKey = curriculum ? (curriculum.key || curriculum.id) : key.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_');
+    const baseKey = curriculum
+      ? (curriculum.key || curriculum.id)
+      : key.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
     const id = curriculum ? curriculum.id : isDefaults ? baseKey : `${orgId}__${baseKey}`;
+    if (!curriculum) {
+      // A NEW key is the doc id — setDoc below REPLACES whatever is already there.
+      let problem: string | null = null;
+      if (!baseKey) {
+        problem = 'Enter a key made of letters or numbers, e.g. nmt_basic.';
+      } else if (existing.some((c) => c.id === id || (c.key || baseCurriculumKey(c.id)) === baseKey)) {
+        problem = `A discipline with the key "${baseKey}" already exists — saving would overwrite it. Edit that one instead, or pick a different key.`;
+      } else if (!isDefaults && isPlatformCurriculum(baseKey)) {
+        // useAllCurricula drops an org doc that shadows a platform key, so it
+        // would save and then never appear.
+        problem = `"${baseKey}" is reserved for a platform FDLE program — pick a different key.`;
+      } else if (isDefaults && !isPlatformCurriculum(baseKey)) {
+        // Only these keys resolve from defaultCurricula (src/lib/curricula.ts);
+        // any other would be offered to every org and load no course list.
+        problem = `Platform programs are limited to the keys ${PLATFORM_CURRICULUM_KEYS.join(', ')}. Add any other program as an organization curriculum (Admin → Curriculum & Hours).`;
+      }
+      if (problem) {
+        alert(problem);
+        return;
+      }
+    }
+    setBusy(true);
     const cleaned = courses.filter((c) => c.name.trim()).map((c) => ({
       name: c.name.trim(),
       minHours: Number(c.minHours) || 0,
@@ -382,6 +440,9 @@ function CurriculumEditorModal({
       ...(c.instructorRatio ? { instructorRatio: Number(c.instructorRatio) } : {}),
       ...(c.leadQualification && !c.coordinatorRun ? { leadQualification: c.leadQualification } : {}),
       ...(c.defaultRoleSlots && c.defaultRoleSlots.length ? { defaultRoleSlots: c.defaultRoleSlots } : {}),
+      // No control here, but the attendance roster reads it — pass it through
+      // so an edit to hours/names doesn't strip every course's sequence number.
+      ...(c.courseSeqNo?.trim() ? { courseSeqNo: c.courseSeqNo.trim() } : {}),
     }));
     try {
       await setDoc(doc(db, coll, id), {
@@ -617,10 +678,11 @@ function CurriculumEditorModal({
                     {brandLogoUrl && <img src={brandLogoUrl} alt="" className="h-9 w-auto rounded border border-watch-100 object-contain" />}
                     <label className="cursor-pointer rounded-md border border-watch-200 px-2 py-1 text-xs font-medium text-watch-700 hover:bg-watch-50">
                       {uploading ? 'Uploading…' : brandLogoUrl ? 'Replace' : 'Upload'}
-                      <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && uploadLogo(e.target.files[0])} />
+                      <input type="file" accept="image/*" className="hidden" disabled={uploading} onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadLogo(f); e.target.value = ''; }} />
                     </label>
                     {brandLogoUrl && <button type="button" className="text-xs text-slate-400 hover:text-red-600" onClick={() => setBrandLogoUrl('')}>Remove</button>}
                   </div>
+                  {uploadErr && <span className="mt-1 block text-xs text-red-600">{uploadErr}</span>}
                 </Field>
                 <Field label="Organization name override">
                   <Input value={brandOrgName} onChange={(e) => setBrandOrgName(e.target.value)} placeholder="e.g. Pasco Sheriff's Office" />
@@ -639,7 +701,7 @@ function CurriculumEditorModal({
               <legend className="px-1 text-sm font-medium text-watch-800">Forms for this discipline</legend>
               <p className="mb-2 text-xs text-slate-500">
                 Every general document is offered by default. Uncheck to hide one here, or swap it for a specialized
-                version assigned to your org. Manage the library under <strong>Owner → Report Forms</strong>.
+                version assigned to your org. Which documents your organization is offered is set by HEIMDALL.
               </p>
               <div className="max-h-56 space-y-1 overflow-y-auto pr-1">
                 {baseGeneral.map((f) => (

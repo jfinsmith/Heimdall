@@ -2,8 +2,9 @@
  * Gjallarhorn — scheduled sweeps (§8).
  *
  * Cloud Scheduler allows 3 free jobs, so the daily work is consolidated into
- * ONE function (reminders + understaffing) and the weekly digest is a second:
- * 2 jobs total. Times/timezone are constants below — adjust as needed.
+ * ONE function (reminders + understaffing + mail retention) and the weekly
+ * digest is a second. (The project's other scheduled jobs: accountPurgeDaily
+ * and the 2-minute gjallarhornChangeFlush.) Times/timezone are constants below.
  *
  * TENANT ISOLATION: every query here is org-scoped. These sweeps predate the
  * multi-tenant conversion and once aggregated ALL orgs' sessions into one body
@@ -14,15 +15,39 @@
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { logger } from 'firebase-functions/v2';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
-import { getSettings, notify, sessionDetails } from './notify';
-import { renderEmail } from './templates';
+import { academyIsSilent, fanOut, getSettings, isSilentAcademy, notify, sessionDetails } from './notify';
+import { renderEmail, MAIL_QUEUE } from './templates';
 import type { AssignmentDoc, SessionDoc, UserDoc } from '../types';
 
 const TIMEZONE = 'America/New_York';   // TODO(setup): adjust if the agency is elsewhere
 const DAILY_AT = '0 7 * * *';          // 07:00 ET daily
 const WEEKLY_AT = '0 6 * * 1';         // 06:00 ET Mondays
 
+/**
+ * Floor for a reminder lead time: one sweep interval. The sweep runs once a
+ * day, so a shorter lead can't be honoured exactly — and taken literally it
+ * SKIPPED every assignment starting more than `lead` hours after the run (a
+ * 12-hour lead never reminded for a 20:00 class, a 1-hour lead almost never
+ * reminded at all). At the floor, an assignment is reminded by the last sweep
+ * before it starts.
+ */
+const MIN_LEAD_HOURS = 24;
+
 const db = () => getFirestore();
+
+/** Per-run memo — many assignments share a session, a user and an academy. */
+function memo<T>(load: (id: string) => Promise<T>): (id: string) => Promise<T> {
+  const cache = new Map<string, Promise<T>>();
+  return (id) => {
+    let hit = cache.get(id);
+    if (!hit) {
+      hit = load(id);
+      hit.catch(() => cache.delete(id)); // don't pin a transient failure for the whole run
+      cache.set(id, hit);
+    }
+    return hit;
+  };
+}
 
 type OrgSettings = Awaited<ReturnType<typeof getSettings>>;
 
@@ -40,7 +65,10 @@ async function loadOrgs(): Promise<Map<string, OrgSettings>> {
 
 // ── Daily: reminders + understaffing in one job ─────────────────────────────
 export const gjallarhornDailySweep = onSchedule(
-  { schedule: DAILY_AT, timeZone: TIMEZONE },
+  // Each reminder is several sequential round-trips; the 60 s default would cut
+  // the run off mid-loop as volume grows, silently skipping the understaffing
+  // and retention sections that follow.
+  { schedule: DAILY_AT, timeZone: TIMEZONE, timeoutSeconds: 300 },
   async () => {
     const now = Date.now();
     const settingsByOrg = await loadOrgs();
@@ -59,23 +87,34 @@ export const gjallarhornDailySweep = onSchedule(
       .where('start', '<=', Timestamp.fromMillis(now + maxLeadMs))
       .get();
 
+    const sessionOf = memo(async (id: string) => {
+      const snap = await db().doc(`sessions/${id}`).get();
+      return snap.exists ? (snap.data() as SessionDoc) : null;
+    });
+    const userOf = memo(async (id: string) => {
+      const snap = await db().doc(`users/${id}`).get();
+      return snap.exists ? (snap.data() as UserDoc) : null;
+    });
+    const silentAcademy = memo((id: string) => academyIsSilent(id));
+
     for (const doc of upcoming.docs) {
       try {
-      const a = doc.data() as AssignmentDoc & { orgId?: string; reservationState?: string };
+      const a = doc.data() as AssignmentDoc;
       // An unanswered reservation isn't an accepted assignment — don't send
       // "you teach X" reminders for an offer the instructor never confirmed.
       if (a.reservationState === 'pending') continue;
       // A DRAFT session's class was never published — a quiet builder
       // placement (e.g. the coordinator on their own unapproved schedule)
       // shouldn't produce "you teach tomorrow" for an unannounced class.
-      const sessionSnap = await db().doc(`sessions/${a.sessionId}`).get();
-      const session = sessionSnap.exists ? (sessionSnap.data() as SessionDoc) : null;
+      const session = await sessionOf(a.sessionId);
       if (!session || session.status === 'draft' || session.status === 'cancelled') continue;
+      // An ARCHIVED academy is an abandoned schedule whose sessions keep their
+      // old status — no "you teach tomorrow" for a class that isn't running.
+      if (session.academyId && (await silentAcademy(session.academyId))) continue;
       const orgSettings = a.orgId ? settingsByOrg.get(a.orgId) ?? null : null;
-      const defaultLead = orgSettings?.reminderDefaultLeadHours ?? 48;
-      const userSnap = await db().doc(`users/${a.uid}`).get();
-      const user = userSnap.exists ? (userSnap.data() as UserDoc) : null;
-      const leadHours = user?.notificationPrefs?.reminderLeadHours ?? defaultLead;
+      const user = await userOf(a.uid);
+      const rawLead = Number(user?.notificationPrefs?.reminderLeadHours ?? orgSettings?.reminderDefaultLeadHours ?? 48);
+      const leadHours = Math.max(MIN_LEAD_HOURS, Number.isFinite(rawLead) && rawLead > 0 ? rawLead : 48);
       if (a.start.toMillis() - now > leadHours * 36e5) continue; // not yet inside the user's window
 
       const details = sessionDetails(session);
@@ -113,6 +152,9 @@ export const gjallarhornDailySweep = onSchedule(
     // ── 2. Understaffing sweep — PER ORG ───────────────────────────────────
     const dayKey = new Date(now).toISOString().slice(0, 10);
     for (const [orgId, orgSettings] of settingsByOrg) {
+      // One org's failure (a malformed settings value, an oversized body) must
+      // not cost every org after it its alert — or the mail retention below.
+      try {
       const alertDays = orgSettings?.understaffingAlertDays ?? 7;
       const horizon = Timestamp.fromMillis(now + alertDays * 864e5);
       const sessions = await db()
@@ -123,9 +165,19 @@ export const gjallarhornDailySweep = onSchedule(
         .where('start', '<=', horizon)
         .get();
 
-      const understaffed = sessions.docs
+      const candidates = sessions.docs
         .map((d) => ({ id: d.id, data: d.data() as SessionDoc }))
         .filter(({ data }) => unfilled(data).length > 0);
+      if (candidates.length === 0) continue;
+
+      // Each affected academy once: its coordinators get the alert — unless it
+      // is a template or ARCHIVED (an abandoned schedule's open slots are not
+      // understaffing; alerting on them nags command about a dead class daily).
+      const academies = new Map<string, FirebaseFirestore.DocumentData | undefined>();
+      for (const academyId of new Set(candidates.map(({ data }) => data.academyId))) {
+        academies.set(academyId, (await db().doc(`academies/${academyId}`).get()).data());
+      }
+      const understaffed = candidates.filter(({ data }) => !isSilentAcademy(academies.get(data.academyId)));
       if (understaffed.length === 0) continue;
 
       const lines = understaffed.map(({ data }) => {
@@ -147,8 +199,7 @@ export const gjallarhornDailySweep = onSchedule(
       const academyIds = [...new Set(understaffed.map(({ data }) => data.academyId))];
       const recipients = new Map<string, { email?: string; force: boolean }>();
       for (const academyId of academyIds) {
-        const academy = await db().doc(`academies/${academyId}`).get();
-        for (const uid of (academy.data()?.coordinatorIds ?? []) as string[]) {
+        for (const uid of (academies.get(academyId)?.coordinatorIds ?? []) as string[]) {
           if (!recipients.has(uid)) recipients.set(uid, { force: false });
         }
       }
@@ -169,23 +220,32 @@ export const gjallarhornDailySweep = onSchedule(
             : notify({ ...payload, uid: key, orgId, force: r.force, dedupeKey: `understaff_${dayKey}_${orgId}_${key}` })
         )
       );
+      } catch (err) {
+        logger.error(`understaffing sweep: org ${orgId} failed`, err);
+      }
     }
 
     // ── 3. Mail retention ──────────────────────────────────────────────────
     // Sent/failed queue docs carry full email bodies (one-time verification
     // codes, activation details) — don't keep them forever. Delete docs older
     // than 30 days from the live queue AND the retired extension's legacy
-    // `mail` collection, capped per run (the single-field createdAt range
-    // needs no composite index; a backlog drains over a few nights).
-    for (const coll of ['mailQueue', 'mail']) {
+    // `mail` collection (the single-field createdAt range needs no composite
+    // index). Up to 10 batches a night: a single 450-doc pass falls behind for
+    // good once more than 450 emails a day are being queued.
+    for (const coll of [MAIL_QUEUE, 'mail']) {
       try {
         const cutoff = Timestamp.fromMillis(now - 30 * 864e5);
-        const old = await db().collection(coll).where('createdAt', '<', cutoff).limit(450).get();
-        if (old.empty) continue;
-        const batch = db().batch();
-        for (const doc of old.docs) batch.delete(doc.ref);
-        await batch.commit();
-        logger.info(`Mail retention: deleted ${old.size} ${coll} doc(s) older than 30 days`);
+        let deleted = 0;
+        for (let round = 0; round < 10; round++) {
+          const old = await db().collection(coll).where('createdAt', '<', cutoff).limit(450).get();
+          if (old.empty) break;
+          const batch = db().batch();
+          for (const doc of old.docs) batch.delete(doc.ref);
+          await batch.commit();
+          deleted += old.size;
+          if (old.size < 450) break;
+        }
+        if (deleted) logger.info(`Mail retention: deleted ${deleted} ${coll} doc(s) older than 30 days`);
       } catch (err) {
         logger.error(`Mail retention sweep failed for ${coll}`, err);
       }
@@ -203,7 +263,8 @@ export const gjallarhornWeeklyDigest = onSchedule(
 
     for (const [orgId, orgSettings] of settingsByOrg) {
       if (orgSettings?.weeklyDigestEnabled === false) continue;
-
+      // One org's failure must not cost the orgs after it their digest.
+      try {
       const sessions = await db()
         .collection('sessions')
         .where('orgId', '==', orgId)
@@ -211,12 +272,20 @@ export const gjallarhornWeeklyDigest = onSchedule(
         .where('start', '<=', horizon)
         .get();
 
+      // Archived academies are abandoned schedules whose sessions keep their
+      // old status; templates are sandboxes. Neither is real staffing.
+      const [templSnap, archSnap] = await Promise.all([
+        db().collection('academies').where('orgId', '==', orgId).where('isTemplate', '==', true).get(),
+        db().collection('academies').where('orgId', '==', orgId).where('status', '==', 'archived').get(),
+      ]);
+      const silentIds = new Set([...templSnap.docs, ...archSnap.docs].map((d) => d.id));
+
       // Calendar-visible instructional blocks only: drafts (unpublished classes
       // and templates' placeholder-dated sessions) and lunch blocks would
       // otherwise pad "Sessions scheduled" and list slots nobody can act on.
       const all = sessions.docs
         .map((d) => d.data() as SessionDoc)
-        .filter((s) => s.status !== 'cancelled' && s.status !== 'draft' && s.kind !== 'lunch');
+        .filter((s) => s.status !== 'cancelled' && s.status !== 'draft' && s.kind !== 'lunch' && !silentIds.has(s.academyId));
       if (all.length === 0) continue;
       const open = all.filter((s) => unfilled(s).length > 0);
       const staffed = all.filter((s) => unfilled(s).length === 0);
@@ -255,20 +324,22 @@ export const gjallarhornWeeklyDigest = onSchedule(
 
       // weekKey makes a double-invoked weekly run idempotent (one digest per week).
       const weekKey = new Date(now).toISOString().slice(0, 10);
-      await Promise.all(
-        staff.docs
-          .filter((d) => (d.data() as UserDoc).notificationPrefs?.digest !== false)
-          .map((d) =>
-            notify({
-              uid: d.id,
-              dedupeKey: `digest_${weekKey}_${d.id}`,
-              type: 'digest',
-              title: 'Weekly staffing digest',
-              body,
-              link: '/cadre/staffing',
-            })
-          )
+      await fanOut(
+        `weekly digest ${orgId}`,
+        staff.docs.filter((d) => (d.data() as UserDoc).notificationPrefs?.digest !== false),
+        (d) =>
+          notify({
+            uid: d.id,
+            dedupeKey: `digest_${weekKey}_${d.id}`,
+            type: 'digest',
+            title: 'Weekly staffing digest',
+            body,
+            link: '/cadre/staffing',
+          })
       );
+      } catch (err) {
+        logger.error(`weekly digest: org ${orgId} failed`, err);
+      }
     }
   }
 );

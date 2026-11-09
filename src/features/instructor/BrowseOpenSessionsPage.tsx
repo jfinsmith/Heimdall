@@ -6,6 +6,7 @@
  * carries the same sign-up/waitlist actions.
  */
 import React, { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import { orderBy, Timestamp, where } from 'firebase/firestore';
@@ -13,8 +14,8 @@ import { useCollection } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
 import { can } from '../../lib/rbac';
 import type { AcademyDoc, SessionDoc } from '../../types';
-import { SLOT_ROLE_LABELS, QUALIFICATION_LABELS, activeVerifiedQualKeys } from '../../types';
-import { Badge, Button, EmptyState, HighLiabilityBadge, PageHeader } from '../../components/ui';
+import { SLOT_ROLE_LABELS, QUALIFICATION_LABELS, activeVerifiedQualKeys, instructorCertActive, isInstructorQual } from '../../types';
+import { Badge, Button, EmptyState, HighLiabilityBadge, PageHeader, Spinner } from '../../components/ui';
 import { SessionDetailModal } from '../sessions/SessionDetailModal';
 import { academyColorFor } from '../../lib/academyColors';
 import { signUpForSlot, SignupError } from '../sessions/useSignup';
@@ -35,12 +36,16 @@ function dayHeading(k: string): string {
 }
 
 export function BrowseOpenSessionsPage() {
-  const { firebaseUser, profile, role, orgId } = useAuth();
+  const { firebaseUser, profile, role } = useAuth();
   const [detailId, setDetailId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busySlot, setBusySlot] = useState<string | null>(null);
+  // A failed quick sign-up is shown ON the card that was tapped — far down a
+  // phone's list, the banner at the top of the page is off-screen and the
+  // button simply appeared to do nothing.
+  const [slotError, setSlotError] = useState<{ sessionId: string; text: string } | null>(null);
 
-  const { data: sessions } = useCollection<SessionDoc>(
+  const { data: sessions, loading: sessionsLoading, error: sessionsError } = useCollection<SessionDoc>(
     'sessions',
     [where('status', '==', 'open'), where('start', '>=', Timestamp.now()), orderBy('start')],
     []
@@ -48,7 +53,7 @@ export function BrowseOpenSessionsPage() {
   // Non-staff may only read academies in these statuses, and the list-rule
   // analyzer must SEE the constraint in the query — an unconstrained list is
   // permission-denied outright for instructors/guests (empty academy dropdown).
-  const { data: academies } = useCollection<AcademyDoc>('academies', [
+  const { data: academies, loading: academiesLoading, error: academiesError } = useCollection<AcademyDoc>('academies', [
     where('status', 'in', ['published', 'in_progress', 'completed']),
   ]);
   const [academyFilter, setAcademyFilter] = useState('all');
@@ -73,7 +78,9 @@ export function BrowseOpenSessionsPage() {
     const m = new Map<string, { label: string; color?: string }>();
     // academyColorFor: assigned color, else a stable per-academy palette pick —
     // matches the master calendar so a cohort is the SAME color everywhere.
-    for (const a of academies) m.set(a.id, { label: a.shortName || a.name, color: academyColorFor(a) });
+    // Templates never take sign-ups (the query's status filter already drops
+    // drafts and archived classes).
+    for (const a of academies) if (!a.isTemplate) m.set(a.id, { label: a.shortName || a.name, color: academyColorFor(a) });
     return m;
   }, [academies]);
 
@@ -81,19 +88,19 @@ export function BrowseOpenSessionsPage() {
   // (Role Player never expires).
   const myQuals = useMemo(() => new Set(profile ? activeVerifiedQualKeys(profile) : []), [profile]);
 
-  /** Sessions with at least one open slot this user can fill. */
-  const matches = useMemo(
+  /**
+   * Sessions with at least one open slot this user can fill — before the
+   * page's own filters (academy / unavailable days), so the empty state can
+   * tell "nothing for you" apart from "your filters hid it".
+   */
+  const eligible = useMemo(
     () =>
       sessions
-        .filter((s) => {
-          if (academyFilter !== 'all' && s.academyId !== academyFilter) return false;
-          if (!showUnavailable) {
-            const d = s.start.toDate();
-            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-            if (blackout.has(key)) return false;
-          }
-          return true;
-        })
+        // Only sessions of a class this member can actually see. Archiving a
+        // class changes the ACADEMY's status but leaves its sessions 'open', so
+        // without this an archived class's sessions stayed listed here (labelled
+        // just "Academy") and could still be signed up for.
+        .filter((s) => academyMeta.has(s.academyId))
         // Already holding ANY slot in a session removes it from Browse — the
         // server enforces one-slot-per-session, so offering its other slots
         // would just be a Sign up button that always errors.
@@ -107,8 +114,25 @@ export function BrowseOpenSessionsPage() {
           ),
         }))
         .filter((m) => m.openSlots.length > 0),
-    [sessions, myQuals, firebaseUser?.uid, academyFilter, blackout, showUnavailable]
+    [sessions, academyMeta, myQuals, firebaseUser?.uid]
   );
+  const matches = useMemo(
+    () =>
+      eligible.filter(({ session: s }) => {
+        if (academyFilter !== 'all' && s.academyId !== academyFilter) return false;
+        if (!showUnavailable && blackout.has(dayKey(s.start.toDate()))) return false;
+        return true;
+      }),
+    [eligible, academyFilter, blackout, showUnavailable]
+  );
+
+  // Verified instructor quals that don't currently count because the single
+  // FDLE instructor-cert date is missing or past. Those slots are hidden above
+  // (the server would refuse them) — say why, since the member can fix it.
+  const certLapsed =
+    !!profile &&
+    !instructorCertActive(profile) &&
+    (profile.qualifications ?? []).some((q) => q.verified && isInstructorQual(q.key));
 
   // List view: group by day so days are visually distinct (matches are already
   // in start order, so groups come out chronological).
@@ -158,20 +182,22 @@ export function BrowseOpenSessionsPage() {
   async function quickSignup(sessionId: string, slotId: string) {
     if (!firebaseUser) return;
     setMessage(null);
+    setSlotError(null);
     setBusySlot(`${sessionId}:${slotId}`);
     try {
-      await signUpForSlot(firebaseUser.uid, sessionId, slotId, { orgId: orgId ?? undefined });
+      await signUpForSlot(firebaseUser.uid, sessionId, slotId);
       setMessage('Signed up — confirmation will arrive from Gjallarhorn.');
     } catch (err) {
-      // 'FULL' is the server's sentinel (someone took the last seat first) —
-      // the detail modal offers the waitlist; the quick button just explains.
-      setMessage(
-        err instanceof SignupError
-          ? err.message === 'FULL'
-            ? 'That slot just filled. Open the session to join its waitlist.'
-            : err.message
-          : 'Sign-up failed.'
-      );
+      // 'FULL' is the server's sentinel (someone took the last seat first).
+      // Open the detail modal, which offers the waitlist — the card itself
+      // drops off this list the moment the session has no open slot left, so
+      // "open the session" would otherwise have nothing to click.
+      if (err instanceof SignupError && err.message === 'FULL') {
+        setMessage('That slot just filled. You can join its waitlist from the session details.');
+        setDetailId(sessionId);
+      } else {
+        setSlotError({ sessionId, text: err instanceof SignupError ? err.message : 'Sign-up failed.' });
+      }
     } finally {
       setBusySlot(null);
     }
@@ -187,6 +213,7 @@ export function BrowseOpenSessionsPage() {
             <div className="inline-flex rounded-md border border-watch-200 p-0.5 text-sm">
               <button
                 type="button"
+                aria-pressed={view === 'calendar'}
                 className={view === 'calendar' ? 'rounded bg-watch-800 px-3 py-1 text-white' : 'rounded px-3 py-1 text-watch-700'}
                 onClick={() => pickView('calendar')}
               >
@@ -194,6 +221,7 @@ export function BrowseOpenSessionsPage() {
               </button>
               <button
                 type="button"
+                aria-pressed={view === 'list'}
                 className={view === 'list' ? 'rounded bg-watch-800 px-3 py-1 text-white' : 'rounded px-3 py-1 text-watch-700'}
                 onClick={() => pickView('list')}
               >
@@ -226,9 +254,28 @@ export function BrowseOpenSessionsPage() {
           </div>
         }
       />
-      {message && <div className="mb-4 rounded-md bg-watch-100 px-3 py-2 text-sm text-watch-800">{message}</div>}
+      {message && <div role="status" className="mb-4 rounded-md bg-watch-100 px-3 py-2 text-sm text-watch-800">{message}</div>}
+      {certLapsed && (
+        <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          Your FDLE instructor certification is expired or not on file, so slots that require an instructor
+          qualification are hidden. Update your certification year under{' '}
+          <Link to="/profile" className="font-medium underline">Profile &amp; Qualifications</Link> → Qualifications.
+        </div>
+      )}
 
-      {matches.length === 0 ? (
+      {sessionsLoading || academiesLoading ? (
+        <div className="flex justify-center py-16"><Spinner className="text-bifrost-400" /></div>
+      ) : sessionsError || academiesError ? (
+        <EmptyState
+          title="Couldn't load open sessions"
+          body="Check your connection and reload the page. If it keeps happening, use Report a Problem."
+        />
+      ) : matches.length === 0 && eligible.length > 0 ? (
+        <EmptyState
+          title="No open sessions match these filters"
+          body={`${eligible.length} open session${eligible.length === 1 ? ' is' : 's are'} hidden by the academy filter or your unavailable days.`}
+        />
+      ) : matches.length === 0 ? (
         <EmptyState
           title="No open sessions match your qualifications"
           body="Either everything is staffed, or you need a coordinator to verify additional qualifications on your profile."
@@ -242,6 +289,10 @@ export function BrowseOpenSessionsPage() {
           <FullCalendar
             plugins={[dayGridPlugin]}
             initialView="dayGridMonth"
+            // Open on the month of the earliest signable session (matches are in
+            // start order) — when everything open is next month, the current
+            // month rendered as an empty grid that read as "nothing available".
+            initialDate={matches[0].session.start.toDate()}
             events={calEvents}
             dayMaxEvents
             eventClick={(arg) => setDetailId(arg.event.id)}
@@ -296,7 +347,7 @@ export function BrowseOpenSessionsPage() {
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {openSlots.map((slot) => (
-                        <span key={slot.slotId} className="inline-flex items-center gap-2 rounded-md border border-watch-100 px-2 py-1.5">
+                        <span key={slot.slotId} className="inline-flex max-w-full flex-wrap items-center gap-2 rounded-md border border-watch-100 px-2 py-1.5">
                           <span className="text-sm text-watch-800">
                             {SLOT_ROLE_LABELS[slot.role]}
                             <span className="text-slate-400"> ({slot.count - slot.filledBy.length} open)</span>
@@ -307,15 +358,20 @@ export function BrowseOpenSessionsPage() {
                           {can.signUp(role) && (
                             <Button
                               variant="primary"
-                              disabled={busySlot === `${session.id}:${slot.slotId}`}
+                              // One sign-up at a time: a second tap (another slot of the
+                              // same session) would only earn an "already signed up" error.
+                              disabled={busySlot !== null}
                               onClick={() => quickSignup(session.id, slot.slotId)}
                             >
-                              Sign up
+                              {busySlot === `${session.id}:${slot.slotId}` ? 'Signing up…' : 'Sign up'}
                             </Button>
                           )}
                         </span>
                       ))}
                     </div>
+                    {slotError?.sessionId === session.id && (
+                      <p role="alert" className="mt-2 rounded-md bg-amber-50 px-3 py-1.5 text-sm text-amber-900">{slotError.text}</p>
+                    )}
                   </li>
                 ))}
               </ul>

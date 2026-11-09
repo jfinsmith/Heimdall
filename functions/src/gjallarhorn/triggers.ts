@@ -16,8 +16,11 @@ import {
 } from 'firebase-functions/v2/firestore';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';
+import { logger } from 'firebase-functions/v2';
 import {
+  academyIsSilent,
   escalateToCommand,
+  fanOut,
   getSettings,
   notify,
   notifyAdmins,
@@ -37,6 +40,16 @@ async function getSession(sessionId: string): Promise<SessionDoc | null> {
   const snap = await db().doc(`sessions/${sessionId}`).get();
   return snap.exists ? (snap.data() as SessionDoc) : null;
 }
+
+/**
+ * The day already happened. Sessions are never auto-closed, so a past session
+ * usually still reads 'open' / 'fully_staffed' — but its staffing is now the
+ * as-taught record: coordinator corrections to it (PastSessionModal, past-day
+ * edits, clean-up deletes) must not email "confirmed" / "removed" / "slot
+ * re-opened" for a date that is over, and must never auto-promote a waitlister
+ * into it. Mirrors the client's `concluded` gate and submitSignup's refusal.
+ */
+const hasConcluded = (s: SessionDoc): boolean => !!s.end && s.end.toMillis() <= Date.now();
 
 /**
  * Stamp a reservation offer as delivered. UPDATE, not merge-set: if the builder
@@ -66,6 +79,7 @@ async function promoteFromWaitlist(sessionId: string, slotId: string): Promise<b
     if (!sessionSnap.exists) return false;
     const session = sessionSnap.data() as SessionDoc;
     if (session.status !== 'open' && session.status !== 'fully_staffed') return false; // closed session
+    if (hasConcluded(session)) return false; // never credit someone with a day that is over
     const slot = session.roleSlots.find((s) => s.slotId === slotId);
     if (!slot || slot.filledBy.length >= slot.count) return false; // no room
 
@@ -149,7 +163,8 @@ export const onSignupWritten = onDocumentWritten('sessions/{sessionId}/signups/{
       (before.reservationState !== 'pending' || before.offerNotified === true);
     if (!told) return;
     const gone = await getSession(sessionId);
-    if (!gone || gone.status === 'cancelled') return;
+    if (!gone || gone.status === 'cancelled' || hasConcluded(gone)) return;
+    if (await academyIsSilent(gone.academyId)) return; // template / archived — never announced
     const goneSettings = await getSettings(gone.orgId);
     const when = gone.start.toDate().toLocaleDateString('en-US', { timeZone: 'America/New_York', dateStyle: 'medium' });
     const roleLabel = before!.role.replace('_', ' ');
@@ -175,6 +190,9 @@ export const onSignupWritten = onDocumentWritten('sessions/{sessionId}/signups/{
   }
   const session = await getSession(sessionId);
   if (!session) return;
+  // Template + archived academies never notify anyone (and an abandoned
+  // schedule's waitlist is not promoted either).
+  if (await academyIsSilent(session.academyId)) return;
   const settings = await getSettings(session.orgId);
 
   const becameConfirmed = after.status === 'confirmed' && before?.status !== 'confirmed';
@@ -191,7 +209,9 @@ export const onSignupWritten = onDocumentWritten('sessions/{sessionId}/signups/{
   // HELD and sent as one batched email per person when the course opens
   // (onCoursePublished); everything else (My Schedule mirror once open,
   // reminders) is unaffected.
-  const sessionLive = session.status === 'open' || session.status === 'fully_staffed';
+  // A CONCLUDED session is not live either (see hasConcluded): as-taught
+  // corrections are silent and never trigger waitlist promotion.
+  const sessionLive = (session.status === 'open' || session.status === 'fully_staffed') && !hasConcluded(session);
 
   // A coordinator RESERVATION is an offer, not a confirmation — the instructor
   // still has to accept it on My Schedule. Sending "Assignment confirmed" here
@@ -324,7 +344,11 @@ export const onSessionUpdated = onDocumentUpdated('sessions/{sessionId}', async 
     before.start.toMillis() !== after.start.toMillis() || before.end.toMillis() !== after.end.toMillis();
   const roomChanged = before.room !== after.room || before.location !== after.location;
   const cancelled = before.status !== 'cancelled' && after.status === 'cancelled';
-  if (!timeChanged && !roomChanged && !cancelled) return;
+  // A course swap in the same time + room is not a "schedule change" notice,
+  // but the mirrors carry courseName — without this My Schedule, the calendar
+  // feed and the reminder kept naming the OLD course.
+  const courseChanged = (before.courseName ?? '') !== (after.courseName ?? '');
+  if (!timeChanged && !roomChanged && !cancelled && !courseChanged) return;
 
   const signups = await db()
     .collection(`sessions/${sessionId}/signups`)
@@ -336,7 +360,13 @@ export const onSessionUpdated = onDocumentUpdated('sessions/{sessionId}', async 
   // gjallarhornChangeFlush once the session has sat untouched for the org's
   // quiet period, as ONE email describing the net change (editor + never-told
   // reservees excluded there). Mirrors below still sync immediately.
-  if (!unannounced) await enqueueScheduleChange(sessionId, before, after);
+  // Not for a record that was ALREADY cancelled: its people were told it is
+  // off, and dragging / editing the dead block (the builder still shows it)
+  // would announce it as "rescheduled".
+  const stillCancelled = before.status === 'cancelled' && after.status === 'cancelled';
+  if (!unannounced && !stillCancelled && (timeChanged || roomChanged || cancelled)) {
+    await enqueueScheduleChange(sessionId, before, after);
+  }
 
   await Promise.all(
     signups.docs.map(async (d) => {
@@ -417,7 +447,10 @@ export const onUserCreated = onDocumentCreated('users/{uid}', async (event) => {
       if (userRecord?.emailVerified && userRecord.email) {
         const matched = await findOrgIdByEmailDomain(userRecord.email);
         if (matched) {
-          await getAuth().setCustomUserClaims(uid, { ...(userRecord.customClaims ?? {}), orgId: matched });
+          // `status: 'pending'` rides with the tenant claim: rules' activeStatus()
+          // refuses it, so an auto-joined account reads nothing in the org until
+          // an admin approves it (setUserRole rebuilds the claims without it).
+          await getAuth().setCustomUserClaims(uid, { ...(userRecord.customClaims ?? {}), orgId: matched, status: 'pending' });
           await db().doc(`users/${uid}`).set({ orgId: matched, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
           orgId = matched;
         }
@@ -464,6 +497,21 @@ export const onUserUpdated = onDocumentUpdated('users/{uid}', async (event) => {
 
   // 6a) Account approved
   if (before.status === 'pending' && after.status === 'active') {
+    // Safety net for the 'pending' status claim (minted at join so rules keep an
+    // unapproved account out of the org). The approval flow clears it by calling
+    // setUserRole first; if any other path ever flips the doc to 'active', a
+    // lingering claim would lock an APPROVED member out of every read — so strip
+    // it here too. The client re-mints its token when it sees the mismatch.
+    try {
+      const rec = await getAuth().getUser(uid);
+      const claims = { ...(rec.customClaims ?? {}) } as Record<string, unknown>;
+      if (claims.status === 'pending') {
+        delete claims.status;
+        await getAuth().setCustomUserClaims(uid, claims);
+      }
+    } catch (e) {
+      console.error('onUserUpdated: could not clear the pending claim', e);
+    }
     await notify({
       uid,
       dedupeKey: `${event.id}_approved`,
@@ -476,7 +524,13 @@ export const onUserUpdated = onDocumentUpdated('users/{uid}', async (event) => {
 
   // 6b) Qualification newly verified
   const beforeVerified = new Set((before.qualifications ?? []).filter((q) => q.verified).map((q) => q.key));
-  const newlyVerified = (after.qualifications ?? []).filter((q) => q.verified && !beforeVerified.has(q.key));
+  // verifiedQualKeys is the staff-only authoritative list (what actually gates
+  // slots); the `verified` flag inside `qualifications` is self-editable
+  // display metadata, so on its own it must not produce "you can now fill…".
+  const authoritative = new Set<string>(after.verifiedQualKeys ?? []);
+  const newlyVerified = (after.qualifications ?? []).filter(
+    (q) => q.verified && !beforeVerified.has(q.key) && authoritative.has(q.key)
+  );
   for (const q of newlyVerified) {
     await notify({
       uid,
@@ -514,6 +568,9 @@ export const onCoursePublished = onDocumentCreated('coursePublishEvents/{id}', a
     const s = d.data() as SessionDoc;
     if ((s.title || s.courseName) !== courseLabel) continue;
     if (s.status !== 'open' && s.status !== 'fully_staffed') continue;
+    // Days already taught stay 'open' forever — they must not set "starting
+    // <date>" or pull in people who only qualify for slots that are over.
+    if (hasConcluded(s)) continue;
     if (!earliest || s.start.toMillis() < earliest.toMillis()) earliest = s.start;
     for (const slot of s.roleSlots) {
       if (slot.filledBy.length >= slot.count) continue;
@@ -533,7 +590,8 @@ export const onCoursePublished = onDocumentCreated('coursePublishEvents/{id}', a
   if (!academy.exists || !academyOrgId || (eventOrgId && eventOrgId !== academyOrgId)) return;
   // Templates never publish or open sign-ups (UI-enforced) — server backstop so
   // an event aimed at one can't blast the roster about placeholder sessions.
-  if (academy.data()!.isTemplate === true) return;
+  // Archived = abandoned schedule; same rule.
+  if (academy.data()!.isTemplate === true || academy.data()!.status === 'archived') return;
   // Base curriculum key (org-namespaced ids are '{orgId}__{key}') — recipients who
   // muted this discipline in their profile are skipped by notify().
   const disciplineId = academy.exists ? ((academy.data()!.discipline as string | undefined) ?? '') : '';
@@ -579,18 +637,19 @@ export const onCoursePublished = onDocumentCreated('coursePublishEvents/{id}', a
   const firstDay = earliest
     ? earliest.toDate().toLocaleDateString('en-US', { timeZone: 'America/New_York', dateStyle: 'medium' })
     : '';
-  await Promise.all(
-    recipientIds.map((uid) =>
-      notify({
-        uid,
-        dedupeKey: `${event.id}_${uid}`,
-        ...(curriculumKey ? { curriculumKey } : {}),
-        type: 'course_published',
-        title: `Sign-ups open: ${academyLabel} ${courseLabel}`,
-        body: `${courseLabel} (${sessionCount} session${sessionCount === 1 ? '' : 's'}${firstDay ? `, starting ${firstDay}` : ''}) is now open for instructor sign-up in ${academyLabel}.`,
-        link: '/open-sessions',
-      })
-    )
+  // Chunked + failure-tolerant: one recipient's error must not drop the rest
+  // of the roster — or the HELD reservation offers below, which nothing else
+  // would ever send.
+  await fanOut(`onCoursePublished ${event.params.id} blast`, recipientIds, (uid) =>
+    notify({
+      uid,
+      dedupeKey: `${event.id}_${uid}`,
+      ...(curriculumKey ? { curriculumKey } : {}),
+      type: 'course_published',
+      title: `Sign-ups open: ${academyLabel} ${courseLabel}`,
+      body: `${courseLabel} (${sessionCount} session${sessionCount === 1 ? '' : 's'}${firstDay ? `, starting ${firstDay}` : ''}) is now open for instructor sign-up in ${academyLabel}.`,
+      link: '/open-sessions',
+    })
   );
 
   // HELD reservation offers: reservations made in the builder BEFORE the
@@ -603,7 +662,8 @@ export const onCoursePublished = onDocumentCreated('coursePublishEvents/{id}', a
     .filter(
       (x) =>
         (x.s.title || x.s.courseName) === courseLabel &&
-        (x.s.status === 'open' || x.s.status === 'fully_staffed')
+        (x.s.status === 'open' || x.s.status === 'fully_staffed') &&
+        !hasConcluded(x.s)
     );
   const held = new Map<string, { displayName: string; role: string; sessionId: string; s: SessionDoc }[]>();
   for (const { id, s } of liveCourse) {
@@ -619,8 +679,10 @@ export const onCoursePublished = onDocumentCreated('coursePublishEvents/{id}', a
     const settings = await getSettings(academyOrgId);
     const fmtDT = (t: FirebaseFirestore.Timestamp) =>
       t.toDate().toLocaleString('en-US', { timeZone: 'America/New_York', dateStyle: 'medium', timeStyle: 'short' });
-    await Promise.all(
-      [...held.entries()].map(async ([uid, items]) => {
+    await fanOut(
+      `onCoursePublished ${event.params.id} held offers`,
+      [...held.entries()],
+      async ([uid, items]) => {
         items.sort((a, b) => a.s.start.toMillis() - b.s.start.toMillis());
         const n = items.length;
         const plural = n === 1 ? '' : 's';
@@ -650,7 +712,7 @@ export const onCoursePublished = onDocumentCreated('coursePublishEvents/{id}', a
           }),
         });
         await Promise.all(items.map((i) => markOfferNotified(i.sessionId, uid)));
-      })
+      }
     );
   }
 });
@@ -683,6 +745,12 @@ export const onFeedbackCreated = onDocumentCreated('feedbackReports/{id}', async
 export const onBulkMessageCreated = onDocumentCreated('bulkMessages/{id}', async (event) => {
   const data = event.data?.data();
   if (!data || data.status !== 'pending') return;
+  // Tenant scope is mandatory (the create rule pins it): without an orgId the
+  // audience query below would be EVERY org's instructors.
+  if (typeof data.orgId !== 'string' || !data.orgId) {
+    logger.error(`bulkMessages/${event.params.id}: no orgId — refusing an unscoped broadcast`);
+    return;
+  }
 
   // Claim the message transactionally so an at-least-once retry can't re-fan-out
   // or duplicate the audit entry (the event snapshot stays 'pending' on retry).
@@ -696,37 +764,37 @@ export const onBulkMessageCreated = onDocumentCreated('bulkMessages/{id}', async
 
   // Audience: instructors with upcoming confirmed assignments (optionally per
   // academy). Scoped to the sender's org so an "all academies" blast never
-  // reaches another tenant's instructors (dormant until orgId is backfilled).
-  // An unanswered reservation isn't a confirmed assignment (same rule as the
-  // reminder sweep), and the sender never receives their own message.
-  let q = db().collection('assignments').where('status', '==', 'confirmed') as FirebaseFirestore.Query;
-  if (data.orgId) q = q.where('orgId', '==', data.orgId);
+  // reaches another tenant's instructors. An unanswered reservation isn't a
+  // confirmed assignment (same rule as the reminder sweep), and the sender
+  // never receives their own message.
+  let q = db().collection('assignments').where('status', '==', 'confirmed').where('orgId', '==', data.orgId) as FirebaseFirestore.Query;
   if (data.academyId) q = q.where('academyId', '==', data.academyId);
   const snap = await q.get();
   const uids = [
     ...new Set(
       snap.docs
-        .map((d) => d.data() as AssignmentDoc & { reservationState?: string })
-        .filter((a) => a.end.toMillis() > Date.now() && a.reservationState !== 'pending')
+        .map((d) => d.data() as AssignmentDoc)
+        .filter((a) => (a.end?.toMillis?.() ?? 0) > Date.now() && a.reservationState !== 'pending')
         .map((a) => a.uid)
-        .filter((u) => u !== data.requestedBy)
+        .filter((u) => !!u && u !== data.requestedBy)
     ),
   ];
 
-  await Promise.all(
-    uids.map((uid) =>
-      notify({
-        uid,
-        dedupeKey: `${event.id}_${uid}`,
-        type: 'message',
-        title: data.subject as string,
-        body: data.body as string,
-        link: '/my-schedule',
-      })
-    )
+  // Failure-tolerant: the message is already claimed ('sending') and this
+  // trigger does not retry, so one recipient's error must not strand everyone
+  // after them — or leave the doc in 'sending' forever.
+  const failed = await fanOut(`bulkMessages/${event.params.id}`, uids, (uid) =>
+    notify({
+      uid,
+      dedupeKey: `${event.id}_${uid}`,
+      type: 'message',
+      title: data.subject as string,
+      body: data.body as string,
+      link: '/my-schedule',
+    })
   );
 
-  await event.data!.ref.update({ status: 'sent', recipientCount: uids.length, sentAt: FieldValue.serverTimestamp() });
+  await event.data!.ref.update({ status: 'sent', recipientCount: uids.length - failed, sentAt: FieldValue.serverTimestamp() });
 
   await db().collection('auditLog').add({
     actorUid: data.requestedBy ?? 'system',
@@ -735,7 +803,7 @@ export const onBulkMessageCreated = onDocumentCreated('bulkMessages/{id}', async
     targetId: event.params.id,
     // Tenant stamp — org-less audit rows fail inOrg and hide from org admins.
     ...(data.orgId ? { orgId: data.orgId } : {}),
-    summary: `Bulk message "${data.subject}" sent to ${uids.length} instructors`,
+    summary: `Bulk message "${data.subject}" sent to ${uids.length - failed} instructors`,
     createdAt: FieldValue.serverTimestamp(),
   });
 });

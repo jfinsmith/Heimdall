@@ -188,10 +188,18 @@ export const HOLIDAY_PAY_HOURS = 8.5;
 export function observedHolidayDatesInRange(start: Date, end: Date, observed: Set<string>): Date[] {
   const out: Date[] = [];
   if (observed.size === 0) return out;
+  // One credit per calendar day: a winter-break weekday can coincide with an
+  // observed PSO holiday (Christmas observed Thu Dec 23 2027), and an org that
+  // marks BOTH as paid must not be credited two days' pay for the one day off.
+  const seen = new Set<string>();
   for (let y = start.getFullYear() - 1; y <= end.getFullYear() + 1; y++) {
     for (const h of resolveYear(y)) {
       if (!observed.has(h.key)) continue;
-      if (h.date >= start && h.date < end) out.push(h.date);
+      if (h.date < start || h.date >= end) continue;
+      const day = h.date.toDateString();
+      if (seen.has(day)) continue;
+      seen.add(day);
+      out.push(h.date);
     }
   }
   return out;

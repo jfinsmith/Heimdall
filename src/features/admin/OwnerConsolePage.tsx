@@ -9,11 +9,12 @@
  * Every cross-org read/write goes through platformOwner-gated callables — the
  * owner's own token only sees their own org through the normal app.
  */
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../lib/firebase';
 import type { Role } from '../../types';
 import { RANKS } from '../../lib/rbac';
+import { friendlyError } from '../../lib/callableError';
 import { Badge, Button, Field, Input, PageHeader, Select, Spinner } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 
@@ -57,20 +58,26 @@ export function OwnerConsolePage() {
     setError(null);
     listOwnerQueue()
       .then((r) => { setQueue(r.data.queue); setOrgs(r.data.orgs); })
-      .catch((e) => setError((e as Error).message || 'Could not load the owner console.'))
+      .catch((e) => setError(friendlyError(e, 'Could not load the owner console.')))
       .finally(() => setLoading(false));
   }, []);
   useEffect(() => { load(); }, [load]);
 
+  // Only the LATEST detail request may land. Without this, opening org A, going
+  // back, and opening org B could finish out of order and paint A's detail while
+  // B is selected — and the Suspend / Complimentary buttons act on the SELECTED
+  // id, so they would hit an org other than the one on screen.
+  const detailReq = useRef(0);
   const openOrg = useCallback((orgId: string) => {
+    const req = ++detailReq.current;
     setSelectedOrgId(orgId);
     setDetail(null);
     setDetailLoading(true);
     setError(null);
     getOrgDetail({ orgId })
-      .then((r) => setDetail(r.data))
-      .catch((e) => setError((e as Error).message || 'Could not load that organization.'))
-      .finally(() => setDetailLoading(false));
+      .then((r) => { if (detailReq.current === req) setDetail(r.data); })
+      .catch((e) => { if (detailReq.current === req) setError(friendlyError(e, 'Could not load that organization.')); })
+      .finally(() => { if (detailReq.current === req) setDetailLoading(false); });
   }, []);
 
   async function assign(uid: string, orgId: string) {
@@ -78,7 +85,7 @@ export function OwnerConsolePage() {
     setBusy(uid);
     setError(null);
     try { await assignUserToOrg({ uid, orgId }); load(); }
-    catch (e) { setError((e as Error).message || 'Could not assign the account.'); }
+    catch (e) { setError(friendlyError(e, 'Could not assign the account.')); }
     finally { setBusy(null); }
   }
 
@@ -87,7 +94,7 @@ export function OwnerConsolePage() {
     setBusy(uid);
     setError(null);
     try { await deleteUnassignedAccount({ uid }); load(); }
-    catch (e) { setError((e as Error).message || 'Could not delete the account.'); }
+    catch (e) { setError(friendlyError(e, 'Could not delete the account.')); }
     finally { setBusy(null); }
   }
 
@@ -110,18 +117,18 @@ export function OwnerConsolePage() {
           detail={detail}
           loading={detailLoading}
           busy={busy === selectedOrgId}
-          onBack={() => { setSelectedOrgId(null); setDetail(null); }}
+          onBack={() => { detailReq.current++; setSelectedOrgId(null); setDetail(null); setDetailLoading(false); }}
           onAddAdmin={() => setAddAdminOrg(selectedOrgId)}
           onToggleComplimentary={async (complimentary) => {
             setBusy(selectedOrgId);
             try { await setOrgComplimentaryFn({ orgId: selectedOrgId, complimentary }); openOrg(selectedOrgId); load(); }
-            catch (e) { setError((e as Error).message || 'Failed to update complimentary status.'); }
+            catch (e) { setError(friendlyError(e, 'Failed to update complimentary status.')); }
             finally { setBusy(null); }
           }}
           onSetSuspension={async (suspended, reason) => {
             setBusy(selectedOrgId);
             try { await setOrgSuspensionFn({ orgId: selectedOrgId, suspended, reason }); openOrg(selectedOrgId); load(); }
-            catch (e) { setError((e as Error).message || 'Failed to update suspension.'); }
+            catch (e) { setError(friendlyError(e, 'Failed to update suspension.')); }
             finally { setBusy(null); }
           }}
         />
@@ -144,7 +151,7 @@ export function OwnerConsolePage() {
                       <span className="font-medium text-watch-900">{o.legalName}</span>
                       <span className="flex items-center gap-3 text-slate-500">
                         {o.userCount} member{o.userCount === 1 ? '' : 's'} · {o.orgId}
-                        <i className="ti ti-chevron-right" aria-hidden="true" />
+                        <span aria-hidden="true">›</span>
                       </span>
                     </button>
                   </li>
@@ -185,7 +192,9 @@ export function OwnerConsolePage() {
       {addAdminOrg && (
         <AddAdminModal
           orgId={addAdminOrg}
-          orgLabel={detail?.org.legalName ?? orgs.find((o) => o.orgId === addAdminOrg)?.legalName ?? addAdminOrg}
+          // Match by id: `detail` is whichever org is open, which is NOT the
+          // target right after "+ New organization" is used from a detail view.
+          orgLabel={(detail?.org.orgId === addAdminOrg ? detail.org.legalName : undefined) ?? orgs.find((o) => o.orgId === addAdminOrg)?.legalName ?? addAdminOrg}
           onClose={() => setAddAdminOrg(null)}
           onDone={() => { setAddAdminOrg(null); if (selectedOrgId) openOrg(selectedOrgId); load(); }}
         />
@@ -230,7 +239,7 @@ function OrgDetailPanel({ detail, loading, busy, onBack, onAddAdmin, onToggleCom
   return (
     <div>
       <button onClick={onBack} className="mb-3 inline-flex items-center gap-1 text-sm text-bifrost-700 hover:underline">
-        <i className="ti ti-arrow-left" aria-hidden="true" /> All organizations
+        <span aria-hidden="true">←</span> All organizations
       </button>
       {loading || !detail ? (
         <div className="py-10 text-center"><Spinner className="text-bifrost-400" /></div>
@@ -350,7 +359,7 @@ function NewOrgModal({ onClose, onDone }: { onClose: () => void; onDone: (orgId:
       });
       onDone(r.data.orgId);
     } catch (e) {
-      setError((e as Error).message || 'Could not create the organization.');
+      setError(friendlyError(e, 'Could not create the organization.'));
       setBusy(false);
     }
   }
@@ -403,7 +412,7 @@ function AddAdminModal({ orgId, orgLabel, onClose, onDone }: {
       const r = await createOrgAdmin({ orgId, email: email.trim(), displayName: displayName.trim(), role });
       setCreated({ email: email.trim(), tempPassword: r.data.tempPassword });
     } catch (e) {
-      setError((e as Error).message || 'Could not create the administrator.');
+      setError(friendlyError(e, 'Could not create the administrator.'));
       setBusy(false);
     }
   }

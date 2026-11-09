@@ -7,9 +7,8 @@
  *
  * Block kinds:
  *  - 'paragraph' — normal prose composed of spans (literal text + fill-in fields).
- *                  Editable in the document builder (Phase 12).
- *  - 'clause'    — LOCKED liability/statutory text rendered verbatim. The legal
- *                  text of record; the builder must not let it be edited.
+ *  - 'clause'    — LOCKED liability/statutory text rendered verbatim: the legal
+ *                  text of record.
  *  - 'jsx'       — a render escape hatch for legacy/rich bodies (the existing
  *                  academic letters keep their verbatim legal text as code here,
  *                  so migrating them onto the engine changes nothing they print).
@@ -17,7 +16,7 @@
 import React from 'react';
 
 /** A span within a paragraph/clause: literal text, or an underlined fill-in field. */
-export type MemoSpan = string | { field: string; transform?: 'code' };
+export type MemoSpan = string | { field: string };
 
 export interface MemoBlock {
   kind: 'paragraph' | 'clause' | 'jsx' | 'ratings' | 'notesPage';
@@ -32,6 +31,26 @@ export interface MemoBlock {
   /** For notesPage: how many ruled writing lines (default 26). Starts on a
    *  fresh printed page (break-before). */
   lines?: number;
+}
+
+/**
+ * Resolve `{token}` placeholders in a template against `ctx`. An unknown or
+ * blank token becomes '' — never the literal "{token}". Single pass: text that
+ * a token inserts is NOT re-scanned, so a template that embeds another template
+ * (the Re: line inside a header row) must be resolved first by the caller.
+ */
+export function resolveTokens(tpl: string, ctx: Record<string, string>): string {
+  return tpl.replace(/\{(\w+)\}/g, (_, k: string) => ctx[k] ?? '');
+}
+
+/**
+ * resolveTokens for a ONE-LINE slot (header row, signature line, distribution
+ * entry): also trims the orphan comma/space a blank token leaves at either end,
+ * so "{directorName}, Academy Director" with no director on file reads
+ * "Academy Director" rather than ", Academy Director".
+ */
+export function resolveLine(tpl: string, ctx: Record<string, string>): string {
+  return resolveTokens(tpl, ctx).replace(/^[\s,]+|[\s,]+$/g, '');
 }
 
 export interface MemoHeaderField {

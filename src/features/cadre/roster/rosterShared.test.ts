@@ -5,8 +5,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import { Timestamp } from 'firebase/firestore';
-import type { CurriculumCourse, GradeCell, RosterMemberDoc, ViolationEntry } from '../../../types';
-import { disciplineTally, effectiveScore, courseResult, memberStanding, courseKey, lastFirst, rosterCompare } from './rosterShared';
+import type { CurriculumCourse, RosterMemberDoc, ViolationEntry } from '../../../types';
+import { agencyOptions, defaultAgency, disciplineTally, effectiveScore, courseResult, memberStanding, courseKey, lastFirst, rosterCompare } from './rosterShared';
 
 const ts = (y = 2026, m = 5, d = 1) => Timestamp.fromDate(new Date(y, m - 1, d, 12));
 
@@ -46,6 +46,20 @@ describe('lastFirst + rosterCompare (roster ordering)', () => {
       .sort(rosterCompare)
       .map((m) => m.fullName);
     expect(sorted).toEqual(['Zoe Abbott', 'Aaron Zimmer', 'Al Adams', 'Bob Miller']);
+  });
+});
+
+describe('defaultAgency (new-member agency)', () => {
+  it('stays PSO on the legacy built-in list and on a managed list that includes it', () => {
+    expect(defaultAgency(agencyOptions(null))).toBe('PSO');
+    expect(defaultAgency(agencyOptions({ agencies: ['HCSO', 'PSO'] }))).toBe('PSO');
+  });
+  it('an org without PSO starts on its own first agency — no phantom PSO option', () => {
+    const opts = agencyOptions({ agencies: ['HCSO', 'TPD'] });
+    const start = defaultAgency(opts);
+    expect(start).toBe('HCSO');
+    // …and the picker built around that starting value offers only the org's own list.
+    expect(agencyOptions({ agencies: ['HCSO', 'TPD'] }, start).map((o) => o.key)).toEqual(['HCSO', 'TPD', 'Other']);
   });
 });
 

@@ -8,7 +8,8 @@
  *                      day blocks, rooms, lead instructor names. PSO/internal
  *                      pay blocks are excluded, exactly like the cadet printout.
  *   tier 'academic'  — gate: the coordinator-set password (stored only as a
- *                      SHA-256 hash on the academy doc). Adds the roster's
+ *                      SHA-256 hash in the staff-only academies/{id}/private/
+ *                      portal doc, never the academy doc). Adds the roster's
  *                      grades + violations and the tested-course list so the
  *                      client renders the read-only gradebook. Discipline
  *                      output includes ONLY cadets who have entries.
@@ -18,10 +19,17 @@
  */
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
-import { createHash } from 'crypto';
+import { createHash, timingSafeEqual } from 'crypto';
 import type { AcademyDoc, UserDoc } from '../types';
 
 const PSO_BLOCK = 'PSO Assignment'; // internal pay-filler — never public
+
+/** Constant-time string equality (both sides hashed first, so length never leaks or throws). */
+function safeEqual(a: string, b: string): boolean {
+  const ha = createHash('sha256').update(a, 'utf8').digest();
+  const hb = createHash('sha256').update(b, 'utf8').digest();
+  return timingSafeEqual(ha, hb);
+}
 
 type PortalRequest = {
   academyId: string;
@@ -35,26 +43,34 @@ type PortalRequest = {
 export const getPublicClassPortal = onCall<PortalRequest>(async (request) => {
   const db = getFirestore();
   const { academyId, token, code, tier, academicPassword } = request.data ?? ({} as PortalRequest);
-  if (!academyId || !token) throw new HttpsError('invalid-argument', 'This class link is not valid.');
+  // Unauthenticated input: both must be plain strings, and the id must be an id
+  // — a '/' would turn the lookups below into arbitrary subcollection paths.
+  if (
+    typeof academyId !== 'string' || typeof token !== 'string' ||
+    !academyId || !token || academyId.length > 128 || token.length > 256 || academyId.includes('/')
+  ) {
+    throw new HttpsError('invalid-argument', 'This class link is not valid.');
+  }
 
   const snap = await db.doc(`academies/${academyId}`).get();
-  if (!snap.exists) throw new HttpsError('not-found', 'This class link is not available.');
+  // Same code + message as a wrong token, so the answer doesn't reveal whether
+  // an academy id exists.
+  if (!snap.exists) throw new HttpsError('permission-denied', 'This class link is not available.');
   const a = snap.data() as AcademyDoc;
   // Portal secrets live in a STAFF-ONLY subdoc (academies/{id}/private/portal):
   // the parent academy doc is readable by every org member once published, so
   // keeping the token + password hash there handed instructors the material
-  // for an offline crack of the grades gate. Legacy links created before the
-  // move still resolve from the academy doc until the coordinator next saves.
+  // for an offline crack of the grades gate.
   const privRef = db.doc(`academies/${academyId}/private/portal`);
   const privSnap = await privRef.get();
   type PortalCfg = NonNullable<AcademyDoc['portal']> & { acadFails?: number; acadFailsAt?: Timestamp };
   const priv = privSnap.exists ? (privSnap.data() as Partial<PortalCfg>) : null;
-  // The private doc is authoritative only once it actually holds the link
-  // config. A failed academic attempt on a LEGACY link writes the fail counters
-  // there first (below), and that counters-only doc must not shadow the legacy
-  // academy.portal config — it turned one wrong password into a dead link.
-  const portal: PortalCfg | null = priv?.token ? (priv as PortalCfg) : (a.portal as PortalCfg | undefined) ?? null;
-  if (!portal?.enabled || portal.token !== token || a.isTemplate) {
+  // The private doc counts only once it actually holds the link config (a
+  // doc with nothing but fail counters is not a link). The old fallback to a config stored ON the academy doc is gone: that copy
+  // (token + password hash) was readable by every org member, and a Nov 2026
+  // data check found no academy still carrying one.
+  const portal: PortalCfg | null = priv?.token ? (priv as PortalCfg) : null;
+  if (!portal?.enabled || typeof portal.token !== 'string' || !safeEqual(portal.token, token) || a.isTemplate) {
     throw new HttpsError('permission-denied', 'This class link is not available.');
   }
 
@@ -69,7 +85,7 @@ export const getPublicClassPortal = onCall<PortalRequest>(async (request) => {
   // Tier 1: the digits of the class designation ("LE 132" → "132").
   const expected = (a.shortName ?? '').replace(/\D+/g, '');
   if (!expected) throw new HttpsError('failed-precondition', 'This class link is not available.');
-  if (((code ?? '') as string).replace(/\D+/g, '') !== expected) {
+  if ((typeof code === 'string' ? code : '').replace(/\D+/g, '') !== expected) {
     throw new HttpsError('permission-denied', 'Incorrect access code.');
   }
 
@@ -77,18 +93,26 @@ export const getPublicClassPortal = onCall<PortalRequest>(async (request) => {
     if (!portal.academicHash) {
       throw new HttpsError('failed-precondition', 'Academic information is not enabled for this class.');
     }
+    const supplied = typeof academicPassword === 'string' ? academicPassword : '';
+    const matches = safeEqual(createHash('sha256').update(supplied, 'utf8').digest('hex'), portal.academicHash);
     // Online brute-force guard: 30 bad passwords per rolling hour, per class.
-    // Counters always live on the private doc (even for legacy links).
+    // Counters always live on the private doc (even for legacy links). The cap
+    // check and the count run in ONE transaction: as a separate read and write,
+    // a burst of parallel guesses all read the same low count, were all let
+    // through, and each wrote back "1" — the cap never engaged.
     const HOUR = 3600_000;
-    const fails = priv?.acadFails ?? 0;
-    const failsAtMs = priv?.acadFailsAt?.toMillis?.() ?? 0;
-    const inWindow = Date.now() - failsAtMs < HOUR;
-    if (inWindow && fails >= 30) {
-      throw new HttpsError('resource-exhausted', 'Too many incorrect attempts — try again later.');
-    }
-    const hash = createHash('sha256').update(academicPassword ?? '', 'utf8').digest('hex');
-    if (hash !== portal.academicHash) {
-      await privRef.set(
+    const verdict = await db.runTransaction(async (tx) => {
+      const cur = (await tx.get(privRef)).data() as Partial<PortalCfg> | undefined;
+      const fails = cur?.acadFails ?? 0;
+      const failsAtMs = cur?.acadFailsAt?.toMillis?.() ?? 0;
+      const inWindow = Date.now() - failsAtMs < HOUR;
+      if (inWindow && fails >= 30) return 'locked' as const;
+      if (matches) {
+        if (fails > 0) tx.set(privRef, { acadFails: 0 }, { merge: true });
+        return 'ok' as const;
+      }
+      tx.set(
+        privRef,
         {
           ...(a.orgId ? { orgId: a.orgId } : {}),
           acadFails: inWindow ? fails + 1 : 1,
@@ -96,9 +120,12 @@ export const getPublicClassPortal = onCall<PortalRequest>(async (request) => {
         },
         { merge: true }
       );
-      throw new HttpsError('permission-denied', 'Incorrect academic password.');
+      return 'bad' as const;
+    });
+    if (verdict === 'locked') {
+      throw new HttpsError('resource-exhausted', 'Too many incorrect attempts — try again later.');
     }
-    if (fails > 0) await privRef.set({ acadFails: 0 }, { merge: true }).catch(() => {});
+    if (verdict === 'bad') throw new HttpsError('permission-denied', 'Incorrect academic password.');
 
     const rosterSnap = await db.collection(`academies/${academyId}/roster`).get();
     const members = rosterSnap.docs.map((d) => {

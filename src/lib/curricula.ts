@@ -10,7 +10,7 @@ import type { CurriculumDoc } from '../types';
 
 /**
  * The five platform FDLE programs (owner-managed in `defaultCurricula`, read-only
- * across every org). MUST match the keys in features/admin/fdleCurricula.ts.
+ * across every org). MUST match the keys in scripts/data/fdleCurricula.ts.
  */
 export const PLATFORM_CURRICULUM_KEYS = ['le_brt', 'co_brt', 'co_to_le', 'le_to_co', 'eot'] as const;
 const PLATFORM_SET = new Set<string>(PLATFORM_CURRICULUM_KEYS);

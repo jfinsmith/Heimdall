@@ -42,7 +42,7 @@ export const saveRoomReservation = onCall<{
   const notes = (request.data.notes ?? '').trim();
   const { startMs, endMs } = request.data;
   if (!roomId || !title) throw new HttpsError('invalid-argument', 'Room and title are required.');
-  if (!(typeof startMs === 'number' && typeof endMs === 'number' && endMs > startMs)) {
+  if (!(Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs)) {
     throw new HttpsError('invalid-argument', 'End time must be after the start time.');
   }
 

@@ -16,11 +16,12 @@ import { ROSTER_AGENCIES } from '../../../types';
 import { useGlobalSettings } from '../../../app/providers';
 import { Badge, Button, Field, Input, PageHeader, Select, Spinner } from '../../../components/ui';
 import { Modal } from '../../../components/Modal';
-import { agencyLabel, agencyOptions, courseKey, lastFirst, memberStanding, rosterCompare } from './rosterShared';
+import { agencyLabel, agencyOptions, courseKey, defaultAgency, lastFirst, memberStanding, rosterCompare } from './rosterShared';
 import { buildCadetRecords } from './exportRecords';
 import { downloadCsv } from '../../../lib/csv';
 import { BulkImportModal, type ImportColumn } from '../../../components/BulkImportModal';
 import { AttendanceTab } from './AttendanceTab';
+import { localDateStr } from './attendanceRoster';
 import { AttendanceLogTab } from './AttendanceLogTab';
 import { DisciplineTab } from './DisciplineTab';
 import { GradesTab } from './GradesTab';
@@ -72,11 +73,14 @@ export function RosterPage() {
     snap.forEach((d) => {
       const entries = (d.data() as { entries?: Record<string, { hours?: number }> }).entries ?? {};
       for (const [cid, e] of Object.entries(entries)) {
-        if (e?.hours) attendedHours.set(cid, (attendedHours.get(cid) ?? 0) + e.hours);
+        const h = Number(e?.hours) || 0;
+        // Rounded as it accrues so the CSV never shows binary-float dust (7.300000000000001).
+        if (h) attendedHours.set(cid, Math.round(((attendedHours.get(cid) ?? 0) + h) * 100) / 100);
       }
     });
     const { headers, rows } = buildCadetRecords(members, curriculum?.courses ?? [], attendedHours);
-    const stamp = new Date().toISOString().slice(0, 10);
+    // LOCAL date — toISOString() is UTC, so an evening export was stamped tomorrow.
+    const stamp = localDateStr(new Date());
     downloadCsv(`${academy?.shortName || academy?.name || 'academy'}-records-${stamp}`, headers, rows);
   }
 
@@ -155,7 +159,7 @@ export function RosterPage() {
         </div>
       </div>
 
-      {activeTab === 'members' && <MembersTab academyId={academyId} academy={academy} members={members} curriculum={curriculum} />}
+      {activeTab === 'members' && <MembersTab academyId={academyId} members={members} curriculum={curriculum} />}
       {activeModule?.attendanceFormat && <AttendanceTab academy={academy} members={members} curriculum={curriculum} />}
       {activeTab === 'attendance_log' && <AttendanceLogTab academyId={academyId} members={members} />}
       {activeTab === 'discipline' && <DisciplineTab academyId={academyId} members={members} onGenerateLetter={generateLetter} />}
@@ -202,7 +206,9 @@ function toCadetMember(r: Record<string, string>, known: { key: string; label: s
   const match = known.find((a) => a.key.toLowerCase() === raw.toLowerCase() || a.label.toLowerCase() === raw.toLowerCase());
   return {
     fullName: r.fullName.trim(),
-    agency: match?.key ?? (raw ? 'Other' : 'PSO'),
+    // Blank agency: PSO only where PSO is one of this org's agencies — never a
+    // made-up agency for an org that doesn't have it.
+    agency: match?.key ?? (raw || !known.some((a) => a.key === 'PSO') ? 'Other' : 'PSO'),
     ...(match || !raw ? {} : { agencyOther: raw }),
     ...(r.cjis ? { cjis: r.cjis } : {}),
     ...(r.studentId ? { studentId: r.studentId } : {}),
@@ -214,12 +220,10 @@ function toCadetMember(r: Record<string, string>, known: { key: string; label: s
 
 function MembersTab({
   academyId,
-  academy,
   members,
   curriculum,
 }: {
   academyId: string;
-  academy: WithId<AcademyDoc>;
   members: WithId<RosterMemberDoc>[];
   curriculum: WithId<CurriculumDoc> | null;
 }) {
@@ -230,32 +234,45 @@ function MembersTab({
   const [editTarget, setEditTarget] = useState<WithId<RosterMemberDoc> | null>(null);
   const [emergencyTarget, setEmergencyTarget] = useState<WithId<RosterMemberDoc> | null>(null);
 
+  /** Run a status write and SAY SO when it fails — these row actions have no
+   *  dialog of their own, so a rejected write used to vanish without a trace. */
+  async function attempt(write: Promise<unknown>, failMsg: string) {
+    try {
+      await write;
+    } catch (err) {
+      window.alert(friendlyError(err, failMsg));
+    }
+  }
+
   async function remove(m: WithId<RosterMemberDoc>) {
     if (!window.confirm(`Remove ${m.fullName} from the roster entirely? To keep a record, withdraw them instead.`)) return;
-    await deleteDoc(doc(db, 'academies', academyId, 'roster', m.id));
+    await attempt(deleteDoc(doc(db, 'academies', academyId, 'roster', m.id)), `Could not remove ${m.fullName} — try again.`);
   }
   async function reinstate(m: WithId<RosterMemberDoc>) {
     // Clear the withdrawal marker too: left behind, a LATER withdrawal that
     // skips the "after which course" pick inherits the old cut-off and the
     // gradebook/transcript/export read WD from the wrong course.
-    await updateDoc(doc(db, 'academies', academyId, 'roster', m.id), {
+    await attempt(updateDoc(doc(db, 'academies', academyId, 'roster', m.id), {
       status: 'active', completedAt: deleteField(), dismissalReason: deleteField(),
       withdrawnAt: deleteField(), withdrawnAfterCourse: deleteField(), updatedAt: serverTimestamp(),
-    });
+    }), `Could not reinstate ${m.fullName} — try again.`);
   }
   async function graduate(m: WithId<RosterMemberDoc>) {
     const standing = memberStanding(m, curriculum?.courses ?? []);
     const fails = standing.hlFails + standing.nonHlFails;
     const warn = fails > 0 ? `\n\nNote: ${fails} unresolved course failure(s) on record. Graduation is NOT blocked — verify before issuing the certificate.` : '';
     if (!window.confirm(`Mark ${m.fullName} as GRADUATED? Their Certificate of Completion becomes available.${warn}`)) return;
-    await updateDoc(doc(db, 'academies', academyId, 'roster', m.id), { status: 'graduated', completedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    await attempt(
+      updateDoc(doc(db, 'academies', academyId, 'roster', m.id), { status: 'graduated', completedAt: serverTimestamp(), updatedAt: serverTimestamp() }),
+      `Could not mark ${m.fullName} as graduated — try again.`
+    );
   }
   async function dismiss(m: WithId<RosterMemberDoc>) {
     const reason = window.prompt(`Reason for dismissing ${m.fullName}? (kept on the record)`);
     if (reason == null) return; // cancelled
-    await updateDoc(doc(db, 'academies', academyId, 'roster', m.id), {
+    await attempt(updateDoc(doc(db, 'academies', academyId, 'roster', m.id), {
       status: 'dismissed', completedAt: serverTimestamp(), ...(reason.trim() ? { dismissalReason: reason.trim() } : {}), updatedAt: serverTimestamp(),
-    });
+    }), `Could not dismiss ${m.fullName} — try again.`);
   }
 
   const full = members.filter((m) => !m.blockTaker);
@@ -293,12 +310,12 @@ function MembersTab({
                 onGraduate={() => graduate(m)} onDismiss={() => dismiss(m)} />
             ))}
             {full.length === 0 && (
-              <tr><td colSpan={8} className="px-3 py-10 text-center text-slate-400">No members yet — add the first cadet.</td></tr>
+              <tr><td colSpan={9} className="px-3 py-10 text-center text-slate-400">No members yet — add the first cadet.</td></tr>
             )}
           </tbody>
           {blockTakers.length > 0 && (
             <tbody className="divide-y divide-watch-50">
-              <tr className="bg-watch-100/60"><td colSpan={8} className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-watch-600">Additional block takers</td></tr>
+              <tr className="bg-watch-100/60"><td colSpan={9} className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-watch-600">Additional block takers</td></tr>
               {blockTakers.map((m, i) => (
                 <MemberRow key={m.id} m={m} displayNo={i + 1} academyId={academyId}
                   onWithdraw={() => setWithdrawTarget(m)} onReinstate={() => reinstate(m)} onRemove={() => remove(m)}
@@ -491,25 +508,33 @@ function WithdrawModal({
 }) {
   const [afterCourse, setAfterCourse] = useState('');
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const tested = (curriculum?.courses ?? []).filter((c) => c.tested);
 
   async function submit() {
     setBusy(true);
-    await updateDoc(doc(db, 'academies', academyId, 'roster', member.id), {
-      status: 'withdrawn',
-      withdrawnAt: serverTimestamp(),
-      // "Not specified" must CLEAR any earlier marker (every course reads WD),
-      // not silently keep a stale one from a previous withdrawal.
-      withdrawnAfterCourse: afterCourse || deleteField(),
-      updatedAt: serverTimestamp(),
-    });
-    setBusy(false);
-    onClose();
+    setError(null);
+    try {
+      await updateDoc(doc(db, 'academies', academyId, 'roster', member.id), {
+        status: 'withdrawn',
+        withdrawnAt: serverTimestamp(),
+        // "Not specified" must CLEAR any earlier marker (every course reads WD),
+        // not silently keep a stale one from a previous withdrawal.
+        withdrawnAfterCourse: afterCourse || deleteField(),
+        updatedAt: serverTimestamp(),
+      });
+      onClose();
+    } catch (err) {
+      // Without this a failed write left the dialog stuck on "Withdrawing…".
+      setError(friendlyError(err, 'Could not withdraw the cadet.'));
+      setBusy(false);
+    }
   }
 
   return (
     <Modal open onClose={onClose} title={`Withdraw ${member.fullName}`}>
       <div className="space-y-4 text-sm">
+        {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">{error}</div>}
         <p className="text-slate-600">
           They stay on the roster (clearly marked withdrawn) so the record is kept. Their grades up to the
           withdrawal point are retained; everything after reads WD.
@@ -541,12 +566,13 @@ const BLANK: Draft = {
 };
 
 function IntakeWizard({ academyId, onClose }: { academyId: string; onClose: () => void }) {
-  const [draft, setDraft] = useState<Draft>(BLANK);
+  const settings = useGlobalSettings();
+  const [draft, setDraft] = useState<Draft>(() => ({ ...BLANK, agency: defaultAgency(agencyOptions(settings)) }));
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
-  const agencies = agencyOptions(useGlobalSettings(), draft.agency);
+  const agencies = agencyOptions(settings, draft.agency);
 
   // One field per step (the agency step has a conditional "other" box).
   const steps: { label: string; hint?: string; valid: () => boolean; render: () => React.ReactNode }[] = [
@@ -580,6 +606,7 @@ function IntakeWizard({ academyId, onClose }: { academyId: string; onClose: () =
   const cur = steps[step];
 
   async function save() {
+    if (busy) return; // Enter pressed again mid-save must not add the cadet twice
     setBusy(true);
     setError(null);
     try {

@@ -10,6 +10,12 @@ import { WordmarkHorizontal } from '../../brand/Logo';
 
 const EFFECTIVE_DATE = 'August 5, 2026';
 const CONTACT = 'support@heimdallscheduling.com';
+/** The support address as a clickable mailto link. */
+const CONTACT_LINK = (
+  <a href={`mailto:${CONTACT}`} className="underline hover:text-watch-900">
+    {CONTACT}
+  </a>
+);
 
 function LegalShell({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -27,7 +33,7 @@ function LegalShell({ title, children }: { title: string; children: React.ReactN
         </div>
         <footer className="mt-12 border-t border-watch-100 pt-4 text-xs text-slate-400">
           HEIMDALL Scheduling · <Link to="/terms" className="hover:underline">Terms of Service</Link> ·{' '}
-          <Link to="/privacy" className="hover:underline">Privacy Policy</Link> · Questions: {CONTACT}
+          <Link to="/privacy" className="hover:underline">Privacy Policy</Link> · Questions: {CONTACT_LINK}
         </footer>
       </main>
     </div>
@@ -114,7 +120,7 @@ export function TermsPage() {
         These Terms are governed by the laws of the State of Florida, without regard to conflict-of-laws rules. If a
         provision is unenforceable, the remainder stays in effect. We may update these Terms; material changes will
         be announced in the Service, and continued use after the effective date constitutes acceptance. Questions:{' '}
-        {CONTACT}.
+        {CONTACT_LINK}.
       </p>
     </LegalShell>
   );
@@ -171,19 +177,19 @@ export function PrivacyPage() {
       <p>
         Access is controlled by per-Organization isolation enforced at the database layer, role-based permissions,
         server-validated administrative actions, and audit logging. No system is perfectly secure; report suspected
-        issues to {CONTACT} and we will investigate promptly.
+        issues to {CONTACT_LINK} and we will investigate promptly.
       </p>
 
       <h2>7. Your choices</h2>
       <ul>
         <li>You can edit your profile information and notification preferences in the Service.</li>
         <li>You can unsubscribe from non-essential email categories; essential account and security messages are always delivered.</li>
-        <li>For access, correction, or deletion of records your Organization controls, contact your Organization&apos;s administrators; for account-level requests, contact {CONTACT}.</li>
+        <li>For access, correction, or deletion of records your Organization controls, contact your Organization&apos;s administrators; for account-level requests, contact {CONTACT_LINK}.</li>
       </ul>
 
       <h2>8. Changes &amp; contact</h2>
       <p>
-        We will announce material changes to this policy in the Service. Questions or requests: {CONTACT}.
+        We will announce material changes to this policy in the Service. Questions or requests: {CONTACT_LINK}.
       </p>
     </LegalShell>
   );

@@ -85,7 +85,7 @@ async function ensureUserDoc(
   const snap = await getDoc(ref);
   if (snap.exists()) return;
   // Password registrations arrive with the split name + DOB (required fields);
-  // OAuth sign-ups don't — RequireAuth gates them to /complete-profile until
+  // OAuth sign-ups don't — RequireAuth gates them to /complete-dob until
   // they supply the ATMS-verification details.
   const displayName = info
     ? `${info.firstName} ${info.lastName}`.trim()
@@ -128,6 +128,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Live-subscribe to the profile doc once signed in.
   useEffect(() => {
     if (!firebaseUser) return;
+    // Hold `loading` until THIS user's profile arrives. After a sign-in from the
+    // sign-in page `loading` was already false (set while signed out), so the
+    // route guards ran with a null profile and briefly rendered the app shell
+    // to accounts that belong on a holding screen (pending, org-less, suspended).
+    setLoading(true);
     const unsub = onSnapshot(doc(db, 'users', firebaseUser.uid), async (snap) => {
       if (snap.exists()) {
         const data = snap.data() as UserDoc;
@@ -138,17 +143,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // platformOwner) is stale vs the profile — e.g. right after the org
         // backfill mints an orgId claim, so the session isn't locked out for up
         // to an hour waiting for the claim to propagate.
-        const token = await firebaseUser.getIdTokenResult();
-        const claimMismatch =
-          token.claims.role !== data.role ||
-          (token.claims.orgId ?? null) !== (data.orgId ?? null) ||
-          !!token.claims.platformOwner !== (data.platformOwner === true);
-        if (claimMismatch) {
-          await firebaseUser.getIdToken(true);
+        // Best-effort: a failed refresh (offline with an expired token, or a
+        // dropped connection) must not skip setLoading(false) below and strand
+        // the app on the boot spinner. The next profile snapshot retries.
+        try {
+          const token = await firebaseUser.getIdTokenResult();
+          const claimMismatch =
+            token.claims.role !== data.role ||
+            (token.claims.orgId ?? null) !== (data.orgId ?? null) ||
+            !!token.claims.platformOwner !== (data.platformOwner === true) ||
+            // A 'pending' status claim (minted at join so rules keep an
+            // unapproved account out of the org) that outlived the approval:
+            // re-mint so the newly approved member isn't denied every read.
+            (token.claims.status === 'pending' && data.status !== 'pending');
+          if (claimMismatch) {
+            await firebaseUser.getIdToken(true);
+          }
+        } catch (err) {
+          console.warn('AuthContext: could not refresh the ID token', err);
         }
       } else {
-        await ensureUserDoc(firebaseUser);
+        // Same guarantee: a failed create must still release the spinner.
+        await ensureUserDoc(firebaseUser).catch((err) =>
+          console.error('AuthContext: could not create the user profile', err)
+        );
       }
+      setLoading(false);
+    }, (err) => {
+      // The listener is dead after an error — don't leave the app on the spinner.
+      console.error('AuthContext: profile listener failed', err);
       setLoading(false);
     });
     return unsub;

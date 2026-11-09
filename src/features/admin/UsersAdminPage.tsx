@@ -3,7 +3,7 @@
  * `setUserRole` callable, which writes the custom claim), verify
  * qualifications.
  */
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import { doc, serverTimestamp, updateDoc, orderBy, limit } from 'firebase/firestore';
 import { db, functions } from '../../lib/firebase';
@@ -12,7 +12,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { RANK_ORDER_ASC, mayActOn, mayAssignRole } from '../../lib/rbac';
 import { useRoleLabels, useGlobalSettings } from '../../app/providers';
 import type { Qualification, QualificationKey, Role, UserDoc } from '../../types';
-import { QUALIFICATION_LABELS, isInstructorQual, CERT_PORTALS } from '../../types';
+import { QUALIFICATION_LABELS, isInstructorQual, CERT_PORTALS, trustedQualifications } from '../../types';
 import { certYearOf, march31, tsFromDate, toDateInputValue, combineDateTime } from '../../lib/time';
 import { Badge, Button, Field, Input, PageHeader, Select, TextArea } from '../../components/ui';
 import { Modal } from '../../components/Modal';
@@ -31,7 +31,7 @@ const setUserSuspension = httpsCallable<{ uid: string; suspended: boolean; reaso
 const setUserActive = httpsCallable<{ uid: string; active: boolean }, { ok: boolean }>(functions, 'setUserActive');
 const denyUser = httpsCallable<{ uid: string }, { ok: boolean }>(functions, 'denyUser');
 const adminUpdateUser = httpsCallable<
-  { uid: string; displayName?: string; email?: string; rank?: string; agency?: string; phone?: string; newPassword?: string },
+  { uid: string; firstName?: string; lastName?: string; dob?: string; email?: string; rank?: string; agency?: string; phone?: string; newPassword?: string },
   { ok: boolean; changed: string[] }
 >(functions, 'adminUpdateUser');
 
@@ -69,8 +69,8 @@ function validateStaffRow(r: Record<string, string>): string[] {
   return errs;
 }
 
-/** Create one pending account and email it an activation link with a temp password
- *  (mirrors the single Add-user flow). */
+/** Create one ACTIVE account (must-change-password) and email it the sign-in
+ *  instructions with its temp password (mirrors the single Add-user flow). */
 async function importStaffRow(r: Record<string, string>): Promise<void> {
   const password = randomPassword();
   const res = await createUserAccount({
@@ -89,13 +89,31 @@ export function UsersAdminPage() {
   // Mirror the server's rank ladder (assertMayActOn): a non-top admin manages
   // only members STRICTLY below their own rank and assigns only lower ranks;
   // nobody manages their own account from this page. Offering an action the
-  // callables reject just produced "permission-denied" errors here.
-  const canAct = (u: WithId<UserDoc>) => u.id !== firebaseUser?.uid && (platformOwner || mayActOn(myRole, u.role));
+  // callables reject just produced "permission-denied" errors here. A platform
+  // owner's account (it shows up here while the owner is switched into this org)
+  // is refused by every one of those callables unless the caller is the owner.
+  const canAct = (u: WithId<UserDoc>) =>
+    u.id !== firebaseUser?.uid && (platformOwner || (u.platformOwner !== true && mayActOn(myRole, u.role)));
   const allRoles = (Object.keys(roleLabels) as Role[]).sort((a, b) => roleLabels[a].localeCompare(roleLabels[b]));
   const assignableRoles = allRoles.filter((r) => platformOwner || mayAssignRole(myRole, r));
   // Naturally bounded by org headcount; the cap is a defensive ceiling far above
   // any realistic agency size (add search/pagination only if it's ever exceeded).
-  const { data: users } = useCollection<UserDoc>('users', [orderBy('displayName'), limit(2000)]);
+  const { data: users, loading, error: loadError } = useCollection<UserDoc>('users', [orderBy('displayName'), limit(2000)]);
+
+  // Bulk import: catch a rank the server will refuse (createUserAccount applies
+  // the same ladder) at validation time, not as a per-row failure mid-import.
+  // Stable identity — BulkImportModal re-parses whenever validateRow changes.
+  const validateImportRow = useCallback(
+    (r: Record<string, string>) => {
+      const errs = validateStaffRow(r);
+      const rowRole = r.role ? normalizeRole(r.role) : undefined;
+      if (rowRole && !(platformOwner || mayAssignRole(myRole, rowRole))) {
+        errs.push(`Role "${rowRole}" is at or above your own rank — you can only add lower ranks`);
+      }
+      return errs;
+    },
+    [myRole, platformOwner]
+  );
 
   /** "Dep. Sofia Vargas" → "Vargas, Dep. Sofia"; sort key is the last name. */
   const lastFirst = (name: string) => {
@@ -188,6 +206,20 @@ export function UsersAdminPage() {
     }
   }
 
+  async function reactivate(u: WithId<UserDoc>) {
+    if (!window.confirm(`Reactivate ${u.displayName}? They regain access, with the role shown, the next time they sign in.`)) return;
+    setBusy(u.id);
+    setError(null);
+    try {
+      // Server callable re-mints the role claim (and writes the audit entry).
+      await setUserActive({ uid: u.id, active: true });
+    } catch (err) {
+      setError(`Reactivating ${u.displayName} failed: ${friendlyError(err)}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function liftSuspension(u: WithId<UserDoc>) {
     if (!window.confirm(`Lift the suspension on ${u.displayName}? They regain full access and are emailed.`)) return;
     setBusy(u.id);
@@ -233,7 +265,7 @@ export function UsersAdminPage() {
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
     const a = document.createElement('a');
     a.href = url;
-    a.download = `members-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `members-${toDateInputValue(new Date())}.csv`; // local date — toISOString is UTC (tomorrow after ~7pm ET)
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -255,6 +287,11 @@ export function UsersAdminPage() {
         </Button>
       </div>
       {error && <div className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
+      {loadError && (
+        <div className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">
+          Couldn’t load the member list: {friendlyError(loadError, 'unknown error')} Reload the page to try again.
+        </div>
+      )}
 
       {pending.length > 0 && (
         <section className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4">
@@ -316,6 +353,13 @@ export function UsersAdminPage() {
               <th className="px-4 py-3" />
             </tr>
           </thead>
+          {loading && users.length === 0 && (
+            <tbody>
+              <tr>
+                <td colSpan={5} className="px-4 py-8 text-center text-slate-400">Loading members…</td>
+              </tr>
+            </tbody>
+          )}
           {GROUP_ORDER.map((groupRole) => {
             const group = active
               .filter((u) => u.role === groupRole)
@@ -331,7 +375,7 @@ export function UsersAdminPage() {
                 {group.map((u) => {
                   // Every qual (including Role Player) now requires verification.
                   const claimed = u.qualifications.length;
-                  const verified = u.qualifications.filter((q) => q.verified).length;
+                  const verified = trustedQualifications(u).filter((q) => q.verified).length;
                   // Green = everything claimed is verified; orange = pending claims.
                   const qualTone =
                     claimed === 0 ? '' : verified === claimed ? 'bg-green-50' : 'bg-amber-50';
@@ -395,26 +439,36 @@ export function UsersAdminPage() {
                               <Button variant="ghost" disabled={busy === u.id} onClick={() => liftSuspension(u)}>
                                 Lift suspension
                               </Button>
+                            ) : u.status === 'active' ? (
+                              <>
+                                <Button variant="ghost" className="text-amber-700" disabled={busy === u.id} onClick={() => setSuspendTarget(u)}>
+                                  Suspend
+                                </Button>
+                                <Button variant="ghost" disabled={busy === u.id} onClick={() => deactivate(u)}>
+                                  Deactivate
+                                </Button>
+                              </>
                             ) : (
-                              u.status === 'active' && (
-                                <>
-                                  <Button variant="ghost" className="text-amber-700" disabled={busy === u.id} onClick={() => setSuspendTarget(u)}>
-                                    Suspend
-                                  </Button>
-                                  <Button variant="ghost" onClick={() => deactivate(u)}>
-                                    Deactivate
-                                  </Button>
-                                </>
+                              // Deactivation is documented as reversible (and the
+                              // server supports it) — without this an inactive
+                              // account could only be edited or deleted.
+                              u.status === 'inactive' && (
+                                <Button variant="ghost" disabled={busy === u.id} onClick={() => reactivate(u)}>
+                                  Reactivate
+                                </Button>
                               )
                             )}
-                            <Button
-                              variant="ghost"
-                              className="text-red-700 hover:bg-red-50"
-                              disabled={busy === u.id}
-                              onClick={() => setDeleteTarget(u)}
-                            >
-                              Delete…
-                            </Button>
+                            {u.platformOwner !== true && (
+                              // adminDeleteAccount refuses a platform-owner target for every caller.
+                              <Button
+                                variant="ghost"
+                                className="text-red-700 hover:bg-red-50"
+                                disabled={busy === u.id}
+                                onClick={() => setDeleteTarget(u)}
+                              >
+                                Delete…
+                              </Button>
+                            )}
                           </>
                         )}
                       </td>
@@ -427,7 +481,11 @@ export function UsersAdminPage() {
         </table>
       </div>
 
-      {qualUser && <QualificationsModal user={qualUser} onClose={() => setQualUser(null)} />}
+      {qualUser && (
+        // Pass the LIVE doc: the modal reads user.instructorCertExpires etc. for its
+        // "Current:" lines, which stayed stale after Save with the click-time copy.
+        <QualificationsModal user={users.find((x) => x.id === qualUser.id) ?? qualUser} onClose={() => setQualUser(null)} />
+      )}
       {deleteTarget && <DeleteAccountModal user={deleteTarget} onClose={() => setDeleteTarget(null)} />}
       {editTarget && <EditUserModal user={editTarget} onClose={() => setEditTarget(null)} />}
       {addOpen && <AddUserModal onClose={() => setAddOpen(false)} />}
@@ -437,9 +495,9 @@ export function UsersAdminPage() {
           columns={STAFF_IMPORT_COLUMNS}
           exampleRow="Dep. Jane Smith,jane@pso.gov,instructor,727-555-0100"
           rowLabel={(r) => r.displayName || r.email || '—'}
-          validateRow={validateStaffRow}
+          validateRow={validateImportRow}
           importRow={importStaffRow}
-          confirmNote="Each row becomes a pending account and is emailed an activation link with a temporary password. Roles can be changed afterward."
+          confirmNote="Each row becomes an active account with the role shown and is emailed sign-in instructions with a temporary password (they must set their own at first sign-in). Roles can be changed afterward."
           onClose={() => setBulkOpen(false)}
         />
       )}
@@ -449,9 +507,9 @@ export function UsersAdminPage() {
 }
 
 /**
- * Suspend a member with a reason. The member keeps the ability to sign in but
- * sees a site-wide banner telling them to contact Academy Leadership, and is
- * emailed the reason. Reinstating (from the table) clears it.
+ * Suspend a member with a reason. The member is blocked at sign-in with an
+ * "Account suspended" notice telling them to contact Academy Leadership, and
+ * is emailed the reason. Reinstating (from the table) clears it.
  */
 function SuspendUserModal({ user, onClose }: { user: WithId<UserDoc>; onClose: () => void }) {
   const [reason, setReason] = useState('');
@@ -561,8 +619,11 @@ function EditUserModal({ user, onClose }: { user: WithId<UserDoc>; onClose: () =
   // Compare like-for-like: a stored phone that predates formatPhone would
   // otherwise show a phantom "(727)555-0100 → (727) 555-0100" diff every open.
   if (next.phone !== formatPhone((user.phone ?? '').trim())) changes.push({ field: 'phone', label: 'Phone', from: user.phone || '—', to: next.phone || '—' });
-  const pwChange = resetPw && newPassword.trim().length > 0;
-  const pwTooShort = pwChange && newPassword.length < 8;
+  // Trimmed everywhere it is sent or shown — a pasted trailing space is invisible
+  // on the hand-off screen and would lock the member out of the temp password.
+  const pw = newPassword.trim();
+  const pwChange = resetPw && pw.length > 0;
+  const pwTooShort = pwChange && pw.length < 8;
   const hasChanges = changes.length > 0 || pwChange;
 
   async function confirm() {
@@ -578,13 +639,13 @@ function EditUserModal({ user, onClose }: { user: WithId<UserDoc>; onClose: () =
           payload[c.field] = next[c.field as keyof typeof next];
         }
       }
-      if (pwChange) payload.newPassword = newPassword;
+      if (pwChange) payload.newPassword = pw;
       await adminUpdateUser(payload);
       const summary = [...changes.map((c) => `${c.label.toLowerCase()} → ${c.to}`), ...(pwChange ? ['password reset'] : [])].join(', ');
       await logAudit(firebaseUser!.uid, 'user.edit', 'user', user.id, `Edited ${user.displayName}: ${summary}`);
       if (pwChange) {
         // Keep the modal up so the admin can hand the credentials over.
-        setSavedPw(newPassword);
+        setSavedPw(pw);
       } else {
         onClose();
       }
@@ -645,7 +706,7 @@ function EditUserModal({ user, onClose }: { user: WithId<UserDoc>; onClose: () =
               <li className="px-3 py-2">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <span className="text-slate-500">New temporary password</span>
-                  <strong className="font-mono text-watch-900">{newPassword}</strong>
+                  <strong className="font-mono text-watch-900">{pw}</strong>
                 </div>
                 <p className="mt-1 text-xs text-slate-500">
                   Their current sessions are signed out, and they must set their own password at next sign-in.
@@ -695,7 +756,7 @@ function EditUserModal({ user, onClose }: { user: WithId<UserDoc>; onClose: () =
           </Field>
         </div>
         <Field label="Date of birth" hint="Used to verify credentials against ATMS">
-          <Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} max={new Date().toISOString().slice(0, 10)} style={{ width: '12rem' }} />
+          <Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} max={toDateInputValue(new Date())} style={{ width: '12rem' }} />
         </Field>
         <Field label="Sign-in email" hint="Changing this changes how they log in.">
           <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
@@ -837,7 +898,7 @@ function AddUserModal({ onClose }: { onClose: () => void }) {
             They’ll be prompted to set their own password the first time they sign in.
           </p>
 
-          {/* Activation email — SignUpGenius migration message + this temp password */}
+          {/* Activation email (sendActivationEmail) — sign-in address + this temp password */}
           <div className="rounded-md border border-watch-100 bg-watch-50 px-3 py-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="text-sm text-watch-800">
@@ -848,7 +909,7 @@ function AddUserModal({ onClose }: { onClose: () => void }) {
               </Button>
             </div>
             <p className="mt-1.5 text-xs text-slate-500">
-              Explains the SignUpGenius migration and that they must sign in to set a new password.
+              Sends their sign-in email and this temporary password, and tells them to set their own password at first sign-in.
             </p>
             {sentTo && <p className="mt-1 text-xs text-green-700">Activation email sent to {sentTo}.</p>}
             {sendErr && <p className="mt-1 text-xs text-red-700">{sendErr}</p>}
@@ -982,7 +1043,10 @@ function QualificationsModal({ user, onClose }: { user: WithId<UserDoc>; onClose
   const { firebaseUser } = useAuth();
   const settings = useGlobalSettings();
   const certPortal = settings?.jurisdiction ? CERT_PORTALS[settings.jurisdiction] : undefined;
-  const [quals, setQuals] = useState<Qualification[]>(user.qualifications);
+  // Seeded through trustedQualifications(): `persist` below rebuilds
+  // verifiedQualKeys from these flags, so a flag the member set on their own
+  // (member-writable array) must never ride along into the staff-only list.
+  const [quals, setQuals] = useState<Qualification[]>(() => trustedQualifications(user));
   const [certYear, setCertYear] = useState<string>(
     user.instructorCertExpires ? String(certYearOf(user.instructorCertExpires)) : ''
   );
@@ -1001,6 +1065,10 @@ function QualificationsModal({ user, onClose }: { user: WithId<UserDoc>; onClose
   const certValid = yearNum >= 2000 && yearNum <= 2100;
   const cprAsDate = /^\d{4}-\d{2}-\d{2}$/.test(cprDate) ? combineDateTime(cprDate, '00:00') : null;
   const cprValid = cprAsDate !== null && !Number.isNaN(cprAsDate.getTime());
+  // The users rule blocks ADDING to your own verifiedQualKeys (no self-verification;
+  // removal is fine) — say so instead of letting the write be denied.
+  const isSelf = user.id === firebaseUser?.uid;
+  const SELF_VERIFY_MSG = 'You can’t verify your own qualifications — another staff member has to do it.';
 
   async function persist(rawNext: Qualification[], alsoSetCert: boolean, alsoSetCpr = false) {
     // Drop any orphaned keys from old model versions so they don't linger.
@@ -1019,10 +1087,15 @@ function QualificationsModal({ user, onClose }: { user: WithId<UserDoc>; onClose
       return;
     }
     setError(null);
-    await updateDoc(doc(db, 'users', user.id), {
-      instructorCertExpires: tsFromDate(march31(yearNum)),
-      updatedAt: serverTimestamp(),
-    });
+    try {
+      await updateDoc(doc(db, 'users', user.id), {
+        instructorCertExpires: tsFromDate(march31(yearNum)),
+        updatedAt: serverTimestamp(),
+      });
+    } catch (err) {
+      setError(`Could not save the cert year: ${friendlyError(err, 'unknown error')}`);
+      return;
+    }
     await logAudit(firebaseUser!.uid, 'qualification.set_expiration', 'user', user.id, `Cert expiration 3/31/${yearNum} for ${user.displayName}`);
     setSavedCert(true);
     setTimeout(() => setSavedCert(false), 2000);
@@ -1034,10 +1107,15 @@ function QualificationsModal({ user, onClose }: { user: WithId<UserDoc>; onClose
       return;
     }
     setError(null);
-    await updateDoc(doc(db, 'users', user.id), {
-      cprInstructorExpires: tsFromDate(cprAsDate!),
-      updatedAt: serverTimestamp(),
-    });
+    try {
+      await updateDoc(doc(db, 'users', user.id), {
+        cprInstructorExpires: tsFromDate(cprAsDate!),
+        updatedAt: serverTimestamp(),
+      });
+    } catch (err) {
+      setError(`Could not save the CPR date: ${friendlyError(err, 'unknown error')}`);
+      return;
+    }
     await logAudit(firebaseUser!.uid, 'qualification.set_cpr_expiration', 'user', user.id, `CPR instructor expiration ${cprDate} for ${user.displayName}`);
     setSavedCpr(true);
     setTimeout(() => setSavedCpr(false), 2000);
@@ -1045,6 +1123,10 @@ function QualificationsModal({ user, onClose }: { user: WithId<UserDoc>; onClose
 
   async function setQual(key: QualificationKey, on: boolean) {
     const instructor = isInstructorQual(key);
+    if (on && isSelf) {
+      setError(SELF_VERIFY_MSG);
+      return;
+    }
     if (on && instructor && !certValid) {
       setError('Set the certification expiration year first — instructor certs need it.');
       return;
@@ -1064,7 +1146,13 @@ function QualificationsModal({ user, onClose }: { user: WithId<UserDoc>; onClose
         ? quals.map((q) => (q.key === key ? { ...q, verified: true, verifiedBy: firebaseUser!.uid } : q))
         : [...quals, { key, label: QUALIFICATION_LABELS[key], verified: true, verifiedBy: firebaseUser!.uid }]
       : quals.filter((q) => q.key !== key);
-    await persist(next, on && instructor, on && key === 'first_aid');
+    try {
+      await persist(next, on && instructor, on && key === 'first_aid');
+    } catch (err) {
+      // Was an unhandled rejection: the row just sat there, apparently ignored.
+      setError(`Could not ${on ? 'verify' : 'remove'} ${QUALIFICATION_LABELS[key]}: ${friendlyError(err, 'unknown error')}`);
+      return;
+    }
     await logAudit(
       firebaseUser!.uid,
       on ? 'qualification.verify' : 'qualification.remove',
@@ -1089,6 +1177,7 @@ function QualificationsModal({ user, onClose }: { user: WithId<UserDoc>; onClose
           )}
         </div>
         {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
+        {isSelf && <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">{SELF_VERIFY_MSG} You can still remove one.</div>}
 
         {/* Single FDLE instructor-cert expiration (governs every instructor cert below) */}
         <div className="rounded-md border border-watch-100 bg-watch-50 px-3 py-3">
@@ -1162,12 +1251,12 @@ function QualificationsModal({ user, onClose }: { user: WithId<UserDoc>; onClose
                 </span>
                 <span className="col-span-2 flex items-center justify-end gap-1.5 sm:col-span-1">
                   {q && !q.verified && (
-                    <Button variant="primary" className="!px-2.5 !py-1 text-xs" onClick={() => setQual(key, true)}>
+                    <Button variant="primary" className="!px-2.5 !py-1 text-xs" disabled={isSelf} title={isSelf ? SELF_VERIFY_MSG : undefined} onClick={() => setQual(key, true)}>
                       Verify
                     </Button>
                   )}
                   {!q && (
-                    <Button variant="secondary" className="!px-2.5 !py-1 text-xs" onClick={() => setQual(key, true)}>
+                    <Button variant="secondary" className="!px-2.5 !py-1 text-xs" disabled={isSelf} title={isSelf ? SELF_VERIFY_MSG : undefined} onClick={() => setQual(key, true)}>
                       Add &amp; verify
                     </Button>
                   )}

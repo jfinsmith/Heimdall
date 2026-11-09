@@ -11,51 +11,64 @@
  * (accountPurgeDaily) — stated plainly below so nobody is surprised.
  */
 import { useEffect, useRef, useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useParams } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../lib/firebase';
+import { friendlyError } from '../lib/callableError';
 import { useAuth } from './AuthContext';
+import { FullPageSpinner, needsEmailVerification } from './guards';
 import { WordmarkStacked } from '../brand/Logo';
 import { Button, Field, Input } from '../components/ui';
 
 const joinOrgByCode = httpsCallable<{ code: string }, { ok: boolean }>(functions, 'joinOrgByCode');
 
 /** sessionStorage key an invite link (/join/:code) parks its code under. */
-export const JOIN_CODE_KEY = 'hd-join-code';
+const JOIN_CODE_KEY = 'hd-join-code';
 
 export function AwaitingOrgPage() {
-  const { firebaseUser, profile, orgId, signOut } = useAuth();
+  const { firebaseUser, profile, orgId, loading, signOut } = useAuth();
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [joined, setJoined] = useState(false);
   const autoTried = useRef(false);
 
+  // This page lives OUTSIDE RequireAuth, so it must apply the email-verification
+  // gate itself: /join/:code (and a typed URL) land here directly, and an
+  // unverified self-signup could otherwise join an org's approval queue without
+  // ever proving the address — after which the gate never applies again.
+  const mustVerify = !!firebaseUser && !!profile && needsEmailVerification(firebaseUser, profile);
+  const canJoin = !!firebaseUser && !!profile && !profile.orgId && !mustVerify;
+
   // Invite link: the code was parked before sign-in/registration — apply it
-  // automatically, once, the moment the user lands here.
+  // automatically, once, the moment the user lands here (verified).
   useEffect(() => {
-    if (autoTried.current || !firebaseUser) return;
+    if (autoTried.current || !canJoin) return;
     let stored = '';
     try { stored = sessionStorage.getItem(JOIN_CODE_KEY) ?? ''; } catch { /* private mode */ }
     if (!stored) return;
     autoTried.current = true;
+    // One shot: whatever happens, don't re-fire the same parked code on every
+    // reload. On failure it stays in the field for a manual retry.
+    try { sessionStorage.removeItem(JOIN_CODE_KEY); } catch { /* ignore */ }
     setCode(stored);
     setBusy(true);
     joinOrgByCode({ code: stored })
-      .then(() => {
-        setJoined(true);
-        try { sessionStorage.removeItem(JOIN_CODE_KEY); } catch { /* ignore */ }
-      })
+      .then(() => setJoined(true))
       .catch((e) => {
-        setError((e as { message?: string }).message || 'That invite code did not match an organization.');
+        setError(friendlyError(e, 'That invite code did not match an organization.'));
         setBusy(false);
       });
-  }, [firebaseUser]);
+  }, [canJoin]);
 
+  // Auth still resolving (e.g. the Refresh button below reloads this page) —
+  // wait rather than flashing the sign-in form.
+  if (loading) return <FullPageSpinner />;
   if (!firebaseUser) return <Navigate to="/signin" replace />;
   // Once a tenant is assigned, leave this screen (pending users fall through to
   // the pending-approval screen via RequireAuth).
   if (profile && orgId) return <Navigate to="/" replace />;
+  if (mustVerify) return <Navigate to="/verify-email" replace />;
 
   async function join(e: React.FormEvent) {
     e.preventDefault();
@@ -70,7 +83,7 @@ export function AwaitingOrgPage() {
       setJoined(true);
       try { sessionStorage.removeItem(JOIN_CODE_KEY); } catch { /* ignore */ }
     } catch (e) {
-      setError((e as { message?: string }).message || 'That code did not match an organization.');
+      setError(friendlyError(e, 'That code did not match an organization.'));
       setBusy(false);
     }
   }
@@ -85,6 +98,12 @@ export function AwaitingOrgPage() {
           linked to a training academy yet. Your academy&apos;s <strong>join code</strong> is the fastest way in —
           it&apos;s in your welcome email, or ask your coordinator.
         </p>
+        {profile?.deniedFromOrgId && !joined && (
+          <p className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-left text-sm text-amber-900">
+            Your last request to join an organization was not approved. If that was a mistake, contact that
+            academy&apos;s coordinator before requesting again.
+          </p>
+        )}
 
         {joined ? (
           <p className="mt-4 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">
@@ -126,7 +145,9 @@ export function AwaitingOrgPage() {
  */
 export function JoinInvitePage() {
   const { firebaseUser, loading } = useAuth();
-  const code = decodeURIComponent(window.location.pathname.split('/join/')[1] ?? '').trim();
+  // useParams, not a manual decodeURIComponent: a malformed escape in the URL
+  // threw during render (blank page), and a trailing slash became part of the code.
+  const code = (useParams().code ?? '').trim();
   useEffect(() => {
     if (code) {
       try { sessionStorage.setItem(JOIN_CODE_KEY, code); } catch { /* private mode */ }

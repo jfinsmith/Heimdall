@@ -322,8 +322,11 @@ export function ScheduleDayDocuments({
   // Exam forms are signed/filled per cadet — print one master, or a full set.
   const [perCadet, setPerCadet] = useState(false);
   const activeCount = cadets.filter((m) => m.status !== 'withdrawn' && m.status !== 'dismissed').length;
-  const totalHoursStr = String(curriculum?.totalHours ?? academy.targetTotalHours);
+  const totalHoursStr = String(curriculum?.totalHours ?? academy.targetTotalHours ?? '');
 
+  // A cleared date box (roster tab) or a mangled print link (builder) — without
+  // this the page read "No instructional blocks scheduled on undefined/undefined/0".
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return <p className="text-sm text-slate-500">Pick a date to build that day&apos;s documents.</p>;
   if (sLoading || uLoading) return <p className="text-sm text-slate-500">Loading the day&apos;s schedule…</p>;
   if (generated.length === 0 && testCourses.length === 0) {
     return <p className="text-sm text-slate-500">No instructional blocks scheduled on {displayDate(dateStr)}. Pick another date.</p>;
@@ -399,7 +402,7 @@ export function AttendanceTab({
 
   const [mode, setMode] = useState<'manual' | 'schedule' | 'blank'>('manual');
   const [genDate, setGenDate] = useState(localDateStr(new Date()));
-  const totalHoursStr = String(curriculum?.totalHours ?? academy.targetTotalHours);
+  const totalHoursStr = String(curriculum?.totalHours ?? academy.targetTotalHours ?? '');
 
   const manualInit: SheetInit = {
     courseName: courses[0]?.name ?? '',

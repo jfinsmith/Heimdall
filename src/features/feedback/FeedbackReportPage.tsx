@@ -93,14 +93,28 @@ export function FeedbackReportPage() {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [shotsDropped, setShotsDropped] = useState(false);
+  const [fileNote, setFileNote] = useState<string | null>(null);
 
   const isBug = kind === 'bug';
   const canSubmit = title.trim().length > 2 && description.trim().length > 4 && !busy;
 
   function addFiles(list: FileList | null) {
     if (!list) return;
-    const imgs = Array.from(list).filter((f) => f.type.startsWith('image/') && f.size < 10 * 1024 * 1024);
-    setFiles((p) => [...p, ...imgs].slice(0, 5)); // cap at 5
+    const picked = Array.from(list);
+    const imgs = picked.filter((f) => f.type.startsWith('image/') && f.size < 10 * 1024 * 1024);
+    const room = Math.max(0, 5 - files.length); // cap at 5
+    setFiles((p) => [...p, ...imgs].slice(0, 5));
+    // Say what was left out — files used to vanish from the list unexplained.
+    const rejected = picked.length - imgs.length;
+    const overCap = Math.max(0, imgs.length - room);
+    setFileNote(
+      rejected || overCap
+        ? [
+            rejected ? `${rejected} file${rejected === 1 ? ' was' : 's were'} skipped (images only, under 10 MB each).` : '',
+            overCap ? `Only 5 screenshots fit — ${overCap} more ${overCap === 1 ? 'was' : 'were'} left out.` : '',
+          ].filter(Boolean).join(' ')
+        : null
+    );
   }
 
   async function submit() {
@@ -164,11 +178,12 @@ export function FeedbackReportPage() {
         </div>
         {shotsDropped && (
           <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            Your report was saved, but the screenshots couldn't be attached. You can reply with them later.
+            Your report was saved, but one or more screenshots couldn't be attached. If they matter, send them in a
+            follow-up report.
           </div>
         )}
         <div className="mt-4 flex gap-2">
-          <Button onClick={() => { setDone(false); setTitle(''); setDescription(''); setArea(''); setSteps(''); setExpected(''); setActual(''); setFiles([]); setBusy(false); }}>
+          <Button onClick={() => { setDone(false); setTitle(''); setDescription(''); setSeverity('medium'); setArea(''); setSteps(''); setExpected(''); setActual(''); setFiles([]); setFileNote(null); setBusy(false); }}>
             Submit another
           </Button>
         </div>
@@ -239,17 +254,18 @@ export function FeedbackReportPage() {
         )}
 
         <Field label="Screenshots" hint="Up to 5 images, 10 MB each">
-          <input type="file" accept="image/*" multiple onChange={(e) => addFiles(e.target.files)} className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-watch-100 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-watch-800 hover:file:bg-watch-200" />
+          <input type="file" accept="image/*" multiple onChange={(e) => { addFiles(e.target.files); e.target.value = ''; }} className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-watch-100 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-watch-800 hover:file:bg-watch-200" />
           {files.length > 0 && (
             <ul className="mt-2 space-y-1">
               {files.map((f, i) => (
                 <li key={i} className="flex items-center justify-between rounded bg-watch-50 px-2 py-1 text-xs text-slate-600">
                   <span className="truncate">{f.name} · {(f.size / 1024).toFixed(0)} KB</span>
-                  <button type="button" className="ml-2 shrink-0 text-slate-400 hover:text-red-600" onClick={() => setFiles((p) => p.filter((_, j) => j !== i))}>✕</button>
+                  <button type="button" aria-label={`Remove ${f.name}`} className="ml-2 shrink-0 text-slate-400 hover:text-red-600" onClick={() => setFiles((p) => p.filter((_, j) => j !== i))}>✕</button>
                 </li>
               ))}
             </ul>
           )}
+          {fileNote && <span className="mt-1 block text-xs text-amber-800">{fileNote}</span>}
         </Field>
 
         <div className="flex justify-end">

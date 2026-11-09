@@ -1,13 +1,15 @@
 /**
- * Platform-owner cross-organization audit log. The per-org Audit Log
- * (/admin/audit) shows an org admin only their own org's actions; this view
- * (owner only) spans every organization, via the platformOwner-gated
- * listAllAuditLog callable (the owner's token can't read other orgs directly).
+ * Platform-owner cross-organization audit log. Spans every organization via
+ * the platformOwner-gated listAllAuditLog callable (the owner's token can't
+ * read other orgs directly). The per-org view (/admin/audit, AuditLogPage) is
+ * owner-only too since the audit log left the Admin section — it shows just
+ * the org the owner is currently switched into.
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../lib/firebase';
 import { Badge, Button, PageHeader, Spinner } from '../../components/ui';
+import { friendlyError } from '../../lib/callableError';
 
 interface AuditEntry {
   id: string;
@@ -31,7 +33,7 @@ export function OwnerAuditPage() {
     setError(null);
     listAllAuditLog({ limit: 300 })
       .then((r) => setEntries(r.data.entries))
-      .catch((e) => setError((e as Error).message || 'Could not load the audit log.'))
+      .catch((e) => setError(friendlyError(e, 'Could not load the audit log.')))
       .finally(() => setLoading(false));
   }, []);
   useEffect(() => { load(); }, [load]);

@@ -1,4 +1,10 @@
-/** Admin — Audit log viewer (read-only; writes come from clients + functions). */
+/**
+ * Audit log viewer for ONE organization — the one the caller's token is in
+ * (read-only; writes come from clients + functions). Platform-owner only: the
+ * route sits under RequirePlatformOwner and the auditLog read rule requires
+ * isPlatformOwner(), so an org admin can no longer open it. It has no nav link;
+ * the owner's everyday view is OwnerAuditPage (/owner/audit, all orgs).
+ */
 import React, { useMemo } from 'react';
 import { limit, orderBy } from 'firebase/firestore';
 import { useCollection } from '../../lib/firestore';
@@ -6,7 +12,7 @@ import type { AuditLogDoc, UserDoc } from '../../types';
 import { EmptyState, PageHeader } from '../../components/ui';
 
 export function AuditLogPage() {
-  const { data: entries, loading } = useCollection<AuditLogDoc>('auditLog', [orderBy('createdAt', 'desc'), limit(200)]);
+  const { data: entries, loading, error } = useCollection<AuditLogDoc>('auditLog', [orderBy('createdAt', 'desc'), limit(200)]);
   const { data: users } = useCollection<UserDoc>('users', [limit(2000)]);
   const nameByUid = useMemo(() => new Map(users.map((u) => [u.id, u.displayName])), [users]);
   const nameOf = (uid: string) => nameByUid.get(uid) ?? uid;
@@ -14,7 +20,10 @@ export function AuditLogPage() {
   return (
     <div>
       <PageHeader kicker="Admin" title="Audit Log" />
-      {!loading && entries.length === 0 ? (
+      {error ? (
+        // A denied/failed query used to render as "No audit entries yet".
+        <EmptyState title="Couldn’t load the audit log" />
+      ) : !loading && entries.length === 0 ? (
         <EmptyState title="No audit entries yet" />
       ) : (
         <div className="overflow-x-auto rounded-lg border border-watch-100 bg-white shadow-sm">

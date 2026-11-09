@@ -1,12 +1,15 @@
 /**
  * CADRE — Room Reservations. Schedule-building staff manage location categories
- * (College, Range, …) and the rooms within them, then see a filterable month
- * calendar of every room booking (a booking is a session that references a
- * managed room). Booked blocks show the room, class, and course. Categories and
- * rooms are org-scoped; the program is universal.
+ * (College, Range, …) and the rooms within them, then see a rooms × days WEEK
+ * GRID of every room booking: a booking is a session that references a managed
+ * room, or an ad-hoc reservation ("hold"). Categories and rooms are org-scoped;
+ * the program is universal.
  *
- * Conflict prevention lives at the session save path (SessionFormModal): a
- * managed room can't be double-booked over an overlapping time.
+ * Conflict prevention lives at the save paths, not here: session saves run
+ * findRoomConflict (roomBooking.ts — first-publish-wins: published classes and
+ * holds block hard, drafts softly, templates/archived classes hold nothing) and
+ * ad-hoc holds go through the saveRoomReservation callable (transactional).
+ * The grid mirrors those rules so "free on the grid" means actually bookable.
  */
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -21,8 +24,9 @@ import type { AcademyDoc, RoomCategoryDoc, RoomDoc, RoomReservationDoc, SessionD
 import { Button, Field, Input, PageHeader, Select, TextArea } from '../../../components/ui';
 import { Modal } from '../../../components/Modal';
 import { RoomSelect } from './RoomSelect';
-import { roomExemptAcademy } from './roomBooking';
+import { draftHolderAcademy, roomExemptAcademy } from './roomBooking';
 import { academyColorFor } from '../../../lib/academyColors';
+import { friendlyError } from '../../../lib/callableError';
 
 // Ad-hoc reservations are SERVER-owned (transactional conflict check); the rules
 // forbid client writes to roomReservations.
@@ -30,6 +34,10 @@ const saveRoomReservationFn = httpsCallable<{ reservationId?: string; roomId: st
 const deleteRoomReservationFn = httpsCallable<{ reservationId: string }, { ok: boolean }>(functions, 'deleteRoomReservation');
 
 const PALETTE = ['#2563eb', '#16a34a', '#d97706', '#7c3aed', '#dc2626', '#0891b2', '#db2777', '#65a30d'];
+/** Mirrors storage.rules (rooms/{orgId}/…): images only, under 5 MB. */
+const MAX_DIAGRAM_BYTES = 5 * 1024 * 1024;
+/** Only ever link out to a real web URL (the field is a staff-written string). */
+const isHttpUrl = (u?: string) => !!u && /^https?:\/\//i.test(u);
 
 /** Monday-first week start (matches the old spreadsheet + org scheduling). */
 function startOfWeek(d: Date): Date {
@@ -48,6 +56,8 @@ type GridChip = {
   color: string;
   startMs: number;
   academyId?: string;
+  /** Session chip of a DRAFT class — a soft hold under first-publish-wins. */
+  draft?: boolean;
   reservation?: WithId<RoomReservationDoc>;
 };
 
@@ -60,7 +70,7 @@ export function RoomsPage() {
   // instead of the whole, ever-growing sessions collection.
   const sessionWindowStart = useMemo(() => Timestamp.fromMillis(Date.now() - 365 * 864e5), []);
   const { data: sessions } = useCollection<SessionDoc>('sessions', [where('start', '>=', sessionWindowStart), orderBy('start')], [sessionWindowStart]);
-  const { data: academies } = useCollection<AcademyDoc>('academies');
+  const { data: academies, loading: academiesLoading } = useCollection<AcademyDoc>('academies');
   const { data: reservations } = useCollection<RoomReservationDoc>('roomReservations');
 
   const [newCat, setNewCat] = useState('');
@@ -108,15 +118,23 @@ export function RoomsPage() {
       return `${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
     };
 
-    for (const s of sessions) {
-      // Archived classes no longer hold their rooms — keep the grid consistent
-      // with the conflict rules (free on the grid = actually bookable).
+    // Hold class bookings back until the academy list has loaded: template /
+    // archived exemption is keyed off the academy doc, so a sessions snapshot
+    // that lands first would flash template bookings onto the grid.
+    for (const s of academiesLoading ? [] : sessions) {
+      // Templates never book and archived classes no longer hold their rooms —
+      // keep the grid consistent with the conflict rules (free on the grid =
+      // actually bookable).
       if (s.status === 'cancelled' || roomExemptAcademy(academyById.get(s.academyId))) continue;
       const dayKey = toDateInputValue(s.start.toDate());
       if (!dayKeys.has(dayKey)) continue;
       const acad = academyById.get(s.academyId);
+      // Draft classes hold softly (first-publish-wins): a published class or an
+      // ad-hoc hold can still take the room, so the chip says so.
+      const draft = draftHolderAcademy(acad);
       const timeLine = `${mil(s.start.toMillis())}–${mil(s.end.toMillis())} ${s.title || s.courseName}`;
-      for (const rid of new Set(s.roomIds?.length ? s.roomIds : s.roomId ? [s.roomId] : [])) {
+      // Same room set the conflict checks query: the primary roomId OR any roomIds entry.
+      for (const rid of new Set([...(s.roomIds ?? []), ...(s.roomId ? [s.roomId] : [])])) {
         if (!roomById.has(rid)) continue;
         const cellKey = `${rid}_${dayKey}`;
         const existing = map.get(cellKey)?.find((c) => c.kind === 'session' && c.academyId === s.academyId);
@@ -128,8 +146,9 @@ export function RoomsPage() {
             key: `${s.id}_${rid}`,
             kind: 'session',
             academyId: s.academyId,
-            label: acad?.shortName || s.courseName,
-            title: `${acad ? `${acad.shortName || acad.name}\n` : ''}${timeLine}`,
+            draft,
+            label: `${acad?.shortName || s.courseName}${draft ? ' (draft)' : ''}`,
+            title: `${acad ? `${acad.shortName || acad.name}${draft ? ' — DRAFT class: soft hold, the room goes to whoever publishes first' : ''}\n` : ''}${timeLine}`,
             color: academyColorFor(acad),
             startMs: s.start.toMillis(),
           });
@@ -151,7 +170,7 @@ export function RoomsPage() {
     }
     for (const list of map.values()) list.sort((a, b) => a.startMs - b.startMs);
     return map;
-  }, [weekDays, sessions, reservations, roomById, academyById]);
+  }, [weekDays, sessions, reservations, roomById, academyById, academiesLoading]);
 
   // Color legend: academies actually booked somewhere this week.
   const weekAcademies = useMemo(() => {
@@ -163,13 +182,26 @@ export function RoomsPage() {
       .sort((a, b) => (a.shortName || a.name).localeCompare(b.shortName || b.name));
   }, [cellChips, academyById]);
 
+  /** Run a location/room write; a failure is reported instead of vanishing as an unhandled rejection. */
+  async function guarded(what: string, fn: () => Promise<unknown>) {
+    try {
+      await fn();
+    } catch (err) {
+      window.alert(`Could not ${what}: ${friendlyError(err, 'unknown error')}`);
+    }
+  }
   async function addCategory() {
     const name = newCat.trim();
-    if (!name || !orgId) return;
+    if (!name || !orgId || busy) return;
     setBusy(true);
-    await addDoc(collection(db, 'roomCategories'), { orgId, name, order: categories.length, createdAt: serverTimestamp() });
-    setNewCat('');
-    setBusy(false);
+    try {
+      await addDoc(collection(db, 'roomCategories'), { orgId, name, order: categories.length, createdAt: serverTimestamp() });
+      setNewCat('');
+    } catch (err) {
+      window.alert(`Could not add the location: ${friendlyError(err, 'unknown error')}`);
+    } finally {
+      setBusy(false);
+    }
   }
   async function deleteCategory(c: WithId<RoomCategoryDoc>) {
     if ((roomsByCat.get(c.id)?.length ?? 0) > 0) {
@@ -177,15 +209,15 @@ export function RoomsPage() {
       return;
     }
     if (!window.confirm(`Delete category “${c.name}”?`)) return;
-    await deleteDoc(doc(db, 'roomCategories', c.id));
+    await guarded('delete the location', () => deleteDoc(doc(db, 'roomCategories', c.id)));
   }
   async function renameCategory(c: WithId<RoomCategoryDoc>) {
     const name = window.prompt('Rename location', c.name)?.trim();
     if (!name || name === c.name) return;
-    await updateDoc(doc(db, 'roomCategories', c.id), { name });
+    await guarded('rename the location', () => updateDoc(doc(db, 'roomCategories', c.id), { name }));
   }
   async function toggleRoomActive(r: WithId<RoomDoc>) {
-    await updateDoc(doc(db, 'rooms', r.id), { active: r.active === false });
+    await guarded('update the room', () => updateDoc(doc(db, 'rooms', r.id), { active: r.active === false }));
   }
   async function deleteRoom(r: WithId<RoomDoc>) {
     if (reservations.some((res) => res.roomId === r.id)) {
@@ -193,7 +225,7 @@ export function RoomsPage() {
       return;
     }
     if (!window.confirm(`Delete room “${r.name}”? Existing class bookings keep the room name but lose the managed link.`)) return;
-    await deleteDoc(doc(db, 'rooms', r.id));
+    await guarded('delete the room', () => deleteDoc(doc(db, 'rooms', r.id)));
   }
 
   return (
@@ -243,7 +275,7 @@ export function RoomsPage() {
                 {(roomsByCat.get(c.id) ?? []).map((r) => (
                   <li key={r.id} className="flex items-center justify-between gap-2 text-sm">
                     <span className={r.active === false ? 'text-slate-400 line-through' : 'text-slate-700'}>
-                      {r.diagramUrl && <a href={r.diagramUrl} target="_blank" rel="noopener" title="View diagram" className="mr-1">📐</a>}
+                      {isHttpUrl(r.diagramUrl) && <a href={r.diagramUrl} target="_blank" rel="noopener noreferrer" title="View diagram" aria-label={`View diagram of ${r.name}`} className="mr-1">📐</a>}
                       {r.name}{r.capacity ? <span className="text-xs text-slate-400"> · {r.capacity} seats</span> : null}
                     </span>
                     <span className="flex items-center gap-2 text-xs">
@@ -270,16 +302,20 @@ export function RoomsPage() {
             <h2 className="font-display text-lg font-bold text-watch-900">
               {weekStart.toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}
               {' – '}
-              {weekDays[6].toLocaleDateString(
-                undefined,
-                weekDays[6].getMonth() === weekStart.getMonth()
-                  ? { day: 'numeric', year: 'numeric' }
-                  : { month: 'long', day: 'numeric', year: 'numeric' }
-              )}
+              {/* Same month → "November 9 – 15, 2026". Built by hand: a day+year
+                  Intl format (no month) renders as "2026 (day: 15)". */}
+              {weekDays[6].getMonth() === weekStart.getMonth()
+                ? `${weekDays[6].getDate()}, ${weekDays[6].getFullYear()}`
+                : weekDays[6].toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
             </h2>
             <p className="text-xs text-slate-400">
               Classes book their rooms automatically — click any empty cell to hold a room.
             </p>
+            {weekDays[6].getTime() < sessionWindowStart.toMillis() && (
+              <p className="text-xs text-amber-700">
+                Class bookings older than 12 months aren&apos;t loaded here — this week shows manual holds only.
+              </p>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {/* Joined pager — one control, not three floating buttons. */}
@@ -410,7 +446,7 @@ export function RoomsPage() {
                                           ? setResModal({ reservation: chip.reservation })
                                           : chip.academyId && navigate(`/cadre/academies/${chip.academyId}`)
                                       }
-                                      className="block w-full truncate rounded-md px-2 py-1 text-left text-[11px] font-semibold text-white shadow-sm transition hover:shadow hover:brightness-110"
+                                      className={`block w-full truncate rounded-md px-2 py-1 text-left text-[11px] font-semibold text-white shadow-sm transition hover:shadow hover:brightness-110 ${chip.draft ? 'opacity-70' : ''}`}
                                       style={{ backgroundColor: chip.color }}
                                     >
                                       {chip.label}
@@ -455,7 +491,7 @@ export function RoomsPage() {
             <span className="inline-block h-3 w-3 rounded-sm" style={{ backgroundColor: '#475569' }} />
             🔒 manual hold
           </span>
-          <span className="text-slate-400">· Classes fill in automatically from their schedules; click any empty cell to hold a room (renovations, outside groups, events…). Click a class to open it, a 🔒 to edit.</span>
+          <span className="text-slate-400">· Classes fill in automatically from their schedules (a faded “(draft)” block is an unpublished class — a soft hold); click any empty cell to hold a room (renovations, outside groups, events…). Click a class to open it, a 🔒 to edit.</span>
         </div>
       </section>
 
@@ -512,6 +548,7 @@ function ReservationModal({
     const start = combineDateTime(date, startTime);
     const end = combineDateTime(date, endTime);
     if (end <= start) { setError('End time must be after the start time.'); return; }
+    if (busy) return;
     setBusy(true);
     try {
       // Server callable does the conflict check + write in one transaction.
@@ -519,24 +556,25 @@ function ReservationModal({
       onClose();
     } catch (err) {
       setBusy(false);
-      setError(err instanceof Error ? err.message.replace(/^FirebaseError:\s*/, '') : 'Could not save the reservation.');
+      setError(friendlyError(err, 'Could not save the reservation.'));
     }
   }
 
   async function remove() {
-    if (!reservation || !window.confirm('Delete this reservation?')) return;
+    if (!reservation || busy || !window.confirm('Delete this reservation?')) return;
     setBusy(true);
+    setError(null);
     try {
       await deleteRoomReservationFn({ reservationId: reservation.id });
       onClose();
     } catch (err) {
       setBusy(false);
-      setError(err instanceof Error ? err.message.replace(/^FirebaseError:\s*/, '') : 'Could not delete the reservation.');
+      setError(friendlyError(err, 'Could not delete the reservation.'));
     }
   }
 
   return (
-    <Modal open onClose={onClose} title={reservation ? 'Edit reservation' : 'New reservation'}>
+    <Modal open onClose={busy ? () => {} : onClose} title={reservation ? 'Edit reservation' : 'New reservation'}>
       <form onSubmit={save} className="space-y-4">
         {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
         <Field label="Room">
@@ -552,10 +590,10 @@ function ReservationModal({
         </div>
         <Field label="Notes (optional)"><TextArea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
         <div className="flex items-center justify-between gap-2">
-          {reservation ? <Button type="button" variant="ghost" className="text-red-600 hover:bg-red-50" onClick={remove}>Delete</Button> : <span />}
+          {reservation ? <Button type="button" variant="ghost" className="text-red-600 hover:bg-red-50" disabled={busy} onClick={remove}>Delete</Button> : <span />}
           <div className="flex gap-2">
-            <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
-            <Button type="submit" variant="primary" disabled={busy}>{reservation ? 'Save' : 'Reserve'}</Button>
+            <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
+            <Button type="submit" variant="primary" disabled={busy}>{busy ? 'Saving…' : reservation ? 'Save' : 'Reserve'}</Button>
           </div>
         </div>
       </form>
@@ -580,15 +618,23 @@ function RoomModal({
   const [diagramUrl, setDiagramUrl] = useState(room?.diagramUrl ?? '');
   const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function uploadDiagram(file: File) {
     if (!orgId) return;
+    // Same limits the storage rules enforce — say so up front instead of
+    // letting the upload fail with a bare permission error.
+    if (!file.type.startsWith('image/')) { setError('The diagram must be an image file.'); return; }
+    if (file.size >= MAX_DIAGRAM_BYTES) { setError('That image is too large — diagrams must be under 5 MB.'); return; }
     setUploading(true);
+    setError(null);
     try {
       const ext = file.name.split('.').pop() || 'png';
       const r = storageRef(storage, `rooms/${orgId}/${Date.now()}.${ext}`);
       await uploadBytes(r, file);
       setDiagramUrl(await getDownloadURL(r));
+    } catch (err) {
+      setError(`Could not upload the diagram: ${friendlyError(err, 'unknown error')}`);
     } finally {
       setUploading(false);
     }
@@ -596,26 +642,45 @@ function RoomModal({
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim() || !orgId) return;
+    if (!name.trim() || busy) return;
+    // A room stamped with a null orgId is denied by the rules / filtered out of
+    // every org-scoped list — never write one.
+    if (!orgId) { setError('Your account is still loading its organization — please reload and try again.'); return; }
     setBusy(true);
+    setError(null);
     const cap = parseInt(capacity, 10);
-    const payload = {
-      orgId,
-      categoryId,
-      name: name.trim(),
-      active: room?.active ?? true,
-      ...(Number.isFinite(cap) && cap > 0 ? { capacity: cap } : {}),
-      ...(notes.trim() ? { notes: notes.trim() } : {}),
-    };
-    if (room) await updateDoc(doc(db, 'rooms', room.id), { ...payload, diagramUrl: diagramUrl.trim() || deleteField() });
-    else await addDoc(collection(db, 'rooms'), { ...payload, ...(diagramUrl.trim() ? { diagramUrl: diagramUrl.trim() } : {}), createdAt: serverTimestamp() });
-    setBusy(false);
-    onClose();
+    const hasCap = Number.isFinite(cap) && cap > 0;
+    const base = { orgId, categoryId, name: name.trim(), active: room?.active ?? true };
+    try {
+      if (room) {
+        // Edit: a blanked optional field must be REMOVED, not left at its old
+        // value (omitting it from updateDoc kept the stale capacity/notes).
+        await updateDoc(doc(db, 'rooms', room.id), {
+          ...base,
+          capacity: hasCap ? cap : deleteField(),
+          notes: notes.trim() || deleteField(),
+          diagramUrl: diagramUrl.trim() || deleteField(),
+        });
+      } else {
+        await addDoc(collection(db, 'rooms'), {
+          ...base,
+          ...(hasCap ? { capacity: cap } : {}),
+          ...(notes.trim() ? { notes: notes.trim() } : {}),
+          ...(diagramUrl.trim() ? { diagramUrl: diagramUrl.trim() } : {}),
+          createdAt: serverTimestamp(),
+        });
+      }
+      onClose();
+    } catch (err) {
+      setError(friendlyError(err, 'Could not save the room.'));
+      setBusy(false);
+    }
   }
 
   return (
     <Modal open onClose={onClose} title={room ? `Edit room — ${room.name}` : 'Add room'}>
       <form onSubmit={save} className="space-y-4">
+        {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
         <Field label="Room name">
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="E-120 / Range A" autoFocus required />
         </Field>
@@ -630,7 +695,17 @@ function RoomModal({
             {diagramUrl && <img src={diagramUrl} alt="" className="h-12 w-12 rounded border border-watch-100 object-cover" />}
             <label className="cursor-pointer text-sm font-medium text-bifrost-700 hover:underline">
               {uploading ? 'Uploading…' : diagramUrl ? 'Replace' : 'Upload'}
-              <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && uploadDiagram(e.target.files[0])} />
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                disabled={uploading}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = ''; // let the same file be re-picked after a failed attempt
+                  if (file) void uploadDiagram(file);
+                }}
+              />
             </label>
             {diagramUrl && <button type="button" className="text-xs text-slate-400 hover:text-red-600" onClick={() => setDiagramUrl('')}>Remove</button>}
           </div>

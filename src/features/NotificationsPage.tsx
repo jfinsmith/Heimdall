@@ -13,7 +13,7 @@ import { useCollection } from '../lib/firestore';
 import { useAuth } from '../auth/AuthContext';
 import type { NotificationDoc, NotificationType } from '../types';
 import { CATEGORY, CATEGORY_GROUPS, TYPE_LABEL } from '../lib/notificationMeta';
-import { Badge, Button, EmptyState, PageHeader, Select } from '../components/ui';
+import { Badge, Button, EmptyState, PageHeader, Select, Spinner } from '../components/ui';
 
 const BUCKET_ORDER = ['Today', 'Yesterday', 'Earlier this week', 'Earlier this month', 'Older'];
 
@@ -120,6 +120,9 @@ export function NotificationsPage() {
         <div className="rounded-md bg-red-50 px-3 py-3 text-sm text-red-800">
           Couldn’t load your notifications. Check your connection and reload.
         </div>
+      ) : loading && notifications.length === 0 ? (
+        // First load: show progress rather than a blank area until the feed arrives.
+        <div className="flex justify-center py-12"><Spinner className="text-bifrost-400" /></div>
       ) : !loading && filtered.length === 0 ? (
         <EmptyState
           title="The horn is silent"

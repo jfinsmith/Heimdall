@@ -11,12 +11,12 @@ import { httpsCallable } from 'firebase/functions';
 import { db, auth, functions } from '../../lib/firebase';
 import { useAuth } from '../../auth/AuthContext';
 import { useOrg } from '../../lib/useOrg';
-import type { Qualification, QualificationKey, Role } from '../../types';
+import type { NotificationPrefs, Qualification, QualificationKey, Role } from '../../types';
 import { QUALIFICATION_LABELS, isInstructorQual, EMAIL_AUTOMATIONS, STAFF_ROLES, ADMIN_ROLES } from '../../types';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../../lib/firebase';
 import { Modal } from '../../components/Modal';
-import { certYearOf, march31, tsFromDate, combineDateTime } from '../../lib/time';
+import { certYearOf, march31, tsFromDate, combineDateTime, toDateInputValue } from '../../lib/time';
 import { useAllCurricula, baseCurriculumKey } from '../../lib/curricula';
 import { formatPhone } from '../../lib/format';
 import { Badge, Button, Field, Input, PageHeader } from '../../components/ui';
@@ -34,6 +34,11 @@ export function ProfilePage() {
     if (org?.legalName && !profile?.agency) setAgency((a) => a || org.legalName);
   }, [org?.legalName, profile?.agency]);
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  // Qualifications tab: a failed claim / remove / cert-year write (shown inline).
+  const [qualError, setQualError] = useState<string | null>(null);
+  const [qualBusy, setQualBusy] = useState(false);
   // Optional self-entered FDLE cert expiration year (3/31 of that year). A
   // coordinator confirms/sets it when verifying — it's not required to claim.
   // (Declared with the other hooks, before the early return, per rules-of-hooks.)
@@ -48,29 +53,68 @@ export function ProfilePage() {
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    // Contact fields only — notification prefs live in EmailPreferencesCard
-    // (dotted-path writes), so this save can never clobber them.
-    await updateDoc(doc(db, 'users', firebaseUser!.uid), {
-      phone: formatPhone(phone),
-      rank,
-      agency,
-      // Only write a VALID dob — never blank one out (ATMS requires it on file).
-      ...(/^\d{4}-\d{2}-\d{2}$/.test(dob) ? { dob } : {}),
-      updatedAt: serverTimestamp(),
-    });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+    if (saving) return;
+    setSaveError(null);
+    // `required` accepts a rank of only spaces; saved trimmed it would read as
+    // blank and bounce the member back to the /welcome onboarding gate.
+    if (!rank.trim()) {
+      setSaveError('Enter your rank.');
+      return;
+    }
+    setSaving(true);
+    try {
+      // Contact fields only — notification prefs live in EmailPreferencesCard
+      // (dotted-path writes), so this save can never clobber them.
+      await updateDoc(doc(db, 'users', firebaseUser!.uid), {
+        phone: formatPhone(phone),
+        rank: rank.trim(),
+        agency: agency.trim(),
+        // Only write a VALID dob — never blank one out (ATMS requires it on file).
+        ...(/^\d{4}-\d{2}-\d{2}$/.test(dob) ? { dob } : {}),
+        updatedAt: serverTimestamp(),
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (err) {
+      setSaveError(friendlyError(err, 'Could not save your profile. Please try again.'));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  /**
+   * Run a qualifications-tab write; a failure shows inline instead of vanishing.
+   * The buttons are disabled while it runs: Claim turns into Remove in the same
+   * spot the moment the write lands, so a double-click used to claim and then
+   * immediately un-claim.
+   */
+  async function qualWrite(fn: () => Promise<void>) {
+    if (qualBusy) return;
+    setQualError(null);
+    setQualBusy(true);
+    try {
+      await fn();
+    } catch (err) {
+      setQualError(friendlyError(err, 'Could not save that change. Please try again.'));
+    } finally {
+      setQualBusy(false);
+    }
   }
 
   async function saveCertYear() {
     const y = parseInt(certYear, 10);
-    if (!y || y < 2000 || y > 2100) return;
-    await updateDoc(doc(db, 'users', firebaseUser!.uid), {
-      instructorCertExpires: tsFromDate(march31(y)),
-      updatedAt: serverTimestamp(),
+    if (!y || y < 2000 || y > 2100) {
+      setQualError('Enter the four-digit year your certification expires (for example 2027).');
+      return;
+    }
+    await qualWrite(async () => {
+      await updateDoc(doc(db, 'users', firebaseUser!.uid), {
+        instructorCertExpires: tsFromDate(march31(y)),
+        updatedAt: serverTimestamp(),
+      });
+      setCertSaved(true);
+      setTimeout(() => setCertSaved(false), 2500);
     });
-    setCertSaved(true);
-    setTimeout(() => setCertSaved(false), 2500);
   }
 
   async function claimQualification(key: QualificationKey) {
@@ -85,7 +129,7 @@ export function ProfilePage() {
       ...profile!.qualifications,
       { key, label: QUALIFICATION_LABELS[key], verified: false },
     ];
-    await updateDoc(doc(db, 'users', firebaseUser!.uid), { qualifications: next, updatedAt: serverTimestamp() });
+    await qualWrite(() => updateDoc(doc(db, 'users', firebaseUser!.uid), { qualifications: next, updatedAt: serverTimestamp() }));
   }
 
   async function removeQualification(key: QualificationKey) {
@@ -94,13 +138,25 @@ export function ProfilePage() {
     // the server checks for sign-ups/reserves/call-outs) — rules permit
     // removal-only self-edits there, so the member stops being scheduled as
     // qualified the moment they drop the cert.
+    // A VERIFIED qual can't be put back by the member — one stray tap would
+    // lock them out of those slots until staff re-verify — so ask first.
+    if (
+      profile!.qualifications.some((q) => q.key === key && q.verified) &&
+      !window.confirm(
+        `Remove your verified ${QUALIFICATION_LABELS[key]} qualification? You won't be able to sign up for slots that require it until a coordinator verifies it again.`
+      )
+    ) {
+      return;
+    }
     const next = profile!.qualifications.filter((q) => q.key !== key);
     const nextVerified = (profile!.verifiedQualKeys ?? []).filter((k) => k !== key);
-    await updateDoc(doc(db, 'users', firebaseUser!.uid), {
-      qualifications: next,
-      verifiedQualKeys: nextVerified,
-      updatedAt: serverTimestamp(),
-    });
+    await qualWrite(() =>
+      updateDoc(doc(db, 'users', firebaseUser!.uid), {
+        qualifications: next,
+        verifiedQualKeys: nextVerified,
+        updatedAt: serverTimestamp(),
+      })
+    );
   }
 
   const noQuals = profile.qualifications.length === 0;
@@ -118,6 +174,8 @@ export function ProfilePage() {
         {TABS.map((t) => (
           <button
             key={t.key}
+            type="button"
+            aria-pressed={tab === t.key}
             onClick={() => setTab(t.key)}
             className={`-mb-px flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium ${
               tab === t.key ? 'border-bifrost-500 text-bifrost-700' : 'border-transparent text-slate-500 hover:text-watch-800'
@@ -157,11 +215,12 @@ export function ProfilePage() {
           <Input value={agency} onChange={(e) => setAgency(e.target.value)} />
         </Field>
         <Field label="Date of birth" hint="Used to verify your training credentials (ATMS)">
-          <Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} required max={new Date().toISOString().slice(0, 10)} style={{ width: '12rem' }} />
+          <Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} required max={toDateInputValue(new Date())} style={{ width: '12rem' }} />
         </Field>
 
+        {saveError && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{saveError}</div>}
         <div className="flex items-center gap-3">
-          <Button type="submit" variant="primary">Save</Button>
+          <Button type="submit" variant="primary" disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
           {saved && <span className="text-sm text-green-700">Saved.</span>}
         </div>
       </form>
@@ -186,6 +245,7 @@ export function ProfilePage() {
           restricted slots. <strong>Role Player</strong> needs no date, but a coordinator still verifies
           it before you’re added to role-player call-outs.
         </p>
+        {qualError && <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{qualError}</div>}
 
         {/* Single FDLE instructor-cert expiration (governs all instructor certs) */}
         <div className="mb-4 rounded-md border border-watch-100 bg-watch-50 px-3 py-3">
@@ -214,7 +274,7 @@ export function ProfilePage() {
                 style={{ width: '6rem' }}
               />
             </label>
-            <Button variant="secondary" disabled={!certYear} onClick={saveCertYear}>
+            <Button variant="secondary" disabled={!certYear || qualBusy} onClick={saveCertYear}>
               Save expiration
             </Button>
             {certSaved && <span className="text-xs text-green-700">Saved.</span>}
@@ -242,12 +302,12 @@ export function ProfilePage() {
                       ) : (
                         <Badge tone="amber">Pending verification</Badge>
                       )}
-                      <Button variant="ghost" onClick={() => removeQualification(key)}>
+                      <Button variant="ghost" disabled={qualBusy} onClick={() => removeQualification(key)}>
                         Remove
                       </Button>
                     </>
                   ) : (
-                    <Button variant="secondary" onClick={() => claimQualification(key)}>
+                    <Button variant="secondary" disabled={qualBusy} onClick={() => claimQualification(key)}>
                       Claim
                     </Button>
                   )}
@@ -282,6 +342,23 @@ function ClaimCprModal({ onClose }: { onClose: () => void }) {
   const dateValid = /^\d{4}-\d{2}-\d{2}$/.test(cprDate);
   const canSubmit = dateValid && (file !== null || waiver);
 
+  /** Storage accepts images under 10 MB only; anything else is refused there
+   *  with a bare "permission" error, so screen the pick here and say why.
+   *  Returns false when the file was rejected. */
+  function pickFile(f: File | null): boolean {
+    setError(null);
+    const problem = !f
+      ? null
+      : !f.type.startsWith('image/')
+        ? 'That file is not an image. Choose a photo of your card (JPG or PNG).'
+        : f.size >= 10 * 1024 * 1024
+          ? 'That photo is over 10 MB. Choose a smaller photo, or retake it at a lower resolution.'
+          : null;
+    if (problem) setError(problem);
+    setFile(problem ? null : f);
+    return !problem;
+  }
+
   async function submit() {
     setError(null);
     setBusy(true);
@@ -305,7 +382,14 @@ function ClaimCprModal({ onClose }: { onClose: () => void }) {
       });
       onClose();
     } catch (err) {
-      setError(friendlyError(err, 'Could not save the claim.'));
+      // A Storage refusal reads "Firebase Storage: User does not have permission
+      // to access 'certCards/…'" — give the member their way forward instead.
+      const code = (err as { code?: string })?.code ?? '';
+      setError(
+        code.startsWith('storage/')
+          ? "The photo couldn't be uploaded. Try again, or tick the “unable to upload” box below to have staff confirm your card from their records."
+          : friendlyError(err, 'Could not save the claim.')
+      );
     } finally {
       setBusy(false);
     }
@@ -328,7 +412,10 @@ function ClaimCprModal({ onClose }: { onClose: () => void }) {
             type="file"
             accept="image/*"
             disabled={waiver}
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            onChange={(e) => {
+              // Clear the picker on a rejected file so its name doesn't linger.
+              if (!pickFile(e.target.files?.[0] ?? null)) e.target.value = '';
+            }}
             className="block text-sm text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-watch-100 file:px-3 file:py-1.5 file:text-sm file:text-watch-800 disabled:opacity-50"
           />
         </Field>
@@ -394,8 +481,8 @@ function NotificationEmailCard() {
 
   const sendCode = (email: string) =>
     run(async () => {
-      await httpsCallable<{ email: string }, { ok: boolean }>(functions, 'requestNotificationEmail')({ email });
-      setInfo('Code sent — check that inbox (and spam).');
+      await httpsCallable<{ email: string }, { ok: boolean }>(functions, 'requestNotificationEmail')({ email: email.trim() });
+      setInfo('Code sent — check that inbox (and spam). The code is good for 15 minutes.');
       setEmailInput('');
       setChanging(false);
     });
@@ -470,7 +557,7 @@ function NotificationEmailCard() {
               placeholder="you@example.com"
             />
           </Field>
-          <Button variant="primary" disabled={busy || !emailInput.includes('@')} onClick={() => sendCode(emailInput)}>
+          <Button variant="primary" disabled={busy || !emailInput.trim().includes('@')} onClick={() => sendCode(emailInput)}>
             Send verification code
           </Button>
           {changing && (
@@ -484,6 +571,9 @@ function NotificationEmailCard() {
   );
 }
 
+/** Shortest reminder lead a once-a-day sweep can always honor (see saveLead). */
+const MIN_LEAD_HOURS = 24;
+
 /**
  * Per-automation email preferences, filtered to what this member's rank can
  * receive (audience tags on EMAIL_AUTOMATIONS). Muting stops the EMAIL only —
@@ -491,40 +581,61 @@ function NotificationEmailCard() {
  * org-level toggles sit above all of this.
  */
 function EmailPreferencesCard() {
-  const { firebaseUser, profile } = useAuth();
-  const [leadHours, setLeadHours] = useState(profile?.notificationPrefs.reminderLeadHours ?? 48);
+  const { firebaseUser, profile, platformOwner } = useAuth();
+  const [leadHours, setLeadHours] = useState(profile?.notificationPrefs?.reminderLeadHours ?? 48);
   const [leadSaved, setLeadSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   if (!firebaseUser || !profile) return null;
 
   const role: Role = profile.role;
   const visible = EMAIL_AUTOMATIONS.filter((a) =>
-    a.audience === 'everyone' ? true : a.audience === 'staff' ? STAFF_ROLES.includes(role) : ADMIN_ROLES.includes(role)
+    // Bug/feature reports are emailed to the platform owner only
+    // (onFeedbackCreated) — for an org admin the checkbox controlled nothing.
+    a.key === 'feedback_submitted'
+      ? platformOwner
+      : a.audience === 'everyone' ? true : a.audience === 'staff' ? STAFF_ROLES.includes(role) : ADMIN_ROLES.includes(role)
   );
-  const prefs = profile.notificationPrefs;
+  // Tolerate a profile doc with no notificationPrefs map (the server reads it
+  // the same defensive way) — dotted-path writes below create it on demand.
+  const prefs: Partial<NotificationPrefs> = profile.notificationPrefs ?? {};
   const muted = new Set(prefs.mutedTypes ?? []);
   const isOn = (key: string) =>
     key === 'reminder' ? prefs.email !== false : key === 'digest' ? prefs.digest !== false : !muted.has(key);
 
   async function toggle(key: string) {
-    // reminder/digest keep their legacy booleans (the sweeps read them);
-    // everything else flips in the mutedTypes list. Dotted paths only — a
-    // whole-object write would clobber prefs saved elsewhere.
-    if (key === 'reminder') {
-      await updateDoc(doc(db, 'users', firebaseUser!.uid), { 'notificationPrefs.email': prefs.email === false, updatedAt: serverTimestamp() });
-    } else if (key === 'digest') {
-      await updateDoc(doc(db, 'users', firebaseUser!.uid), { 'notificationPrefs.digest': prefs.digest === false, updatedAt: serverTimestamp() });
-    } else {
-      const next = muted.has(key) ? [...muted].filter((k) => k !== key) : [...muted, key];
-      await updateDoc(doc(db, 'users', firebaseUser!.uid), { 'notificationPrefs.mutedTypes': next, updatedAt: serverTimestamp() });
+    setError(null);
+    try {
+      // reminder/digest keep their legacy booleans (the sweeps read them);
+      // everything else flips in the mutedTypes list. Dotted paths only — a
+      // whole-object write would clobber prefs saved elsewhere.
+      if (key === 'reminder') {
+        await updateDoc(doc(db, 'users', firebaseUser!.uid), { 'notificationPrefs.email': prefs.email === false, updatedAt: serverTimestamp() });
+      } else if (key === 'digest') {
+        await updateDoc(doc(db, 'users', firebaseUser!.uid), { 'notificationPrefs.digest': prefs.digest === false, updatedAt: serverTimestamp() });
+      } else {
+        const next = muted.has(key) ? [...muted].filter((k) => k !== key) : [...muted, key];
+        await updateDoc(doc(db, 'users', firebaseUser!.uid), { 'notificationPrefs.mutedTypes': next, updatedAt: serverTimestamp() });
+      }
+    } catch (err) {
+      setError(friendlyError(err, 'Could not save that preference. Please try again.'));
     }
   }
 
   async function saveLead() {
-    const safe = Number.isFinite(leadHours) ? Math.min(168, Math.max(1, leadHours)) : 48;
-    await updateDoc(doc(db, 'users', firebaseUser!.uid), { 'notificationPrefs.reminderLeadHours': safe, updatedAt: serverTimestamp() });
-    setLeadHours(safe);
-    setLeadSaved(true);
-    setTimeout(() => setLeadSaved(false), 2500);
+    // Reminders go out in ONE sweep each morning, to assignments starting
+    // within the lead time. Anything under a day can fall between two sweeps
+    // (an evening class with a 12-hour lead was never reminded), so a day is
+    // the floor here; the sweep applies its own floor as well. Whole hours only.
+    const safe = Number.isFinite(leadHours) ? Math.min(168, Math.max(MIN_LEAD_HOURS, Math.round(leadHours))) : 48;
+    setError(null);
+    try {
+      await updateDoc(doc(db, 'users', firebaseUser!.uid), { 'notificationPrefs.reminderLeadHours': safe, updatedAt: serverTimestamp() });
+      setLeadHours(safe);
+      setLeadSaved(true);
+      setTimeout(() => setLeadSaved(false), 2500);
+    } catch (err) {
+      setError(friendlyError(err, 'Could not save the reminder lead time. Please try again.'));
+    }
   }
 
   return (
@@ -534,6 +645,7 @@ function EmailPreferencesCard() {
         Un-check an email you don&apos;t want — the in-app bell still shows everything. Time-critical
         emails are always on. Administrators can additionally disable automations org-wide.
       </p>
+      {error && <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
       <ul className="space-y-1.5">
         {visible.map((a) => (
           <li key={a.key} className="flex items-start gap-2 text-sm">
@@ -562,8 +674,10 @@ function EmailPreferencesCard() {
         Reminder lead time:
         <Input
           type="number"
-          min={1}
+          min={MIN_LEAD_HOURS}
           max={168}
+          step={1}
+          aria-label="Reminder lead time in hours"
           value={leadHours}
           onChange={(e) => setLeadHours(Number(e.target.value))}
           style={{ width: '5.5rem' }}
@@ -571,12 +685,15 @@ function EmailPreferencesCard() {
         hours before a session
         <Button variant="secondary" onClick={saveLead}>Save</Button>
         {leadSaved && <span className="text-xs text-green-700">Saved.</span>}
+        <span className="basis-full text-xs text-slate-400">
+          Reminders go out once each morning, for assignments starting within this many hours — so the
+          shortest lead time is {MIN_LEAD_HOURS} hours (the longest is 168, one week).
+        </span>
       </div>
     </section>
   );
 }
 
-/** Self-service blackout days — Browse Open Sessions hides open sessions on these. */
 /**
  * Per-curriculum notification subscriptions. Everyone is subscribed to every
  * discipline by default; un-checking one silences that discipline's broadcast
@@ -597,16 +714,22 @@ function CurriculumSubscriptionsCard() {
     return [...seen.entries()].map(([key, label]) => ({ key, label })).sort((a, b) => a.label.localeCompare(b.label));
   }, [platform, org]);
   const muted = useMemo(() => new Set(profile?.notificationPrefs?.mutedCurricula ?? []), [profile]);
+  const [error, setError] = useState<string | null>(null);
 
   async function toggle(key: string) {
     const next = muted.has(key) ? [...muted].filter((k) => k !== key) : [...muted, key];
-    await updateDoc(doc(db, 'users', firebaseUser!.uid), {
-      'notificationPrefs.mutedCurricula': next,
-      updatedAt: serverTimestamp(),
-    });
+    setError(null);
+    try {
+      await updateDoc(doc(db, 'users', firebaseUser!.uid), {
+        'notificationPrefs.mutedCurricula': next,
+        updatedAt: serverTimestamp(),
+      });
+    } catch (err) {
+      setError(friendlyError(err, 'Could not save that preference. Please try again.'));
+    }
   }
 
-  if (disciplines.length === 0) return null;
+  if (!firebaseUser || disciplines.length === 0) return null;
   return (
     <div className="rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
       <h2 className="text-sm font-semibold uppercase tracking-wider text-watch-600">Curriculum notifications</h2>
@@ -614,6 +737,7 @@ function CurriculumSubscriptionsCard() {
         You&apos;re subscribed to every discipline by default. Un-check one to stop its course-opening call-outs
         (bell and email). Your own assignments, reminders, and account notices always come through.
       </p>
+      {error && <div className="mt-2 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
         {disciplines.map((d) => (
           <label key={d.key} className="flex items-center gap-2 text-sm">
@@ -626,25 +750,34 @@ function CurriculumSubscriptionsCard() {
   );
 }
 
+/** Self-service blackout days — Browse Open Sessions hides open sessions on these. */
 function UnavailableDatesCard() {
   const { firebaseUser, profile } = useAuth();
   const [day, setDay] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const dates = useMemo(() => [...(profile?.unavailableDates ?? [])].sort(), [profile]);
   if (!firebaseUser || !profile) return null;
 
+  async function write(next: string[]) {
+    setError(null);
+    try {
+      await updateDoc(doc(db, 'users', firebaseUser!.uid), { unavailableDates: next, updatedAt: serverTimestamp() });
+    } catch (err) {
+      setError(friendlyError(err, 'Could not save your unavailable days. Please try again.'));
+    }
+  }
   async function add() {
     if (!day || dates.includes(day)) { setDay(''); return; }
-    await updateDoc(doc(db, 'users', firebaseUser!.uid), { unavailableDates: [...dates, day], updatedAt: serverTimestamp() });
+    await write([...dates, day]);
     setDay('');
   }
-  async function remove(d: string) {
-    await updateDoc(doc(db, 'users', firebaseUser!.uid), { unavailableDates: dates.filter((x) => x !== d), updatedAt: serverTimestamp() });
-  }
+  const remove = (d: string) => write(dates.filter((x) => x !== d));
 
   return (
     <section className="rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
       <h2 className="mb-1 text-sm font-semibold uppercase tracking-wider text-watch-600">Unavailable days</h2>
       <p className="mb-3 text-sm text-slate-500">Mark days you can't work — open sessions on those days are hidden from your Browse Open Sessions list.</p>
+      {error && <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
       <div className="flex items-end gap-2">
         <Field label="Add a day" className="max-w-[12rem]">
           <Input type="date" value={day} onChange={(e) => setDay(e.target.value)} />
@@ -702,13 +835,19 @@ function ChangePasswordCard() {
       setConfirm('');
       setTimeout(() => setDone(false), 3000);
     } catch (err) {
+      // Firebase Auth errors read like "Firebase: Error (auth/too-many-requests)."
+      // — translate the ones a member can actually hit.
       const code = (err as { code?: string })?.code ?? '';
       setError(
         code === 'auth/wrong-password' || code === 'auth/invalid-credential'
           ? 'Your current password is incorrect.'
-          : err instanceof Error
-            ? err.message
-            : 'Could not change the password.'
+          : code === 'auth/weak-password'
+            ? 'That password is too weak — use at least 6 characters.'
+            : code === 'auth/too-many-requests'
+              ? 'Too many attempts. Wait a few minutes and try again.'
+              : code === 'auth/network-request-failed'
+                ? "Couldn't reach the server — check your connection and try again."
+                : friendlyError(err, 'Could not change the password.')
       );
     } finally {
       setBusy(false);

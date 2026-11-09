@@ -25,10 +25,6 @@ export function escapeHtml(s: string): string {
 }
 
 /**
- * Wrap body content in the HEIMDALL chrome. `bodyHtml` may contain markup;
- * `bodyText` is the plaintext alternative.
- */
-/**
  * Branded sender for every outbound email (mailer.ts falls back to it when a
  * queue doc carries no `from`) — the domain is verified in Resend (SPF/DKIM via
  * Cloudflare), so this sends cleanly.
@@ -39,6 +35,12 @@ export const MAIL_FROM = 'HEIMDALL Scheduling <no-reply@heimdallscheduling.com>'
  *  write there again or the mail silently goes nowhere once it's uninstalled. */
 export const MAIL_QUEUE = 'mailQueue';
 
+/**
+ * Wrap body content in the HEIMDALL chrome. `bodyHtml` is inserted AS MARKUP —
+ * the caller must escapeHtml() every user-controlled value in it (names,
+ * titles, notes); `heading`, `ctaLabel` and `orgName` are escaped here.
+ * `bodyText` is the plaintext alternative.
+ */
 export function renderEmail(opts: {
   subject: string;
   heading: string;

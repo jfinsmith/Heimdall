@@ -1,15 +1,21 @@
 /** Shown to self-registered users awaiting coordinator approval. */
 import { Navigate } from 'react-router-dom';
 import { useAuth } from './AuthContext';
+import { FullPageSpinner } from './guards';
 import { WordmarkStacked } from '../brand/Logo';
 import { Button } from '../components/ui';
 
 export function PendingApprovalPage() {
-  const { firebaseUser, profile, signOut } = useAuth();
+  const { firebaseUser, profile, loading, signOut } = useAuth();
+  // Auth still resolving (a reload on this page) — wait, don't flash sign-in.
+  if (loading) return <FullPageSpinner />;
   if (!firebaseUser) return <Navigate to="/signin" replace />;
   // Anything other than 'pending' (active, suspended, inactive) belongs to
-  // RequireAuth's routing, not this holding screen.
-  if (profile && profile.status !== 'pending') return <Navigate to="/" replace />;
+  // RequireAuth's routing, not this holding screen. So does a pending account
+  // with NO org (e.g. an admin just denied the request, which clears the org):
+  // nobody is reviewing it, so "awaiting verification" would be a dead end —
+  // RequireAuth sends it to the join-code screen instead.
+  if (profile && (profile.status !== 'pending' || !profile.orgId)) return <Navigate to="/" replace />;
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-watch-950 px-4 text-center">

@@ -1,8 +1,10 @@
 /**
- * Built-in FDLE/CJSTC platform curricula — the FIVE Florida programs that are the
- * single source of truth across every org. The owner loads these into the
- * `defaultCurricula` collection (Owner → Default Curricula → "Load FDLE standard
- * curricula"); every org reads them read-only and may add its own curricula below.
+ * Reference copy of the FIVE Florida FDLE/CJSTC platform curricula. The live
+ * programs every org reads are the `defaultCurricula` docs (edited by the owner
+ * at Owner → Default Curricula); nothing in the app imports this file. Its one
+ * consumer is scripts/refresh-le-curriculum.ts, which pushes this verified
+ * course list into an existing org's own curriculum copy. Keep the keys in step
+ * with PLATFORM_CURRICULUM_KEYS in src/lib/curricula.ts.
  *
  * Course data is research-verified (2026-06-23) against the FDLE/CJSTC CMS
  * curriculum under FAC 11B-35 (eff. 4/9/2025), the Florida DOE CTE Frameworks,
@@ -18,7 +20,7 @@
  * Confidence: LE (770) and Corrections (445) are HIGH. The two crossovers and EOT
  * carry caveats — see each program's note + the `estimated` flag.
  */
-import type { CurriculumCourse, CurriculumDoc } from '../../types';
+import type { CurriculumCourse, CurriculumDoc } from '../../src/types';
 
 type DefaultCurriculum = Omit<CurriculumDoc, 'orgId'>;
 

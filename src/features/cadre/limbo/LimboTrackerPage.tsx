@@ -19,14 +19,17 @@ import { useAuth } from '../../../auth/AuthContext';
 import { useGlobalSettings } from '../../../app/providers';
 import type { AcademyDoc, LimboPlanDoc, RosterMemberDoc } from '../../../types';
 import { LIMBO_ACTIVITIES, ROSTER_AGENCIES } from '../../../types';
-import { Button, Field, Input, PageHeader, Select, Spinner } from '../../../components/ui';
+import { Button, EmptyState, Field, Input, PageHeader, Select, Spinner } from '../../../components/ui';
 import { addDays, fmtDate, toDateInputValue } from '../../../lib/time';
 import { lastFirst, memberAgency } from '../roster/rosterShared';
 import { friendlyError } from '../../../lib/callableError';
+import { bulkCellPatch, dayKeysInRange, daySpan, isWeekend, localDate, nonEmptyCells } from './limboCells';
 
 const CLEAR = '__clear__';
 const CUSTOM = '__custom__';
 const MAX_DAYS = 200;
+/** Longest bulk range accepted — a mistyped year must not write thousands of cells. */
+const MAX_BULK_DAYS = 366;
 /** Activity colors — picked per activity in Manage activities (stored by key);
  *  unpicked labels fall back to a stable hash of the name. */
 const PALETTE: { key: string; name: string; cls: string }[] = [
@@ -52,20 +55,18 @@ function hashCls(label: string): string {
   for (const ch of label.toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   return PALETTE[h % 12].cls;
 }
-const localDate = (s: string) => new Date(`${s}T00:00:00`);
 /** What a save may carry: plan fields plus nested cell writes (deleteField clears). */
 type PlanPatch = Omit<Partial<LimboPlanDoc>, 'cells' | 'nmtStart'> & {
   cells?: Record<string, Record<string, string | FieldValue>>;
   nmtStart?: string | FieldValue;
 };
-const isWeekend = (d: Date) => d.getDay() === 0 || d.getDay() === 6;
 
 export function LimboTrackerPage() {
   const { academyId = '' } = useParams();
   const { firebaseUser, orgId } = useAuth();
   const settings = useGlobalSettings();
-  const { data: academy } = useDoc<AcademyDoc>(academyId ? `academies/${academyId}` : null);
-  const { data: plan } = useDoc<LimboPlanDoc>(academyId ? `academies/${academyId}/limbo/plan` : null);
+  const { data: academy, loading: academyLoading } = useDoc<AcademyDoc>(academyId ? `academies/${academyId}` : null);
+  const { data: plan, loading: planLoading } = useDoc<LimboPlanDoc>(academyId ? `academies/${academyId}/limbo/plan` : null);
   const { data: roster, loading: rosterLoading } = useCollection<RosterMemberDoc>(
     academyId ? `academies/${academyId}/roster` : null,
     [],
@@ -99,16 +100,19 @@ export function LimboTrackerPage() {
   const nmtStart = plan?.nmtStart ?? '';
   const academyEnd = academy ? toDateInputValue(academy.endDate.toDate()) : '';
   const [fromAcademyEnd, setFromAcademyEnd] = useState(false);
-  const days = useMemo(() => {
+  // `label` is formatted ONCE per day here — the cell tooltips reuse it (a
+  // toLocaleDateString per cell per render made every paint click sluggish).
+  const { days, endsAtNmt, truncated } = useMemo(() => {
     const start = localDate(fromAcademyEnd && academyEnd ? academyEnd : today);
     const nmt = nmtStart ? localDate(nmtStart) : null;
-    const end = nmt && nmt >= start ? nmt : addDays(start, 60);
-    const out: { key: string; date: Date }[] = [];
-    for (let d = start; d <= end && out.length < MAX_DAYS; d = addDays(d, 1)) out.push({ key: toDateInputValue(d), date: d });
-    return out;
+    const endsAtNmt = !!nmt && nmt >= start;
+    const end = endsAtNmt ? nmt! : addDays(start, 60);
+    const out: { key: string; date: Date; label: string }[] = [];
+    for (let d = start; d <= end && out.length < MAX_DAYS; d = addDays(d, 1)) out.push({ key: toDateInputValue(d), date: d, label: d.toLocaleDateString() });
+    return { days: out, endsAtNmt, truncated: out.length === MAX_DAYS && addDays(out[out.length - 1].date, 1) <= end };
   }, [today, nmtStart, academyEnd, fromAcademyEnd]);
   // NMT countdown — shown with the date so it's glaring even when the start
-  // sits outside the two-week window.
+  // sits outside the visible window.
   const nmtIn = plan?.nmtStart ? Math.round((localDate(plan.nmtStart).getTime() - localDate(today).getTime()) / 864e5) : null;
   const nmtHint =
     nmtIn == null
@@ -146,25 +150,36 @@ export function LimboTrackerPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function write(patch: PlanPatch) {
+  /**
+   * One merged write to the plan doc. merge:true deep-merges the nested cells
+   * map leaf by leaf (deleteField() inside it clears a single day), so two
+   * coordinators painting different cells never overwrite each other.
+   * `block` = disable Apply while the write is in flight (bulk only). Single
+   * paints are NOT gated: each is an independent leaf write, and locking the
+   * whole chart per click silently dropped the next click on a slow link.
+   */
+  async function write(patch: PlanPatch, opts: { block?: boolean } = {}) {
     if (!academy?.orgId || !firebaseUser) {
       setError('This class is missing its organization — reload and try again.');
       return;
     }
-    setBusy(true);
+    // NEVER send an empty map: under merge:true `cells: {}` REPLACES the stored
+    // map (erasing every cadet's plan) instead of writing nothing.
+    const { cells: rawCells, ...rest } = patch;
+    const cellPatch = nonEmptyCells(rawCells);
+    if (!cellPatch && Object.keys(rest).length === 0) return;
+    if (opts.block) setBusy(true);
     setError(null);
     try {
-      // merge:true deep-merges the nested cells map, and deleteField() inside
-      // it clears a single day — one write for the whole bulk assignment.
       await setDoc(
         planRef,
-        { orgId: academy.orgId, academyId, ...patch, updatedAt: serverTimestamp(), updatedBy: firebaseUser.uid },
+        { orgId: academy.orgId, academyId, ...rest, ...(cellPatch ? { cells: cellPatch } : {}), updatedAt: serverTimestamp(), updatedBy: firebaseUser.uid },
         { merge: true }
       );
     } catch (err) {
       setError(friendlyError(err, 'Could not save.'));
     } finally {
-      setBusy(false);
+      if (opts.block) setBusy(false);
     }
   }
 
@@ -176,8 +191,13 @@ export function LimboTrackerPage() {
     void write({ cells: { [memberId]: { [dayKey]: brushPick === CLEAR ? deleteField() : brush } } });
   }
 
+  // Only cadets currently ON the chart count as selected — ticks left over
+  // from before an agency was un-checked must not be painted invisibly.
+  const selectedIds = useMemo(() => members.filter((m) => selected.has(m.id)).map((m) => m.id), [members, selected]);
+
   async function applyBulk() {
-    if (selected.size === 0) {
+    if (busy) return;
+    if (selectedIds.length === 0) {
       setError('Select at least one cadet.');
       return;
     }
@@ -185,19 +205,27 @@ export function LimboTrackerPage() {
       setError('Type the custom activity first.');
       return;
     }
-    const from = localDate(bulkFrom);
-    const to = localDate(bulkTo);
-    if (!(to >= from)) {
+    if (!bulkFrom || !bulkTo) {
+      setError('Pick both the start and the end date.');
+      return;
+    }
+    const span = daySpan(bulkFrom, bulkTo);
+    if (span === 0) {
       setError('The end date is before the start date.');
       return;
     }
-    const patch: Record<string, Record<string, string | FieldValue>> = {};
-    for (let d = from; d <= to; d = addDays(d, 1)) {
-      if (weekdaysOnly && isWeekend(d)) continue;
-      const key = toDateInputValue(d);
-      for (const mid of selected) (patch[mid] ??= {})[key] = brushPick === CLEAR ? deleteField() : brush;
+    if (span > MAX_BULK_DAYS) {
+      setError('That range is longer than a year — check the dates.');
+      return;
     }
-    await write({ cells: patch });
+    const keys = dayKeysInRange(bulkFrom, bulkTo, weekdaysOnly);
+    if (keys.length === 0) {
+      // (This used to send an empty cells map, which wiped the whole chart.)
+      setError('That range has no weekdays — untick “Weekdays only” to include the weekend.');
+      return;
+    }
+    const value: string | FieldValue = brushPick === CLEAR ? deleteField() : brush;
+    await write({ cells: bulkCellPatch(selectedIds, keys, value) }, { block: true });
   }
 
   /** One click paints every listed cadet for that day with the current brush. */
@@ -224,9 +252,25 @@ export function LimboTrackerPage() {
     return { counts: [...counts.entries()].sort((a, b) => b[1] - a[1]), unassigned };
   }, [members, cells, today]);
 
-  if (!academy) return <Spinner className="mt-10" />;
+  if (academyLoading) return <Spinner className="mt-10" />;
+  // Deleted class, a bad link, or a TEMPLATE (templates are never tracked in
+  // Limbo) — say so instead of spinning forever.
+  if (!academy || academy.isTemplate) {
+    return (
+      <div>
+        <PageHeader back kicker="CADRE — Limbo" title="Limbo" />
+        <EmptyState title="Class not found" body="This class no longer exists, or it isn't one Limbo tracks." />
+        <p className="mt-4 text-center text-sm">
+          <Link to="/cadre/limbo" className="text-bifrost-700 hover:underline">
+            ← All classes
+          </Link>
+        </p>
+      </div>
+    );
+  }
 
   const nmtKey = plan?.nmtStart ?? '';
+  const brushLabel = brushPick === CLEAR ? 'clear' : brush || '…';
   const toggleSelected = (id: string) =>
     setSelected((prev) => {
       const next = new Set(prev);
@@ -248,8 +292,8 @@ export function LimboTrackerPage() {
         }
       />
       <p className="mb-4 text-sm text-slate-500">
-        Class ended {fmtDate(academy.endDate)}. Pick an activity, then click a day on the chart — or tick cadets
-        and apply it to a date range at once (the range may run past the two-week view; those days roll in).
+        Class {academyEnd < today ? 'ended' : 'ends'} {fmtDate(academy.endDate)}. Pick an activity, then click a day on the chart — or tick cadets
+        and apply it to a date range at once (the range may run past the days shown; they appear as the chart rolls forward).
       </p>
       {error && <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
 
@@ -262,6 +306,9 @@ export function LimboTrackerPage() {
           <Input
             type="date"
             value={plan?.nmtStart ?? ''}
+            // Until the plan has loaded the stored value isn't known — an edit
+            // made in that gap would be based on a blank, not on what is saved.
+            disabled={planLoading}
             onChange={(e) => void write({ nmtStart: e.target.value || deleteField() })}
           />
         </Field>
@@ -279,6 +326,7 @@ export function LimboTrackerPage() {
                   <input
                     type="checkbox"
                     checked={on}
+                    disabled={planLoading}
                     onChange={() =>
                       void write({ agencies: on ? chosenAgencies.filter((x) => x !== a) : [...chosenAgencies, a] })
                     }
@@ -306,7 +354,7 @@ export function LimboTrackerPage() {
               <option value={CUSTOM}>Custom…</option>
             </Select>
             {brushPick === CUSTOM && (
-              <Input className="mt-2" value={customLabel} onChange={(e) => setCustomLabel(e.target.value)} placeholder="e.g. Property TDY" autoFocus />
+              <Input className="mt-2" value={customLabel} onChange={(e) => setCustomLabel(e.target.value)} placeholder="e.g. Property TDY" aria-label="Custom activity" maxLength={60} autoFocus />
             )}
             <button type="button" className="mt-1.5 text-xs text-bifrost-700 hover:underline" onClick={() => setManageOpen(true)}>
               Manage activities…
@@ -323,8 +371,8 @@ export function LimboTrackerPage() {
               <input type="checkbox" checked={weekdaysOnly} onChange={(e) => setWeekdaysOnly(e.target.checked)} />
               Weekdays only
             </label>
-            <Button variant="primary" disabled={busy || selected.size === 0} onClick={() => void applyBulk()}>
-              Apply to {selected.size} selected
+            <Button variant="primary" disabled={busy || selectedIds.length === 0} onClick={() => void applyBulk()}>
+              {busy ? 'Applying…' : `Apply to ${selectedIds.length} selected`}
             </Button>
           </div>
         </div>
@@ -352,7 +400,8 @@ export function LimboTrackerPage() {
         {/* View toolbar — sits above the scroller so it never scrolls away. */}
         <div className="mb-2 flex flex-wrap items-center gap-3 text-xs text-slate-600">
           <span>
-            Showing <span className="font-semibold text-watch-800">{fromAcademyEnd ? `academy end (${localDate(academyEnd).toLocaleDateString()})` : 'today'}</span> → {nmtStart ? 'NMT start' : '60 days out'}
+            Showing <span className="font-semibold text-watch-800">{fromAcademyEnd ? `academy end (${localDate(academyEnd).toLocaleDateString()})` : 'today'}</span> → {endsAtNmt ? 'NMT start' : '60 days out'}
+            {truncated && <span className="text-amber-700"> (first {MAX_DAYS} days shown)</span>}
           </span>
           <Button className="whitespace-nowrap !px-2.5 !py-1 text-xs" variant="secondary" onClick={() => setFromAcademyEnd((v) => !v)} disabled={!academyEnd}>
             {fromAcademyEnd ? '← Back to today' : `Jump to academy end date (${academyEnd ? localDate(academyEnd).toLocaleDateString() : '—'})`}
@@ -366,7 +415,7 @@ export function LimboTrackerPage() {
                   <label className="flex items-center gap-2" title="Select / clear every cadet on the chart">
                     <input
                       type="checkbox"
-                      checked={members.length > 0 && selected.size === members.length}
+                      checked={members.length > 0 && selectedIds.length === members.length}
                       onChange={(e) => setSelected(e.target.checked ? new Set(members.map((m) => m.id)) : new Set())}
                     />
                     Cadet
@@ -397,15 +446,14 @@ export function LimboTrackerPage() {
                 <td className="sticky left-0 z-10 border-b border-r border-watch-200 bg-watch-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-watch-600">
                   Everyone ↓ <span className="font-normal normal-case tracking-normal text-slate-400">(click a day)</span>
                 </td>
-                {days.map(({ key, date }) => {
+                {days.map(({ key, date, label }) => {
                   const nmt = key === nmtKey;
                   return (
                     <td key={key} className={`border-b border-watch-200 p-0 ${nmt ? 'border-l-2 border-l-bifrost-500 bg-bifrost-50' : isWeekend(date) ? 'bg-slate-100' : ''}`}>
                       <button
                         type="button"
-                        disabled={busy || members.length === 0}
                         onClick={() => paintAll(key)}
-                        title={`Set every cadet to "${brushPick === CLEAR ? 'clear' : brush || '…'}" on ${date.toLocaleDateString()}`}
+                        title={`Set every cadet to "${brushLabel}" on ${label}`}
                         className="block h-5 w-full text-[10px] leading-5 text-slate-400 hover:bg-bifrost-100 hover:text-bifrost-800"
                       >
                         all
@@ -414,18 +462,20 @@ export function LimboTrackerPage() {
                   );
                 })}
               </tr>
-              {members.map((m: WithId<RosterMemberDoc>) => (
+              {members.map((m: WithId<RosterMemberDoc>) => {
+                const who = lastFirst(m.fullName);
+                return (
                 <tr key={m.id} className="group">
                   <td className="sticky left-0 z-10 border-b border-r border-watch-100 bg-white px-3 py-1.5 group-hover:bg-watch-50">
                     <label className="flex items-center gap-2">
                       <input type="checkbox" checked={selected.has(m.id)} onChange={() => toggleSelected(m.id)} />
                       <span>
-                        <span className="block font-medium text-watch-900">{lastFirst(m.fullName)}</span>
+                        <span className="block font-medium text-watch-900">{who}</span>
                         <span className="block text-[10px] text-slate-500">{memberAgency(m)}</span>
                       </span>
                     </label>
                   </td>
-                  {days.map(({ key, date }) => {
+                  {days.map(({ key, date, label }) => {
                     const v = cells[m.id]?.[key];
                     const nmt = key === nmtKey;
                     const wk = isWeekend(date);
@@ -436,9 +486,8 @@ export function LimboTrackerPage() {
                       >
                         <button
                           type="button"
-                          disabled={busy}
                           onClick={() => paint(m.id, key)}
-                          title={`${lastFirst(m.fullName)} — ${date.toLocaleDateString()}${v ? `: ${v}` : ''} (click to set "${brushPick === CLEAR ? 'clear' : brush || '…'}")`}
+                          title={`${who} — ${label}${v ? `: ${v}` : ''} (click to set "${brushLabel}")`}
                           className={`block h-9 w-full truncate px-1 text-[11px] leading-9 ${v ? `${colorOf(v)} font-medium` : 'text-transparent hover:bg-bifrost-50'}`}
                         >
                           {v || '·'}
@@ -447,7 +496,8 @@ export function LimboTrackerPage() {
                     );
                   })}
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -522,7 +572,9 @@ function ManageActivitiesModal({
     setBusy(true);
     setError(null);
     try {
-      // Drop colors for labels no longer in the list (keeps the map tidy).
+      // Send colors only for labels still in the list. (The save is a merge, so
+      // a removed label's stored color is not actually deleted — harmless, and
+      // days already painted with it keep their color.)
       const kept = Object.fromEntries(Object.entries(colors).filter(([label]) => list.includes(label)));
       await onSave(list, kept);
       onClose();
@@ -549,6 +601,8 @@ function ManageActivitiesModal({
                     key={p.key}
                     type="button"
                     title={p.name}
+                    aria-label={`${p.name} for ${a}`}
+                    aria-pressed={colors[a] === p.key}
                     onClick={() => setColors((c) => ({ ...c, [a]: p.key }))}
                     className={`h-5 w-5 rounded ${p.cls.split(' ')[0]} ${colors[a] === p.key ? 'ring-2 ring-watch-900 ring-offset-1' : 'ring-1 ring-black/10 hover:ring-watch-400'}`}
                   />
@@ -568,7 +622,7 @@ function ManageActivitiesModal({
             add(draft);
           }}
         >
-          <Input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="New activity, e.g. Property TDY" />
+          <Input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="New activity, e.g. Property TDY" aria-label="New activity" maxLength={60} />
           <Button type="submit" variant="secondary" disabled={!draft.trim()}>
             Add
           </Button>

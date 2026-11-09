@@ -6,12 +6,10 @@
  * they navigate to it.
  */
 import React, { Suspense, lazy } from 'react';
-import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AppShell } from './AppShell';
 import { RequireAdmin, RequireAuth, RequireStaff, RequirePlatformOwner } from '../auth/guards';
 import { useAuth } from '../auth/AuthContext';
-import { useGlobalSettings } from './providers';
-import { can } from '../lib/rbac';
 import { Spinner } from '../components/ui';
 // Auth/entry pages stay eager — they're small and needed immediately on load.
 import { SignInPage } from '../auth/SignInPage';
@@ -73,21 +71,6 @@ function RouteFallback() {
   );
 }
 
-/**
- * TEMPORARY pre-launch gate (remove after go-live): while Org Settings has
- * preLaunchHideInstructors on, non-staff members are bounced from the
- * instructor pages back to Overview — nav hides the links (AppShell), this
- * closes the direct-URL path. Staff pass through untouched.
- */
-function RequireLaunched() {
-  const { role } = useAuth();
-  const settings = useGlobalSettings();
-  if (can.buildSchedules(role)) return <Outlet />;
-  if (settings === null) return <RouteFallback />; // settings still loading — don't flash a gated page
-  if (settings.preLaunchHideInstructors === true) return <Navigate to="/overview" replace />;
-  return <Outlet />;
-}
-
 /** The public marketing site lives on the public domain (+ localhost for dev).
  *  Any other host — e.g. the agency-internal domain — is treated as app-only and
  *  skips straight to sign-in, so internal users land on the app, not the pitch. */
@@ -138,9 +121,12 @@ export function AppRouter() {
             <Route path="/verify-email" element={<VerifyEmailPage />} />
             <Route path="/complete-dob" element={<CompleteDobPage />} />
             <Route path="/welcome" element={<CompleteProfilePage />} />
-            {/* Print views render outside the shell for a clean sheet */}
-            <Route path="/reports/print/:academyId" element={<PrintableSchedulePage />} />
+            {/* Print views render outside the shell for a clean sheet. All staff-only:
+                every link to them is on a staff page, and the schedule print's
+                queries (member names, draft sessions) are staff-only in the rules —
+                an instructor opening the URL got a blank sheet. */}
             <Route element={<RequireStaff />}>
+              <Route path="/reports/print/:academyId" element={<PrintableSchedulePage />} />
               <Route path="/cadet-reports/print/:academyId/:reportId" element={<CadetReportPrintPage />} />
               <Route path="/roster/day/print/:academyId/:date" element={<DayRosterPrintPage />} />
               <Route path="/roster/cadet/print/:academyId/:memberId" element={<CadetRecordPrintPage />} />
@@ -152,14 +138,10 @@ export function AppRouter() {
               <Route path="/overview" element={<OverviewPage />} />
               <Route path="/how-to" element={<HowToPage />} />
               <Route path="/notifications" element={<NotificationsPage />} />
-              {/* Profile stays OUTSIDE the pre-launch gate: instructors must be
-                  able to claim qualifications before go-live. */}
               <Route path="/profile" element={<ProfilePage />} />
-              <Route element={<RequireLaunched />}>
-                <Route path="/open-sessions" element={<BrowseOpenSessionsPage />} />
-                <Route path="/my-schedule" element={<MySchedulePage />} />
-                <Route path="/feedback" element={<FeedbackReportPage />} />
-              </Route>
+              <Route path="/open-sessions" element={<BrowseOpenSessionsPage />} />
+              <Route path="/my-schedule" element={<MySchedulePage />} />
+              <Route path="/feedback" element={<FeedbackReportPage />} />
 
               <Route element={<RequireStaff />}>
                 {/* Coordinator+ only — the master calendar exposes every
@@ -201,6 +183,11 @@ export function AppRouter() {
               </Route>
             </Route>
           </Route>
+
+          {/* Unknown path (typo, stale bookmark, retired link) — without this
+              the router renders nothing at all: a blank white page. RootGate
+              sends members to their dashboard and visitors to the landing. */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
     </BrowserRouter>

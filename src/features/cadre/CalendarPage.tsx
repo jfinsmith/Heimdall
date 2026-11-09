@@ -1,8 +1,9 @@
 /**
- * CADRE — Calendar (all users). Month/week/day/list with filters. Concurrent
- * cohorts are distinguished by per-academy color; weekends are collapsed by
- * default (Monday-first, so Sat/Sun sit on the right when shown). Staff get an
- * inline Edit button from the session detail.
+ * CADRE — master Calendar (staff only — the route sits under RequireStaff;
+ * instructors use Browse Open Sessions / My Schedule instead). Month/week/day/
+ * list with filters. Concurrent cohorts are distinguished by per-academy color;
+ * weekends are collapsed by default (Monday-first, so Sat/Sun sit on the right
+ * when shown). The session detail carries an inline Edit button.
  */
 import React, { useMemo, useState } from 'react';
 import FullCalendar from '@fullcalendar/react';
@@ -17,7 +18,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { useGlobalSettings } from '../../app/providers';
 import { can } from '../../lib/rbac';
 import type { AcademyDoc, SessionDoc } from '../../types';
-import { unfilledSlots } from '../../types';
+import { activeVerifiedQualKeys, unfilledSlots } from '../../types';
 import { academyColorFor } from '../../lib/academyColors';
 import { Field, Input, PageHeader, Select } from '../../components/ui';
 import { SessionDetailModal } from '../sessions/SessionDetailModal';
@@ -70,50 +71,56 @@ export function CalendarPage() {
   const academyIds = useMemo(() => new Set(visibleAcademies.map((a) => a.id)), [visibleAcademies]);
   const academyById = useMemo(() => new Map(visibleAcademies.map((a) => [a.id, a])), [visibleAcademies]);
 
-  const myQualKeys = useMemo(
-    () => new Set((profile?.qualifications ?? []).filter((q) => q.verified).map((q) => q.key)),
-    [profile]
+  // Verified quals that currently count — the same set the sign-up callable and
+  // Browse Open Sessions use (a lapsed instructor cert drops its quals).
+  const myQualKeys = useMemo(() => new Set(profile ? activeVerifiedQualKeys(profile) : []), [profile]);
+
+  // Only sessions of academies shown here — the window query also returns
+  // TEMPLATE sessions, whose placeholder courses/rooms/dates must not leak into
+  // the filter dropdowns or stretch the holiday range.
+  const visibleSessions = useMemo(
+    () => sessions.filter((s) => academyIds.has(s.academyId) && (staff || s.status !== 'draft')),
+    [sessions, academyIds, staff]
   );
 
-  const courses = useMemo(() => [...new Set(sessions.map((s) => s.courseName))].sort(), [sessions]);
+  const courses = useMemo(() => [...new Set(visibleSessions.map((s) => s.courseName))].sort(), [visibleSessions]);
   // Multi-room sessions store a comma-joined display ("SIM, E-120") — split into
   // tokens so each room is one option and the filter matches any held room.
-  const rooms = useMemo(() => [...new Set(sessions.flatMap((s) => (s.room ? s.room.split(', ') : [])))].sort(), [sessions]);
+  const rooms = useMemo(() => [...new Set(visibleSessions.flatMap((s) => (s.room ? s.room.split(', ') : [])))].sort(), [visibleSessions]);
 
-  const filtered = useMemo(
-    () =>
-      sessions.filter((s) => {
-        if (!academyIds.has(s.academyId)) return false;
-        if (!staff && s.status === 'draft') return false;
-        const term = search.trim().toLowerCase();
-        if (term) {
-          const acad = academyById.get(s.academyId);
-          const hay = [s.courseName, s.title, s.room, s.notes, acad?.shortName, acad?.name]
-            .filter(Boolean).join(' ').toLowerCase();
-          if (!hay.includes(term)) return false;
-        }
-        if (academyFilter !== 'all' && s.academyId !== academyFilter) return false;
-        if (courseFilter !== 'all' && s.courseName !== courseFilter) return false;
-        if (roomFilter !== 'all' && !(s.room ?? '').split(', ').includes(roomFilter)) return false;
-        if (disciplineFilter !== 'all' && academyById.get(s.academyId)?.discipline !== disciplineFilter) return false;
-        if (staffingFilter !== 'all') {
-          const under = unfilledSlots(s).length > 0;
-          if (staffingFilter === 'fully_staffed' && (under || s.status === 'cancelled')) return false;
-          if (staffingFilter === 'understaffed' && !under) return false;
-          if (staffingFilter === 'open' && s.status !== 'open') return false;
-        }
-        if (qualifiedOnly) {
-          const fillable = s.roleSlots.some(
-            (slot) =>
-              slot.filledBy.length < slot.count &&
-              (!slot.requiredQualificationKey || myQualKeys.has(slot.requiredQualificationKey))
-          );
-          if (!fillable) return false;
-        }
-        return true;
-      }),
-    [sessions, academyIds, academyById, staff, search, academyFilter, courseFilter, roomFilter, disciplineFilter, staffingFilter, qualifiedOnly, myQualKeys]
-  );
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return visibleSessions.filter((s) => {
+      if (term) {
+        const acad = academyById.get(s.academyId);
+        const hay = [s.courseName, s.title, s.room, s.notes, acad?.shortName, acad?.name]
+          .filter(Boolean).join(' ').toLowerCase();
+        if (!hay.includes(term)) return false;
+      }
+      if (academyFilter !== 'all' && s.academyId !== academyFilter) return false;
+      if (courseFilter !== 'all' && s.courseName !== courseFilter) return false;
+      if (roomFilter !== 'all' && !(s.room ?? '').split(', ').includes(roomFilter)) return false;
+      if (disciplineFilter !== 'all' && academyById.get(s.academyId)?.discipline !== disciplineFilter) return false;
+      if (staffingFilter !== 'all') {
+        // Cancelled sessions and lunch placeholders aren't staffable — they
+        // are neither "understaffed" nor "fully staffed".
+        if (s.status === 'cancelled' || s.kind === 'lunch') return false;
+        const under = unfilledSlots(s).length > 0;
+        if (staffingFilter === 'fully_staffed' && under) return false;
+        if (staffingFilter === 'understaffed' && !under) return false;
+        if (staffingFilter === 'open' && s.status !== 'open') return false;
+      }
+      if (qualifiedOnly) {
+        const fillable = s.roleSlots.some(
+          (slot) =>
+            slot.filledBy.length < slot.count &&
+            (!slot.requiredQualificationKey || myQualKeys.has(slot.requiredQualificationKey))
+        );
+        if (!fillable) return false;
+      }
+      return true;
+    });
+  }, [visibleSessions, academyById, search, academyFilter, courseFilter, roomFilter, disciplineFilter, staffingFilter, qualifiedOnly, myQualKeys]);
 
   // Shade holidays across however far out classes are actually scheduled
   // (not a fixed window) so a 2029/2030 academy still shows its holidays.
@@ -126,13 +133,13 @@ export function CalendarPage() {
       if (sy) fromYear = Math.min(fromYear, sy);
       if (ey) toYear = Math.max(toYear, ey);
     }
-    for (const s of sessions) {
+    for (const s of visibleSessions) {
       const y = s.start.toDate().getFullYear();
       fromYear = Math.min(fromYear, y);
       toYear = Math.max(toYear, y);
     }
     return Number.isFinite(fromYear) ? { fromYear, toYear } : undefined;
-  }, [visibleAcademies, sessions]);
+  }, [visibleAcademies, visibleSessions]);
 
   const events = useMemo(
     () => [

@@ -34,7 +34,10 @@ export function CadetReportsPage() {
       </Field>
 
       {academy ? (
-        <AcademyReports academy={academy} />
+        // Keyed by class: switching classes starts from a clean slate (no frame
+        // of the previous class's filed reports or cadet names, no carried-over
+        // form state).
+        <AcademyReports key={academy.id} academy={academy} />
       ) : (
         <p className="rounded-md bg-watch-50 px-3 py-2 text-sm text-slate-500">Choose a class to see its reports.</p>
       )}

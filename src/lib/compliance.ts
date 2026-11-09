@@ -19,12 +19,12 @@ export const COMPUTE_REGION = 'us-east1';
 /** What cadet/staff PII HEIMDALL does and does NOT hold (post-SSN-removal). */
 export const PII_INVENTORY: { stored: string[]; notStored: string[] } = {
   stored: [
-    'Cadet name, class assignment, and (optional) CJIS student number',
+    'Cadet name, class assignment, date of birth, and (optional) CJIS student number',
     'Cadet contact details: phone, email, and emergency-contact name & phone',
     'Cadet attendance, demerits/discipline, and end-of-course grades',
-    'Staff/instructor name, email, rank, and qualification/certification dates',
+    'Staff/instructor name, email, phone, date of birth, rank, and qualification/certification dates',
     'Academic-action and conduct documents generated for a cadet',
-    'Uploaded files in Cloud Storage: bug-report screenshots (which can capture on-screen records) and organization logos',
+    'Uploaded files in Cloud Storage: instructor certification-card photos, bug-report screenshots (which can capture on-screen records), room diagrams, and organization logos',
   ],
   notStored: [
     'Social Security Numbers (removed entirely — the college retains these locally)',

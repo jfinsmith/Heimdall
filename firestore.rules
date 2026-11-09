@@ -34,8 +34,14 @@ service cloud.firestore {
     // Defense-in-depth: a suspended/deactivated user's FUTURE tokens carry a
     // status claim (minted by setUserSuspension/setUserActive, which also strip
     // the role claim + revoke refresh tokens). Absent claim = active.
+    // 'pending' is minted WITH the orgId claim when an account joins an org
+    // (join code, domain auto-join, owner assignment) and is dropped when an
+    // admin approves it (setUserRole rebuilds the claims). Without it a
+    // not-yet-approved joiner — whose role-less token role() reads as
+    // 'instructor' — could read the org's schedule, sign-ups, rooms and settings
+    // while the app merely parked them on the /pending screen.
     function activeStatus() {
-      return !(request.auth.token.get('status', 'active') in ['suspended', 'inactive']);
+      return !(request.auth.token.get('status', 'active') in ['suspended', 'inactive', 'pending']);
     }
     // Coordinator and above: may build schedules, approve sign-ups, verify quals.
     function isStaff() {
@@ -62,8 +68,12 @@ service cloud.firestore {
     }
     // A doc belongs to the caller's tenant. Requires the caller to HAVE an org
     // claim, so an orgless/stale token can't read orgless docs as a back door.
+    // activeStatus(): suspension/deactivation strips the ROLE claim but keeps the
+    // orgId claim (and the login is not disabled), so without it a locked-out
+    // member could sign in again and still read the org's schedule, rooms and
+    // sign-ups as a default 'instructor'. Token-only check — list-query safe.
     function inOrg(data) {
-      return tokenOrgId() != null && data.get('orgId', null) == tokenOrgId();
+      return tokenOrgId() != null && activeStatus() && data.get('orgId', null) == tokenOrgId();
     }
     // A class may be published only after the captain's approval. Templates are
     // exempt. (Repeated get() on the same path is cached → one read.)
@@ -71,12 +81,23 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/academies/$(aid)).data.get('isTemplate', false) == true
           || get(/databases/$(database)/documents/academies/$(aid)).data.get(['approval', 'state'], '') == 'approved';
     }
+    // The academy `aid` exists and belongs to the caller's tenant. A child doc's
+    // OWN orgId stamp is caller-supplied, so on its own it never proved the
+    // PARENT was theirs: staff of org A could create docs under (or sessions
+    // pointing at) org B's academy — a private/portal doc with their own token
+    // that the public-portal callable then honours, planted roster rows, a
+    // squatted attendance/limbo doc, or sessions on B's public class page.
+    // Used on CREATE only. Every write in a batch names the same academy, so
+    // this is one cached read (same pattern as academyOkToPublish).
+    function academyInOrg(aid) {
+      return get(/databases/$(database)/documents/academies/$(aid)).data.get('orgId', null) == tokenOrgId();
+    }
 
     // ── orgs (tenant registry) ───────────────────────────────────────────────
     // Read your own org; the platform owner reads all (owner console). Writes are
     // the createOrg callable (Admin SDK) only.
     match /orgs/{orgId} {
-      allow read: if signedIn() && (orgId == tokenOrgId() || isPlatformOwner());
+      allow read: if signedIn() && activeStatus() && (orgId == tokenOrgId() || isPlatformOwner());
       allow write: if false;
     }
 
@@ -175,7 +196,7 @@ service cloud.firestore {
     // Read/write ONLY your own org's settings doc. (The legacy 'global' doc is no
     // longer client-readable post-cutover; the Admin SDK still reads it server-side.)
     match /settings/{docId} {
-      allow read: if signedIn() && docId == tokenOrgId();
+      allow read: if signedIn() && activeStatus() && docId == tokenOrgId();
       allow write: if isAdmin() && docId == tokenOrgId();
       // Coordinators manage the Limbo activity dropdown + its colors in place
       // — those fields (plus the timestamp); everything else stays admin-only.
@@ -185,7 +206,7 @@ service cloud.firestore {
 
     // ── reportConfig/{orgId} (per-tenant report categories + name overrides) ─
     match /reportConfig/{docId} {
-      allow read: if signedIn() && docId == tokenOrgId();
+      allow read: if signedIn() && activeStatus() && docId == tokenOrgId();
       allow write: if isAdmin() && docId == tokenOrgId();
     }
 
@@ -356,7 +377,11 @@ service cloud.firestore {
       // payload — otherwise a client could forge approval:{state:'approved'} or
       // isTemplate:true in the same write to self-publish. approval is immutable
       // from clients: only the academyApproval Admin-SDK callable advances it.
-      allow update: if isStaff() && inOrg(resource.data) && unchanged('orgId') && unchanged('approval') && (
+      // isTemplate is fixed at create (the app only ever sets it there): it is
+      // the exemption from this gate, so a mutable flag was a three-write
+      // self-publish — mark a pending draft as a template, publish it (exempt),
+      // then clear the flag.
+      allow update: if isStaff() && inOrg(resource.data) && unchanged('orgId') && unchanged('approval') && unchanged('isTemplate') && (
         !(request.resource.data.status in ['published', 'in_progress', 'completed'])
         || resource.data.status in ['published', 'in_progress', 'completed']
         || resource.data.get('isTemplate', false) == true
@@ -370,6 +395,7 @@ service cloud.firestore {
         allow read: if isStaff() && inOrg(resource.data);
         allow create: if isStaff()
           && inOrg(request.resource.data)
+          && academyInOrg(academyId)
           && !('ssnCipher' in request.resource.data)
           && !('ssnLast4' in request.resource.data);
         allow delete: if isStaff() && inOrg(resource.data);
@@ -385,7 +411,7 @@ service cloud.firestore {
       // (same dead-listener trap as private/portal below).
       match /limbo/{docId} {
         allow read: if isStaff() && (resource == null || inOrg(resource.data));
-        allow create: if isStaff() && inOrg(request.resource.data);
+        allow create: if isStaff() && inOrg(request.resource.data) && academyInOrg(academyId);
         allow update: if isStaff() && inOrg(resource.data) && unchanged('orgId');
         allow delete: if isStaff() && inOrg(resource.data);
       }
@@ -393,7 +419,7 @@ service cloud.firestore {
       // ── voluntary attendance log (one doc per day; staff-only, org-scoped) ──
       match /attendance/{date} {
         allow read: if isStaff() && inOrg(resource.data);
-        allow create: if isStaff() && inOrg(request.resource.data);
+        allow create: if isStaff() && inOrg(request.resource.data) && academyInOrg(academyId);
         allow update: if isStaff() && inOrg(resource.data) && unchanged('orgId');
         allow delete: if isStaff() && inOrg(resource.data);
       }
@@ -401,7 +427,7 @@ service cloud.firestore {
       // ── academic-action reports (cadet exam-failure / dismissal letters) ──
       match /reports/{reportId} {
         allow read: if isStaff() && inOrg(resource.data);
-        allow create: if isStaff() && inOrg(request.resource.data);
+        allow create: if isStaff() && inOrg(request.resource.data) && academyInOrg(academyId);
         allow update: if isStaff() && inOrg(resource.data) && unchanged('orgId');
         allow delete: if isStaff() && inOrg(resource.data);
       }
@@ -417,7 +443,7 @@ service cloud.firestore {
         // writes the doc, and the card only updates on a full page refresh.
         // Reveals only nonexistence, and only to staff.
         allow read: if isStaff() && (resource == null || inOrg(resource.data));
-        allow create: if isStaff() && inOrg(request.resource.data);
+        allow create: if isStaff() && inOrg(request.resource.data) && academyInOrg(academyId);
         allow update: if isStaff() && inOrg(resource.data) && unchanged('orgId');
         allow delete: if isStaff() && inOrg(resource.data);
       }
@@ -428,9 +454,12 @@ service cloud.firestore {
       allow read: if inOrg(resource.data) && (isStaff() || (signedIn() && resource.data.status != 'draft'));
       // New sessions must be draft unless the parent academy is approved/template
       // (so a session can't be created already-visible to dodge approval).
+      // The academy must be the caller's own (academyInOrg): the publish gate
+      // alone accepted ANY approved academy id, another tenant's included.
       allow create: if isStaff()
         && inOrg(request.resource.data)
         && request.resource.data.roleSlots is list
+        && academyInOrg(request.resource.data.academyId)
         && (request.resource.data.status == 'draft' || academyOkToPublish(request.resource.data.academyId));
       // NOTE: delete is separate — on delete there is no request.resource.
       allow delete: if isStaff() && inOrg(resource.data);
@@ -439,7 +468,10 @@ service cloud.firestore {
       // (roleSlots mutation) is now SERVER-owned (submitSignup/withdrawSignup
       // callables via Admin SDK) — a client may NOT write roleSlots, so a non-staff
       // member can't over-fill a slot, insert other uids, or skip qualification.
-      allow update: if isStaff() && inOrg(resource.data) && unchanged('orgId') && (
+      // academyId is immutable (no form ever moves a session): a session may be
+      // created already-visible under a TEMPLATE, so re-pointing it afterwards
+      // would surface it under a class the captain never approved.
+      allow update: if isStaff() && inOrg(resource.data) && unchanged('orgId') && unchanged('academyId') && (
             request.resource.data.status == resource.data.status
             || request.resource.data.status == 'draft'
             || resource.data.status != 'draft'
@@ -483,22 +515,19 @@ service cloud.firestore {
 
     // ── mail / mailQueue ───────────────────────────────────────────────────
     // Outgoing email. `mailQueue` is consumed by our sendQueuedEmail function;
-    // `mail` is the Trigger Email extension's legacy queue (extension stays
-    // installed until the new sender is verified; the daily sweep purges old
-    // docs from both). Server-written ONLY; same-tenant admin read — the
-    // mailQueue rule uses DIRECT field comparisons (no function wrappers) so a
-    // future admin mail-log LIST query passes the analyzer (see the
-    // firestore-list-query-rules gotcha).
+    // `mail` is the retired Trigger Email extension's legacy queue (the daily
+    // sweep purges old docs from both). SERVER-ONLY, reads included: queued
+    // bodies carry temporary passwords (createUserAccount / createOrgAdmin /
+    // sendActivationEmail) and notification-email verification codes for 30
+    // days, so a same-tenant admin read let a sergeant lift a new director's
+    // temp password and sign in as them first. No client surface reads either
+    // collection. A future admin mail log must go through a callable that
+    // returns metadata only (to / subject / delivery state) — never the body.
     match /mail/{mailId} {
-      allow read: if isAdmin() && inOrg(resource.data);
-      allow write: if false; // functions/Admin SDK only
+      allow read, write: if false; // functions/Admin SDK only
     }
     match /mailQueue/{mailId} {
-      allow read: if request.auth != null
-        && request.auth.token.role in ['director', 'lieutenant', 'sergeant']
-        && request.auth.token.orgId != null
-        && resource.data.orgId == request.auth.token.orgId;
-      allow write: if false; // functions/Admin SDK only
+      allow read, write: if false; // functions/Admin SDK only
     }
 
     // ── scheduleChangeQueue/{sessionId} — pending schedule-change notices ───
@@ -527,12 +556,16 @@ service cloud.firestore {
     }
 
     // ── auditLog ───────────────────────────────────────────────────────────
-    // Append-only from clients (must stamp own uid + own org); same-tenant admin read.
+    // Append-only from STAFF clients (must stamp own uid + own org). Every client
+    // logAudit() call site is a staff surface (members' sign-ups/withdrawals are
+    // logged by the callables), so a plain member — or a not-yet-approved join,
+    // whose token already carries the orgId — has no business writing here and
+    // could otherwise fill the owner's audit trail with fabricated entries.
     match /auditLog/{logId} {
       // Owner-only read — matches the nav/route move (0e4ff7d); org admins
       // lost the page, so the raw collection shouldn't stay readable either.
       allow read: if isPlatformOwner() && inOrg(resource.data);
-      allow create: if signedIn()
+      allow create: if isStaff()
         && request.resource.data.actorUid == request.auth.uid
         && inOrg(request.resource.data);
       allow update, delete: if false;

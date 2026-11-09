@@ -26,7 +26,7 @@ import type { AcademyDoc, SessionDoc, UserDoc } from '../../types';
 import { SLOT_ROLE_LABELS } from '../../types';
 import { WordmarkHorizontal } from '../../brand/Logo';
 import { OrgLogo } from '../../brand/OrgLogo';
-import { Button } from '../../components/ui';
+import { Button, Spinner } from '../../components/ui';
 import { sessionFlag, type SessionFlag } from '../cadre/sessionEvents';
 import { holidaysForYear } from '../../lib/holidays';
 
@@ -84,11 +84,11 @@ function primaryOf(sessions: WithId<SessionDoc>[]) {
 export function PrintableSchedulePage() {
   const { academyId } = useParams<{ academyId: string }>();
   const settings = useGlobalSettings();
-  const { data: academy } = useDoc<AcademyDoc>(academyId ? `academies/${academyId}` : null);
+  const { data: academy, loading: academyLoading } = useDoc<AcademyDoc>(academyId ? `academies/${academyId}` : null);
   // The class's curriculum drives branding overrides (logo + org name) on the
   // printed cover/footer, falling back to org settings — same as DocumentHeader.
   const { data: curriculum } = useCurriculum(academy?.discipline);
-  const { data: sessions } = useCollection<SessionDoc>(
+  const { data: sessions, loading: sessionsLoading } = useCollection<SessionDoc>(
     academyId ? 'sessions' : null,
     [where('academyId', '==', academyId ?? ''), orderBy('start')],
     [academyId]
@@ -189,7 +189,10 @@ export function PrintableSchedulePage() {
     return { days, weeks: weeks.length };
   }, [weeks]);
 
-  if (!academy) return null;
+  // A blank white tab told the reader nothing — say "loading", then say why
+  // there is no schedule (bad link, class removed, or not visible to them).
+  if (academyLoading) return <div className="flex h-screen items-center justify-center"><Spinner className="text-bifrost-400" /></div>;
+  if (!academy) return <p className="p-8 text-sm text-slate-500">Schedule not found — the class may have been removed, or it isn’t available to your account.</p>;
   const docType = mode === 'cadet' ? 'Cadet Training Schedule' : 'Staffing Schedule';
   const orgName = curriculum?.brandOrgName || settings?.orgName || 'Training Academy';
   const coordinators = (academy.coordinatorIds ?? []).map(nameFor).filter((n) => n !== 'Unassigned');
@@ -199,7 +202,7 @@ export function PrintableSchedulePage() {
 
   return (
     <div className="mx-auto max-w-[8.5in] bg-white text-[#1f2a45]">
-      <style>{printCss(navy, amber)}</style>
+      <style>{printCss(navy)}</style>
 
       {/* ── Screen-only control bar ─────────────────────────────────────── */}
       <div className="no-print sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-6 py-3">
@@ -437,7 +440,9 @@ export function PrintableSchedulePage() {
           </div>
         ))}
 
-        {weeks.length === 0 && <p className="py-16 text-center text-sm text-slate-400">No sessions scheduled.</p>}
+        {weeks.length === 0 && (
+          <p className="py-16 text-center text-sm text-slate-400">{sessionsLoading ? 'Loading the schedule…' : 'No sessions scheduled.'}</p>
+        )}
       </div>
 
       {/* ── Fixed running footer (prints on every page) ───────────────────── */}
@@ -493,12 +498,17 @@ function SectionHead({
   );
 }
 
-function printCss(navy: string, amber: string) {
+function printCss(navy: string) {
+  // The only brand value interpolated into raw CSS (inline `style` props are
+  // escaped by React; this string is not) — accept a plain hex color, which is
+  // all the settings color picker ever writes, so a hand-edited settings value
+  // can't smuggle extra rules into the page.
+  const pageNo = /^#[0-9a-fA-F]{3,8}$/.test(navy) ? navy : NAVY_FALLBACK;
   return `
     .run-foot { display: none; }
     .day-card, .ov-row { break-inside: avoid; }
     @media print {
-      @page { size: letter; margin: 0.5in 0.45in 0.62in; @bottom-right { content: counter(page); color: ${navy}; font-size: 9px; } }
+      @page { size: letter; margin: 0.5in 0.45in 0.62in; @bottom-right { content: counter(page); color: ${pageNo}; font-size: 9px; } }
       .no-print { display: none !important; }
       html, body { background: #ffffff !important; }
       * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
@@ -507,6 +517,5 @@ function printCss(navy: string, amber: string) {
       .content { padding-bottom: 0.35in; }
       .run-foot { display: flex; position: fixed; left: 0; right: 0; bottom: 0; background: #fff; padding-top: 4px; padding-bottom: 4px; }
     }
-    .amber-rule { background: ${amber}; }
   `;
 }

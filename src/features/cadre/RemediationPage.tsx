@@ -63,7 +63,7 @@ function todayStr(): string {
 
 export function RemediationPage() {
   const { firebaseUser } = useAuth();
-  const { data: cases, loading } = useCollection<RemediationDoc>('remediations');
+  const { data: cases, loading, error: loadError } = useCollection<RemediationDoc>('remediations');
   const [statusFilter, setStatusFilter] = useState<RemediationStatus | 'all' | 'archived'>('all');
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<WithId<RemediationDoc> | 'new' | null>(null);
@@ -163,13 +163,18 @@ export function RemediationPage() {
           </Button>
         </div>
         <div className="flex items-center gap-2">
-          <Input type="search" placeholder="Search name or class…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <Input type="search" placeholder="Search name or class…" aria-label="Search cases by name or class" value={search} onChange={(e) => setSearch(e.target.value)} />
           <Button variant="primary" onClick={() => setEditing('new')}>+ Add cadet</Button>
         </div>
       </div>
 
       {loading ? (
         <p className="text-sm text-slate-500">Loading…</p>
+      ) : loadError ? (
+        // A failed read must not masquerade as "no cadets are being tracked".
+        <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">
+          Couldn&apos;t load the remediation list — {friendlyError(loadError, 'please reload and try again.')}
+        </div>
       ) : rows.length === 0 ? (
         <div className="rounded-lg border border-watch-100 bg-white p-8 text-center text-sm text-slate-500 shadow-sm">
           {cases.length === 0
@@ -500,7 +505,10 @@ function RemediationModal({ existing, onClose }: { existing: WithId<RemediationD
   /** Dropdown choice for a row: a curriculum course by name, Custom, or empty. */
   function pickBlockCourse(i: number, value: string) {
     if (value === '__custom__') {
-      setBlock(i, { custom: true, highLiability: false });
+      // Hours are invisible in this form (stamped from the curriculum course) —
+      // drop them with the high-liability flag, or a custom block silently
+      // keeps the previously picked course's hours in the list's total.
+      setBlock(i, { custom: true, hours: '', highLiability: false });
       return;
     }
     const c = curriculumCourses.find((x) => x.name === value);
@@ -570,6 +578,10 @@ function RemediationModal({ existing, onClose }: { existing: WithId<RemediationD
           }
         : null,
       notes: notes.trim(),
+      // Re-opening a resolved case (status back to awaiting/scheduled) clears
+      // the recorded outcome — an open case has not ended, and nothing else
+      // can remove a stale "Resigned"/"Transferred" badge from its row.
+      ...(existing?.outcome && (status === 'awaiting' || status === 'scheduled') ? { outcome: null } : {}),
       updatedAt: serverTimestamp(),
     };
     try {
@@ -737,7 +749,7 @@ function RemediationModal({ existing, onClose }: { existing: WithId<RemediationD
                     <input type="checkbox" checked={b.completed} onChange={(e) => setBlock(i, { completed: e.target.checked })} />
                     Done
                   </label>
-                  <Button type="button" variant="ghost" className="text-red-700" onClick={() => setBlocks((p) => p.filter((_, idx) => idx !== i))}>
+                  <Button type="button" variant="ghost" className="text-red-700" aria-label="Remove this block" onClick={() => setBlocks((p) => p.filter((_, idx) => idx !== i))}>
                     ✕
                   </Button>
                 </div>

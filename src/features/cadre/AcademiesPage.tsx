@@ -8,6 +8,7 @@ import {
   addDoc,
   collection,
   deleteField,
+  getDoc,
   getDocs,
   orderBy,
   query,
@@ -24,8 +25,8 @@ import { useOrg } from '../../lib/useOrg';
 import { billingActive } from '../../lib/subscription';
 import { fmtDate, tsFromDate, addDays, toDateInputValue, isValidDuration } from '../../lib/time';
 import { useAllCurricula, baseCurriculumKey } from '../../lib/curricula';
-import { loadRoomBookings, loadRoomReservations, overlaps } from './rooms/roomBooking';
-import type { AcademyDoc, AcademyStatus, CurriculumDoc, SessionDoc, UserDoc } from '../../types';
+import { loadRoomBookings, loadRoomReservations, overlaps, roomExemptAcademy, academyHolderLabel } from './rooms/roomBooking';
+import type { AcademyDoc, AcademyStatus, SessionDoc, UserDoc } from '../../types';
 import { Badge, Button, Field, Input, PageHeader, Select } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import { ACADEMY_COLORS, nextAcademyColor } from '../../lib/academyColors';
@@ -143,7 +144,13 @@ export function AcademiesPage() {
               <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
               Show archived
             </label>
-            <Button onClick={() => setTemplateCreateOpen(true)}>New template</Button>
+            <Button
+              onClick={() => setTemplateCreateOpen(true)}
+              disabled={!canCreate}
+              title={canCreate ? undefined : 'Your subscription is inactive — renew under Admin → Billing to create templates.'}
+            >
+              New template
+            </Button>
             <Button
               variant="primary"
               onClick={() => setCreateOpen(true)}
@@ -357,8 +364,8 @@ export function AcademiesPage() {
       {/* Mounted on demand so each open starts from a blank form — an always-
           mounted modal kept the previous academy's name/designation/dates (and
           the end-date override flag) for the next one. */}
-      {createOpen && <CreateAcademyModal open onClose={() => setCreateOpen(false)} actorUid={firebaseUser?.uid ?? ''} />}
-      {templateCreateOpen && <CreateAcademyModal open onClose={() => setTemplateCreateOpen(false)} actorUid={firebaseUser?.uid ?? ''} isTemplate />}
+      {createOpen && <CreateAcademyModal onClose={() => setCreateOpen(false)} actorUid={firebaseUser?.uid ?? ''} />}
+      {templateCreateOpen && <CreateAcademyModal onClose={() => setTemplateCreateOpen(false)} actorUid={firebaseUser?.uid ?? ''} isTemplate />}
       {cloneSource && (
         <CloneAcademyModal
           source={cloneSource}
@@ -378,12 +385,16 @@ export function AcademiesPage() {
 }
 
 // ── Delete (cascade: academy + sessions + sign-ups + assignments + the
-//    academy's own subcollections: roster, attendance, reports, portal secrets) ──
+//    academy's own subcollections: roster, attendance, reports, portal secrets,
+//    limbo plan) ──
 // Org-owned subcollections of an academy. Firestore never cascades a document
 // delete to its subcollections, so each is listed (org-filtered — the list rule
 // is inOrg(resource.data)) and removed explicitly; otherwise the roster's PII
 // (CJIS, DOB, contacts) and filed letters would outlive the class forever.
+// (limbo holds ONE known doc — `plan` — and is fetched by id in doDelete.)
 const ACADEMY_SUBCOLLECTIONS = ['roster', 'attendance', 'reports', 'private'] as const;
+/** Writes per delete batch (Firestore's hard limit is 500). */
+const DELETE_BATCH = 400;
 function DeleteAcademyModal({
   academy,
   onClose,
@@ -407,29 +418,57 @@ function DeleteAcademyModal({
       const sessionsSnap = await getDocs(query(collection(db, 'sessions'), where('academyId', '==', academy.id), ...orgFilter));
       // Collect every doc to remove: each session's sign-ups, the sessions, the
       // assignment mirrors, the academy's subcollections, and finally the
-      // academy itself.
-      const refs: ReturnType<typeof doc>[] = [];
+      // academy itself. Docs are kept in GROUPS that must land in one batch:
+      // a session travels with its own sign-ups, because a sign-up deleted a
+      // batch AHEAD of its session looks to Gjallarhorn like a coordinator
+      // un-reserving someone from a live class ("you were removed" email).
+      type Ref = ReturnType<typeof doc>;
+      const groups: Ref[][] = [];
       setProgress('Clearing sign-ups…');
-      for (const sess of sessionsSnap.docs) {
-        const signups = await getDocs(query(collection(db, 'sessions', sess.id, 'signups'), ...orgFilter));
-        signups.forEach((su) => refs.push(su.ref));
-        refs.push(sess.ref);
+      // Sign-up lists are read 25 sessions at a time — one-by-one made a full
+      // academy (400+ blocks) sit on this step for the better part of a minute.
+      for (let i = 0; i < sessionsSnap.docs.length; i += 25) {
+        const chunk = sessionsSnap.docs.slice(i, i + 25);
+        const lists = await Promise.all(
+          chunk.map((sess) => getDocs(query(collection(db, 'sessions', sess.id, 'signups'), ...orgFilter)))
+        );
+        chunk.forEach((sess, j) => groups.push([...lists[j].docs.map((su) => su.ref), sess.ref]));
       }
       const assignmentsSnap = await getDocs(query(collection(db, 'assignments'), where('academyId', '==', academy.id), ...orgFilter));
-      assignmentsSnap.forEach((a) => refs.push(a.ref));
+      assignmentsSnap.forEach((a) => groups.push([a.ref]));
       setProgress('Clearing roster, attendance & reports…');
       for (const sub of ACADEMY_SUBCOLLECTIONS) {
         const snap = await getDocs(query(collection(db, 'academies', academy.id, sub), ...orgFilter));
-        snap.forEach((d) => refs.push(d.ref));
+        snap.forEach((d) => groups.push([d.ref]));
       }
-      refs.push(doc(db, 'academies', academy.id));
+      // Limbo plan (the post-academy whereabouts chart, keyed by cadet) — it
+      // was never part of this cascade and outlived every deleted class. Read
+      // by id and only queued when present: deleting a MISSING doc is denied
+      // by the rules and would sink its whole batch.
+      const limboPlan = await getDoc(doc(db, 'academies', academy.id, 'limbo', 'plan'));
+      if (limboPlan.exists()) groups.push([limboPlan.ref]);
+      groups.push([doc(db, 'academies', academy.id)]); // last — a mid-way failure leaves the class retryable
 
-      setProgress(`Deleting ${refs.length} records…`);
-      for (let i = 0; i < refs.length; i += 400) {
-        const batch = writeBatch(db);
-        refs.slice(i, i + 400).forEach((r) => batch.delete(r));
+      const total = groups.reduce((n, g) => n + g.length, 0);
+      setProgress(`Deleting ${total} records…`);
+      let batch = writeBatch(db);
+      let pending = 0;
+      const flush = async () => {
+        if (!pending) return;
         await batch.commit();
+        batch = writeBatch(db);
+        pending = 0;
+      };
+      for (const group of groups) {
+        // Never split a group across batches (an absurdly large one is the
+        // only exception — it is chunked rather than overflowing the limit).
+        if (pending + group.length > DELETE_BATCH) await flush();
+        for (const r of group) {
+          batch.delete(r);
+          if (++pending >= DELETE_BATCH) await flush();
+        }
       }
+      await flush();
       await logAudit(actorUid, 'academy.delete', 'academy', academy.id, `Deleted ${academy.name} (${sessionsSnap.size} sessions)`);
       onClose();
     } catch (err) {
@@ -446,7 +485,7 @@ function DeleteAcademyModal({
           <p className="font-semibold">This permanently deletes the academy and everything in it.</p>
           <p className="mt-1">
             All sessions, sign-ups, assignments, the cadet roster (grades, discipline, attendance), filed
-            reports, and the public class link for <strong>{academy.shortName || academy.name}</strong> will be
+            reports, the Limbo plan, and the public class link for <strong>{academy.shortName || academy.name}</strong> will be
             erased. This cannot be undone.
           </p>
         </div>
@@ -469,12 +508,10 @@ function DeleteAcademyModal({
 
 // ── Create ──────────────────────────────────────────────────────────────────
 function CreateAcademyModal({
-  open,
   onClose,
   actorUid,
   isTemplate = false,
 }: {
-  open: boolean;
   onClose: () => void;
   actorUid: string;
   isTemplate?: boolean;
@@ -543,34 +580,41 @@ function CreateAcademyModal({
       return;
     }
     setBusy(true);
-    await addDoc(collection(db, 'academies'), {
-      orgId,
-      name,
-      shortName,
-      discipline,
-      color: defaultColor,
-      fdleProgram: curriculum?.fdleProgram ?? curriculum?.label ?? discipline,
-      startDate: tsFromDate(new Date(`${startDate}T00:00:00`)),
-      endDate: tsFromDate(new Date(`${endDate}T23:59:59`)),
-      location,
-      defaultRoom,
-      ...(defaultRoomId ? { defaultRoomId } : {}),
-      ...(sequenceNo.trim() ? { sequenceNo: sequenceNo.trim() } : {}),
-      status: 'draft',
-      isTemplate,
-      signupsEnabled,
-      coordinatorIds: [...new Set([primary, secondary].filter(Boolean))],
-      targetTotalHours: targetHours,
-      createdBy: actorUid,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-    setBusy(false);
-    onClose();
+    try {
+      await addDoc(collection(db, 'academies'), {
+        orgId,
+        name,
+        shortName,
+        discipline,
+        color: defaultColor,
+        fdleProgram: curriculum?.fdleProgram ?? curriculum?.label ?? discipline,
+        startDate: tsFromDate(new Date(`${startDate}T00:00:00`)),
+        endDate: tsFromDate(new Date(`${endDate}T23:59:59`)),
+        location,
+        defaultRoom,
+        ...(defaultRoomId ? { defaultRoomId } : {}),
+        ...(sequenceNo.trim() ? { sequenceNo: sequenceNo.trim() } : {}),
+        status: 'draft',
+        isTemplate,
+        signupsEnabled,
+        coordinatorIds: [...new Set([primary, secondary].filter(Boolean))],
+        targetTotalHours: targetHours,
+        createdBy: actorUid,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      onClose();
+    } catch (err) {
+      // A rules denial (lapsed subscription, expired sign-in) or a dropped
+      // connection used to leave "Create" disabled forever with no message.
+      window.alert(`Could not create the ${isTemplate ? 'template' : 'academy'}: ${friendlyError(err, 'unknown error')}`);
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={isTemplate ? 'New schedule template' : 'New academy'}>
+    <Modal open onClose={onClose} title={isTemplate ? 'New schedule template' : 'New academy'}>
       <form onSubmit={submit} className="space-y-4">
         {isTemplate && (
           <p className="rounded-md bg-watch-50 px-3 py-2 text-sm text-slate-600">
@@ -696,6 +740,7 @@ export function CloneAcademyModal({
   actorUid: string;
 }) {
   const isTemplate = !!source.isTemplate;
+  const { orgId: myOrgId } = useAuth();
   const [name, setName] = useState(isTemplate ? source.name.replace(/template/i, '').trim() || source.name : `${source.name} (copy)`);
   const [shortName, setShortName] = useState(source.shortName ?? '');
   const [newStart, setNewStart] = useState('');
@@ -713,8 +758,17 @@ export function CloneAcademyModal({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    // Every copied doc is stamped with a non-null tenant (an org-less academy or
+    // session is invisible to the org-scoped lists; `undefined` aborts the write).
+    const cloneOrgId = source.orgId ?? myOrgId;
+    if (!cloneOrgId) {
+      window.alert('Your account is still loading its organization — please reload and try again.');
+      return;
+    }
     setBusy(true);
     setProgress('Copying academy…');
+    // Set once the new academy doc exists — decides which failure message applies.
+    let academyCreated = false;
     try {
 
     // CALENDAR-DAY delta between old and new start, applied with addDays
@@ -743,7 +797,7 @@ export function CloneAcademyModal({
     } = source;
     const academyRef = await addDoc(collection(db, 'academies'), {
       ...sourceData,
-      orgId: source.orgId,
+      orgId: cloneOrgId,
       name,
       shortName,
       color: cloneColor,
@@ -755,9 +809,10 @@ export function CloneAcademyModal({
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
+    academyCreated = true;
 
     setProgress('Copying sessions…');
-    const sessionsSnap = await getDocs(query(collection(db, 'sessions'), where('academyId', '==', source.id), ...(source.orgId ? [where('orgId', '==', source.orgId)] : [])));
+    const sessionsSnap = await getDocs(query(collection(db, 'sessions'), where('academyId', '==', source.id), where('orgId', '==', cloneOrgId)));
 
     // Batched writes, 400 per batch (Firestore limit is 500).
     let batch = writeBatch(db);
@@ -784,7 +839,7 @@ export function CloneAcademyModal({
       const ref = doc(collection(db, 'sessions'));
       batch.set(ref, {
         ...s,
-        orgId: source.orgId, // explicit (don't depend on the source session's backfill state)
+        orgId: cloneOrgId, // explicit (don't depend on the source session's backfill state)
         academyId: academyRef.id,
         start: tsFromDate(newStart),
         end: tsFromDate(newEnd),
@@ -810,21 +865,33 @@ export function CloneAcademyModal({
     try {
       // A TEMPLATE clone never books rooms (roomExemptAcademy) — skip the sweep.
       const roomsHeld = asTemplate ? [] : [...new Set(clonedRoomSessions.flatMap((c) => c.roomIds))];
-      if (roomsHeld.length && source.orgId) {
+      if (roomsHeld.length) {
         setProgress('Checking room conflicts…');
-        const templSnap = await getDocs(query(collection(db, 'academies'), where('orgId', '==', source.orgId), where('isTemplate', '==', true)));
-        const templateIds = new Set(templSnap.docs.map((d) => d.id));
+        // Same exemptions as the builder's room-conflict banner: templates AND
+        // archived classes hold nothing. (This used to skip templates only, so
+        // the alert listed "conflicts" with archived classes that the builder
+        // then — correctly — never showed.)
+        const acadById = new Map(existingAcademies.map((a) => [a.id, a]));
         for (const rid of roomsHeld) {
-          const bookings = (await loadRoomBookings(source.orgId, rid)).filter(
-            (b) => b.academyId !== academyRef.id && b.status !== 'cancelled' && !templateIds.has(b.academyId)
+          const [allBookings, holds] = await Promise.all([loadRoomBookings(cloneOrgId, rid), loadRoomReservations(cloneOrgId, rid)]);
+          const bookings = allBookings.filter(
+            (b) =>
+              b.academyId !== academyRef.id &&
+              b.status !== 'cancelled' &&
+              !!b.start &&
+              !!b.end &&
+              !roomExemptAcademy(acadById.get(b.academyId))
           );
-          const holds = await loadRoomReservations(source.orgId, rid);
           for (const c of clonedRoomSessions) {
             if (!c.roomIds.includes(rid)) continue;
             const hit = bookings.find((b) => overlaps(c.start, c.end, b.start.toDate(), b.end.toDate()));
             const resHit = hit ? null : holds.find((r) => overlaps(c.start, c.end, r.start.toDate(), r.end.toDate()));
             if (hit || resHit) {
-              conflictLines.push(`• ${c.start.toLocaleDateString()} — ${c.courseName}: room already held by ${hit ? hit.title || hit.courseName : `reservation “${resHit!.title}”`}`);
+              conflictLines.push(
+                `• ${c.start.toLocaleDateString()} — ${c.courseName}: room already held by ${
+                  hit ? `${academyHolderLabel(acadById.get(hit.academyId))} — ${hit.title || hit.courseName}` : `reservation “${resHit!.title || 'Reservation'}”`
+                }`
+              );
             }
           }
         }
@@ -842,14 +909,18 @@ export function CloneAcademyModal({
     } catch (err) {
       // Without this, a rules denial / offline blip left the modal stuck on
       // "Copying…" forever (busy never reset) with a half-created academy.
-      window.alert(`Clone failed partway: ${friendlyError(err, 'unknown error')}. Check the new academy and delete it if incomplete, then retry.`);
+      window.alert(
+        academyCreated
+          ? `Clone failed partway: ${friendlyError(err, 'unknown error')}. Check the new academy and delete it if incomplete, then retry.`
+          : `Could not create the copy: ${friendlyError(err, 'unknown error')}. Nothing was created — you can retry.`
+      );
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <Modal open onClose={onClose} title={isTemplate ? `Create academy from "${source.name}"` : `Clone "${source.name}"`}>
+    <Modal open onClose={busy ? () => {} : onClose} title={isTemplate ? `Create academy from "${source.name}"` : `Clone "${source.name}"`}>
       <form onSubmit={submit} className="space-y-4">
         <p className="text-sm text-slate-600">
           {isTemplate
@@ -923,7 +994,7 @@ export function CloneAcademyModal({
         </p>
         {progress && busy && <p className="text-sm text-bifrost-700">{progress}</p>}
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={onClose}>
+          <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
           <Button type="submit" variant="primary" disabled={busy}>

@@ -18,7 +18,7 @@ import { Button, Field, Input } from '../components/ui';
 import { friendlyError } from '../lib/callableError';
 
 export function CompleteProfilePage() {
-  const { firebaseUser, profile } = useAuth();
+  const { firebaseUser, profile, signOut } = useAuth();
   const navigate = useNavigate();
   // Split name (ATMS verification fields); legacy docs seed from a heuristic
   // split of the display name. Saving recomposes displayName so it never drifts.
@@ -50,6 +50,11 @@ export function CompleteProfilePage() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    // `required` accepts a field of only spaces — and a blank rank would save,
+    // then bounce straight back here through the RequireAuth gate with no message.
+    if (!firstName.trim() || !lastName.trim() || !rank.trim() || !agency.trim()) {
+      return setError('First name, last name, rank, and agency are required.');
+    }
     setBusy(true);
     try {
       // Keep an existing entry as-is (a legacy member re-doing onboarding must
@@ -65,8 +70,8 @@ export function CompleteProfilePage() {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         displayName: `${firstName.trim()} ${lastName.trim()}`,
-        rank,
-        agency,
+        rank: rank.trim(),
+        agency: agency.trim(),
         phone: formatPhone(phone),
         qualifications,
         ...certExpires,
@@ -146,9 +151,12 @@ export function CompleteProfilePage() {
         </div>
 
         <Button type="submit" variant="primary" disabled={busy}>
-          Save profile
+          {busy ? 'Saving…' : 'Save profile'}
         </Button>
       </form>
+      <div className="mt-6 text-xs text-watch-600">
+        <button type="button" className="hover:underline" onClick={() => signOut()}>Sign out</button>
+      </div>
     </div>
   );
 }

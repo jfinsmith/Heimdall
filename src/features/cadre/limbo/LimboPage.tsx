@@ -5,7 +5,7 @@
  * card opens that class's day-by-day tracker for the gap between graduation
  * and New Member Training.
  */
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { doc, orderBy, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
@@ -15,10 +15,12 @@ import { useAllCurricula, baseCurriculumKey } from '../../../lib/curricula';
 import type { AcademyDoc } from '../../../types';
 import { Badge, EmptyState, PageHeader, Select } from '../../../components/ui';
 import { fmtDate } from '../../../lib/time';
+import { friendlyError } from '../../../lib/callableError';
 
 export function LimboPage() {
   const { firebaseUser, profile } = useAuth();
-  const { data: academies, loading } = useCollection<AcademyDoc>('academies', [orderBy('startDate', 'desc')]);
+  const { data: academies, loading, error: loadError } = useCollection<AcademyDoc>('academies', [orderBy('startDate', 'desc')]);
+  const [error, setError] = useState<string | null>(null);
   const { all: curricula } = useAllCurricula();
   const live = academies
     .filter((a) => !a.isTemplate && (a.status === 'published' || a.status === 'in_progress' || a.status === 'completed'))
@@ -35,7 +37,14 @@ export function LimboPage() {
   const shown = chosen && disciplines.includes(chosen) ? live.filter((a) => a.discipline === chosen) : live;
   async function remember(value: string) {
     if (!firebaseUser) return;
-    await updateDoc(doc(db, 'users', firebaseUser.uid), { limboCurriculum: value, updatedAt: serverTimestamp() });
+    setError(null);
+    try {
+      await updateDoc(doc(db, 'users', firebaseUser.uid), { limboCurriculum: value, updatedAt: serverTimestamp() });
+    } catch (err) {
+      // The dropdown is driven by the saved value, so a failed save would
+      // otherwise just snap back with no explanation.
+      setError(`Could not save the curriculum filter: ${friendlyError(err, 'unknown error')}`);
+    }
   }
 
   return (
@@ -62,7 +71,14 @@ export function LimboPage() {
         helping at the range, in validations, studying for the SOCE, on TDY. Pick a class to track where each of
         them is, day by day, and set the NMT start date so it stands out on the chart.
       </p>
-      {!loading && shown.length === 0 && (
+      {error && <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
+      {loadError && (
+        // A failed read must not masquerade as "No published classes".
+        <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">
+          Couldn&apos;t load the class list — {friendlyError(loadError, 'please reload and try again.')}
+        </div>
+      )}
+      {!loading && !loadError && shown.length === 0 && (
         <EmptyState title="No published classes" body="Limbo tracks cadets from published or completed classes; drafts and archived classes are skipped." />
       )}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

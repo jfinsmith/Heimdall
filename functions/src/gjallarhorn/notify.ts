@@ -7,6 +7,7 @@
  * without touching any trigger code — that's the extension point promised in §14.
  */
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { logger } from 'firebase-functions/v2';
 import { renderEmail, detailRows, escapeHtml, EmailContent, MAIL_FROM, MAIL_QUEUE } from './templates';
 import { emailAllowed, ADMIN_ROLES, PRIORITY_EMAIL_TYPES, GlobalSettings, Role, SessionDoc, UserDoc } from '../types';
 
@@ -68,6 +69,45 @@ export async function getSettings(orgId?: string): Promise<GlobalSettings | null
   return snap.exists ? (snap.data() as GlobalSettings) : null;
 }
 
+/**
+ * Template academies are sandboxes and ARCHIVED academies are abandoned
+ * schedules — their sessions keep whatever status they had ('open', …), so the
+ * session status alone can't tell. Nothing about either is ever announced
+ * (same exemption the room calendar applies: roomExemptAcademy).
+ */
+export const isSilentAcademy = (a?: FirebaseFirestore.DocumentData | null): boolean =>
+  !!a && (a.isTemplate === true || a.status === 'archived');
+
+export async function academyIsSilent(academyId: string | undefined): Promise<boolean> {
+  if (!academyId) return false;
+  const snap = await db().doc(`academies/${academyId}`).get();
+  return isSilentAcademy(snap.data());
+}
+
+/**
+ * Run a large per-recipient fan-out in bounded chunks. One recipient's failure
+ * is logged and counted but never aborts the rest — a bare Promise.all rejects
+ * on the first error, the function returns, and every notify() still in flight
+ * (plus whatever the caller meant to do next) is silently dropped. Returns the
+ * number of failures so the caller can decide what that means.
+ */
+export async function fanOut<T>(label: string, items: T[], fn: (item: T) => Promise<unknown>, chunk = 40): Promise<number> {
+  let failed = 0;
+  for (let i = 0; i < items.length; i += chunk) {
+    const results = await Promise.allSettled(items.slice(i, i + chunk).map(fn));
+    for (const r of results) {
+      if (r.status === 'rejected') {
+        failed++;
+        logger.error(`${label}: a recipient failed`, r.reason);
+      }
+    }
+  }
+  return failed;
+}
+
+/** The only email types a suspended / deactivated member still receives. */
+const LOCKED_OUT_EMAIL_TYPES: ReadonlySet<string> = new Set(['account_suspended', 'account_reinstated']);
+
 export async function notify(opts: NotifyOptions): Promise<void> {
   let email = opts.email ?? null;
   let prefsAllowEmail = true;
@@ -107,6 +147,13 @@ export async function notify(opts: NotifyOptions): Promise<void> {
       email = email ?? ((user.notificationEmail && user.notificationEmailVerified) ? user.notificationEmail : user.email);
       recipientRole = user.role;
       recipientOrgId = user.orgId ?? opts.orgId;
+      // A suspended / deactivated member is locked out of the app; operational
+      // mail (staffing alerts naming other people, schedule changes, digests)
+      // must stop with it — a stale coordinatorIds / escalationRecipients entry
+      // would otherwise keep emailing them indefinitely. Not even `force`
+      // overrides this; only the account notices themselves get through. The
+      // bell above is kept, so nothing is lost if they are reinstated.
+      if ((user.status === 'suspended' || user.status === 'inactive') && !LOCKED_OUT_EMAIL_TYPES.has(opts.type)) return;
       // Personal opt-outs: reminder/digest keep their legacy booleans; every
       // other automation honors the mutedTypes checklist EXCEPT priority types,
       // which can never be personally muted (admin org toggles still apply below).
@@ -182,8 +229,10 @@ export async function notifyCoordinators(
   );
 }
 
-/** Per-recipient dedupe id from a fan-out base key (undefined base = no dedupe). */
-const keyFor = (base: string | undefined, uid: string) => (base ? `${base}_${uid}` : undefined);
+/** Per-recipient dedupe id from a fan-out base key (undefined base = no dedupe).
+ *  The recipient may be a raw escalation EMAIL — the key becomes a document id,
+ *  where a '/' would be read as a path separator and throw. */
+const keyFor = (base: string | undefined, uid: string) => (base ? `${base}_${uid.replace(/\//g, '_')}` : undefined);
 
 /**
  * Notify every command-level admin (active directors + lieutenants). When an
@@ -248,8 +297,9 @@ export function sessionIcs(sessionId: string, session: SessionDoc): string {
     `DTSTAMP:${icsDate(session.start)}`,
     `DTSTART:${icsDate(session.start)}`,
     `DTEND:${icsDate(session.end)}`,
-    `SUMMARY:${(session.title || session.courseName).replace(/[,;]/g, ' ')}`,
-    `LOCATION:${`${session.location ?? ''} ${session.room ?? ''}`.trim().replace(/[,;]/g, ' ')}`,
+    // Line breaks stripped too — a stray newline would start a new (forged) ICS line.
+    `SUMMARY:${(session.title || session.courseName || '').replace(/[,;\r\n]+/g, ' ')}`,
+    `LOCATION:${`${session.location ?? ''} ${session.room ?? ''}`.trim().replace(/[,;\r\n]+/g, ' ')}`,
     'END:VEVENT',
     'END:VCALENDAR',
   ].join('\r\n');

@@ -9,6 +9,9 @@ import { isChunkLoadError, reloadForChunkError } from '../lib/chunkReload';
 
 interface Props {
   children: React.ReactNode;
+  /** When this value changes (e.g. the route path) a caught error is cleared,
+   *  so navigating away from a crashed page shows the next page, not the error. */
+  resetKey?: string;
 }
 interface State {
   error: Error | null;
@@ -19,6 +22,12 @@ export class ErrorBoundary extends React.Component<Props, State> {
 
   static getDerivedStateFromError(error: Error): State {
     return { error };
+  }
+
+  componentDidUpdate(prev: Props, prevState: State) {
+    // Only clear an error that was ALREADY showing before this update — a page
+    // that crashes on the very render that changed the key must keep its error.
+    if (prevState.error && this.state.error && prev.resetKey !== this.props.resetKey) this.setState({ error: null });
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {

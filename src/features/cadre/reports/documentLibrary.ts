@@ -1,5 +1,10 @@
 /**
- * Owner-managed document library (unified-documents redesign).
+ * Owner document library — READ side only. The in-app builder that wrote these
+ * forms was retired Aug 2026 (new documents are code-registry entries in
+ * reportTypes.tsx / documentTypes.tsx), so nothing in the app creates or edits a
+ * library form anymore. The readers stay because forms authored before the
+ * retirement may still exist, be offered to classes, and have reports filed
+ * against them that must keep printing.
  *
  * A library form is GENERAL (offered to every org) or SPECIALIZED (assigned to
  * specific orgs). Stored in the top-level `documentLibrary` collection, which is
@@ -63,13 +68,6 @@ export function libraryFormToReportType(d: WithId<LibraryFormDoc>): ReportType {
       distribution: d.distribution,
     },
   };
-}
-
-/** Owner console: the entire library. Allowed for the platform owner only
- *  (rules); documentLibrary is exempt from orgId injection. */
-export function useOwnerLibrary(): { forms: WithId<LibraryFormDoc>[]; loading: boolean } {
-  const { data, loading } = useCollection<LibraryFormDoc>('documentLibrary');
-  return { forms: data, loading };
 }
 
 /** Staff: the library forms available to THIS org — general (all) + specialized

@@ -10,7 +10,7 @@ import { doc, setDoc, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useCollection, useDoc, orgConfigPath } from '../../lib/firestore';
 import { useAuth } from '../../auth/AuthContext';
-import type { EmailAutomationKey, GlobalSettings, Role, UserDoc } from '../../types';
+import type { GlobalSettings, Role, UserDoc } from '../../types';
 import { EMAIL_AUTOMATIONS } from '../../types';
 import { RANK_ORDER_ASC } from '../../lib/rbac';
 import { useRoleLabels } from '../../app/providers';
@@ -27,7 +27,7 @@ export function GjallarhornSettingsPage() {
   const { firebaseUser, orgId } = useAuth();
   const roleLabels = useRoleLabels();
   const { data: settings } = useDoc<GlobalSettings>(orgConfigPath('settings', orgId));
-  const { data: commandUsers } = useCollection<UserDoc>('users', [
+  const { data: commandUsers, loading: commandLoading } = useCollection<UserDoc>('users', [
     where('role', 'in', ['coordinator', 'sergeant', 'lieutenant', 'director']),
   ]);
 
@@ -44,6 +44,17 @@ export function GjallarhornSettingsPage() {
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  // Re-seed the staged values only when one of THIS page's fields changes in the
+  // stored doc. settings/{orgId} is shared (Org Settings, Holidays, rank labels,
+  // and the Limbo activity list coordinators edit from the tracker) — keying on
+  // the whole doc silently threw away every unsaved toggle here on any such save.
+  const formSig = settings
+    ? JSON.stringify([
+        settings.emailMasterEnabled, settings.emailAutomations, settings.emailAutomationRoles,
+        settings.reminderDefaultLeadHours, settings.understaffingAlertDays, settings.escalationWindowDays,
+        settings.scheduleChangeQuietMinutes, settings.escalationRecipients, settings.weeklyDigestEnabled,
+      ])
+    : null;
   useEffect(() => {
     if (!settings) return;
     setMasterOn(settings.emailMasterEnabled !== false);
@@ -55,7 +66,13 @@ export function GjallarhornSettingsPage() {
     setQuietMinutes(settings.scheduleChangeQuietMinutes ?? 5);
     setRecipients(settings.escalationRecipients ?? []);
     setDigest(settings.weeklyDigestEnabled !== false);
-  }, [settings]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formSig]);
+
+  // Saved recipients that are no longer coordinator-or-above here (demoted,
+  // moved, deleted) or were stored as raw emails. The server still alerts them,
+  // so list them — otherwise they are recipients nobody can see or remove.
+  const staleRecipients = commandLoading ? [] : recipients.filter((r) => !commandUsers.some((u) => u.id === r));
 
   // A role chip is "on" when there's no filter ([] = all) or the role is listed.
   const roleOn = (key: string, role: Role) => {
@@ -222,8 +239,8 @@ export function GjallarhornSettingsPage() {
       <section className="space-y-4 rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-watch-600">Alert windows</h2>
         <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="Reminder lead time (hours)" hint="Default; users can override on their profile">
-            <Input type="number" min={1} max={168} value={leadHours} onChange={(e) => setLeadHours(Number(e.target.value))} />
+          <Field label="Reminder lead time (hours)" hint="Default; users can override on their profile. Reminders go out once each morning, so 24 is the minimum.">
+            <Input type="number" min={24} max={168} value={leadHours} onChange={(e) => setLeadHours(Number(e.target.value))} />
           </Field>
           <Field label="Understaffing window (days)" hint="Alert when required slots are unfilled within this many days">
             <Input type="number" min={1} max={60} value={alertDays} onChange={(e) => setAlertDays(Number(e.target.value))} />
@@ -243,6 +260,11 @@ export function GjallarhornSettingsPage() {
             {[...commandUsers].sort((a, b) => a.displayName.localeCompare(b.displayName)).map((u) => (
               <option key={u.id} value={u.id}>
                 {u.displayName} ({u.role})
+              </option>
+            ))}
+            {staleRecipients.map((r) => (
+              <option key={r} value={r}>
+                {r.includes('@') ? r : 'Former command-staff account'} — no longer command staff (deselect to remove)
               </option>
             ))}
           </Select>

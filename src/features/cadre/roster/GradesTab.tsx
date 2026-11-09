@@ -6,7 +6,7 @@
  * dismissal thresholds are computed and flagged; nothing is auto-enforced.
  */
 import React, { useMemo, useState } from 'react';
-import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { deleteField, doc, FieldPath, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import type { WithId } from '../../../lib/firestore';
 import type { CurriculumCourse, CurriculumDoc, GradeCell, RosterMemberDoc } from '../../../types';
@@ -15,6 +15,10 @@ import { Badge, Button, Field, Input, Select } from '../../../components/ui';
 import { Modal } from '../../../components/Modal';
 import { courseKey, courseResult, effectiveScore, gradedCourses, lastFirst, memberStanding, resultClasses } from './rosterShared';
 import type { LetterSeed } from '../reports/AcademyReports';
+import { friendlyError } from '../../../lib/callableError';
+
+/** A typed score is acceptable when blank or a number within 0–100. */
+const scoreInRange = (v: string) => v === '' || (Number.isFinite(Number(v)) && Number(v) >= 0 && Number(v) <= 100);
 
 export function GradesTab({
   academyId,
@@ -27,7 +31,9 @@ export function GradesTab({
   curriculum: WithId<CurriculumDoc> | null;
   onGenerateLetter?: (seed: LetterSeed) => void;
 }) {
-  const courses = curriculum?.courses ?? [];
+  // Memoized: a fresh `[]` each render (curriculum still loading) re-ran every
+  // memo below on every render.
+  const courses = useMemo(() => curriculum?.courses ?? [], [curriculum]);
   const graded = useMemo(() => gradedCourses(courses), [courses]);
   const idxById = useMemo(() => new Map(graded.map((c, i) => [courseKey(c), i] as const)), [graded]);
   const roster = members.filter((m) => !m.blockTaker);
@@ -133,6 +139,9 @@ export function GradesTab({
                 </tr>
               );
             })}
+            {roster.length === 0 && (
+              <tr><td colSpan={3 + graded.length} className="px-3 py-8 text-center text-slate-400">No cadets on the roster yet — add them on the Members tab.</td></tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -183,6 +192,7 @@ function GradeEditor({
   const [remediation, setRemediation] = useState<'' | 'pass' | 'fail'>(existing.remediation ?? '');
   const [ineligible, setIneligible] = useState<boolean>(existing.reexamIneligible ?? false);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   // Did this cadet already spend their one non-HL re-exam on a DIFFERENT non-HL course?
   const priorReexamCourse = courses.find(
     (c) => courseKey(c) !== courseKey(course) && !c.highLiability && member.grades?.[courseKey(c)]?.reexamScore != null
@@ -191,9 +201,23 @@ function GradeEditor({
   const primary = Number(score);
   const failedPrimary = status === 'graded' && score !== '' && primary < PASS_MARK;
   const hl = !!course.highLiability;
+  // The re-exam score box is on screen (and will be saved) only in these cases.
+  const reexamShown = failedPrimary && (hl ? lifeline === 'reexam' : !ineligible);
+  // This cadet's cell for THIS course, addressed by field path (a course key can
+  // contain dots, so a "grades.<key>" string path would be mis-parsed). Built
+  // inside the write's try block — FieldPath throws on an empty key.
+  const memberRef = doc(db, 'academies', academyId, 'roster', member.id);
+  const cellPath = () => new FieldPath('grades', courseKey(course));
 
   async function save() {
+    // The inputs' min/max are only hints — a typo like 850 (for 85.0) would
+    // otherwise be recorded as a pass and skew the class average.
+    if (status === 'graded' && (!scoreInRange(score) || (reexamShown && !scoreInRange(reexamScore)))) {
+      setError('Scores must be between 0 and 100.');
+      return;
+    }
     setBusy(true);
+    setError(null);
     const cell: GradeCell = {};
     const reexamNum = Number(reexamScore);
     if (status === 'na') cell.status = 'na';
@@ -212,24 +236,34 @@ function GradeEditor({
         }
       }
     }
-    const grades = { ...(member.grades ?? {}), [courseKey(course)]: cell };
-    await updateDoc(doc(db, 'academies', academyId, 'roster', member.id), { grades, updatedAt: serverTimestamp() });
-    setBusy(false);
-    onClose();
+    try {
+      // Write ONLY this course's cell. Rewriting the whole `grades` map from the
+      // snapshot this dialog opened with silently erased any grade a colleague
+      // saved for the same cadet while it was open.
+      await updateDoc(memberRef, cellPath(), cell, 'updatedAt', serverTimestamp());
+      onClose();
+    } catch (err) {
+      setError(friendlyError(err, 'Could not save the grade.'));
+      setBusy(false);
+    }
   }
 
   async function clearCell() {
     setBusy(true);
-    const grades = { ...(member.grades ?? {}) };
-    delete grades[courseKey(course)];
-    await updateDoc(doc(db, 'academies', academyId, 'roster', member.id), { grades, updatedAt: serverTimestamp() });
-    setBusy(false);
-    onClose();
+    setError(null);
+    try {
+      await updateDoc(memberRef, cellPath(), deleteField(), 'updatedAt', serverTimestamp());
+      onClose();
+    } catch (err) {
+      setError(friendlyError(err, 'Could not clear the grade.'));
+      setBusy(false);
+    }
   }
 
   return (
     <Modal open onClose={onClose} title={`${course.name} — ${member.fullName}`}>
       <div className="space-y-4">
+        {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">{error}</div>}
         {hl && <Badge tone="red">High-liability block</Badge>}
         <Field label="Result">
           <Select value={status} onChange={(e) => setStatus(e.target.value as 'graded' | 'na' | 'co' | 'xo')}>

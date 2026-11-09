@@ -29,6 +29,10 @@ export function friendlyError(e: unknown, fallback = 'Something went wrong.'): s
     return "The server didn't respond in time — check your connection and try again.";
   }
   if (code === 'functions/unauthenticated') return 'Your sign-in has expired — sign in again and retry.';
-  if (code === 'functions/resource-exhausted') return 'Too many requests right now — wait a moment and try again.';
+  if (code === 'functions/resource-exhausted') {
+    // Our own lockouts say how long to wait ("…wait an hour and try again") —
+    // keep that. Only the platform's bare status text gets the generic line.
+    return /\s/.test(raw) && !/^resource[ _-]?exhausted$/i.test(raw) ? raw : 'Too many requests right now — wait a moment and try again.';
+  }
   return raw || fallback;
 }

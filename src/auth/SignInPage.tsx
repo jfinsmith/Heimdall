@@ -7,6 +7,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import { WordmarkStacked } from '../brand/Logo';
 import { Button, Field, Input } from '../components/ui';
+import { toDateInputValue } from '../lib/time';
 
 type Mode = 'signin' | 'register' | 'reset';
 
@@ -20,7 +21,7 @@ const MICROSOFT_SIGNIN_ENABLED = true;
 export function SignInPage() {
   const { firebaseUser, profile, signInWithGoogle, signInWithApple, signInWithMicrosoft, signInWithEmail, registerWithEmail, resetPassword, signOut } =
     useAuth();
-  const location = useLocation() as { state?: { from?: { pathname: string } } };
+  const location = useLocation() as { state?: { from?: { pathname: string; search?: string; hash?: string } } };
   const [mode, setMode] = useState<Mode>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -76,6 +77,12 @@ export function SignInPage() {
               ? `Access for ${profile.email} is suspended. Contact Academy Leadership if you believe this is a mistake.`
               : `Access for ${profile.email} has been turned off. Contact an administrator if you believe this is a mistake.`}
           </p>
+          {suspended && profile.suspensionReason && (
+            // The suspend dialog tells the admin this reason is shown to the member.
+            <p className="mt-2 whitespace-pre-line break-words text-sm text-slate-600">
+              <span className="font-medium text-watch-900">Reason:</span> {profile.suspensionReason}
+            </p>
+          )}
           <Button variant="ghost" className="mt-4" onClick={() => signOut()}>
             Sign out
           </Button>
@@ -84,7 +91,33 @@ export function SignInPage() {
     );
   }
   if (firebaseUser) {
-    return <Navigate to={location.state?.from?.pathname ?? '/'} replace />;
+    // Return to the page the guard bounced them from — query string and hash
+    // included, so deep links (e.g. ?create=1) survive the sign-in detour.
+    const from = location.state?.from;
+    return <Navigate to={from ? `${from.pathname}${from.search ?? ''}${from.hash ?? ''}` : '/'} replace />;
+  }
+
+  /**
+   * OAuth popup sign-in. Closing the popup is not an error worth showing.
+   * Deliberately does NOT set `busy`: Firebase takes ~8s to report a closed
+   * popup (and may never report it under strict cross-origin policies), which
+   * would leave the whole form disabled.
+   */
+  async function oauth(signIn: () => Promise<void>) {
+    setError(null);
+    setInfo(null);
+    setSuggestReset(false);
+    try {
+      await signIn();
+    } catch (err) {
+      const code = (err as { code?: string })?.code ?? '';
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return;
+      setError(
+        code === 'auth/popup-blocked'
+          ? 'Your browser blocked the sign-in window. Allow pop-ups for this site and try again.'
+          : err instanceof Error ? err.message.replace('Firebase: ', '') : 'Sign-in failed.'
+      );
+    }
   }
 
   async function submit(e: React.FormEvent) {
@@ -183,7 +216,7 @@ export function SignInPage() {
                     value={dob}
                     onChange={(e) => setDob(e.target.value)}
                     required
-                    max={new Date().toISOString().slice(0, 10)}
+                    max={toDateInputValue(new Date())}
                     autoComplete="bday"
                   />
                 </Field>
@@ -228,7 +261,7 @@ export function SignInPage() {
                 variant="secondary"
                 className="w-full"
                 disabled={busy}
-                onClick={() => signInWithGoogle().catch((e) => setError(e.message))}
+                onClick={() => void oauth(signInWithGoogle)}
               >
                 Continue with Google
               </Button>
@@ -237,7 +270,7 @@ export function SignInPage() {
                   variant="secondary"
                   className="mt-2 w-full"
                   disabled={busy}
-                  onClick={() => signInWithMicrosoft().catch((e) => setError(e.message))}
+                  onClick={() => void oauth(signInWithMicrosoft)}
                 >
                   Continue with Microsoft
                 </Button>
@@ -250,7 +283,7 @@ export function SignInPage() {
                   variant="secondary"
                   className="mt-2 w-full"
                   disabled={busy}
-                  onClick={() => signInWithApple().catch((e) => setError(e.message))}
+                  onClick={() => void oauth(signInWithApple)}
                 >
                    Continue with Apple
                 </Button>

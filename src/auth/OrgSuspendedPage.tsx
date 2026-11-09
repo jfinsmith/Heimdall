@@ -7,16 +7,23 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import { useOrg } from '../lib/useOrg';
+import { FullPageSpinner } from './guards';
 import { WordmarkStacked } from '../brand/Logo';
 import { Button } from '../components/ui';
 
 export function OrgSuspendedPage() {
-  const { firebaseUser, profile, platformOwner, signOut } = useAuth();
+  const { firebaseUser, profile, platformOwner, loading, signOut } = useAuth();
   const { data: org } = useOrg();
 
+  // Auth still resolving (the Refresh button reloads this page) — wait, don't
+  // flash the sign-in form.
+  if (loading) return <FullPageSpinner />;
   if (!firebaseUser) return <Navigate to="/signin" replace />;
   // Owner is exempt; once the org is no longer suspended, leave this screen.
-  if (platformOwner || (profile && org && org.status !== 'suspended')) return <Navigate to="/" replace />;
+  // (An account with no org at all has nothing to be suspended — a typed URL.)
+  if (platformOwner || (profile && !profile.orgId) || (profile && org && org.status !== 'suspended')) {
+    return <Navigate to="/" replace />;
+  }
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-watch-950 px-4 text-center">

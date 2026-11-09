@@ -8,7 +8,9 @@ export function fmtDate(ts: Timestamp | Date): string {
 
 export function fmtTime(ts: Timestamp | Date): string {
   const d = ts instanceof Date ? ts : ts.toDate();
-  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
+  // hourCycle 'h23', not hour12:false — Chrome/Edge render midnight as "24:05"
+  // under hour12:false; h23 gives "00:05" and is identical for every other hour.
+  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 }
 
 export function fmtRange(start: Timestamp, end: Timestamp): string {

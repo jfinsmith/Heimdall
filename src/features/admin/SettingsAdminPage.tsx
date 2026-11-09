@@ -1,6 +1,7 @@
 /**
- * Admin — Org settings & branding. Brand colors saved here are applied at
- * runtime by BrandProvider (CSS custom properties), no code edit needed.
+ * Admin — Org settings & branding. Org branding (name, logo, colors,
+ * letterhead) appears ONLY on printed documents and outbound email — the app
+ * UI itself is always Heimdall-branded (BrandProvider no longer re-themes it).
  */
 import React, { useEffect, useState } from 'react';
 import { ROSTER_AGENCIES } from '../../types';
@@ -13,55 +14,6 @@ import type { GlobalSettings } from '../../types';
 import { Button, Field, Input, PageHeader, Select, TextArea } from '../../components/ui';
 import { logAudit } from '../sessions/audit';
 import { friendlyError } from '../../lib/callableError';
-
-/**
- * TEMPORARY pre-launch switch (remove after go-live). ON = instructors and
- * guests see only Overview, How To, and Profile & Qualifications — they can
- * register and claim certs while staff finish building schedules. OFF = the
- * whole site is live for everyone. Enforced in AppShell (nav) + the
- * RequireLaunched route guard (direct URLs).
- */
-function PreLaunchCard({ orgId, enabled, actorUid }: { orgId: string | null | undefined; enabled: boolean; actorUid: string }) {
-  const [busy, setBusy] = useState(false);
-
-  async function toggle() {
-    if (!orgId) return;
-    const next = !enabled;
-    const msg = next
-      ? 'Hide the site from instructors and guests? They will only see Overview, How To, and Profile & Qualifications until you flip this back.'
-      : 'GO LIVE for instructors and guests? Browse Open Sessions, My Schedule, and Report a Problem become visible to everyone immediately.';
-    if (!window.confirm(msg)) return;
-    setBusy(true);
-    try {
-      await setDoc(doc(db, orgConfigPath('settings', orgId)), { preLaunchHideInstructors: next }, { merge: true });
-      await logAudit(actorUid, 'settings.prelaunch', 'settings', orgId, next ? 'Pre-launch mode ON (instructor pages hidden)' : 'Pre-launch mode OFF — site LIVE for instructors');
-    } catch (err) {
-      window.alert(`Could not update: ${friendlyError(err, 'unknown error')}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <section className={`mb-6 rounded-lg border p-5 shadow-sm ${enabled ? 'border-amber-300 bg-amber-50' : 'border-watch-100 bg-white'}`}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-bold uppercase tracking-wider text-watch-700">
-            Instructor access {enabled ? '— PRE-LAUNCH (hidden)' : '— LIVE'}
-          </h2>
-          <p className="mt-1 max-w-xl text-sm text-slate-600">
-            {enabled
-              ? 'Instructors and guests currently see only Overview, How To, and Profile & Qualifications — so they can register and claim certifications while your staff finish building. Staff see everything.'
-              : 'The full site is visible to instructors and guests. Turn this on to hide the instructor pages while your staff build out schedules.'}
-          </p>
-        </div>
-        <Button variant={enabled ? 'primary' : 'secondary'} disabled={busy || !orgId} onClick={toggle}>
-          {busy ? 'Saving…' : enabled ? '🚀 Go live' : 'Hide from instructors'}
-        </Button>
-      </div>
-    </section>
-  );
-}
 
 export function SettingsAdminPage() {
   const { firebaseUser, orgId } = useAuth();
@@ -78,12 +30,17 @@ export function SettingsAdminPage() {
   const [siteCode, setSiteCode] = useState('');
   const [agencies, setAgencies] = useState('');
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadErr, setUploadErr] = useState<string | null>(null);
 
   async function uploadLogo(file: File) {
     if (!orgId) { setUploadErr('Your account has no organization yet.'); return; }
+    // Mirror the Storage rule (images only, under 5 MB) — a rejected upload
+    // otherwise surfaces as a baffling "does not have permission" error.
+    if (!file.type.startsWith('image/')) { setUploadErr('Choose an image file (PNG, JPG, SVG…).'); return; }
+    if (file.size >= 5 * 1024 * 1024) { setUploadErr('That image is too large — logos must be under 5 MB.'); return; }
     setUploading(true);
     setUploadErr(null);
     try {
@@ -92,19 +49,30 @@ export function SettingsAdminPage() {
       await uploadBytes(r, file, { contentType: file.type });
       setLogoUrl(await getDownloadURL(r));
     } catch (e) {
-      setUploadErr((e as Error).message || 'Upload failed — confirm Firebase Storage is enabled, or paste a URL instead.');
+      setUploadErr(friendlyError(e, 'Upload failed — confirm Firebase Storage is enabled, or paste a URL instead.'));
     } finally {
       setUploading(false);
     }
   }
 
+  // Re-seed the form only when one of ITS OWN fields changes in the stored doc.
+  // settings/{orgId} is shared with Holidays, Gjallarhorn, rank labels and the
+  // Limbo activity list (which coordinators edit from the tracker) — keying on
+  // the whole doc wiped every unsaved edit here whenever any of those saved.
+  const formSig = settings
+    ? JSON.stringify([
+        settings.orgName, settings.brandPrimaryColor, settings.brandAccentColor, settings.logoUrl,
+        settings.allowedEmailDomains, settings.payPeriodTargetHours, settings.jurisdiction,
+        settings.letterheadTagline, settings.letterheadAddressLines, settings.siteCode, settings.agencies,
+      ])
+    : null;
   useEffect(() => {
     if (!settings) return;
-    setOrgName(settings.orgName);
-    setPrimary(settings.brandPrimaryColor);
-    setAccent(settings.brandAccentColor);
+    setOrgName(settings.orgName ?? '');
+    setPrimary(settings.brandPrimaryColor ?? '#16203a');
+    setAccent(settings.brandAccentColor ?? '#d99320');
     setLogoUrl(settings.logoUrl ?? '');
-    setDomains(settings.allowedEmailDomains.join(', '));
+    setDomains((settings.allowedEmailDomains ?? []).join(', '));
     setPayTarget(settings.payPeriodTargetHours ?? 85);
     setJurisdiction(settings.jurisdiction ?? (orgId === 'phsc' ? 'FL' : 'neutral'));
     setTagline(settings.letterheadTagline ?? '');
@@ -113,10 +81,12 @@ export function SettingsAdminPage() {
     // Legacy orgs without a managed list see the built-ins pre-filled so the
     // first save simply persists what they already had.
     setAgencies((settings.agencies?.length ? settings.agencies : ROSTER_AGENCIES.map((a) => a.key).filter((k) => k !== 'Other')).join('\n'));
-  }, [settings, orgId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formSig, orgId]);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
+    setSaving(true);
     try {
       await setDoc(
         doc(db, orgConfigPath('settings', orgId)),
@@ -141,6 +111,8 @@ export function SettingsAdminPage() {
     } catch (err) {
       // Silent failure here read as "saved" — surface it.
       window.alert(`Save failed: ${friendlyError(err, 'unknown error')}`);
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -153,9 +125,6 @@ export function SettingsAdminPage() {
         and the allowed domains restrict who can self-register. If the defaults look right, there is
         nothing you need to do here.
       </p>
-      {/* TEMPORARY pre-launch switch — remove this whole card after go-live. */}
-      <PreLaunchCard orgId={orgId} enabled={settings?.preLaunchHideInstructors === true} actorUid={firebaseUser?.uid ?? ''} />
-
       <form onSubmit={save} className="space-y-4 rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
         <Field label="Organization name">
           <Input value={orgName} onChange={(e) => setOrgName(e.target.value)} required />
@@ -265,8 +234,8 @@ export function SettingsAdminPage() {
           <Input type="number" min={1} value={payTarget} onChange={(e) => setPayTarget(Number(e.target.value))} />
         </Field>
         <div className="flex items-center gap-3">
-          <Button type="submit" variant="primary">
-            Save settings
+          <Button type="submit" variant="primary" disabled={saving}>
+            {saving ? 'Saving…' : 'Save settings'}
           </Button>
           {saved && <span className="text-sm text-green-700">Saved.</span>}
         </div>

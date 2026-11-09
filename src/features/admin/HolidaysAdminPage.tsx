@@ -12,6 +12,7 @@ import { HOLIDAY_DEFS, HOLIDAY_PAY_HOURS } from '../../lib/holidays';
 import type { GlobalSettings } from '../../types';
 import { Field, Input, PageHeader } from '../../components/ui';
 import { logAudit } from '../sessions/audit';
+import { friendlyError } from '../../lib/callableError';
 
 export function HolidaysAdminPage() {
   const { firebaseUser, orgId } = useAuth();
@@ -20,7 +21,21 @@ export function HolidaysAdminPage() {
   const observed = new Set(settings?.observedHolidays ?? []);
   const payHours = settings?.holidayPayHours ?? HOLIDAY_PAY_HOURS;
   const [payInput, setPayInput] = useState('');
-  useEffect(() => { setPayInput(String(settings?.holidayPayHours ?? HOLIDAY_PAY_HOURS)); }, [settings]);
+  // Keyed on the one field it mirrors — the settings doc is shared (Limbo list,
+  // Gjallarhorn, branding…), and any other save used to reset a half-typed value.
+  const savedPayHours = settings?.holidayPayHours;
+  useEffect(() => { setPayInput(String(savedPayHours ?? HOLIDAY_PAY_HOURS)); }, [savedPayHours]);
+
+  // Every write here fires straight from a checkbox/blur — a rejected one used
+  // to vanish as an unhandled rejection with the box silently snapping back.
+  async function write(patch: Partial<GlobalSettings>, summary: string) {
+    try {
+      await setDoc(doc(db, orgConfigPath('settings', orgId)), patch, { merge: true });
+      await logAudit(firebaseUser!.uid, 'settings.holidays', 'settings', 'global', summary);
+    } catch (err) {
+      window.alert(`Save failed: ${friendlyError(err, 'unknown error')}`);
+    }
+  }
 
   async function savePayHours(raw: string) {
     const v = Number(raw);
@@ -28,24 +43,21 @@ export function HolidaysAdminPage() {
     // holiday's pay credit — restore the saved value instead of writing 0.
     if (raw.trim() === '' || !Number.isFinite(v) || v < 0) { setPayInput(String(payHours)); return; }
     if (v === payHours) return;
-    await setDoc(doc(db, orgConfigPath('settings', orgId)), { holidayPayHours: v }, { merge: true });
-    await logAudit(firebaseUser!.uid, 'settings.holidays', 'settings', 'global', `Holiday pay hours = ${v}`);
+    await write({ holidayPayHours: v }, `Holiday pay hours = ${v}`);
   }
 
   async function toggle(key: string, enabled: boolean) {
     const next = new Set(disabled);
     if (enabled) next.delete(key);
     else next.add(key);
-    await setDoc(doc(db, orgConfigPath('settings', orgId)), { disabledHolidays: [...next] }, { merge: true });
-    await logAudit(firebaseUser!.uid, 'settings.holidays', 'settings', 'global', `${enabled ? 'Enabled' : 'Disabled'} ${key}`);
+    await write({ disabledHolidays: [...next] }, `${enabled ? 'Enabled' : 'Disabled'} ${key}`);
   }
 
   async function toggleObserved(key: string, isObserved: boolean) {
     const next = new Set(observed);
     if (isObserved) next.add(key);
     else next.delete(key);
-    await setDoc(doc(db, orgConfigPath('settings', orgId)), { observedHolidays: [...next] }, { merge: true });
-    await logAudit(firebaseUser!.uid, 'settings.holidays', 'settings', 'global', `${isObserved ? 'Observed' : 'Unobserved'} ${key}`);
+    await write({ observedHolidays: [...next] }, `${isObserved ? 'Observed' : 'Unobserved'} ${key}`);
   }
 
   return (

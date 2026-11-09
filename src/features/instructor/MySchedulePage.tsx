@@ -17,14 +17,17 @@ import { downloadIcs } from '../../lib/ics';
 import { fmtRange } from '../../lib/time';
 import type { AcademyDoc, AssignmentDoc } from '../../types';
 import { SLOT_ROLE_LABELS } from '../../types';
-import { Button, EmptyState, PageHeader } from '../../components/ui';
+import { Button, EmptyState, PageHeader, Spinner } from '../../components/ui';
 import { withdrawFromSession } from '../sessions/useSignup';
 import { SessionDetailModal } from '../sessions/SessionDetailModal';
 import { useGlobalSettings } from '../../app/providers';
 import { holidayBackgroundEvents } from '../../lib/holidays';
 import { friendlyError } from '../../lib/callableError';
 
-// TODO(setup): update if you change Firebase project or move regions.
+// The calendarFeed HTTPS function (functions/src/gjallarhorn/icsFeed.ts):
+// project heimdall-e1f03 (.firebaserc), region us-east1 (setGlobalOptions in
+// functions/src/index.ts). Must change with either — calendar apps keep
+// polling whatever URL the member subscribed with.
 const FEED_BASE = 'https://us-east1-heimdall-e1f03.cloudfunctions.net/calendarFeed';
 
 const confirmReservation = httpsCallable<{ sessionId: string }, { ok: boolean }>(functions, 'confirmReservation');
@@ -40,14 +43,17 @@ export function MySchedulePage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [view, setView] = useState<'list' | 'calendar'>('list');
   const [copied, setCopied] = useState(false);
+  const [feedBusy, setFeedBusy] = useState(false);
 
-  const { data: assignments } = useCollection<AssignmentDoc>(
+  const { data: assignments, loading, error: loadError } = useCollection<AssignmentDoc>(
     firebaseUser ? 'assignments' : null,
     [where('uid', '==', firebaseUser?.uid ?? ''), where('status', '==', 'confirmed'), orderBy('start')],
     [firebaseUser?.uid]
   );
   const upcoming = assignments.filter((a) => a.end.toMillis() > Date.now());
-  const past = assignments.filter((a) => a.end.toMillis() <= Date.now());
+  // Most recent first — the query is oldest-first, which buried last week's
+  // class under years of history.
+  const past = assignments.filter((a) => a.end.toMillis() <= Date.now()).reverse();
 
   // Which class each assignment belongs to — "LE 132 · July Start". The status
   // constraint is REQUIRED for instructors: the academies list rule only lets
@@ -63,13 +69,17 @@ export function MySchedulePage() {
   const events = useMemo(() => {
     const assignmentEvents = assignments.map((a) => {
       const label = academyLabel(a.academyId);
+      // A reservation still waiting on this member's answer reads amber here
+      // too (the list highlights it) — green is for confirmed assignments.
+      const pending = a.reservationState === 'pending';
+      const color = pending ? '#b45309' : '#15803d';
       return {
         id: a.sessionId,
-        title: `${label ? `${label} — ` : ''}${a.courseName} (${SLOT_ROLE_LABELS[a.role]})`,
+        title: `${pending ? 'Please confirm: ' : ''}${label ? `${label} — ` : ''}${a.courseName} (${SLOT_ROLE_LABELS[a.role]})`,
         start: a.start.toDate(),
         end: a.end.toDate(),
-        backgroundColor: '#15803d',
-        borderColor: '#15803d',
+        backgroundColor: color,
+        borderColor: color,
       };
     });
     // Cover whatever years the assignments span so holidays always show.
@@ -87,6 +97,10 @@ export function MySchedulePage() {
     setBusy(sessionId);
     try {
       await withdrawFromSession(firebaseUser.uid, sessionId);
+    } catch (err) {
+      // Without this the rejection was swallowed: on a network that blocks the
+      // server the button just re-enabled and the member believed they had withdrawn.
+      window.alert(`Could not ${declineReservation ? 'send your decline' : 'withdraw'}: ${friendlyError(err, 'please try again.')}`);
     } finally {
       setBusy(null);
     }
@@ -105,15 +119,30 @@ export function MySchedulePage() {
 
   /** Generate (once) and copy the perpetual calendar-subscription URL. */
   async function copyFeedUrl() {
-    if (!firebaseUser) return;
-    let token = profile?.icsToken;
-    if (!token) {
-      token = [...crypto.getRandomValues(new Uint8Array(24))].map((b) => b.toString(16).padStart(2, '0')).join('');
-      await updateDoc(doc(db, 'users', firebaseUser.uid), { icsToken: token, updatedAt: serverTimestamp() });
+    if (!firebaseUser || feedBusy) return;
+    setFeedBusy(true);
+    try {
+      let token = profile?.icsToken;
+      if (!token) {
+        token = [...crypto.getRandomValues(new Uint8Array(24))].map((b) => b.toString(16).padStart(2, '0')).join('');
+        await updateDoc(doc(db, 'users', firebaseUser.uid), { icsToken: token, updatedAt: serverTimestamp() });
+      }
+      const url = `${FEED_BASE}?uid=${firebaseUser.uid}&token=${token}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 3000);
+      } catch {
+        // Clipboard access is refused on some phones and locked-down browsers
+        // (notably after the first-time save above). Hand the link over in a
+        // box the member can copy from instead of failing silently.
+        window.prompt('Copy your calendar feed link:', url);
+      }
+    } catch (err) {
+      window.alert(`Could not create your calendar feed link: ${friendlyError(err, 'please try again.')}`);
+    } finally {
+      setFeedBusy(false);
     }
-    await navigator.clipboard.writeText(`${FEED_BASE}?uid=${firebaseUser.uid}&token=${token}`);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 3000);
   }
 
   return (
@@ -138,7 +167,7 @@ export function MySchedulePage() {
             <Button onClick={() => downloadIcs('heimdall-my-schedule', upcoming)} disabled={upcoming.length === 0}>
               Export .ics
             </Button>
-            <Button onClick={copyFeedUrl} title="Paste into Google Calendar / Outlook 'subscribe by URL' — stays in sync automatically">
+            <Button onClick={copyFeedUrl} disabled={feedBusy} title="Paste into Google Calendar / Outlook 'subscribe by URL' — stays in sync automatically">
               {copied ? 'Copied!' : 'Copy calendar feed URL'}
             </Button>
           </>
@@ -146,7 +175,8 @@ export function MySchedulePage() {
       />
       <p className="mb-4 -mt-3 text-xs text-slate-500">
         The feed URL can be added to Google Calendar ("From URL"), Apple Calendar, or Outlook as a
-        subscribed calendar — everything you sign up for syncs automatically.
+        subscribed calendar — everything you sign up for syncs automatically. Treat the link like a
+        password: anyone who has it can see your schedule.
       </p>
 
       {view === 'calendar' ? (
@@ -168,6 +198,13 @@ export function MySchedulePage() {
             nowIndicator
           />
         </div>
+      ) : loading ? (
+        <div className="flex justify-center py-16"><Spinner className="text-bifrost-400" /></div>
+      ) : loadError ? (
+        <EmptyState
+          title="Couldn't load your schedule"
+          body="Check your connection and reload the page. If it keeps happening, use Report a Problem."
+        />
       ) : upcoming.length === 0 ? (
         <EmptyState title="No upcoming assignments" body="Sign up for sessions under Browse Open Sessions." />
       ) : (
@@ -197,7 +234,11 @@ export function MySchedulePage() {
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button onClick={() => downloadIcs(`heimdall-${a.courseName.toLowerCase().replace(/\W+/g, '-')}`, [a])}>
+                  <Button
+                    title="Download a calendar file (.ics) for this session"
+                    aria-label={`Download a calendar file for ${a.courseName}`}
+                    onClick={() => downloadIcs(`heimdall-${a.courseName.toLowerCase().replace(/\W+/g, '-')}`, [a])}
+                  >
                     .ics
                   </Button>
                   {pendingReservation ? (
@@ -233,12 +274,12 @@ export function MySchedulePage() {
           <h2 className="mb-2 mt-8 text-sm font-semibold uppercase tracking-wider text-watch-600">Past assignments</h2>
           <ul className="divide-y divide-watch-50 rounded-lg border border-watch-100 bg-white shadow-sm">
             {past.map((a) => (
-              <li key={a.id} className="flex items-center justify-between px-4 py-3 text-sm">
+              <li key={a.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
                 <span className="text-watch-800">
                   {a.courseName}
                   {academyLabel(a.academyId) && <span className="ml-2 text-xs text-slate-400">{academyLabel(a.academyId)}</span>}
                 </span>
-                <span className="text-slate-400">{fmtRange(a.start, a.end)}</span>
+                <span className="text-right text-slate-400">{fmtRange(a.start, a.end)}</span>
               </li>
             ))}
           </ul>

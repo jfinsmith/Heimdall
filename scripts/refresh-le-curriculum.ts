@@ -3,7 +3,7 @@
  *
  * Org curricula (curricula/{orgId}__{key}) are seeded ONCE at org-creation from
  * the platform defaults and are NOT auto-updated when the built-in defaults
- * change. So after correcting src/features/admin/fdleCurricula.ts, run this to
+ * change. So after correcting scripts/data/fdleCurricula.ts, run this to
  * push the corrected course list + total hours into a live org's curriculum,
  * PRESERVING that org's other customizations (label, roster modules, branding,
  * report categories, per-course staffing slots).
@@ -15,13 +15,14 @@
  *   npx tsx scripts/refresh-le-curriculum.ts phsc --commit
  *   npx tsx scripts/refresh-le-curriculum.ts phsc co_brt --commit
  *
- * Owner: also click "Load FDLE standard curricula" on the Default Curricula page
- * so every NEW org seeds from the corrected set.
+ * The platform programs themselves (`defaultCurricula`, which every org reads
+ * and every NEW org is seeded from) are edited separately by the owner at
+ * Owner → Default Curricula — this script does not touch them.
  */
 import { initializeApp, cert } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import sa from '../service-account.json';
-import { FDLE_DEFAULT_CURRICULA } from '../src/features/admin/fdleCurricula';
+import { FDLE_DEFAULT_CURRICULA } from './data/fdleCurricula';
 
 const orgId = process.argv[2];
 const key = process.argv[3] && !process.argv[3].startsWith('--') ? process.argv[3] : 'le_brt';

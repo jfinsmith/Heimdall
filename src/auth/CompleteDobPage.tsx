@@ -14,6 +14,7 @@ import { db } from '../lib/firebase';
 import { useAuth } from './AuthContext';
 import { WordmarkStacked } from '../brand/Logo';
 import { splitDisplayName } from '../lib/format';
+import { toDateInputValue } from '../lib/time';
 import { Button, Field, Input } from '../components/ui';
 import { friendlyError } from '../lib/callableError';
 
@@ -29,7 +30,12 @@ export function CompleteDobPage() {
   if (!firebaseUser || !profile) return <Navigate to="/signin" replace />;
   if (profile.dob) return <Navigate to="/" replace />;
 
-  const valid = firstName.trim() !== '' && lastName.trim() !== '' && /^\d{4}-\d{2}-\d{2}$/.test(dob);
+  // Local "today" (not toISOString — UTC rolls over to tomorrow every evening).
+  // Checked here as well as on the input: there is no <form>, so the browser
+  // never enforces the input's `max` and a typed future date would save.
+  const today = toDateInputValue(new Date());
+  const valid =
+    firstName.trim() !== '' && lastName.trim() !== '' && /^\d{4}-\d{2}-\d{2}$/.test(dob) && dob <= today;
 
   async function save() {
     setBusy(true);
@@ -74,7 +80,7 @@ export function CompleteDobPage() {
               value={dob}
               onChange={(e) => setDob(e.target.value)}
               required
-              max={new Date().toISOString().slice(0, 10)}
+              max={today}
               autoComplete="bday"
             />
           </Field>

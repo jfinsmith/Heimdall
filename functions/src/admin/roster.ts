@@ -46,9 +46,17 @@ interface MemberInput {
 export const rosterCreateMember = onCall<{ academyId: string; member: MemberInput }>(async (request) => {
   const caller = await requireStaff(request.auth?.uid);
   const db = getFirestore();
-  const { academyId, member } = request.data;
-  if (!academyId) throw new HttpsError('invalid-argument', 'Missing academy.');
-  if (!member?.fullName?.trim()) throw new HttpsError('invalid-argument', 'A full name is required.');
+  const { academyId, member } = request.data ?? ({} as { academyId: string; member: MemberInput });
+  // A plain id only — with a '/' the paths below would address (and write
+  // under) some other document's subcollection.
+  if (typeof academyId !== 'string' || !academyId || academyId.length > 128 || academyId.includes('/')) {
+    throw new HttpsError('invalid-argument', 'Missing academy.');
+  }
+  // Payload fields are untyped JSON: anything that isn't a string is dropped
+  // (it used to be stored as-is, or crash on .trim()).
+  const text = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
+  const fullName = text(member?.fullName);
+  if (!fullName) throw new HttpsError('invalid-argument', 'A full name is required.');
 
   const academy = await db.doc(`academies/${academyId}`).get();
   if (!academy.exists) throw new HttpsError('not-found', 'Academy not found.');
@@ -71,16 +79,16 @@ export const rosterCreateMember = onCall<{ academyId: string; member: MemberInpu
 
   const fields: Record<string, unknown> = {
     orgId,
-    fullName: member.fullName.trim(),
-    agency: member.agency || 'PSO',
-    ...(member.agencyOther ? { agencyOther: member.agencyOther.trim() } : {}),
-    ...(member.cjis ? { cjis: member.cjis.trim() } : {}),
-    ...(member.studentId ? { studentId: member.studentId.trim() } : {}),
-    ...(member.dob ? { dob: member.dob.trim() } : {}),
-    ...(member.phone ? { phone: member.phone.trim() } : {}),
-    ...(member.email ? { email: member.email.trim().toLowerCase() } : {}),
-    ...(member.emergencyName ? { emergencyName: member.emergencyName.trim() } : {}),
-    ...(member.emergencyPhone ? { emergencyPhone: member.emergencyPhone.trim() } : {}),
+    fullName,
+    agency: text(member.agency) || 'PSO',
+    ...(text(member.agencyOther) ? { agencyOther: text(member.agencyOther) } : {}),
+    ...(text(member.cjis) ? { cjis: text(member.cjis) } : {}),
+    ...(text(member.studentId) ? { studentId: text(member.studentId) } : {}),
+    ...(text(member.dob) ? { dob: text(member.dob) } : {}),
+    ...(text(member.phone) ? { phone: text(member.phone) } : {}),
+    ...(text(member.email) ? { email: text(member.email).toLowerCase() } : {}),
+    ...(text(member.emergencyName) ? { emergencyName: text(member.emergencyName) } : {}),
+    ...(text(member.emergencyPhone) ? { emergencyPhone: text(member.emergencyPhone) } : {}),
     status: 'active',
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),

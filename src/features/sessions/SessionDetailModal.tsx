@@ -2,7 +2,7 @@
  * Session detail modal — role slots, who's signed up, and per-slot
  * Sign Up / Withdraw actions for qualifying users.
  */
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { addDoc, collection, deleteDoc, doc, getDocs, query, serverTimestamp, Timestamp, updateDoc, where } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../../lib/firebase';
@@ -13,8 +13,8 @@ import { findRoomConflict, roomExemptAcademy, draftHolderAcademy, academyHolderL
 import { useAuth } from '../../auth/AuthContext';
 import { can } from '../../lib/rbac';
 import { fmtRange, isValidDuration } from '../../lib/time';
-import type { AcademyDoc, RosterMemberDoc, SessionDoc, SignupDoc } from '../../types';
-import { SLOT_ROLE_LABELS, QUALIFICATION_LABELS, activeVerifiedQualKeys } from '../../types';
+import type { AcademyDoc, QualificationKey, RosterMemberDoc, SessionDoc, SignupDoc } from '../../types';
+import { SLOT_ROLE_LABELS, QUALIFICATION_LABELS, activeVerifiedQualKeys, instructorCertActive, isInstructorQual } from '../../types';
 import { Badge, Button, HighLiabilityBadge, StatusPill } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import { signUpForSlot, withdrawFromSession, SignupError } from './useSignup';
@@ -35,7 +35,7 @@ interface Props {
 
 export function SessionDetailModal({ sessionId, onClose, onEdit, variant = 'staff' }: Props) {
   const { firebaseUser, profile, role, orgId } = useAuth();
-  const { data: session } = useDoc<SessionDoc>(`sessions/${sessionId}`);
+  const { data: session, loading: sessionLoading } = useDoc<SessionDoc>(`sessions/${sessionId}`);
   const { data: signups } = useCollection<SignupDoc>(
     `sessions/${sessionId}/signups`,
     [where('status', 'in', ['confirmed', 'waitlist'])],
@@ -55,8 +55,43 @@ export function SessionDetailModal({ sessionId, onClose, onEdit, variant = 'staf
   );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Which session this modal is showing RIGHT NOW (null once unmounted). An
+  // async action that finishes late checks it before calling onClose, so it
+  // can't close a different session the user opened in the meantime.
+  const liveSessionId = useRef<string | null>(sessionId);
+  useEffect(() => {
+    liveSessionId.current = sessionId;
+    return () => {
+      liveSessionId.current = null;
+    };
+  }, [sessionId]);
 
-  if (!session) return null;
+  if (!session) {
+    if (sessionLoading) return null;
+    // This modal just deleted the session and is still clearing its sign-up /
+    // assignment mirrors — keep a dialog up so the page underneath isn't
+    // clickable mid-cleanup (it stays dismissable: offline, those writes wait).
+    if (busy) {
+      return (
+        <Modal open onClose={onClose} title="Deleting session">
+          <p className="text-sm text-slate-600">Removing the session and its sign-up records…</p>
+        </Modal>
+      );
+    }
+    // Deleted, or not readable by this member (e.g. the class was unpublished
+    // after they were placed on it). Say so instead of a click that does nothing.
+    return (
+      <Modal open onClose={onClose} title="Session unavailable">
+        <p className="text-sm text-slate-600">
+          This session can&apos;t be opened right now — it may have been removed, or its class isn&apos;t published yet.
+          If it&apos;s on your schedule and you have questions, contact the class coordinator.
+        </p>
+        <div className="mt-4 flex justify-end">
+          <Button onClick={onClose}>Close</Button>
+        </div>
+      </Modal>
+    );
+  }
 
   const mySignup = signups.find((s) => s.uid === firebaseUser?.uid);
   // A concluded session is FINALIZED: no sign-ups/withdrawals — staffing
@@ -74,13 +109,25 @@ export function SessionDetailModal({ sessionId, onClose, onEdit, variant = 'staf
     // Verified AND currently valid — an expired instructor cert no longer counts.
     return profile ? activeVerifiedQualKeys(profile).includes(requiredKey as never) : false;
   }
+  /** Why the Sign up button is disabled for a slot this member can't fill
+   *  (mirrors the server's two refusals: not verified vs. cert lapsed). */
+  function qualBlockReason(requiredKey: QualificationKey): string {
+    const mine = (profile?.qualifications ?? []).find((q) => q.key === requiredKey);
+    if (mine?.verified && isInstructorQual(requiredKey) && profile && !instructorCertActive(profile)) {
+      return 'Your instructor certification is expired or not on file — update it under Profile → Qualifications.';
+    }
+    if (mine && !mine.verified) {
+      return `Your ${QUALIFICATION_LABELS[requiredKey]} qualification is claimed but has not been verified yet.`;
+    }
+    return `Requires a verified ${QUALIFICATION_LABELS[requiredKey]} qualification — claim it under Profile → Qualifications.`;
+  }
 
   async function doSignup(slotId: string, allowWaitlist = false) {
     if (!firebaseUser) return;
     setError(null);
     setBusy(true);
     try {
-      const res = await signUpForSlot(firebaseUser.uid, sessionId, slotId, { allowWaitlist, orgId: orgId ?? undefined });
+      const res = await signUpForSlot(firebaseUser.uid, sessionId, slotId, { allowWaitlist });
       if (res.status === 'waitlist') setError('Slot is full — you have been placed on the waitlist.');
     } catch (err) {
       if (err instanceof SignupError && err.message === 'FULL') {
@@ -97,6 +144,15 @@ export function SessionDetailModal({ sessionId, onClose, onEdit, variant = 'staf
 
   async function doWithdraw() {
     if (!firebaseUser) return;
+    // Same confirmation My Schedule asks for — one mis-tap here would otherwise
+    // give the slot away (a waitlisted instructor is promoted immediately).
+    const msg =
+      mySignup?.status === 'waitlist'
+        ? 'Leave the waitlist for this slot?'
+        : mySignup?.reservationState === 'pending'
+          ? "Tell the coordinator you're NOT available? You'll be removed from this session and they'll be notified."
+          : 'Withdraw from this session? The coordinators will be notified.';
+    if (!window.confirm(msg)) return;
     setError(null);
     setBusy(true);
     try {
@@ -215,7 +271,7 @@ export function SessionDetailModal({ sessionId, onClose, onEdit, variant = 'staf
         updatedAt: serverTimestamp(),
       });
       await logAudit(firebaseUser.uid, 'session.duplicate', 'session', sessionId, `Duplicated ${session.courseName} to ${nextStart.toLocaleDateString()}`);
-      onClose();
+      if (liveSessionId.current === sessionId) onClose();
     } catch (err) {
       setError(friendlyError(err, 'Could not duplicate the session.'));
     } finally {
@@ -243,16 +299,26 @@ export function SessionDetailModal({ sessionId, onClose, onEdit, variant = 'staf
     setBusy(true);
     setError(null);
     try {
-      // Clean up any pre-assigned / reserved mirror docs so they don't orphan.
-      for (const slot of session.roleSlots) {
-        for (const uid of slot.filledBy) {
-          await deleteDoc(doc(db, 'assignments', `${sessionId}_${uid}`)).catch(() => {});
-          await deleteDoc(doc(db, 'sessions', sessionId, 'signups', uid)).catch(() => {});
-        }
-      }
+      // Session FIRST, then its mirrors. onSignupWritten treats a signup delete
+      // as "a coordinator removed you" and emails the instructor unless the
+      // session is already gone — deleting the mirrors first raced that check
+      // (sometimes mailing "removed" notices this dialog just said would NOT
+      // go out), and a failed session delete left filledBy pointing at people
+      // whose sign-ups had already been erased.
       await deleteDoc(doc(db, 'sessions', sessionId));
+      // Clean up the pre-assigned / reserved / signed-up mirror docs so they
+      // don't orphan (a leftover assignment is a phantom on My Schedule).
+      const holders = new Set(session.roleSlots.flatMap((slot) => slot.filledBy));
+      for (const uid of holders) {
+        await deleteDoc(doc(db, 'assignments', `${sessionId}_${uid}`)).catch(() => {});
+        await deleteDoc(doc(db, 'sessions', sessionId, 'signups', uid)).catch(() => {});
+      }
+      // Waitlisted sign-ups have no assignment mirror — just the signup doc.
+      for (const su of signups) {
+        if (!holders.has(su.uid)) await deleteDoc(doc(db, 'sessions', sessionId, 'signups', su.uid)).catch(() => {});
+      }
       await logAudit(firebaseUser.uid, 'session.delete', 'session', sessionId, `Deleted ${session.courseName}`);
-      onClose();
+      if (liveSessionId.current === sessionId) onClose();
     } catch (err) {
       setError(friendlyError(err, 'Could not delete the session.'));
     } finally {
@@ -318,7 +384,7 @@ export function SessionDetailModal({ sessionId, onClose, onEdit, variant = 'staf
                 )}
                 {slot.role !== 'coordinator' && !concluded && firebaseUser && mineHere && (
                   <Button variant="danger" disabled={busy} onClick={doWithdraw}>
-                    {mySignup?.reservationState === 'pending' ? 'Not available' : 'Withdraw'}
+                    {mySignup?.status === 'waitlist' ? 'Leave waitlist' : mySignup?.reservationState === 'pending' ? 'Not available' : 'Withdraw'}
                   </Button>
                 )}
                 {slot.role !== 'coordinator' && !concluded && firebaseUser && !mySignup && session.status === 'scheduled' && !can.buildSchedules(role) && (
@@ -335,6 +401,10 @@ export function SessionDetailModal({ sessionId, onClose, onEdit, variant = 'staf
                   </Button>
                 )}
               </div>
+              {slot.role !== 'coordinator' && !concluded && firebaseUser && !mySignup && can.signUp(role) && !qualified && slot.requiredQualificationKey &&
+                (session.status === 'open' || session.status === 'fully_staffed') && (
+                <p className="mt-1.5 text-xs text-amber-800">{qualBlockReason(slot.requiredQualificationKey)}</p>
+              )}
               {(filled.length > 0 || waitlisted.length > 0) && (
                 <div className="mt-2 flex flex-wrap gap-1.5 text-sm">
                   {filled.map((s) => (
@@ -358,7 +428,8 @@ export function SessionDetailModal({ sessionId, onClose, onEdit, variant = 'staf
             // day that already happened — finalized; the builder's course-level
             // Open skips past days too, and opening would email instructors
             // about a class that's over.
-            academy != null && academy.signupsEnabled !== false && (
+            // Never for a template — its sessions are placeholders.
+            academy != null && academy.signupsEnabled !== false && !academy.isTemplate && (
             <Button
               variant="primary"
               disabled={busy}

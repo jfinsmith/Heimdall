@@ -1,8 +1,8 @@
 /**
- * App-level providers: Auth + runtime brand theming.
- * BrandProvider reads `settings/global` and applies brandPrimaryColor /
- * brandAccentColor as CSS custom properties so admins can retheme without a
- * code change.
+ * App-level providers: Auth + the signed-in org's settings.
+ * BrandProvider subscribes to `settings/{orgId}` and exposes it through
+ * useGlobalSettings() / useRoleLabels(). (The name is historical — it no
+ * longer themes the app; see the branding-split note below.)
  */
 import React, { createContext, useContext } from 'react';
 import { AuthProvider, useAuth } from '../auth/AuthContext';

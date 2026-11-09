@@ -5,7 +5,7 @@
  * members' certs forward four years, or suspend them until conditions are met.
  */
 import React, { useMemo, useState } from 'react';
-import { doc, limit, orderBy, serverTimestamp, updateDoc, writeBatch } from 'firebase/firestore';
+import { doc, limit, orderBy, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../../lib/firebase';
 import { useCollection, type WithId } from '../../lib/firestore';
@@ -13,7 +13,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { useRoleLabels } from '../../app/providers';
 import { mayActOn } from '../../lib/rbac';
 import type { QualificationKey, UserDoc } from '../../types';
-import { QUALIFICATION_LABELS } from '../../types';
+import { QUALIFICATION_LABELS, trustedQualifications } from '../../types';
 import { certYearOf, march31, tsFromDate } from '../../lib/time';
 import { Badge, Button, Field, Input, PageHeader, Select, TextArea } from '../../components/ui';
 import { Modal } from '../../components/Modal';
@@ -131,6 +131,14 @@ export function RosterPage() {
       await logAudit(firebaseUser!.uid, 'qualification.rollover_bulk', 'user', 'multiple', `Rolled over ${targets.length} certifications (+4 yrs)`);
       setNotice(`Rolled forward ${targets.length} certification${targets.length === 1 ? '' : 's'} by four years.`);
       setSelected(new Set());
+    } catch (err) {
+      // Was try/finally only: a rejected commit was an unhandled rejection and the
+      // page just went quiet. Batches of 400 commit one at a time, so with more
+      // than 400 selected an earlier batch may already have landed.
+      setNotice(
+        `Roll-over failed: ${friendlyError(err, 'unknown error')}` +
+          (targets.length > 400 ? ' Some members may already have been updated — check the Cert expires column before retrying.' : ' Nothing was changed.')
+      );
     } finally {
       setBusy(false);
     }
@@ -225,7 +233,7 @@ export function RosterPage() {
                   <td className="px-3 py-3">
                     <div className="flex flex-wrap gap-1">
                       {u.qualifications.length === 0 && <span className="text-xs text-slate-400">none</span>}
-                      {u.qualifications.map((q) => (
+                      {trustedQualifications(u).map((q) => (
                         <Badge key={q.key} tone={q.verified ? 'green' : 'amber'}>
                           {shortQual(q.key)}
                           {q.verified ? '' : ' ⏳'}
@@ -279,9 +287,16 @@ export function RosterPage() {
       {bulkSuspendOpen && (
         <BulkSuspendModal
           // Rank ladder (mirrors assertMayActOn): a non-top admin suspends only
-          // members strictly below their own rank — never upward, never self.
+          // members strictly below their own rank — never upward, never self, and
+          // never a platform owner's account (the callable refuses those).
+          // ACTIVE members only, same as Users & Roles: suspending a pending or
+          // deactivated account and later lifting it would flip it to active,
+          // skipping approval / undoing the deactivation.
           users={selectedUsers.filter(
-            (u) => u.id !== firebaseUser?.uid && u.status !== 'suspended' && (platformOwner || mayActOn(myRole, u.role))
+            (u) =>
+              u.id !== firebaseUser?.uid &&
+              u.status === 'active' &&
+              (platformOwner || (u.platformOwner !== true && mayActOn(myRole, u.role)))
           )}
           onClose={() => setBulkSuspendOpen(false)}
           onDone={(n) => {
@@ -330,12 +345,13 @@ function BulkSuspendModal({
       <form onSubmit={submit} className="space-y-4 text-sm">
         {users.length === 0 ? (
           <p className="text-slate-500">
-            No eligible members in the selection (already suspended, yourself, and ranks at or above your own are skipped). Close and adjust your selection.
+            No eligible members in the selection (only active accounts can be suspended; yourself and ranks at or above your own are skipped). Close and adjust your selection.
           </p>
         ) : (
           <>
             <div className="rounded-md bg-amber-50 px-3 py-2 text-amber-800">
-              Each will be emailed the reason and see the suspension banner until reinstated. Applies to:{' '}
+              Each will be emailed the reason and blocked at sign-in until reinstated. Members in your selection who
+              aren’t active, or whom you can’t act on, are skipped. Applies to:{' '}
               <strong>{users.map((u) => u.displayName).join(', ')}</strong>.
             </div>
             {error && <div className="rounded-md bg-red-50 px-3 py-2 text-red-800">{error}</div>}

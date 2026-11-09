@@ -20,3 +20,20 @@ describe('parseCsv', () => {
     expect(parseCsv(toCsv(headers, rows))).toEqual([headers, ...rows]);
   });
 });
+
+describe('toCsv', () => {
+  it('neutralizes spreadsheet formulas in text cells (= + - @ tab CR)', () => {
+    const out = toCsv(['v'], [['=HYPERLINK("http://x","y")'], ['+1 813 555 0100'], ['-cmd'], ['@SUM(A1)'], ['\tx']]);
+    expect(out.split('\n').slice(1)).toEqual([`"'=HYPERLINK(""http://x"",""y"")"`, `'+1 813 555 0100`, `'-cmd`, `'@SUM(A1)`, `'\tx`]);
+  });
+  it('keeps real numbers numeric — a negative number is not a formula', () => {
+    expect(toCsv(['hours'], [[-1.5], [8], [0]])).toBe('hours\n-1.5\n8\n0');
+  });
+  it('renders null/undefined as empty and booleans as words', () => {
+    expect(toCsv(['a', 'b', 'c'], [[null, undefined, true]])).toBe('a,b,c\n,,true');
+  });
+  it('quotes a cell holding a bare carriage return so it cannot split the row', () => {
+    const out = toCsv(['note'], [['line1\rline2']]);
+    expect(out).toBe('note\n"line1\rline2"');
+  });
+});

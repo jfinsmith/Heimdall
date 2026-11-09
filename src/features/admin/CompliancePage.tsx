@@ -17,6 +17,7 @@ import { useOrg } from '../../lib/useOrg';
 import { DPA_VERSION, COMPUTE_REGION, PII_INVENTORY, DPA_CLAUSES } from '../../lib/compliance';
 import { Badge, Button, PageHeader, Spinner } from '../../components/ui';
 import { friendlyError } from '../../lib/callableError';
+import { toDateInputValue } from '../../lib/time';
 
 const acceptOrgDpa = httpsCallable<{ version: string }, { ok: boolean }>(functions, 'acceptOrgDpa');
 
@@ -35,7 +36,7 @@ function downloadJson(filename: string, data: unknown) {
  *  independently so one permission hiccup can't abort the whole export — any
  *  skips are recorded in `_warnings`. Cross-tenant is impossible: every query is
  *  pinned to the caller's own orgId and rules enforce it. */
-async function gatherOrgData(orgId: string) {
+async function gatherOrgData(orgId: string, includeAuditLog: boolean) {
   const byOrg: QueryConstraint = where('orgId', '==', orgId);
   const warnings: string[] = [];
   const list = async (path: string) => {
@@ -68,9 +69,13 @@ async function gatherOrgData(orgId: string) {
   const academies = await list('academies');
   const roster: Record<string, unknown[]> = {};
   const reports: Record<string, unknown[]> = {};
+  // Attendance is cadet data this page itself lists under "What we store" — it
+  // was missing from the right-to-access export.
+  const attendance: Record<string, unknown[]> = {};
   for (const a of academies) {
     roster[a.id] = await list(`academies/${a.id}/roster`);
     reports[a.id] = await list(`academies/${a.id}/reports`);
+    attendance[a.id] = await list(`academies/${a.id}/attendance`);
   }
   return {
     exportedAt: new Date().toISOString(),
@@ -81,23 +86,30 @@ async function gatherOrgData(orgId: string) {
     academies,
     roster,
     reports,
+    attendance,
+    remediations: await list('remediations'),
     curricula: await list('curricula'),
     documentLibrary: await libraryForms(),
     sessions: await list('sessions'),
     assignments: await list('assignments'),
     feedbackReports: await list('feedbackReports'),
     bulkMessages: await list('bulkMessages'),
-    auditLog: await list('auditLog'),
+    // The audit log is readable by the platform owner only (firestore.rules).
+    // For an org admin the query was always denied and landed in `_warnings`
+    // looking like an export fault — skip it and say plainly it isn't included.
+    ...(includeAuditLog ? { auditLog: await list('auditLog') } : {}),
     _notIncluded: [
       'Per-session sign-up rows (sessions/{id}/signups)',
-      'Uploaded files in Cloud Storage (bug-report screenshots, organization logos)',
+      'Uploaded files in Cloud Storage (bug-report screenshots, certification-card photos, room diagrams, organization logos)',
+      'Room categories, rooms and room reservations; Limbo plans; the course catalog',
+      ...(includeAuditLog ? [] : ['Audit log (held by the platform operator — available on request)']),
     ],
     ...(warnings.length ? { _warnings: warnings } : {}),
   };
 }
 
 export function CompliancePage() {
-  const { orgId } = useAuth();
+  const { orgId, platformOwner } = useAuth();
   const { data: org, loading } = useOrg();
   const [busy, setBusy] = useState<null | 'accept' | 'export'>(null);
   const [error, setError] = useState<string | null>(null);
@@ -125,8 +137,8 @@ export function CompliancePage() {
     setBusy('export');
     setError(null);
     try {
-      const data = await gatherOrgData(orgId);
-      downloadJson(`heimdall-${orgId}-export-${new Date().toISOString().slice(0, 10)}.json`, data);
+      const data = await gatherOrgData(orgId, platformOwner);
+      downloadJson(`heimdall-${orgId}-export-${toDateInputValue(new Date())}.json`, data);
     } catch (err) {
       setError(friendlyError(err, 'Export failed.'));
     } finally {
@@ -206,17 +218,19 @@ export function CompliancePage() {
       <section className="rounded-lg border border-watch-100 bg-white p-5 shadow-sm">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-watch-600">Export & deletion (FERPA)</h2>
         <p className="mt-2 text-sm text-slate-600">
-          Download an export of your organization’s records — academies, roster, grades, academic-action
-          documents, staff, scheduling (sessions &amp; assignments), curricula, feedback, and audit history — as a
-          JSON file. <span className="text-slate-500">Not included: uploaded files in Cloud Storage (screenshots,
-          logos) and per-session sign-up rows.</span> Only your own organization’s data is pulled.
+          Download an export of your organization’s records — academies, roster, grades, attendance,
+          academic-action documents, remediation records, staff, scheduling (sessions &amp; assignments), curricula,
+          and feedback — as a JSON file. <span className="text-slate-500">Not included: uploaded files in Cloud
+          Storage (screenshots, certification cards, logos), per-session sign-up rows, room reservations, Limbo
+          plans, and the audit log (held by the platform operator — available on request).</span> Only your own
+          organization’s data is pulled.
         </p>
         <Button className="mt-3" variant="primary" disabled={busy !== null} onClick={exportData}>
           {busy === 'export' ? 'Gathering…' : 'Export organization data'}
         </Button>
         <p className="mt-4 text-xs text-slate-500">
-          Deletion: individual cadet records are removed under <strong>Roster &amp; Certifications</strong> and staff
-          accounts under <strong>Users &amp; Roles</strong>. To permanently purge your entire organization, contact the
+          Deletion: individual cadet records are removed from the class’s own roster (<strong>Academies</strong> →
+          open the class → <strong>Roster</strong> → Remove) and staff accounts under <strong>Users &amp; Roles</strong>. To permanently purge your entire organization, contact the
           platform operator.
         </p>
       </section>

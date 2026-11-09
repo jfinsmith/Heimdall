@@ -22,6 +22,8 @@ import { Modal } from '../../components/Modal';
 import { logAudit } from '../sessions/audit';
 import { REPORT_TYPES, type DocumentAssignmentDoc, type ReportField, type ReportType } from '../cadre/reports/reportTypes';
 import { ReportLetter } from '../cadre/reports/ReportLetter';
+import { friendlyError } from '../../lib/callableError';
+import { toDateInputValue } from '../../lib/time';
 
 const ownerListOrgs = httpsCallable<void, { orgs: { orgId: string; legalName: string }[] }>(functions, 'ownerListOrgs');
 
@@ -30,7 +32,7 @@ function sampleValue(f: ReportField): string {
   const k = f.key.toLowerCase();
   if (f.default) return f.default;
   if (f.type === 'course') return 'CJK 0002 — Introduction to Law Enforcement';
-  if (f.type === 'date') return new Date().toISOString().slice(0, 10);
+  if (f.type === 'date') return toDateInputValue(new Date());
   if (f.type === 'time') return '13:30';
   if (f.type === 'select') return f.options?.[0] ?? 'Sample';
   if (f.type === 'cadet') return 'John Q. Sample';
@@ -52,12 +54,13 @@ function sampleValue(f: ReportField): string {
 }
 const sampleData = (t: ReportType): Record<string, string> => ({
   ...Object.fromEntries(t.fields.map((f) => [f.key, sampleValue(f)])),
-  _memoDate: new Date().toISOString().slice(0, 10),
+  _memoDate: toDateInputValue(new Date()), // local date — toISOString is UTC (tomorrow in the evening)
 });
 
 export function ReportFormsAdminPage() {
   const { firebaseUser } = useAuth();
   const [orgs, setOrgs] = useState<{ orgId: string; legalName: string }[]>([]);
+  const [orgsError, setOrgsError] = useState<string | null>(null);
   const { data: assignments } = useCollection<DocumentAssignmentDoc>('documentAssignments');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftScope, setDraftScope] = useState<'all' | 'orgs'>('all');
@@ -66,7 +69,11 @@ export function ReportFormsAdminPage() {
   const [preview, setPreview] = useState<ReportType | null>(null);
 
   useEffect(() => {
-    ownerListOrgs().then((r) => setOrgs(r.data.orgs)).catch(() => {});
+    // Was swallowed: the "Only these organizations" picker then rendered empty
+    // and assigned orgs showed as raw ids, with nothing saying why.
+    ownerListOrgs()
+      .then((r) => setOrgs(r.data.orgs))
+      .catch((e) => setOrgsError(friendlyError(e, 'Could not load the organization list.')));
   }, []);
 
   const asgById = useMemo(() => new Map(assignments.map((a) => [a.id, a])), [assignments]);
@@ -98,6 +105,8 @@ export function ReportFormsAdminPage() {
         `${t.name} → ${draftScope === 'all' ? 'all organizations' : draftOrgIds.map(orgName).join(', ') || 'NO organizations'}`
       );
       setEditingId(null);
+    } catch (err) {
+      window.alert(`Save failed: ${friendlyError(err, 'unknown error')}`);
     } finally {
       setBusy(false);
     }
@@ -112,6 +121,11 @@ export function ReportFormsAdminPage() {
         organizations</strong> unless you assign it to selected organizations below; orgs can still disable or
         swap forms per discipline under their own Curriculum &amp; Hours.
       </p>
+      {orgsError && (
+        <div className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">
+          {orgsError} Organization names and the “Only these organizations” picker are unavailable until you reload.
+        </div>
+      )}
 
       <section className="rounded-lg border border-watch-100 bg-white shadow-sm">
         <ul className="divide-y divide-watch-100">
@@ -175,7 +189,7 @@ export function ReportFormsAdminPage() {
                       </div>
                     )}
                     <div className="mt-3 flex items-center gap-2">
-                      <Button variant="primary" disabled={busy} onClick={() => saveAssignment(t)}>
+                      <Button variant="primary" disabled={busy || (draftScope === 'orgs' && !!orgsError)} onClick={() => saveAssignment(t)}>
                         Save assignment
                       </Button>
                       {draftScope === 'orgs' && draftOrgIds.length === 0 && (

@@ -16,6 +16,7 @@ import { useAuth } from '../../../auth/AuthContext';
 import type { AttendanceDoc, AttendanceEntry, AttendanceStatus, RosterMemberDoc } from '../../../types';
 import { Button, Field, Input, Select, Spinner } from '../../../components/ui';
 import { lastFirst } from './rosterShared';
+import { friendlyError } from '../../../lib/callableError';
 
 const STATUSES: { value: AttendanceStatus; label: string }[] = [
   { value: 'present', label: 'Present' },
@@ -44,6 +45,7 @@ export function AttendanceLogTab({ academyId, members }: { academyId: string; me
   const [draft, setDraft] = useState<Record<string, AttendanceEntry>>({});
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const savedDay = useMemo(() => days.find((d) => d.id === date), [days, date]);
   // Reseed the draft only when the DATE changes or this day's saved doc actually
@@ -52,12 +54,14 @@ export function AttendanceLogTab({ academyId, members }: { academyId: string; me
   // the edits in progress here, and our own save's echo cleared "Saved." at once.
   const savedStamp = savedDay ? savedDay.updatedAt?.toMillis?.() ?? 0 : -1;
   useEffect(() => { setDraft(savedDay?.entries ?? {}); }, [date, savedStamp]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { setSaved(false); }, [date]);
+  useEffect(() => { setSaved(false); setError(null); }, [date]);
 
   // Per-cadet attended-hours rollup across every recorded day.
   const totalHours = useMemo(() => {
     const m: Record<string, number> = {};
     for (const day of days) for (const [cid, e] of Object.entries(day.entries ?? {})) m[cid] = (m[cid] ?? 0) + (Number(e?.hours) || 0);
+    // Round away binary-float dust (7.1 + 0.2 → 7.300000000000001).
+    for (const cid of Object.keys(m)) m[cid] = Math.round(m[cid] * 100) / 100;
     return m;
   }, [days]);
 
@@ -68,10 +72,23 @@ export function AttendanceLogTab({ academyId, members }: { academyId: string; me
     });
     setSaved(false);
   }
+  /** "— not recorded —": drop the cadet's entry for this day. (It used to be
+   *  stored with an empty status and its hours intact, so a cadet shown as "not
+   *  recorded" still had that day's hours in their running total.) */
+  function clearEntry(cadetId: string) {
+    setDraft((p) => {
+      const next = { ...p };
+      delete next[cadetId];
+      return next;
+    });
+    setSaved(false);
+  }
 
   async function save() {
-    if (!orgId) return;
+    if (!date) return;
+    if (!orgId) { setError('Your account is still loading its organization — reload and try again.'); return; }
     setBusy(true);
+    setError(null);
     try {
       // Full overwrite (not merge) so clearing a cadet removes their entry.
       await setDoc(doc(db, `academies/${academyId}/attendance/${date}`), {
@@ -83,6 +100,8 @@ export function AttendanceLogTab({ academyId, members }: { academyId: string; me
         updatedAt: serverTimestamp(),
       });
       setSaved(true);
+    } catch (err) {
+      setError(friendlyError(err, 'Could not save attendance — try again.'));
     } finally {
       setBusy(false);
     }
@@ -99,8 +118,9 @@ export function AttendanceLogTab({ academyId, members }: { academyId: string; me
       </p>
       <div className="mb-3 flex flex-wrap items-end gap-3">
         <Field label="Class date" className="max-w-[12rem]"><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
-        <Button variant="primary" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save attendance'}</Button>
+        <Button variant="primary" disabled={busy || !date} onClick={save}>{busy ? 'Saving…' : 'Save attendance'}</Button>
         {saved && <span className="pb-2 text-sm text-green-700">Saved.</span>}
+        {error && <span className="pb-2 text-sm text-red-700" role="alert">{error}</span>}
       </div>
       <div className="overflow-x-auto rounded-lg border border-watch-100">
         <table className="w-full text-left text-sm">
@@ -114,20 +134,25 @@ export function AttendanceLogTab({ academyId, members }: { academyId: string; me
             </tr>
           </thead>
           <tbody className="divide-y divide-watch-50">
-            {cadets.map((m) => {
+            {cadets.map((m, i) => {
               const e = draft[m.id];
               return (
                 <tr key={m.id}>
-                  <td className="px-2 py-1.5 tabular-nums text-slate-500">{m.no}</td>
+                  {/* Live position, like the Members tab and the printed roster —
+                      the stored intake number reads as random in an A–Z list. */}
+                  <td className="px-2 py-1.5 tabular-nums text-slate-500">{i + 1}</td>
                   <td className="px-2 py-1.5 font-medium text-watch-900">{lastFirst(m.fullName)}</td>
                   <td className="px-2 py-1.5">
-                    <Select value={e?.status ?? ''} onChange={(ev) => setEntry(m.id, { status: ev.target.value as AttendanceStatus })}>
+                    <Select
+                      value={e?.status ?? ''}
+                      onChange={(ev) => (ev.target.value ? setEntry(m.id, { status: ev.target.value as AttendanceStatus }) : clearEntry(m.id))}
+                    >
                       <option value="">— not recorded —</option>
                       {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                     </Select>
                   </td>
                   <td className="px-2 py-1.5">
-                    <Input type="number" min={0} step={0.25} value={e ? e.hours : ''} onChange={(ev) => setEntry(m.id, { hours: Number(ev.target.value) })} />
+                    <Input type="number" min={0} step={0.25} value={e ? e.hours : ''} onChange={(ev) => setEntry(m.id, { hours: Math.max(0, Number(ev.target.value) || 0) })} />
                   </td>
                   <td className="px-2 py-1.5 tabular-nums text-slate-600">{totalHours[m.id] ?? 0} hrs</td>
                 </tr>

@@ -56,7 +56,10 @@ export function buildDayRosters(
   dateStr: string,
   officialCourses: Set<string>
 ): DayRoster[] {
-  const onDay = (s: WithId<SessionDoc>) => localDateStr(s.start.toDate()) === dateStr;
+  // CANCELLED blocks stay in the collection (status flips, the doc is kept) —
+  // they must never print a roster, pad a run's hours/time span, split a run in
+  // two, or list their instructors.
+  const onDay = (s: WithId<SessionDoc>) => s.status !== 'cancelled' && localDateStr(s.start.toDate()) === dateStr;
   // Only OFFICIAL curriculum courses are rostered — custom/agency blocks (guest
   // speakers, PSO/formation, one-offs a coordinator typed) are excluded.
   const instructional = sessions

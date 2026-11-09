@@ -5,7 +5,7 @@
  * demerit points sum by weight.
  */
 import React, { useState } from 'react';
-import { doc, serverTimestamp, Timestamp, updateDoc } from 'firebase/firestore';
+import { arrayRemove, arrayUnion, doc, serverTimestamp, Timestamp, updateDoc } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { shortId, type WithId } from '../../../lib/firestore';
 import type { DemeritLevel, RosterMemberDoc, ViolationEntry, ViolationType } from '../../../types';
@@ -14,6 +14,7 @@ import { Badge, Button, Field, Input, Select, TextArea } from '../../../componen
 import { Modal } from '../../../components/Modal';
 import { agencyLabel, disciplineTally, lastFirst } from './rosterShared';
 import type { LetterSeed } from '../reports/AcademyReports';
+import { friendlyError } from '../../../lib/callableError';
 
 const TYPES: ViolationType[] = ['Tardy', 'Uniform', 'Grooming', 'Other'];
 const LEVELS: { key: DemeritLevel; label: string }[] = [
@@ -33,9 +34,16 @@ export function DisciplineTab({ academyId, members, onGenerateLetter }: { academ
     // A disciplinary entry is part of the cadet's record — one stray click on
     // the pill's ✕ must not erase it without a pause.
     const v = (m.violations ?? []).find((x) => x.id === id);
-    if (!window.confirm(`Remove this ${v ? levelLabel(v.level).toLowerCase() : 'violation'} from ${m.fullName}'s record? This cannot be undone.`)) return;
-    const next = (m.violations ?? []).filter((v) => v.id !== id);
-    await updateDoc(doc(db, 'academies', academyId, 'roster', m.id), { violations: next, updatedAt: serverTimestamp() });
+    if (!v) return;
+    if (!window.confirm(`Remove this ${levelLabel(v.level).toLowerCase()} from ${m.fullName}'s record? This cannot be undone.`)) return;
+    try {
+      // arrayRemove (not "write back the filtered list"): the list on screen can
+      // be older than the stored one, and rewriting it erased whatever a
+      // colleague had added in the meantime.
+      await updateDoc(doc(db, 'academies', academyId, 'roster', m.id), { violations: arrayRemove(v), updatedAt: serverTimestamp() });
+    } catch (err) {
+      window.alert(friendlyError(err, 'Could not remove the violation — try again.'));
+    }
   }
 
   return (
@@ -112,6 +120,9 @@ export function DisciplineTab({ academyId, members, onGenerateLetter }: { academ
                 </tr>
               );
             })}
+            {roster.length === 0 && (
+              <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-400">No cadets on the roster yet — add them on the Members tab.</td></tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -133,9 +144,12 @@ function ViolationModal({
   const [level, setLevel] = useState<DemeritLevel>('warning');
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function save() {
+    if (!date) return; // cleared date input — Save is disabled, belt and braces
     setBusy(true);
+    setError(null);
     const entry: ViolationEntry = {
       id: shortId(),
       date: Timestamp.fromDate(new Date(`${date}T12:00:00`)),
@@ -144,17 +158,25 @@ function ViolationModal({
       level,
       ...(notes.trim() ? { notes: notes.trim() } : {}),
     };
-    await updateDoc(doc(db, 'academies', academyId, 'roster', member.id), {
-      violations: [...(member.violations ?? []), entry],
-      updatedAt: serverTimestamp(),
-    });
-    setBusy(false);
-    onClose();
+    try {
+      // arrayUnion appends atomically. Writing `[...member.violations, entry]`
+      // used the list from when this dialog OPENED, so a violation someone else
+      // noted for the same cadet in the meantime was silently overwritten.
+      await updateDoc(doc(db, 'academies', academyId, 'roster', member.id), {
+        violations: arrayUnion(entry),
+        updatedAt: serverTimestamp(),
+      });
+      onClose();
+    } catch (err) {
+      setError(friendlyError(err, 'Could not save the violation.'));
+      setBusy(false);
+    }
   }
 
   return (
     <Modal open onClose={onClose} title={`Note a violation — ${member.fullName}`}>
       <div className="space-y-4">
+        {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">{error}</div>}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Date"><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
           <Field label="Violation type">
@@ -174,7 +196,7 @@ function ViolationModal({
         <Field label="Notes"><TextArea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} /></Field>
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button variant="primary" onClick={save} disabled={busy || (type === 'Other' && !typeOther.trim())}>
+          <Button variant="primary" onClick={save} disabled={busy || !date || (type === 'Other' && !typeOther.trim())}>
             {busy ? 'Saving…' : 'Save violation'}
           </Button>
         </div>

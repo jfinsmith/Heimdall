@@ -13,6 +13,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../lib/firebase';
+import { friendlyError } from '../../lib/callableError';
 import type { CurriculumCourse, RosterMemberDoc, ViolationEntry } from '../../types';
 import {
   courseKey, courseResult, effectiveScore, gradedCourses, lastFirst, memberStanding, resultClasses, rosterCompare,
@@ -45,9 +46,9 @@ const fmtTime = (ms: number) => new Date(ms).toLocaleTimeString('en-US', { hour:
 const fmtDay = (k: string) => new Date(`${k}T12:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 
 /** Full-screen gate card (both tiers) — the "fancy modern password" screen. */
-function Gate({ title, subtitle, placeholder, busy, error, onSubmit, inputMode }: {
+function Gate({ title, subtitle, placeholder, busy, error, onSubmit, onCancel, inputMode }: {
   title: string; subtitle: string; placeholder: string; busy: boolean; error: string | null;
-  onSubmit: (value: string) => void; inputMode?: 'numeric';
+  onSubmit: (value: string) => void; onCancel?: () => void; inputMode?: 'numeric';
 }) {
   const [value, setValue] = useState('');
   return (
@@ -69,6 +70,13 @@ function Gate({ title, subtitle, placeholder, busy, error, onSubmit, inputMode }
           value={value}
           onChange={(e) => setValue(e.target.value)}
           placeholder={placeholder}
+          aria-label={placeholder}
+          // A shared class secret, not an account credential: keep the browser
+          // from offering to save it — or from autofilling the visitor's own
+          // HEIMDALL sign-in password into this box.
+          autoComplete="off"
+          autoCapitalize="off"
+          spellCheck={false}
           className="mt-5 w-full rounded-lg border border-watch-700 bg-watch-950 px-4 py-3 text-center text-lg font-semibold tracking-[0.3em] text-watch-50 placeholder:font-normal placeholder:tracking-normal placeholder:text-watch-500 focus:border-bifrost-400 focus:outline-none"
         />
         {error && <p className="mt-3 text-sm font-medium text-red-400">{error}</p>}
@@ -79,6 +87,11 @@ function Gate({ title, subtitle, placeholder, busy, error, onSubmit, inputMode }
         >
           {busy ? 'Checking…' : 'View class'}
         </button>
+        {onCancel && (
+          <button type="button" className="mt-3 text-sm font-medium text-watch-300 hover:text-watch-100 hover:underline" onClick={onCancel}>
+            ← Back to schedule
+          </button>
+        )}
         <p className="mt-6 text-[11px] uppercase tracking-[0.2em] text-watch-500">HEIMDALL · Class Portal</p>
       </form>
     </div>
@@ -111,7 +124,7 @@ export function PublicClassPage() {
       setSchedule(res.data as ScheduleData);
       setCode(value);
     } catch (err) {
-      setError(err instanceof Error ? err.message.replace(/^.*?:\s*/, '') : 'Could not open the class.');
+      setError(friendlyError(err, 'Could not open the class.'));
     } finally {
       setBusy(false);
     }
@@ -125,7 +138,7 @@ export function PublicClassPage() {
       setAcademic(res.data as AcademicData);
       setShowAcademicGate(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message.replace(/^.*?:\s*/, '') : 'Could not open academic information.');
+      setError(friendlyError(err, 'Could not open academic information.'));
     } finally {
       setBusy(false);
     }
@@ -164,6 +177,9 @@ export function PublicClassPage() {
         busy={busy}
         error={error}
         onSubmit={enterAcademic}
+        // Without a way back, a cadet who opened this by mistake had to reload
+        // the page and re-enter the access code to see the schedule again.
+        onCancel={() => { setError(null); setShowAcademicGate(false); }}
       />
     );
   }

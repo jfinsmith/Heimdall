@@ -17,7 +17,7 @@
  * sitemap.xml are in public/.
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { WordmarkStacked, WordmarkHorizontal } from '../../brand/Logo';
 
 /** Subtle scroll-reveal: fades + rises into view once, honoring reduced-motion.
@@ -289,6 +289,16 @@ function RosterPreview() {
 }
 
 export function MarketingPage() {
+  // /pricing is this same page (it's in the sitemap) — land on the pricing
+  // section instead of the hero. Also honor an anchor on a cold load: the
+  // browser's own jump runs before this lazy page exists, so a shared /#faq
+  // link opened at the top. An explicit anchor always wins over the path.
+  const { pathname, hash } = useLocation();
+  useEffect(() => {
+    const id = hash ? hash.slice(1) : pathname === '/pricing' ? 'pricing' : '';
+    if (id) document.getElementById(id)?.scrollIntoView();
+  }, [pathname, hash]);
+
   return (
     <div className="min-h-screen bg-white text-watch-900">
       <BetaBanner />

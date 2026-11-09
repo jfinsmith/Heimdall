@@ -25,9 +25,9 @@
 
 /*
  * HEIMDALL global styles.
- * Brand colors are also exposed as CSS custom properties so values from
- * `settings/global` (brandPrimaryColor / brandAccentColor) can override the
- * compiled defaults at runtime — see BrandProvider in src/app/providers.tsx.
+ * Brand colors are exposed as CSS custom properties. The app UI is always
+ * Heimdall-branded (these compiled defaults); an organization's own colors
+ * apply to its PRINTED documents only.
  */
 :root {
   --brand-primary: #16203a; /* watch-900 */

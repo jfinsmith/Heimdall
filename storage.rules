@@ -12,6 +12,15 @@ service firebase.storage {
     function isStaff() {
       return signedIn() && request.auth.token.role in ['director', 'lieutenant', 'sergeant', 'coordinator'];
     }
+    // A member of THIS org whose account is not locked. Suspension/deactivation
+    // strips the role claim but keeps the orgId claim and mints a status claim
+    // (same as firestore.rules' activeStatus) — without this a locked-out member
+    // could still read the org's floor plans and keep uploading files.
+    function activeMember(orgId) {
+      return signedIn()
+        && orgId == request.auth.token.get('orgId', null)
+        && !(request.auth.token.get('status', 'active') in ['suspended', 'inactive', 'pending']);
+    }
 
     // Bug / feature report screenshots, partitioned by tenant: feedback/{orgId}/{uid}/…
     // The uploader writes under their own uid; reads are scoped to a SAME-TENANT
@@ -21,9 +30,8 @@ service firebase.storage {
     match /feedback/{orgId}/{uid}/{allPaths=**} {
       allow read: if (isAdmin() && orgId == request.auth.token.get('orgId', null))
         || (signedIn() && request.auth.uid == uid);
-      allow write: if signedIn()
+      allow write: if activeMember(orgId)
         && request.auth.uid == uid
-        && orgId == request.auth.token.get('orgId', null)
         && request.resource.size < 10 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
       allow delete: if (isAdmin() && orgId == request.auth.token.get('orgId', null))
@@ -45,7 +53,7 @@ service firebase.storage {
     // Schedule-building staff (who manage rooms) may upload; read is limited to
     // signed-in members (a floor plan is org-internal, unlike a public logo).
     match /rooms/{orgId}/{allPaths=**} {
-      allow read: if signedIn() && orgId == request.auth.token.get('orgId', null);
+      allow read: if activeMember(orgId);
       allow write: if isStaff()
         && orgId == request.auth.token.get('orgId', null)
         && request.resource.size < 5 * 1024 * 1024
@@ -60,9 +68,8 @@ service firebase.storage {
     match /certCards/{orgId}/{uid}/{allPaths=**} {
       allow read: if (isStaff() && orgId == request.auth.token.get('orgId', null))
         || (signedIn() && request.auth.uid == uid);
-      allow write: if signedIn()
+      allow write: if activeMember(orgId)
         && request.auth.uid == uid
-        && orgId == request.auth.token.get('orgId', null)
         && request.resource.size < 10 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
       allow delete: if (isAdmin() && orgId == request.auth.token.get('orgId', null))

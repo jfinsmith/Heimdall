@@ -7,7 +7,8 @@ import type { Timestamp } from 'firebase-admin/firestore';
 export type Role = 'director' | 'lieutenant' | 'sergeant' | 'coordinator' | 'instructor' | 'guest';
 export type UserStatus = 'pending' | 'active' | 'inactive' | 'suspended';
 export type SlotRole = 'lead' | 'assistant' | 'role_player' | 'safety_officer' | 'coordinator';
-export type SessionStatus = 'draft' | 'open' | 'fully_staffed' | 'cancelled' | 'completed';
+/** 'scheduled' = published + calendar-visible, sign-ups not opened yet. */
+export type SessionStatus = 'draft' | 'scheduled' | 'open' | 'fully_staffed' | 'cancelled' | 'completed';
 export type SignupStatus = 'confirmed' | 'waitlist' | 'withdrawn';
 
 export const STAFF_ROLES: Role[] = ['director', 'lieutenant', 'sergeant', 'coordinator'];
@@ -57,6 +58,11 @@ export interface UserDoc {
   notificationEmail?: string;
   notificationEmailVerified?: boolean;
   notificationEmailPending?: string;
+  /** Shared FDLE instructor-cert expiration (3/31 of the cert year) — gates
+   *  every instructor qualification (see certBlocks in sessions/validation.ts). */
+  instructorCertExpires?: Timestamp;
+  /** Random secret for the personal calendar feed (calendarFeed) — owner-set. */
+  icsToken?: string;
   /** Tenant this user belongs to (orgs/{orgId}). */
   orgId?: string;
   /** Product owner — manages orgs/billing; NOT a tenant role. */
@@ -247,5 +253,9 @@ export interface AssignmentDoc {
   end: Timestamp;
   status: SignupStatus;
   reminderSent: boolean;
+  /** Mirrors the signup's reservation fields (builder reserve flow) — a
+   *  'pending' offer is NOT an accepted assignment (no reminders/broadcasts). */
+  reservedBy?: string;
+  reservationState?: 'pending' | 'accepted';
   createdAt?: Timestamp;
 }

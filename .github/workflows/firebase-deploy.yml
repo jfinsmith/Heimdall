@@ -109,4 +109,4 @@ jobs:
           java-version: 17
       - run: npm ci
       - name: Firestore rules + signup-concurrency tests (emulator)
-        run: npx -y firebase-tools@13 emulators:exec --only firestore,auth "npm run test:emulator"
+        run: npx -y firebase-tools@13 emulators:exec --only firestore,auth,storage "npm run test:emulator"

@@ -21,7 +21,7 @@ import { Button, Spinner } from '../../../components/ui';
 export function DayRosterPrintPage() {
   const { academyId = '', date = '' } = useParams();
   const { data: academy, loading: aLoading } = useDoc<AcademyDoc>(academyId ? `academies/${academyId}` : null);
-  const { data: rosterRaw, loading: rLoading } = useCollection<RosterMemberDoc>(
+  const { data: rosterRaw, loading: rLoading, error: rError } = useCollection<RosterMemberDoc>(
     academyId ? `academies/${academyId}/roster` : null, [], [academyId]
   );
   const { data: curriculum } = useCurriculum(academy?.discipline);
@@ -32,17 +32,26 @@ export function DayRosterPrintPage() {
   if (aLoading || rLoading) return <div className="flex h-screen items-center justify-center"><Spinner className="text-bifrost-400" /></div>;
   if (!academy) return <p className="p-8 text-sm text-slate-500">Academy not found.</p>;
 
-  const prettyDate = date ? new Date(`${date}T00:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : '';
+  // Only a well-formed yyyy-mm-dd is formatted — a mangled link used to put
+  // "Invalid Date" in the toolbar (ScheduleDayDocuments shows the prompt below).
+  const prettyDate = /^\d{4}-\d{2}-\d{2}$/.test(date)
+    ? new Date(`${date}T00:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+    : '';
 
   return (
     <div>
       <div className="no-print sticky top-0 z-30 flex items-center justify-between gap-2 border-b border-watch-100 bg-white px-4 py-2">
         <Link to={`/cadre/academies/${academyId}`} className="text-sm text-bifrost-700 hover:underline">← Back to builder</Link>
         <span className="text-sm text-slate-600">
-          <span className="font-semibold">{academy.shortName || academy.name}</span> — documents for {prettyDate}
+          <span className="font-semibold">{academy.shortName || academy.name}</span>{prettyDate ? ` — documents for ${prettyDate}` : ''}
         </span>
         <Button variant="primary" onClick={() => window.print()}>Print</Button>
       </div>
+      {rError && (
+        <div className="no-print mx-4 mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+          Couldn’t load the class roster — the sheets below would print without cadet names. Reload the page and try again.
+        </div>
+      )}
       <div className="p-4 print:p-0">
         <ScheduleDayDocuments academy={{ ...academy, id: academyId }} members={members} curriculum={curriculum ?? null} dateStr={date} />
       </div>

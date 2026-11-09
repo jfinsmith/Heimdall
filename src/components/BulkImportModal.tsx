@@ -52,6 +52,7 @@ export function BulkImportModal({
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [results, setResults] = useState<ImportResult[] | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const headerLine = useMemo(() => columns.map((c) => c.label).join(','), [columns]);
@@ -85,8 +86,17 @@ export function BulkImportModal({
   const invalid = parsed.filter((p) => p.errors.length > 0);
 
   function onFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    if (f) f.text().then(setRaw);
+    const input = e.target;
+    const f = input.files?.[0];
+    setFileError(null);
+    if (f) {
+      f.text()
+        .then(setRaw)
+        .catch(() => setFileError(`Could not read "${f.name}". Save it as a .csv file and try again.`));
+    }
+    // Clear the picker so choosing the SAME file again (after fixing it in
+    // Excel) fires onChange — browsers skip the event when the path is unchanged.
+    input.value = '';
   }
 
   async function runImport() {
@@ -165,6 +175,7 @@ export function BulkImportModal({
         <div>
           <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={onFile} disabled={busy} className="hidden" />
           <Button variant="ghost" onClick={() => fileRef.current?.click()} disabled={busy}>Upload CSV file…</Button>
+          {fileError && <p className="mt-1 text-xs text-red-700">{fileError}</p>}
         </div>
 
         {parsed.length > 0 && (

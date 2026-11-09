@@ -135,7 +135,7 @@ export function HowToPage() {
           <Steps items={[
             <>Two ways in: an administrator creates your account (you get an <B>activation email</B> with a temporary password), or you <B>register yourself</B> — with email &amp; password (you&apos;ll <B>verify your email</B> first) or Continue with Google / Microsoft.</>,
             <>Registration asks for your <B>legal first and last name</B> and <B>date of birth</B> — required so the academy can verify your training credentials against state records (ATMS). Accounts created before this requirement (and Google/Microsoft sign-ups) are asked ONCE at sign-in to confirm these details.</>,
-            <>Self-registered? Enter your academy&apos;s <B>join code</B> (from your welcome email — or just tap the invite link, which fills it in for you). A matching work email domain can skip the code entirely. Accounts never linked to an organization are removed after 30 days.</>,
+            <>Self-registered? Enter your academy&apos;s <B>join code</B> (from your welcome email — or just tap the invite link, which fills it in for you; email &amp; password sign-ups verify their email first and the code is then applied automatically). Signing up with Google or Microsoft on a work email your academy registered skips the code entirely. Until an administrator approves you, you&apos;ll see a waiting screen — if the request isn&apos;t approved you&apos;re returned to the join-code screen with a note. Accounts never linked to an organization are removed after 30 days.</>,
             <>Complete the <B>welcome profile</B> (name, rank, phone) and claim any instructor qualifications you hold (an admin verifies them before they count).</>,
           ]} />
           <Tips items={[
@@ -153,7 +153,7 @@ export function HowToPage() {
               date visible); if you can&apos;t upload one, you can ask staff to confirm from college records — but the
               request is denied if no card is on file. All FDLE instructor certs share one
               <B> certification expiration date</B> on your profile; when it lapses, you can&apos;t be reserved or sign up for qualified slots until it&apos;s renewed.
-              Removing a qualification takes effect immediately (re-verification is required to get it back).
+              Removing a qualification takes effect immediately — a verified one asks you to confirm first, because a coordinator has to re-verify it to get it back.
             </p>
           </Sub>
           <Sub title="Unavailable days">
@@ -192,21 +192,24 @@ export function HowToPage() {
           <Steps items={[
             <>Open <B>Browse Open Sessions</B>. The <B>Calendar</B> view opens first — each block shows its start time, hours (e.g. 0700–1230), class, instructor-slot fill, and room, colored by academy. Flip to <B>List</B> for a day-grouped list (Today/Tomorrow called out) — your choice is remembered. Filter by academy or show your unavailable days.</>,
             <>Pick a session and <B>Sign up</B> for an open slot. Slots that require a qualification you don&apos;t hold (verified + unexpired) are blocked.</>,
-            <>If the slot is full, you can <B>join the waitlist</B> — when someone withdraws you&apos;re promoted automatically (re-checked for conflicts and certification at that moment) and notified.</>,
-            <>Withdraw from a session from the session detail or <B>My Schedule</B>. Lead-instructor withdrawals alert command.</>,
+            <>If the slot is full, you can <B>join the waitlist</B> — when someone withdraws you&apos;re promoted automatically (re-checked for conflicts and certification at that moment) and notified. If a slot fills at the moment you tap Sign up, the session details open so the waitlist button is right there.</>,
+            <>Withdraw from a session from the session detail or <B>My Schedule</B> — both ask you to confirm (on a waitlist the button reads <B>Leave waitlist</B>). Lead-instructor withdrawals alert command. You can&apos;t withdraw from a session that has already been taught.</>,
             <>If a coordinator <B>reserves</B> you into a slot, it appears in My Schedule highlighted amber with two buttons: <B>I&apos;m available ✓</B> (confirms — the coordinator is notified) or <B>Not available</B> (removes you from the slot and notifies them). No hunting for the course to sign yourself up.</>,
           ]} />
           <Tips items={[
             <>Sign-ups only open when the coordinator opens the course — <B>Scheduled</B> means visible but not yet open.</>,
             <>Double-booking is blocked: you can&apos;t sign up for a session that overlaps one you already hold.</>,
+            <>If your FDLE instructor certification year is missing or has passed, Browse shows a notice and hides instructor-qualified slots until you update it under <B>Profile → Qualifications</B>.</>,
           ]} />
         </Section>
 
         <Section id="my-schedule" title="My Schedule, reminders & calendar feed" role="Instructors">
           <p>
-            <B>My Schedule</B> lists your upcoming and past assignments. Email reminders arrive before each assignment — set your preferred
-            lead time in <B>Profile → Notifications</B> (your org sets the default). The <B>calendar feed (ICS)</B> link on My Schedule
-            subscribes your phone/Outlook/Google calendar to your assignments so they stay in sync automatically.
+            <B>My Schedule</B> lists your upcoming assignments and your past ones (most recent first). Email reminders arrive before each assignment — set your preferred
+            lead time in <B>Profile → Notifications</B> (your org sets the default). Reminders go out once each morning, so the lead time is 24 to 168 hours. The <B>calendar feed (ICS)</B> link on My Schedule
+            subscribes your phone/Outlook/Google calendar to your assignments so they stay in sync automatically — treat that link like a password
+            (if your phone won&apos;t copy it automatically, a box appears with the link to copy by hand). A reservation you haven&apos;t answered yet shows amber
+            on the calendar view and appears in the feed as <B>PENDING</B> until you confirm.
           </p>
           <p>
             The <B>Gjallarhorn bell</B> (top right) shows your latest notifications with category colors and timestamps — clicking View
@@ -231,7 +234,7 @@ export function HowToPage() {
           <Tips items={[
             <>Templates are <B>sandboxes</B>: their sessions never appear on the master or rooms calendars, never book or conflict with real rooms, and you can&apos;t reserve instructors into them — the slot pattern (roles, counts, qualifications) is what carries into each new academy.</>,
             <>When creating a new academy or template, the <B>end date auto-fills</B> from the curriculum&apos;s hours (~40/week, ending on a Friday) — type your own date to override it.</>,
-            <>Deleting an academy requires typing <B>DELETE</B> — it permanently removes the class, its sessions, the cadet roster (grades, discipline, attendance log), filed reports, and the public class link. <B>Archive</B> instead to keep the record; <B>Unarchive</B> restores the class to the status it had when archived (a draft comes back as a draft).</>,
+            <>Deleting an academy requires typing <B>DELETE</B> — it permanently removes the class, its sessions, the cadet roster (grades, discipline, attendance log), filed reports, the Limbo plan, and the public class link. <B>Archive</B> instead to keep the record; <B>Unarchive</B> restores the class to the status it had when archived (a draft comes back as a draft). An archived class is <B>shelved</B>: it leaves Browse Open Sessions and the Staffing Board, instructors can no longer sign up for it, and it sends no reminders, staffing alerts, or digest lines.</>,
             <>The Academies list is grouped by <B>curriculum</B> (chronological within each group); the ↑/↓ arrows on a group header reorder the groups — saved as YOUR personal order.</>,
           ]} />
           <Sub title="Public class link">
@@ -251,14 +254,14 @@ export function HowToPage() {
             <>Build the schedule as a <B>draft</B> — drafts are invisible to instructors.</>,
             <>From the builder, <B>Submit for approval</B> and pick the reviewing sergeant.</>,
             <>Each stage has ONE approver: the assigned <B>sergeant</B>, then the <B>lieutenant</B>, then the <B>captain — who alone gives final approval</B>. Each approver gets a notification and an entry in their <B>Overview → Pending your approval</B> queue; the lieutenant can fast-track past the sergeant step. Any current approver can instead <B>Request changes</B> with a note — the submitter is notified, fixes the schedule, and resubmits.</>,
-            <>Once approved, <B>Publish</B> makes the calendar visible. Publishing is hard-gated: an unapproved academy cannot be published, and course sign-ups stay closed until you open each course (see Staffing). <B>Unpublish</B> hides every visible session again, fully-staffed ones included. Opening a course&apos;s sign-ups covers only its <B>upcoming</B> days (the confirmation states the exact count) and is never offered on a day that has already passed.</>,
+            <>Once approved, <B>Publish</B> makes the calendar visible. Publishing is hard-gated: an unapproved academy cannot be published, and course sign-ups stay closed until you open each course (see Staffing). <B>Unpublish</B> asks you to confirm, then hides every visible session again (fully-staffed ones included) and closes all sign-ups — publishing again does <B>not</B> re-open them, so open each course for sign-up again. Opening a course&apos;s sign-ups covers only its <B>upcoming</B> days (the confirmation states the exact count) and is never offered on a day that has already passed.</>,
           ]} />
         </Section>
 
         <Section id="builder" title="Building the schedule (calendar)" role="Staff">
           <Sub title="Creating sessions">
             <Steps items={[
-              <>Open the academy → the calendar. Click/drag a time range to create a session; drag or resize existing blocks to move them (conflicts with a published class&apos;s room block the move; conflicts with a draft&apos;s room warn and let you proceed). Moving a session that has sign-ups doesn&apos;t email anyone immediately: the notice waits for a <B>quiet period</B> (5 minutes by default, Admin → Gjallarhorn) and then sends ONE email describing the net change — so a drag-and-correct never sends two contradictory emails, and a drag-and-undo sends nothing. The builder shows a &quot;notice queued&quot; card while it waits.</>,
+              <>Open the academy → the calendar. Click/drag a time range to create a session; drag or resize existing blocks to move them (conflicts with a published class&apos;s room block the move; conflicts with a draft&apos;s room warn and let you proceed). Moving a session that has sign-ups doesn&apos;t email anyone immediately: the notice waits for a <B>quiet period</B> (5 minutes by default, Admin → Gjallarhorn) and then sends ONE email describing the net change — so a drag-and-correct never sends two contradictory emails, and a drag-and-undo sends nothing. The builder shows a &quot;notice queued&quot; card while it waits. If someone signs up or withdraws while you have a session open in the editor, Save is refused so their change isn&apos;t overwritten — close and reopen the session, then make your edit.</>,
               <>Picking a <B>course from the curriculum</B> auto-fills hours, default role slots, and the lead-qualification requirement. A <B>custom block</B> (PSO assignment, formation, study hall…) never counts toward program hours. Leave <B>Counts toward program hours</B> CHECKED on curriculum courses — unchecking it removes the session from curriculum coverage and the hours tally (it applies to every discipline, FDLE or agency). A session whose course was later <B>renamed or removed</B> in Curriculum &amp; Hours shows as &quot;(not in the current curriculum)&quot; in the picker and still saves as-is.</>,
               <>Set the <B>lunch break</B> (minutes + start). Lunch is carved out of instructional hours unless you explicitly check <B>lunch counts toward hours</B> — that&apos;s rare/case-by-case and shows a warning, and the calendar and printouts label it <B>Working Lunch</B> so the paid break is unmistakable. The <B>Hours / Start / End / Lunch boxes stay in sync</B>: type 4 hours and the end time moves; change the end and the hours recompute; add lunch and the hours shrink while the end stays. A lunch set <B>outside the class time</B> is blocked (it silently under-counts hours), 8+ hour days without a lunch warn, and the builder flags any existing offenders in an amber &quot;lunch issues&quot; card. <B>Lunch starts at</B> is required whenever a lunch is set.</>,
               <>Check <B>End-of-course TEST in this block</B> on the session that carries a topic&apos;s written exam (usually end-of-day or next morning). Tested topics show <B>✎ test</B> / <B>no test</B> on the coverage card so no exam gets forgotten, the calendar and printouts mark the block with ✎, and the old &quot;Test&quot;-in-Notes convention still counts.</>,
@@ -271,7 +274,7 @@ export function HowToPage() {
           </Sub>
           <Sub title="Recurring blocks & coverage">
             <Tips items={[
-              <>The <B>recurring generator</B> lays down a repeating block across a date range and hard-blocks days whose room is already booked.</>,
+              <>The <B>recurring generator</B> lays down a repeating block across a date range and hard-blocks days whose room is already booked. One run creates at most 400 sessions, and coordinator-run blocks it generates appear on that coordinator&apos;s My Schedule.</>,
               <>The <B>Curriculum coverage</B> panel tracks scheduled hours vs each course&apos;s FDLE minimum; each calendar block also shows a running tally (e.g. <B>6/12 hrs</B>) as you schedule a course across multiple days.</>,
               <>Blocks named/noted <B>Test</B>, <B>Scenario</B>, or <B>PT</B> highlight red/green/yellow on calendars and printouts.</>,
               <>Holidays your org observes shade the calendar; a dismissible warning lists sessions that land on them.</>,
@@ -304,7 +307,7 @@ export function HowToPage() {
               in, or add a <B>write-in</B> for someone without an account. Corrections update the instructor&apos;s own
               records, print on the attendance and sign-in rosters, and are audit-logged — so the record matches what
               actually happened (ATMS). A past session with <B>no lead recorded</B> shows a red dashed ring on the
-              calendar until someone records who taught it.
+              calendar until someone records who taught it. Corrections to a day that has already happened never email anyone and never promote the waitlist.
             </p>
             <p>
               If the schedule that actually ran was different — an end time changed on the day, a lunch became a
@@ -325,11 +328,11 @@ export function HowToPage() {
 
         <Section id="rooms" title="Room reservations" role="Staff">
           <Tips items={[
-            <><B>CADRE → Room Reservations</B> is a <B>week grid</B> — rooms down the side, days across the top (like the old spreadsheet, but live). Colored blocks are classes, filled in <B>automatically</B> from their schedules; 🔒 blocks are manual holds. Empty cell = free room.</>,
+            <><B>CADRE → Room Reservations</B> is a <B>week grid</B> — rooms down the side, days across the top (like the old spreadsheet, but live). Colored blocks are classes, filled in <B>automatically</B> from their schedules; a faded block marked <B>(draft)</B> is an unpublished class holding the room softly; 🔒 blocks are manual holds. Empty cell = free room.</>,
             <>Click any <B>empty cell</B> to hold that room on that day (renovations, outside groups, an event…) — or use <B>+ Reservation</B>. Click a class block to open its academy, a 🔒 to edit or delete the hold.</>,
             <>Navigate with ← Today → or the date picker; filter by location. The legend below shows this week&apos;s classes in their colors. Today&apos;s column is highlighted.</>,
             <>Rooms follow <B>first-publish-wins</B>. A <B>published</B> class&apos;s rooms and ad-hoc holds are hard-blocked everywhere (create/edit/drag/duplicate/recurring, multi-room) — they physically can&apos;t be double-booked. A <B>draft</B> class holds its rooms only <B>softly</B>: booking over a draft (or booking anything while your own class is a draft) warns and offers <B>schedule anyway</B>, and every unresolved overlap is listed in a red alert at the top of BOTH builders — with the date, time, topic, and the other academy — until one of you moves or publishes first to claim the room. <B>Archived</B> classes release their rooms.</>,
-            <>Manage locations (College, Range…) and rooms (capacity, color, floor-plan image) under <B>Locations &amp; rooms</B> at the top. Capacity warnings appear when a class exceeds a room&apos;s seats.</>,
+            <>Manage locations (College, Range…) and rooms (capacity, notes, floor-plan image) under <B>Locations &amp; rooms</B> at the top. Capacity warnings appear when a class exceeds a room&apos;s seats.</>,
           ]} />
         </Section>
 
@@ -340,14 +343,14 @@ export function HowToPage() {
               <>Open the academy → <B>Roster</B>. Use <B>+ Add member</B> for the guided intake (name, agency, CJIS, student ID, date of birth, contacts, emergency contact) — roster numbers assign automatically.</>,
               <>Use <B>Bulk import</B> to paste or upload a CSV (Name, Agency, CJIS, Student ID, DOB, Email, Phone — header order-tolerant). Rows are validated and previewed first; invalid rows are skipped with reasons.</>,
               <>Names display <B>Last, First</B> and every roster list sorts alphabetically by last name — a new cadet slots straight into place, and withdrawn/dismissed cadets fall to the bottom.</>,
-              <>Mark <B>block takers</B> for people taking only specific blocks — they print in the separate Additional Course Takers section, not the main roster.</>,
+              <>For people taking only specific blocks, type their names into <B>Additional course takers</B> on the attendance sheet — they print in that separate section, not the main roster.</>,
             ]} />
           </Sub>
           <Sub title="Cadet lifecycle">
             <Tips items={[
               <><B>Withdraw</B> keeps the record (struck through, grades to the withdrawal point); <B>Reinstate</B> restores it and clears the previous withdrawal marker, so a later withdrawal starts clean. <B>Remove</B> deletes entirely — prefer withdrawing.</>,
               <><B>Graduate</B> marks completion and unlocks the org-branded <B>Certificate of Completion</B>; it warns about unresolved course failures but never blocks — the record is yours.</>,
-              <><B>Dismiss</B> records a reason and works like Withdraw across the record: the cadet drops to the bottom of the Gradebook and Discipline lists with a line through their name, grades stay to the dismissal point (later cells read <B>DISM</B>), and they're excluded from future sign-in sheets.</>,
+              <><B>Dismiss</B> records a reason and works like Withdraw across the record: the cadet drops to the bottom of the Gradebook and Discipline lists with a line through their name, their course results read <B>DISM</B>, and they're excluded from future sign-in sheets.</>,
               <>The <B>Certificate</B> link on each row opens the printable certificate (graduated cadets) + course-by-course transcript.</>,
               <><B>⬇ Export records</B> downloads the full class as CSV: identity, outcome, class standing, attended hours, per-course results.</>,
             ]} />
@@ -358,14 +361,14 @@ export function HowToPage() {
           <Sub title="Printable attendance rosters (the official paper record)">
             <Tips items={[
               <><B>Manual</B> — pick the course and fill the header fields yourself, then print.</>,
-              <><B>From schedule</B> — pick a date and HEIMDALL builds one roster per course block from the calendar: times, hours (lunch handled per the session&apos;s setting), lead + additional instructors from sign-ups. Tweak anything before printing. A 1-hour test followed by 9 hours of another course prints <B>two</B> rosters. On a <B>test day</B> (a session with the TEST box checked) the same print job adds that course&apos;s <B>Examination Rules &amp; Disclosure</B> form — question count and time limit filled from Admin → Curriculum &amp; Hours → Test info — and an <B>Instructor Evaluation</B> for each lead who taught the topic; choose 1 master of each or one per cadet.</>,
+              <><B>From schedule</B> — pick a date and HEIMDALL builds one roster per course block from the calendar: times, hours (lunch handled per the session&apos;s setting), lead + additional instructors from sign-ups. Cancelled sessions are left out. Tweak anything before printing. A 1-hour test followed by 9 hours of another course prints <B>two</B> rosters. On a <B>test day</B> (a session with the TEST box checked) the same print job adds that course&apos;s <B>Examination Rules &amp; Disclosure</B> form — question count and time limit filled from Admin → Curriculum &amp; Hours → Test info — and an <B>Instructor Evaluation</B> for each lead who taught the topic; choose 1 master of each or one per cadet.</>,
               <><B>Blank</B> — prints the class info (header, sequence #, class #, total hours, program dates) and the student list, with course/date/times/instructors left as empty boxes and <B>5 write-in rows</B> for additional course takers.</>,
               <>Rosters auto-shrink to fit <B>one page</B> (down to a readable floor). Instructor and Coordinator signature lines print side by side.</>,
             ]} />
           </Sub>
           <Sub title="Digital attendance log (optional)">
             <p>
-              The <B>Attendance Log</B> tab records per-day status (present, excused, unexcused, tardy, makeup) and credited hours per cadet. Entries you&apos;re typing are never reset by a colleague saving a different date.
+              The <B>Attendance Log</B> tab records per-day status (present, excused, unexcused, tardy, makeup) and credited hours per cadet. Entries you&apos;re typing are never reset by a colleague saving a different date. Choosing <B>— not recorded —</B> removes that cadet&apos;s entry for the day, hours included. The No. column is the cadet&apos;s place in the A–Z list, matching the printed roster.
               It&apos;s voluntary — paper remains the legal record — but filled in, it powers the attended-hours column in the records export.
             </p>
           </Sub>
@@ -376,7 +379,7 @@ export function HowToPage() {
             <Steps items={[
               <>Mark courses as <B>Test</B> in Admin → Curriculum &amp; Hours to make them gradable — they become columns in the Gradebook tab.</>,
               <>Mark a course <B>Opt</B> (optional) in Curriculum &amp; Hours — e.g. Mental Health First Aid — and it stays listed and schedulable with an <B>optional</B> tag, but its hours are excluded from the required total and it never triggers the hours-shortfall warnings.</>,
-              <>Click a cell to enter the end-of-course score (pass line is <B>80%</B>), or set N/A (injured), CO (carry-over), or XO (crossover-exempt).</>,
+              <>Click a cell to enter the end-of-course score from 0 to 100 (pass line is <B>80%</B>), or set N/A (injured), CO (carry-over), or XO (crossover-exempt).</>,
             ]} />
           </Sub>
           <Sub title="Failures, re-exams & lifelines (built to Rule 11B-35, F.A.C.)">
@@ -405,7 +408,8 @@ export function HowToPage() {
             <>Blocks show as <B>pills</B> in the list — red ▲ for high-liability, and <B>clicking a pill checks it off</B> (green ✓) as the cadet completes it. <B>Resolve</B> asks how the case ended — <B>Returned to full duty</B>, <B>Resigned</B>, or <B>Transferred</B> — then archives it with the outcome on the row.</>,
             <>For injuries, record the <B>date injured</B>, the <B>next workers&apos;-comp follow-up</B>, the <B>restrictions</B> given, and the <B>return date</B>. An overdue follow-up flags red in the list — until a return date is set, which clears it.</>,
             <>If the sponsoring agency has them working elsewhere in the meantime, check <B>Currently assigned within the agency</B> and record where, since when, and their immediate supervisor. A free-form notes field covers everything else at a glance.</>,
-            <>Done with a case? <B>Resolve</B> archives it — out of the working list (under the <B>Archived</B> filter), no more follow-up flags, restorable any time. <B>Delete</B> (on archived rows, or inside Edit) permanently removes a case that shouldn&apos;t have been tracked.</>,
+            <>Done with a case? <B>Resolve</B> archives it — out of the working list (under the <B>Archived</B> filter), no more follow-up flags, restorable any time. <B>Delete</B> (on archived rows, or inside Edit) permanently removes a case that shouldn&apos;t have been tracked. Re-opening a resolved case (setting its status back to Awaiting or Scheduled in Edit) clears its outcome badge.</>,
+            <>Limbo bulk <B>Apply</B> accepts a date range of up to a year. With <B>Weekdays only</B> ticked, a range that holds only weekend days paints nothing — un-tick it to paint a weekend. Painting single cells doesn&apos;t wait for each save, so click as fast as you like.</>,
           ]} />
         </Section>
 
@@ -413,7 +417,7 @@ export function HowToPage() {
           <Sub title="The Reports tab">
             <Tips items={[
               <>Each academy&apos;s <B>Reports</B> tab offers the document library: the four FDLE academic-action letters (exam failure, re-exam failure, proficiency failure, dismissal — with verified F.A.C. citations) plus conduct/general documents (counseling, incident, injury/illness, training use-of-force, disciplinary action, conduct dismissal, acknowledgment, crossover transfer memo, general memo, the <B>Examination Rules &amp; Disclosure</B> read-and-sign form — pick the course from the dropdown, set the question count, time limit, and passing score, and print one per examinee — and the anonymous <B>Instructor Evaluation</B> handed to the class at the end of each topic, with a rating grid and a full comments page).</>,
-              <>Forms pre-fill what HEIMDALL already knows (cadet, class designation, program dates, failed course/score from the gradebook). Filed reports are saved per academy and reprintable/editable.</>,
+              <>Forms pre-fill what HEIMDALL already knows (cadet, class designation, program dates, failed course/score from the gradebook). Filed reports are saved per academy and reprintable/editable. Line breaks you type in a multi-line field (a memo body, a narrative) print as typed.</>,
               <>The <B>crossover/blackbird memo</B> starts with a class → cadet picker: choose the cadet&apos;s <B>original</B> class and the To line fills with its Sequence No.; choose the cadet and the Re line fills — the From line defaults to the class you&apos;re writing from.</>,
               <>The conduct-dismissal notice requires concrete <B>appeal authority and deadline</B> at issue time.</>,
               <>Printed documents carry your <B>organization&apos;s letterhead</B> (logo, name, address) — configure it under Admin → Settings and per-discipline overrides in Curriculum &amp; Hours.</>,
@@ -434,7 +438,7 @@ export function HowToPage() {
 
         <Section id="exports" title="Exports (CSV & hours summary)" role="Staff">
           <Tips items={[
-            <><B>CADRE → Exports</B> downloads CSVs of the <B>schedule</B>, all <B>sign-ups</B>, and per-instructor <B>confirmed hours</B> — pick one academy or leave the filter blank for everything.</>,
+            <><B>CADRE → Exports</B> downloads CSVs of the <B>schedule</B>, all <B>sign-ups</B>, and per-instructor <B>confirmed hours</B> — pick one academy or leave the filter blank for everything. Rows are in date order, the last column names the academy, and the files open with correct accents and dashes in Excel.</>,
             <>Selecting an academy also shows its <B>FDLE hours summary</B> (program, dates, scheduled vs target hours with a met/short badge — blocks marked as not counting toward program hours are excluded, matching the builder) and a link straight to the printable schedule. The all-academies CSV exports never include schedule templates.</>,
           ]} />
         </Section>
@@ -442,20 +446,20 @@ export function HowToPage() {
         {/* ── Administration ─────────────────────────────────────────────── */}
         <Section id="users" title="Users, roles & suspension" role="Admins">
           <Tips items={[
-            <><B>Admin → Users &amp; Roles</B>: approve pending self-registrations, create accounts (activation email + temporary password), or <B>Bulk import</B> staff from CSV (each row gets an activation email). <B>Copy emails</B> puts every active member&apos;s best address (verified notification email when set) on the clipboard for a BCC mass email; <B>Export CSV</B> downloads the full member list for external mail tools.</>,
+            <><B>Admin → Users &amp; Roles</B>: approve pending self-registrations, create accounts (activation email + temporary password), or <B>Bulk import</B> staff from CSV (each row becomes an active account with the rank shown — ranks below your own only — and gets an activation email). Until you approve a pending request, the applicant sees only a waiting screen and cannot read any of your organization&apos;s data; <B>Deny</B> returns them to the join-code screen with a note. <B>Copy emails</B> puts every active member&apos;s best address (verified notification email when set) on the clipboard for a BCC mass email; <B>Export CSV</B> downloads the full member list for external mail tools.</>,
             <>Ranks: Instructor → Coordinator → Sergeant → Lieutenant → Director. Instructors see the Instructor tools; Coordinator+ is &quot;staff&quot; (CADRE — schedules, rosters, rooms); <B>Sergeant+ unlocks the Admin section</B>; Lieutenant and Director are equal top admins. A sergeant can only manage (re-rank, edit, suspend, delete) members <B>below</B> their own rank and assign ranks below their own — top admins manage everyone except themselves. Rank display names are editable under Admin → Roles &amp; Permissions.</>,
-            <><B>Verify qualifications</B> and set each member&apos;s single instructor-cert expiration date from their row. <B>First Aid / CPR</B> has a second gate: record the member&apos;s <B>CPR instructor expiration date</B> (its own card cycle, not the FDLE 3/31 date) before the Verify button will accept it — CPR expirations are then tracked with expiring/expired coloring on <B>Roster &amp; Certifications</B>. The editor also shows the member&apos;s <B>date of birth</B> and (Florida jurisdiction) an <B>Open FDLE ATMS</B> link so you can check their credentials against state records before verifying.</>,
+            <><B>Verify qualifications</B> and set each member&apos;s single instructor-cert expiration date from their row. <B>First Aid / CPR</B> has a second gate: record the member&apos;s <B>CPR instructor expiration date</B> (its own card cycle, not the FDLE 3/31 date) before the Verify button will accept it — CPR expirations are then tracked with expiring/expired coloring on <B>Roster &amp; Certifications</B>. The editor also shows the member&apos;s <B>date of birth</B> and (Florida jurisdiction) an <B>Open FDLE ATMS</B> link so you can check their credentials against state records before verifying. You can&apos;t verify your own qualifications — another staff member must (you can still remove one).</>,
             <><B>Edit</B> (on each row) lets admins fix a member&apos;s name, sign-in email, rank, agency, or phone, and reset their password. Saving shows a <B>review screen of exactly what changes</B> before anything is applied. A reset password is temporary — the member is signed out everywhere and must choose their own at next sign-in.</>,
-            <><B>Suspend</B> blocks sign-in immediately (the member sees an &quot;Account suspended&quot; notice); <B>Deactivate</B> turns the account off but keeps it. Both are reversible and strip access server-side. <B>Delete…</B> permanently removes the account (checkbox + typed DELETE required; never yourself, never a rank at or above your own) — training and schedule records under the person&apos;s name remain on file.</>,
+            <><B>Suspend</B> blocks sign-in immediately (the member sees an &quot;Account suspended&quot; notice with the reason you entered); <B>Deactivate</B> turns the account off but keeps it. Both are reversible — a suspended row shows <B>Lift suspension</B>, a deactivated one <B>Reactivate</B> — and both strip access server-side. On <B>Roster &amp; Certifications</B>, <B>Suspend selected</B> applies to active accounts only; pending, deactivated, and higher-ranked members in the selection are skipped. <B>Delete…</B> permanently removes the account (checkbox + typed DELETE required; never yourself, never a rank at or above your own) — training and schedule records under the person&apos;s name remain on file.</>,
           ]} />
         </Section>
 
         <Section id="curriculum" title="Curriculum & Hours (per-discipline setup)" role="Admins">
           <Tips items={[
-            <>The five FDLE programs (LE 770h, CO, crossovers, EOT) ship as platform curricula — read-only, centrally verified. Your org can add its own disciplines.</>,
+            <>The five FDLE programs (LE 770h, CO, crossovers, EOT) ship as platform curricula — read-only, centrally verified. Your org can add its own disciplines — each needs a unique key that isn&apos;t one of the platform program keys.</>,
             <>Per course: FDLE minimum hours, CJK number, <B>Test</B> flag (gradable), <B>high-liability</B> flag, instructor ratio, lead qualification, default role slots.</>,
             <><B>Test info</B> (on every curriculum card, including the read-only platform programs): your organization&apos;s <B>number of questions</B> and <B>time limit</B> for each course&apos;s written exam. It&apos;s yours alone — other organizations set their own — and it auto-fills the Examination Rules &amp; Disclosure form printed with a test day&apos;s documents.</>,
-            <>Per discipline: which roster tabs are enabled (attendance, gradebook, discipline…), the attendance sheet layout (grid vs sign-in), report categories, and <B>printed-document branding overrides</B> (logo/name/tagline/address for that discipline&apos;s paperwork — e.g. a sheriff&apos;s-office program under a college org).</>,
+            <>Per discipline: which roster tabs are enabled (attendance, gradebook, discipline…), the attendance sheet layout (grid vs sign-in), which forms are offered, and <B>printed-document branding overrides</B> (logo/name/tagline/address for that discipline&apos;s paperwork — e.g. a sheriff&apos;s-office program under a college org).</>,
           ]} />
         </Section>
 
@@ -463,7 +467,7 @@ export function HowToPage() {
           <Tips items={[
             <><B>Admin → Settings</B>: org name, logo, letterhead tagline/address, brand colors (printed documents only), allowed email domains for self-registration, pay-period target hours, site code, the <B>Agencies</B> attending your academy (the roster&apos;s Sponsoring-agency picklist and Limbo&apos;s agency filter), and the <B>Document jurisdiction</B> (Florida renders FDLE/F.A.C. wording on academic letters and enables the ATMS lookup link; Generic is state-neutral). With a site code set, an <B>invite link</B> appears below it (heimdallscheduling.com/join/&lt;code&gt;) — share that instead of the code and it&apos;s applied automatically when the recipient registers or signs in.</>,
             <><B>Admin → Holidays</B>: toggle which holidays shade calendars, mark which are <B>observed</B> (paid day off — credits holiday pay hours), set the pay hours.</>,
-            <><B>Admin → Gjallarhorn</B>: the email system — master switch, per-automation toggles (sign-up confirmations, reservations, schedule changes, open-course announcements, reminders, understaffing alerts, approvals, account notices, weekly digest…), the reminder / understaffing / escalation windows, and escalation recipients. Each automation can also be limited to specific <B>recipient ranks</B>. Toggles affect email only — the in-app bell always fires. Nothing takes effect until you press <B>Save changes</B>.</>,
+            <><B>Admin → Gjallarhorn</B>: the email system — master switch, per-automation toggles (sign-up confirmations, reservations, schedule changes, open-course announcements, reminders, understaffing alerts, approvals, account notices, weekly digest…), the reminder / understaffing / escalation windows (reminders go out once each morning, so the reminder lead time is at least 24 hours), and escalation recipients. Each automation can also be limited to specific <B>recipient ranks</B>. Toggles affect email only — the in-app bell always fires. Nothing takes effect until you press <B>Save changes</B>.</>,
             <>Nobody is emailed about <B>their own action</B>: assigning yourself (or the coordinator slot) in the builder, your own edits/cancellations, filling the last slot yourself, your own withdrawal, or opening sign-ups never email the person who did it. The reverse is covered too: an instructor who had confirmed (or been offered) a slot is told when a coordinator <B>removes</B> them from it (&quot;Removed from a session&quot; automation).</>,
           ]} />
         </Section>
@@ -481,8 +485,8 @@ export function HowToPage() {
           <Tips items={[
             <><B>Admin → Compliance &amp; Data</B> shows where your data lives and exactly what PII is (and is <B>not</B> — never SSNs) stored.</>,
             <>A top admin can review and <B>accept the Data Processing Agreement</B> there — recorded with version, date, and name.</>,
-            <><B>Export org records (JSON)</B> downloads everything your organization can read in one file — built for FERPA right-to-access requests (the page lists what&apos;s excluded).</>,
-            <>Individual record deletions happen in Roster &amp; Certifications / Users &amp; Roles; a full organization purge goes through the platform operator.</>,
+            <><B>Export org records (JSON)</B> downloads everything your organization can read in one file — built for FERPA right-to-access requests. It includes attendance and remediation records; the audit log is not included (ask the platform operator), and the page lists what else is excluded.</>,
+            <>Individual deletions: cadet records are removed from the class&apos;s <B>Roster</B>, member accounts under <B>Users &amp; Roles</B>; a full organization purge goes through the platform operator.</>,
           ]} />
         </Section>
 

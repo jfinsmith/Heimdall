@@ -16,7 +16,7 @@ import { useAuth } from '../../../auth/AuthContext';
 import { useGlobalSettings } from '../../../app/providers';
 import { getReportType, type ReportType } from './reportTypes';
 import { MemoRenderer } from './MemoRenderer';
-import type { MemoBlock, MemoDocument, MemoSpan } from './memoTypes';
+import { resolveLine, resolveTokens, type MemoBlock, type MemoDocument, type MemoSpan } from './memoTypes';
 
 /** Split block text into spans: `{fieldKey}` → fill-in span, literals → text. */
 function toSpans(text: string): MemoSpan[] {
@@ -43,7 +43,7 @@ export function ReportLetter({
   report: Pick<AcademyReportDoc, 'type' | 'cadetName' | 'data'> & Partial<WithId<AcademyReportDoc>>;
   directorName: string;
   fromName: string;
-  /** Resolved type for library / builder documents whose id isn't in the code
+  /** Resolved type for owner-library documents whose id isn't in the code
    *  registry. When omitted, the type is looked up by report.type. */
   reportType?: ReportType;
   /** The class's curriculum — drives the unified header's branding + program. */
@@ -85,20 +85,24 @@ export function ReportLetter({
       memoDate: display._memoDate,
       reSubject: '',
     };
-    const resolve = (tpl: string) => tpl.replace(/\{(\w+)\}/g, (_, k) => ctx[k] ?? '');
+    const resolve = (tpl: string) => resolveTokens(tpl, ctx);
     // The Re: line is itself a template ("Injury / Illness Report — {cadetSubject}")
     // — resolve it FIRST so header rows that embed {reSubject} receive the
     // finished text. A single-pass replace never re-scans what it inserts, so
     // seeding ctx with the raw template printed "{cadetSubject}" on the memo.
     ctx.reSubject = resolve(type.reSubject);
+    // One-line slots also trim the orphan comma a BLANK token leaves behind
+    // ("{directorName}, Academy Director" with no command member on file). Header
+    // rows always did; the signature line and the distribution list printed
+    // ", Academy Director".
+    const tidy = (tpl: string) => resolveLine(tpl, ctx);
 
     const memo: MemoDocument = {
       reSubject: ctx.reSubject,
       titleLines: doc.titleLines?.map(resolve),
-      // Resolve each header value; trim orphan commas/space left by a blank
-      // optional token (e.g. an unfilled CC) and drop rows that end up empty.
+      // Rows that end up empty (e.g. an unfilled optional CC) are dropped.
       headerFields: doc.headerFields
-        .map((h) => ({ label: h.label, value: resolve(h.value).replace(/^[\s,]+|[\s,]+$/g, '') }))
+        .map((h) => ({ label: h.label, value: tidy(h.value) }))
         .filter((h) => h.value !== ''),
       blocks: doc.blocks.map<MemoBlock>((b) => ({
         kind: b.kind,
@@ -107,10 +111,10 @@ export function ReportLetter({
         ...(b.scale ? { scale: b.scale } : {}),
         ...(b.lines ? { lines: b.lines } : {}),
       })),
-      signerLine: resolve(doc.signerLine),
+      signerLine: tidy(doc.signerLine),
       acknowledgment: doc.acknowledgment ? resolve(doc.acknowledgment) : undefined,
       ackSignerLabel: doc.ackSignerLabel || undefined,
-      distribution: doc.distribution?.map(resolve),
+      distribution: doc.distribution?.map(tidy).filter((d) => d !== ''),
       brandFooter: doc.brandFooter,
       compact: doc.compact,
       ackPrintedName: doc.ackPrintedName,
@@ -129,7 +133,7 @@ export function ReportLetter({
   // Same token pass as the block model, so a legacy Re: line may embed
   // {cadetName} / field keys too.
   const legacyCtx: Record<string, string> = { ...display, cadetName: report.cadetName ?? '', fromName, directorName: director, memoDate: display._memoDate };
-  const legacySubject = type.reSubject.replace(/\{(\w+)\}/g, (_, k) => legacyCtx[k] ?? '');
+  const legacySubject = resolveTokens(type.reSubject, legacyCtx);
   const memo: MemoDocument = {
     reSubject: legacySubject,
     headerFields: [

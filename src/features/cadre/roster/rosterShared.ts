@@ -18,6 +18,17 @@ export function agencyOptions(settings: { agencies?: string[] } | null | undefin
   return base;
 }
 
+/**
+ * The agency a NEW member starts on: 'PSO' while that is one of the org's
+ * choices (the legacy built-in list, or a managed list that includes it),
+ * otherwise the first choice. Hardcoding 'PSO' gave an org whose managed list
+ * has no PSO a phantom "PSO" preselected in the intake wizard — agencyOptions
+ * keeps an unknown CURRENT value as an option — one click from being saved.
+ */
+export function defaultAgency(options: { key: string }[]): string {
+  return options.some((o) => o.key === 'PSO') ? 'PSO' : options[0]?.key ?? 'Other';
+}
+
 /** The agency a member actually belongs to — 'Other' resolves to the typed name. */
 export function memberAgency(m: Pick<RosterMemberDoc, 'agency' | 'agencyOther'>): string {
   return m.agency === 'Other' ? m.agencyOther?.trim() || 'Other' : m.agency;
@@ -28,7 +39,6 @@ export function agencyLabel(m: Pick<RosterMemberDoc, 'agency' | 'agencyOther'>):
   return ROSTER_AGENCIES.find((a) => a.key === m.agency)?.label ?? m.agency;
 }
 
-/** Warning count + weighted demerit points (A=1,B=3,C=6,D=12) for a member. */
 const NAME_SUFFIX = /^(jr\.?|sr\.?|ii|iii|iv|v)$/i;
 /** "Jane Q Smith" → "Smith, Jane Q" (suffix-aware: "John Smith Jr." → "Smith Jr., John"). */
 export function lastFirst(name: string): string {
@@ -54,6 +64,7 @@ export function rosterCompare(a: Pick<RosterMemberDoc, 'fullName' | 'status' | '
   );
 }
 
+/** Warning count + weighted demerit points (A=1,B=3,C=6,D=12) for a member. */
 export function disciplineTally(violations: ViolationEntry[] = []) {
   let warnings = 0;
   const counts = { A: 0, B: 0, C: 0, D: 0 };
@@ -102,8 +113,9 @@ export function effectiveScore(cell?: GradeCell): number | null {
 }
 
 /**
- * Outcome of one tested course for one member. `withdrawnAfter` is the course
- * name the cadet withdrew after (courses at/after it read WD).
+ * Outcome of one tested course for one member. `member.withdrawnAfterCourse` is
+ * the course KEY the cadet withdrew (or was dismissed) after: that course keeps
+ * its grade, every later one reads WD / DISM.
  */
 export function courseResult(
   member: RosterMemberDoc,

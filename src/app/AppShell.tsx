@@ -4,14 +4,15 @@
  * Mobile: sidebar collapses behind a hamburger; everything keyboard-reachable.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
 import { auth, functions } from '../lib/firebase';
 import { useAuth } from '../auth/AuthContext';
 import { useOrg } from '../lib/useOrg';
 import { billingState } from '../lib/subscription';
 import { can } from '../lib/rbac';
-import { useGlobalSettings, useRoleLabels } from './providers';
+import { friendlyError } from '../lib/callableError';
+import { useRoleLabels } from './providers';
 import { useClickOutside } from '../lib/useClickOutside';
 import { PoweredByHeimdall } from '../brand/OrgLogo';
 import { WordmarkHorizontal } from '../brand/Logo';
@@ -39,7 +40,7 @@ function useOrgSwitch(enabled: boolean) {
       try {
         await ownerSwitchOrg({ orgId: target });
       } catch (e) {
-        alert((e as Error).message || 'Could not switch organizations.');
+        alert(friendlyError(e, 'Could not switch organizations.'));
         setBusy(false);
         return;
       }
@@ -130,18 +131,14 @@ function SectionLabel({ children, title }: { children?: React.ReactNode; title: 
 export function AppShell() {
   const { profile, role, platformOwner, signOut } = useAuth();
   const roleLabels = useRoleLabels();
-  const settings = useGlobalSettings();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const staff = can.buildSchedules(role);
   const admin = can.manageOrg(role);
   // Instructor tools: anyone with a teaching-track role — guests see only
   // Overview and How To.
   const instructorTools = !!role && role !== 'guest';
-  // TEMPORARY pre-launch switch (remove after go-live): non-staff see only
-  // Overview, How To, and Profile & Qualifications while staff build out the
-  // schedules. Flipped in Admin → Org Settings.
-  const preLaunchHidden = !staff && settings?.preLaunchHideInstructors === true;
   const { orgs: switchOrgs, switchTo, busy: switchBusy } = useOrgSwitch(platformOwner);
   const impersonating = platformOwner && !!profile?.homeOrgId && profile.orgId !== profile.homeOrgId;
   const activeOrgName = switchOrgs.find((o) => o.orgId === profile?.orgId)?.legalName ?? profile?.orgId ?? '';
@@ -168,12 +165,10 @@ export function AppShell() {
       {instructorTools && (
         <>
           <SectionLabel title="Instructor tools">Instructor</SectionLabel>
-          {/* Pre-launch: only Profile shows — instructors register + claim
-              certs while staff finish building (TEMPORARY, see preLaunchHidden). */}
-          {!preLaunchHidden && <NavItem to="/open-sessions" label="Browse Open Sessions" />}
-          {!preLaunchHidden && <NavItem to="/my-schedule" label="My Schedule" />}
+          <NavItem to="/open-sessions" label="Browse Open Sessions" />
+          <NavItem to="/my-schedule" label="My Schedule" />
           <NavItem to="/profile" label="Profile & Qualifications" />
-          {!preLaunchHidden && <NavItem to="/feedback" label="Report a Problem" />}
+          <NavItem to="/feedback" label="Report a Problem" />
         </>
       )}
       {staff && (
@@ -294,7 +289,7 @@ export function AppShell() {
         {impersonating && (
           <div className="no-print flex flex-wrap items-center justify-between gap-2 border-b border-amber-300 bg-amber-100 px-4 py-2 md:px-8" role="status">
             <p className="text-sm text-amber-900">
-              <i className="ti ti-eye" aria-hidden="true" /> Platform owner — viewing <strong>{activeOrgName}</strong>. Changes you make affect this organization.
+              Platform owner — viewing <strong>{activeOrgName}</strong>. Changes you make affect this organization.
             </p>
             <Button
               variant="ghost"
@@ -304,15 +299,6 @@ export function AppShell() {
             >
               Return to my organization
             </Button>
-          </div>
-        )}
-        {profile?.status === 'suspended' && (
-          <div className="no-print border-b border-red-200 bg-red-50 px-4 py-3 md:px-8" role="alert">
-            <p className="text-sm font-semibold text-red-800">Your account is suspended.</p>
-            <p className="text-sm text-red-700">
-              Please contact Academy Leadership to resolve this and restore your access.
-              {profile.suspensionReason ? <span className="block">Reason: {profile.suspensionReason}</span> : null}
-            </p>
           </div>
         )}
         {showBillingBanner && (
@@ -340,7 +326,9 @@ export function AppShell() {
           </div>
         )}
         <main className="flex-1 px-4 py-6 md:px-8">
-          <ErrorBoundary>
+          {/* resetKey: navigating away clears a crashed page's error screen —
+              otherwise every nav link looks dead until a manual reload. */}
+          <ErrorBoundary resetKey={pathname}>
             <Outlet />
           </ErrorBoundary>
         </main>

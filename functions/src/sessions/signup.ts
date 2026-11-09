@@ -12,11 +12,12 @@
  * SDK, may run the double-booking QUERY inside the transaction.
  */
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { logger } from 'firebase-functions/v2';
 import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
 import type { AssignmentDoc, SessionDoc, SignupDoc, UserDoc } from '../types';
 import { STAFF_ROLES } from '../types';
 import { overlaps, qualifies, certBlocks, recomputeStatus } from './validation';
-import { notify } from '../gjallarhorn/notify';
+import { isSilentAcademy, notify } from '../gjallarhorn/notify';
 
 export const submitSignup = onCall<{ sessionId: string; slotId: string; allowWaitlist?: boolean }>(async (request) => {
   const uid = request.auth?.uid;
@@ -40,12 +41,22 @@ export const submitSignup = onCall<{ sessionId: string; slotId: string; allowWai
     auditOrgId = sOrg;
     if (session.status === 'cancelled') throw new HttpsError('failed-precondition', 'This session has been cancelled.');
     if (session.status === 'draft') throw new HttpsError('failed-precondition', 'This session is not yet published.');
-    if ((session.status as string) === 'scheduled') throw new HttpsError('failed-precondition', 'Sign-ups for this course have not been opened yet.');
+    if (session.status === 'scheduled') throw new HttpsError('failed-precondition', 'Sign-ups for this course have not been opened yet.');
     // Sign-ups are never auto-closed when a day passes — the UI hides the button
     // ("Session concluded"), so the server must refuse too; past-day staffing is
     // a coordinator correction, not a self-sign-up.
     if (session.status === 'completed' || session.end.toMillis() <= Date.now()) {
       throw new HttpsError('failed-precondition', 'This session has already concluded.');
+    }
+    // An ARCHIVED academy is an abandoned schedule whose sessions keep their old
+    // 'open' status (and still surface in Browse); a template is a sandbox.
+    // Neither takes real sign-ups. A plain read on purpose — archiving is rare
+    // and this keeps the academy doc out of every sign-up's transaction locks.
+    if (session.academyId) {
+      const academySnap = await db.doc(`academies/${session.academyId}`).get();
+      if (isSilentAcademy(academySnap.data())) {
+        throw new HttpsError('failed-precondition', 'This class is no longer active — sign-ups are closed.');
+      }
     }
 
     const userSnap = await tx.get(db.doc(`users/${uid}`));
@@ -130,6 +141,13 @@ export const withdrawSignup = onCall<{ sessionId: string }>(async (request) => {
     const signupSnap = await tx.get(signupRef);
     if (!signupSnap.exists) throw new HttpsError('failed-precondition', 'No sign-up found to withdraw.');
     const signup = signupSnap.data() as SignupDoc;
+    // A concluded session is FINALIZED — its staffing is the as-taught record,
+    // and removing someone from it is a coordinator correction. The UI hides
+    // Withdraw once the day has passed; the server must refuse too (mirrors
+    // submitSignup). Only a CONFIRMED holder is on that record.
+    if (signup.status === 'confirmed' && session.status !== 'cancelled' && session.end.toMillis() <= Date.now()) {
+      throw new HttpsError('failed-precondition', 'This session has already concluded — ask your coordinator to correct the record.');
+    }
     // Withdrawing a PENDING reservation = declining the coordinator's offer —
     // tell the person who made it (the generic slot-reopened alert is skipped
     // whenever a waitlisted member auto-promotes, so it can't be relied on).
@@ -165,6 +183,8 @@ export const withdrawSignup = onCall<{ sessionId: string }>(async (request) => {
   if (declined) {
     const d = declined as { reservedBy: string; displayName: string; courseLabel: string; whenMs: number; offerMs: number };
     const when = new Date(d.whenMs).toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric' });
+    // Best-effort: the withdrawal is already committed, so a notification
+    // failure must not surface to the member as "could not withdraw".
     await notify({
       uid: d.reservedBy,
       type: 'reservation_declined',
@@ -174,7 +194,7 @@ export const withdrawSignup = onCall<{ sessionId: string }>(async (request) => {
       // Keyed on the OFFER (signedUpAt): a later re-reservation of the same
       // person is a new offer whose decline must not be deduped away.
       dedupeKey: `resdecl_${sessionId}_${uid}_${d.offerMs}`,
-    });
+    }).catch((err) => logger.error(`withdrawSignup ${sessionId}/${uid}: decline notice failed`, err));
   }
   return { ok: true };
 });
@@ -237,31 +257,43 @@ export const confirmReservation = onCall<{ sessionId: string }>(async (request) 
   const callerStatus = callerSnap.exists ? (callerSnap.data() as UserDoc).status : null;
   if (callerStatus !== 'active') throw new HttpsError('permission-denied', 'Your account is not active.');
 
+  // One transaction: the check and both writes must see the same signup. The
+  // old read-then-merge-set raced the builder's un-reserve (deleteDoc) and a
+  // double-click decline — it could resurrect an org-less `{reservationState}`
+  // stub signup, or mark a just-withdrawn signup "accepted".
   const signupRef = db.doc(`sessions/${sessionId}/signups/${uid}`);
-  const signupSnap = await signupRef.get();
-  if (!signupSnap.exists) throw new HttpsError('not-found', 'You are not signed up for this session.');
-  const signup = signupSnap.data() as SignupDoc & { reservationState?: string; reservedBy?: string };
-  if (signup.reservationState !== 'pending') {
-    throw new HttpsError('failed-precondition', 'This assignment has no pending reservation to confirm.');
-  }
-  // A declined offer keeps reservationState:'pending' on its withdrawn signup —
-  // "confirming" it would flip a dead signup to accepted and falsely tell the
-  // coordinator the person is available.
-  if (signup.status !== 'confirmed') {
-    throw new HttpsError('failed-precondition', 'You already declined this reservation.');
-  }
-
-  await signupRef.set({ reservationState: 'accepted' }, { merge: true });
-  // Update-only on the mirror: a blind merge-set would CREATE an orphan
-  // assignment (no uid/start/orgId) if the mirror was ever deleted.
   const assignRef = db.doc(`assignments/${sessionId}_${uid}`);
-  if ((await assignRef.get()).exists) await assignRef.set({ reservationState: 'accepted' }, { merge: true });
+  const { signup, session } = await db.runTransaction(async (tx) => {
+    const signupSnap = await tx.get(signupRef);
+    if (!signupSnap.exists) throw new HttpsError('not-found', 'You are not signed up for this session.');
+    const su = signupSnap.data() as SignupDoc;
+    if (su.reservationState !== 'pending') {
+      throw new HttpsError('failed-precondition', 'This assignment has no pending reservation to confirm.');
+    }
+    // A declined offer keeps reservationState:'pending' on its withdrawn signup —
+    // "confirming" it would flip a dead signup to accepted and falsely tell the
+    // coordinator the person is available.
+    if (su.status !== 'confirmed') {
+      throw new HttpsError('failed-precondition', 'You already declined this reservation.');
+    }
+    const sessionSnap = await tx.get(db.doc(`sessions/${sessionId}`));
+    const se = sessionSnap.exists ? (sessionSnap.data() as SessionDoc) : null;
+    // A cancelled session keeps its signups 'confirmed' — accepting one would
+    // tell the coordinator the person is available for a class that is off.
+    if (se?.status === 'cancelled') throw new HttpsError('failed-precondition', 'This session has been cancelled.');
+    const assignSnap = await tx.get(assignRef);
+
+    tx.update(signupRef, { reservationState: 'accepted' });
+    // Update-only on the mirror: a merge-set would CREATE an orphan assignment
+    // (no uid/start/orgId) if the mirror was ever deleted.
+    if (assignSnap.exists) tx.update(assignRef, { reservationState: 'accepted' });
+    return { signup: su, session: se };
+  });
 
   // Tell the coordinator who reserved them — closing the loop they started
-  // (never the acceptor themselves, for a self-reserve).
+  // (never the acceptor themselves, for a self-reserve). Best-effort: the
+  // acceptance is already committed.
   if (signup.reservedBy && signup.reservedBy !== uid) {
-    const sessionSnap = await db.doc(`sessions/${sessionId}`).get();
-    const session = sessionSnap.exists ? (sessionSnap.data() as SessionDoc) : null;
     const when = session ? session.start.toDate().toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric' }) : '';
     await notify({
       uid: signup.reservedBy,
@@ -272,7 +304,7 @@ export const confirmReservation = onCall<{ sessionId: string }>(async (request) 
       // Keyed on the OFFER (signedUpAt) so accepting a later re-reservation
       // isn't deduped against the first acceptance.
       dedupeKey: `resconf_${sessionId}_${uid}_${signup.signedUpAt?.toMillis?.() ?? 0}`,
-    });
+    }).catch((err) => logger.error(`confirmReservation ${sessionId}/${uid}: confirm notice failed`, err));
   }
   return { ok: true };
 });

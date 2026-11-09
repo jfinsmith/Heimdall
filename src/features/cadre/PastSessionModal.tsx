@@ -33,8 +33,11 @@ export function PastSessionModal({
 }: {
   session: WithId<SessionDoc>;
   onClose: () => void;
-  /** Route to the warned, audit-logged full editor (PastEditGate → SessionFormModal). */
-  onEditDetails?: () => void;
+  /** Route to the warned, audit-logged full editor (PastEditGate → SessionFormModal).
+   *  Receives the LIVE session — the `session` prop is the snapshot this modal
+   *  opened with, i.e. from BEFORE any correction made here; seeding the editor
+   *  from it made its Save write the old staffing back over those corrections. */
+  onEditDetails?: (live: WithId<SessionDoc>) => void;
 }) {
   const { firebaseUser } = useAuth();
   // Live subscription so each correction is reflected immediately.
@@ -104,6 +107,11 @@ export function PastSessionModal({
         slotId,
         status: 'confirmed',
         signedUpAt: now,
+        // An after-the-fact record, not an invitation: sessions are never
+        // auto-closed when their day passes, so without this a past 'open'
+        // session mailed the instructor "Assignment confirmed" plus a calendar
+        // invite for a class that already happened.
+        quiet: true,
       });
       await setDoc(doc(db, 'assignments', `${s.id}_${uid}`), {
         uid,
@@ -168,7 +176,7 @@ export function PastSessionModal({
               <Button
                 variant="ghost"
                 className="border border-red-200 !px-2.5 !py-1 text-xs text-red-700 hover:bg-red-50"
-                onClick={onEditDetails}
+                onClick={() => onEditDetails?.(s)}
               >
                 Correct class details…
               </Button>

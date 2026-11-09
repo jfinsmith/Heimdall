@@ -35,15 +35,19 @@ export function toCsv(headers: string[], rows: (string | number | boolean | null
   const escape = (v: string | number | boolean | null | undefined): string => {
     let s = v == null ? '' : String(v);
     // Neutralize spreadsheet formula injection: a field beginning with = + - @
-    // (or a control char) is executed as a formula by Excel/Sheets.
-    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    // (or a control char) is executed as a formula by Excel/Sheets. Real
+    // numbers are exempt — quoting -1.5 would turn it into the text '-1.5.
+    if (typeof v !== 'number' && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+    // A bare CR splits the row in Excel just like LF — quote it too.
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   return [headers, ...rows].map((row) => row.map(escape).join(',')).join('\n');
 }
 
 export function downloadCsv(filename: string, headers: string[], rows: (string | number | boolean | null | undefined)[][]): void {
-  const blob = new Blob([toCsv(headers, rows)], { type: 'text/csv;charset=utf-8' });
+  // UTF-8 byte-order mark: without it Excel opens the file as Windows-1252 and
+  // garbles every non-ASCII character (Peña → PeÃ±a, "—" → â€”).
+  const blob = new Blob(['\uFEFF', toCsv(headers, rows)], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;

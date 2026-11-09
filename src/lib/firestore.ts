@@ -3,7 +3,8 @@
  * React Query to keep the dependency surface small and stay consistent —
  * one data-fetching idiom across the app, with live onSnapshot updates).
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { onIdTokenChanged } from 'firebase/auth';
 import {
   collection,
   doc,
@@ -14,23 +15,69 @@ import {
   QueryConstraint,
   DocumentData,
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { auth, db } from './firebase';
 import { useAuth } from '../auth/AuthContext';
 
 export type WithId<T> = T & { id: string };
 
+// ── Healing denied listeners ──────────────────────────────────────────────
+// A Firestore listener that is denied is DEAD: it never retries. Rules read the
+// caller's token claims (orgId, role, status), and those arrive mid-session —
+// an account is approved, joins an org, or is switched by the owner while the
+// tab is open. Any listener that subscribed a moment before the fresh token
+// landed (org settings, the org doc, a page's list) stayed empty until a full
+// reload. So: every ID-token change bumps an epoch, and a listener whose last
+// answer was permission-denied re-subscribes once per new token. Healthy
+// listeners are untouched; a listener that is denied again simply waits for the
+// next token (no retry loop).
+let tokenEpoch = 0;
+let tokenWatchStarted = false;
+const tokenWatchers = new Set<() => void>();
+function subscribeTokenEpoch(onChange: () => void): () => void {
+  if (!tokenWatchStarted) {
+    tokenWatchStarted = true;
+    onIdTokenChanged(auth, () => {
+      tokenEpoch += 1;
+      tokenWatchers.forEach((fn) => fn());
+    });
+  }
+  tokenWatchers.add(onChange);
+  return () => {
+    tokenWatchers.delete(onChange);
+  };
+}
+const readTokenEpoch = () => tokenEpoch;
+
+/** Returns [retryKey, markDenied]: put `retryKey` in the subscribing effect's
+ *  deps and call `markDenied(error)` from the listener's error callback. */
+function useRetryAfterDenied(): [number, (error: { code?: string }) => void] {
+  const epoch = useSyncExternalStore(subscribeTokenEpoch, readTokenEpoch);
+  const deniedAt = useRef<number | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
+  useEffect(() => {
+    if (deniedAt.current !== null && deniedAt.current !== epoch) {
+      deniedAt.current = null;
+      setRetryKey((n) => n + 1);
+    }
+  }, [epoch]);
+  const markDenied = (error: { code?: string }) => {
+    if (error?.code === 'permission-denied') deniedAt.current = readTokenEpoch();
+  };
+  return [retryKey, markDenied];
+}
+
 /**
  * Top-level collections that are NOT tenant-scoped and must never have an orgId
- * filter injected: the org registry, per-user notifications (already scoped by
- * uid), and server-only mail. Everything else top-level is org-owned. (Cross-org
- * reads for the platform owner, e.g. feedback triage, use dedicated queries, not
- * this hook.)
+ * filter injected: the org registry and per-user notifications (already scoped
+ * by uid). Everything else top-level is org-owned. (Cross-org reads for the
+ * platform owner, e.g. feedback triage, use dedicated queries, not this hook.)
+ * The mail queues are server-only — rules deny every client read.
  */
 // `documentLibrary` is the owner-managed forms library — NOT tenant-scoped (forms
 // are general-to-all or assigned to N orgs), so it must NOT get an injected
 // orgId filter; access is gated by availability/orgIds in firestore.rules and the
 // staff hook queries it explicitly (by availability / array-contains orgId).
-const NON_ORG_SCOPED = new Set(['orgs', 'notifications', 'mail', 'defaultCurricula', 'documentLibrary', 'documentAssignments']);
+const NON_ORG_SCOPED = new Set(['orgs', 'notifications', 'defaultCurricula', 'documentLibrary', 'documentAssignments']);
 // Org-owned SUBCOLLECTIONS (academies/{id}/roster, etc.). Their list reads must
 // also be filtered by orgId — a subcollection list query with no orgId filter is
 // denied ENTIRELY by Firestore if any sibling doc fails the per-doc inOrg rule
@@ -56,6 +103,7 @@ export function useCollection<T = DocumentData>(
 ): QueryState<WithId<T>> {
   const [state, setState] = useState<QueryState<WithId<T>>>({ data: [], loading: true, error: null });
   const { orgId, loading: authLoading } = useAuth();
+  const [retryKey, markDenied] = useRetryAfterDenied();
 
   // Tenant isolation: top-level org-owned collections are filtered to the
   // caller's org. LIVE (post-Phase-5) — rules require docId/orgId == the caller's
@@ -92,7 +140,10 @@ export function useCollection<T = DocumentData>(
       setState({ data: [], loading: blockedOnOrg && authLoading, error: null });
       return;
     }
-    setState((s) => ({ ...s, loading: true }));
+    // Drop the PREVIOUS query's rows while the new one loads. Keeping them
+    // showed e.g. class A's cadets under a freshly selected class B until the
+    // first snapshot landed — long enough to pick the wrong record.
+    setState({ data: [], loading: true, error: null });
     const unsub = onSnapshot(
       q,
       (snap) => {
@@ -104,11 +155,14 @@ export function useCollection<T = DocumentData>(
       },
       (error) => {
         console.error(`useCollection(${path}) failed:`, error);
+        markDenied(error);
         setState({ data: [], loading: false, error });
       }
     );
     return unsub;
-  }, [q, blockedOnOrg, authLoading]);
+    // `path` only feeds the log line, and `markDenied` only touches a ref.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, blockedOnOrg, authLoading, retryKey]);
 
   return state;
 }
@@ -122,13 +176,16 @@ interface DocState<T> {
 /** Subscribe to a single document. */
 export function useDoc<T = DocumentData>(path: string | null): DocState<T> {
   const [state, setState] = useState<DocState<T>>({ data: null, loading: true, error: null });
+  const [retryKey, markDenied] = useRetryAfterDenied();
 
   useEffect(() => {
     if (!path) {
       setState({ data: null, loading: false, error: null });
       return;
     }
-    setState((s) => ({ ...s, loading: true }));
+    // Same as useCollection: never show the previous path's document under
+    // the new one (route param change) while the new snapshot is in flight.
+    setState({ data: null, loading: true, error: null });
     const unsub = onSnapshot(
       doc(db, path),
       (snap) => {
@@ -140,11 +197,13 @@ export function useDoc<T = DocumentData>(path: string | null): DocState<T> {
       },
       (error) => {
         console.error(`useDoc(${path}) failed:`, error);
+        markDenied(error);
         setState({ data: null, loading: false, error });
       }
     );
     return unsub;
-  }, [path]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path, retryKey]);
 
   return state;
 }
@@ -156,10 +215,10 @@ export function shortId(): string {
 
 /**
  * Per-org config doc path. `settings`/`reportConfig` are one doc per tenant
- * (doc id == orgId). The 'global' fallback is a DEAD path for clients post-Phase-5
- * (rules deny reads of the legacy 'global' doc); it remains only so Admin-SDK
- * server code can still reference the legacy doc. A client without an orgId will
- * be denied — callers must have an org claim.
+ * (doc id == orgId). The 'global' fallback is a DEAD path post-Phase-5: rules
+ * deny every client read/write of the legacy 'global' doc, so a caller without
+ * an orgId simply gets permission-denied. It only keeps the return type a plain
+ * string; pass `orgId ? orgConfigPath(...) : null` to useDoc to skip the read.
  */
 export const orgConfigPath = (coll: 'settings' | 'reportConfig', orgId?: string | null): string =>
   `${coll}/${orgId || 'global'}`;

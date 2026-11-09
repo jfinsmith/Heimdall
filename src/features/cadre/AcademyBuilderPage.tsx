@@ -1,9 +1,11 @@
 /**
  * CADRE — Schedule Builder (the centerpiece).
- * Per-academy: drag/drop calendar, add sessions from the catalog, recurring
- * generator, per-course hours vs the curriculum minimums, holiday-conflict
- * fixer, two-stage publishing (academy publish → sessions visible; per-course
- * "open sign-ups" → instructors can register), academy editing.
+ * Per-academy: drag/drop calendar, add sessions from the discipline's
+ * curriculum, recurring generator, per-course hours vs the curriculum
+ * minimums, holiday / room / lunch / weekend banners (each with a "show on
+ * calendar" jump), pay periods, two-stage publishing (academy publish →
+ * sessions visible; per-course "open sign-ups" → instructors can register),
+ * academy editing.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
@@ -43,16 +45,28 @@ import { ACADEMY_COLORS } from '../../lib/academyColors';
 import { groupPayPeriods, payPeriodStart, DEFAULT_PAY_PERIOD_TARGET, q } from '../../lib/payPeriods';
 import { useGlobalSettings } from '../../app/providers';
 import { logAudit } from '../sessions/audit';
+import { friendlyError } from '../../lib/callableError';
 
 const academyApproval = httpsCallable<
   { academyId: string; action: 'submit' | 'approve' | 'request_changes' | 'force'; sergeantId?: string; note?: string },
   { ok: boolean; state: string }
 >(functions, 'academyApproval');
 
+/**
+ * Route shell: remounts the builder per academy. The router reuses ONE element
+ * for /cadre/academies/:academyId, so going builder → builder (an approval
+ * notification's link from the bell, then Back) kept the previous academy's
+ * calendar position, search and any open dialog — an open editor could then
+ * save the old class's form onto the new one.
+ */
 export function AcademyBuilderPage() {
   const { academyId } = useParams<{ academyId: string }>();
+  return <AcademyBuilder key={academyId} academyId={academyId} />;
+}
+
+function AcademyBuilder({ academyId }: { academyId: string | undefined }) {
   const { firebaseUser, orgId, role } = useAuth();
-  const { data: academy } = useDoc<AcademyDoc>(academyId ? `academies/${academyId}` : null);
+  const { data: academy, loading: academyLoading } = useDoc<AcademyDoc>(academyId ? `academies/${academyId}` : null);
   const { data: curriculum } = useCurriculum(academy?.discipline);
   const { data: sessions } = useCollection<SessionDoc>(
     academyId ? 'sessions' : null,
@@ -103,13 +117,18 @@ export function AcademyBuilderPage() {
   // preserved when switching between the Session and Lunch forms.
   const [addTime, setAddTime] = useState<string | undefined>(undefined);
   const [weekendDismissed, setWeekendDismissed] = useState(false);
+  // Publish / unpublish in flight — a second click mid-write could flip it back.
+  const [publishing, setPublishing] = useState(false);
   const [signupModal, setSignupModal] = useState<{
     label: string;
     mode: 'open' | 'announce';
     group: { open: number; scheduled: number; upcomingScheduled: number; total: number };
   } | null>(null);
 
-  const liveSessions = useMemo(() => sessions.filter((s) => s.status !== 'cancelled'), [sessions]);
+  // Malformed docs (a missing timestamp) are dropped here too — every tally and
+  // banner below dereferences start/end, so one bad session would otherwise
+  // blank the whole page (the calendar mapper already guards the same way).
+  const liveSessions = useMemo(() => sessions.filter((s) => s.status !== 'cancelled' && !!s.start && !!s.end), [sessions]);
   // Schedule-change notices waiting out the org's quiet period (server-owned
   // queue; one entry per edited session). Shown so a coordinator knows the
   // email is coming — and that another adjustment simply restarts the clock.
@@ -150,14 +169,24 @@ export function AcademyBuilderPage() {
   const [viewRange, setViewRange] = useState<{ start: Date; end: Date; type: string } | null>(null);
   const hoursInfo = useMemo(() => {
     if (!viewRange) return null;
+    // FullCalendar trims HIDDEN days off the range end: with "Show weekends"
+    // off (the default) a 2-week view ends on the second Saturday, so a block
+    // on the period's last weekend dropped out of this readout while the Pay
+    // periods panel still counted it. Sum the full 14 / 7 days from the start.
+    const spanDays = viewRange.type === 'twoWeek' ? 14 : viewRange.type === 'timeGridWeek' ? 7 : 0;
+    let rangeEnd = viewRange.end;
+    if (spanDays) {
+      rangeEnd = new Date(viewRange.start);
+      rangeEnd.setDate(rangeEnd.getDate() + spanDays);
+    }
     const sessionHours = liveSessions
       .filter((s) => {
         const t = s.start.toMillis();
-        return t >= viewRange.start.getTime() && t < viewRange.end.getTime();
+        return t >= viewRange.start.getTime() && t < rangeEnd.getTime();
       })
       .reduce((a, s) => a + (s.hours || 0), 0);
-    // Add observed-holiday pay for any observed holidays in the visible range.
-    const holidayHours = observedHolidayDatesInRange(viewRange.start, viewRange.end, observedHolidays).length * holidayPayHours;
+    // Add observed-holiday pay for any observed holidays in the range.
+    const holidayHours = observedHolidayDatesInRange(viewRange.start, rangeEnd, observedHolidays).length * holidayPayHours;
     const total = q(sessionHours + holidayHours);
     if (viewRange.type === 'twoWeek') {
       const onTarget = Math.abs(total - payTarget) < 0.01;
@@ -252,10 +281,23 @@ export function AcademyBuilderPage() {
     [matchedSessions, coverageBySession, disabledHolidays, observedHolidays, holidayRange]
   );
 
-  // Jump to the earliest match so a hit far out on the calendar is found, not just filtered.
+  // Jump to the earliest match so a hit far out on the calendar is found, not
+  // just filtered — ONCE per search term. matchedSessions gets a new identity
+  // on every Firestore snapshot, so keying the jump on it alone yanked the
+  // calendar back to the first match after every drag or save made while a
+  // search was active.
+  const jumpedForSearch = useRef('');
   React.useEffect(() => {
-    if (!search.trim() || matchedSessions.length === 0) return;
-    const earliest = matchedSessions.reduce((a, b) => (a.start.toMillis() <= b.start.toMillis() ? a : b));
+    const term = search.trim().toLowerCase();
+    if (!term) {
+      jumpedForSearch.current = '';
+      return;
+    }
+    if (jumpedForSearch.current === term || matchedSessions.length === 0) return;
+    const dated = matchedSessions.filter((s) => !!s.start);
+    if (dated.length === 0) return;
+    jumpedForSearch.current = term;
+    const earliest = dated.reduce((a, b) => (a.start.toMillis() <= b.start.toMillis() ? a : b));
     calRef.current?.getApi().gotoDate(earliest.start.toDate());
   }, [search, matchedSessions]);
 
@@ -372,7 +414,14 @@ export function AcademyBuilderPage() {
         for (const rid of roomIds) {
           const [bookings, holds] = await Promise.all([loadRoomBookings(orgId, rid), loadRoomReservations(orgId, rid)]);
           const others = bookings.filter(
-            (b) => b.academyId !== academyId && b.status !== 'cancelled' && !roomExemptAcademy(acadById.get(b.academyId))
+            (b) =>
+              b.academyId !== academyId &&
+              b.status !== 'cancelled' &&
+              // A malformed booking holds no interval — skip it rather than
+              // throw and (via the catch below) hide every real conflict.
+              !!b.start &&
+              !!b.end &&
+              !roomExemptAcademy(acadById.get(b.academyId))
           );
           for (const { s, rooms } of holders) {
             if (found.has(s.id) || !rooms.includes(rid)) continue;
@@ -432,7 +481,22 @@ export function AcademyBuilderPage() {
     return [...map.entries()].sort((a, b) => a[1].firstStart - b[1].firstStart);
   }, [liveSessions]);
 
-  if (!academy) return null;
+  if (!academy) {
+    // Still loading → nothing (no flash). Loaded-but-missing — a deleted class,
+    // a stale notification link, another org's id — used to stay blank forever.
+    if (academyLoading) return null;
+    return (
+      <div>
+        <PageHeader back kicker="CADRE — Schedule Builder" title="Academy not found" />
+        <p className="text-sm text-slate-600">
+          This academy no longer exists or isn&apos;t available to your account.{' '}
+          <Link to="/cadre/academies" className="text-bifrost-700 hover:underline">
+            Back to Academies
+          </Link>
+        </p>
+      </div>
+    );
+  }
 
   const hoursGap = q(academy.targetTotalHours - scheduledHours);
   const published = academy.status !== 'draft' && academy.status !== 'archived';
@@ -444,7 +508,12 @@ export function AcademyBuilderPage() {
     firebaseUser?.uid === (academy.coordinatorIds?.[0] ?? '');
   async function toggleSignupsEnabled() {
     const next = !signupsOn;
-    await updateDoc(doc(db, 'academies', academyId!), { signupsEnabled: next, updatedAt: serverTimestamp() });
+    try {
+      await updateDoc(doc(db, 'academies', academyId!), { signupsEnabled: next, updatedAt: serverTimestamp() });
+    } catch (err) {
+      window.alert(`Could not change the sign-ups switch: ${friendlyError(err, 'unknown error')}`);
+      return;
+    }
     await logAudit(
       firebaseUser!.uid,
       'academy.signups_toggle',
@@ -503,17 +572,26 @@ export function AcademyBuilderPage() {
       // reservations but only warned about draft holders.
       const savingDraft = academy?.status === 'draft';
       for (const rid of dragRoomIds) {
-        const conflict = await findRoomConflict({
-          orgId: acadOrgId,
-          roomId: rid,
-          start,
-          end,
-          excludeSessionId: s.id,
-          ignoreAcademy: (id) => roomExemptAcademy(acadById.get(id)),
-          softSession: (x) => savingDraft || draftHolderAcademy(acadById.get(x.academyId)),
-          softReservations: savingDraft,
-          labelFor: (x) => `${academyHolderLabel(acadById.get(x.academyId))} — ${x.title || x.courseName}`,
-        });
+        let conflict: Awaited<ReturnType<typeof findRoomConflict>>;
+        try {
+          conflict = await findRoomConflict({
+            orgId: acadOrgId,
+            roomId: rid,
+            start,
+            end,
+            excludeSessionId: s.id,
+            ignoreAcademy: (id) => roomExemptAcademy(acadById.get(id)),
+            softSession: (x) => savingDraft || draftHolderAcademy(acadById.get(x.academyId)),
+            softReservations: savingDraft,
+            labelFor: (x) => `${academyHolderLabel(acadById.get(x.academyId))} — ${x.title || x.courseName}`,
+          });
+        } catch {
+          // A failed lookup (offline, index still building) used to abort here
+          // with the block left drawn at its NEW spot and nothing saved.
+          arg.revert();
+          window.alert('Couldn’t verify room availability right now — the move was not saved. Please try again in a moment.');
+          return;
+        }
         if (conflict && conflict.soft) {
           if (
             !window.confirm(
@@ -550,19 +628,27 @@ export function AcademyBuilderPage() {
         }
       }
     }
-    await updateDoc(doc(db, 'sessions', s.id), {
-      start: tsFromDate(start),
-      end: tsFromDate(end),
-      // Gjallarhorn skips notifying the dragger about their own reschedule.
-      ...(firebaseUser ? { updatedBy: firebaseUser.uid } : {}),
-      // Lunch placeholders never carry hours; sessions recompute from the new span
-      // (preserving their lunch carve-out, unless lunch counts).
-      hours:
-        s.kind === 'lunch'
-          ? 0
-          : Math.max(0, hoursBetween(start, end) - (s.lunchCountsTowardHours ? 0 : (s.lunchMinutes ?? 0) / 60)),
-      updatedAt: serverTimestamp(),
-    });
+    try {
+      await updateDoc(doc(db, 'sessions', s.id), {
+        start: tsFromDate(start),
+        end: tsFromDate(end),
+        // Gjallarhorn skips notifying the dragger about their own reschedule.
+        ...(firebaseUser ? { updatedBy: firebaseUser.uid } : {}),
+        // Lunch placeholders never carry hours; sessions recompute from the new span
+        // (preserving their lunch carve-out, unless lunch counts).
+        hours:
+          s.kind === 'lunch'
+            ? 0
+            : Math.max(0, hoursBetween(start, end) - (s.lunchCountsTowardHours ? 0 : (s.lunchMinutes ?? 0) / 60)),
+        updatedAt: serverTimestamp(),
+      });
+    } catch (err) {
+      // FullCalendar already drew the block at its new spot — put it back so
+      // the calendar never shows a move that didn't save.
+      arg.revert();
+      window.alert(`The move was not saved: ${friendlyError(err, 'unknown error')}`);
+      return;
+    }
     if (firebaseUser) {
       await logAudit(firebaseUser.uid, 'session.reschedule', 'session', s.id, `Moved ${s.courseName} to ${start.toLocaleString()}`);
     }
@@ -570,8 +656,20 @@ export function AcademyBuilderPage() {
 
   /** Academy publish: drafts become visible ('scheduled'); unpublish reverses. */
   async function togglePublish() {
-    if (!firebaseUser || !academyId) return;
+    if (!firebaseUser || !academyId || publishing) return;
     const next = published ? 'draft' : 'published';
+    // Unpublishing is a one-click bulk action that is slow to undo: every
+    // session drops back to draft, and publishing again returns them as
+    // 'scheduled' — each course's sign-ups must be re-opened by hand.
+    if (
+      next === 'draft' &&
+      !window.confirm(
+        `Unpublish "${academy!.shortName || academy!.name}"?\n\n` +
+          'Every session is hidden from instructors and all open sign-ups close. Publishing again does NOT re-open them — each course has to be opened for sign-up again. Instructors who already signed up are not notified.'
+      )
+    ) {
+      return;
+    }
     // A full academy (courses + daily formation + lunch blocks) can exceed
     // Firestore's 500-write batch limit, which would fail the whole publish —
     // chunk the session flips, then flip the academy last so a mid-way failure
@@ -584,13 +682,22 @@ export function AcademyBuilderPage() {
       }
       return [];
     });
-    for (let i = 0; i < updates.length; i += 450) {
-      const batch = writeBatch(db);
-      for (const u of updates.slice(i, i + 450)) batch.update(doc(db, 'sessions', u.id), { status: u.status, updatedAt: serverTimestamp() });
-      await batch.commit();
+    setPublishing(true);
+    try {
+      for (let i = 0; i < updates.length; i += 450) {
+        const batch = writeBatch(db);
+        for (const u of updates.slice(i, i + 450)) batch.update(doc(db, 'sessions', u.id), { status: u.status, updatedAt: serverTimestamp() });
+        await batch.commit();
+      }
+      await updateDoc(doc(db, 'academies', academyId), { status: next, updatedAt: serverTimestamp() });
+      await logAudit(firebaseUser.uid, `academy.${next === 'published' ? 'publish' : 'unpublish'}`, 'academy', academyId, academy!.name);
+    } catch (err) {
+      window.alert(
+        `Could not ${next === 'published' ? 'publish' : 'unpublish'} the academy: ${friendlyError(err, 'unknown error')}\n\nSome sessions may already have changed — click the button again to finish.`
+      );
+    } finally {
+      setPublishing(false);
     }
-    await updateDoc(doc(db, 'academies', academyId), { status: next, updatedAt: serverTimestamp() });
-    await logAudit(firebaseUser.uid, `academy.${next === 'published' ? 'publish' : 'unpublish'}`, 'academy', academyId, academy!.name);
   }
 
   /** Open (or close) sign-ups for every session of a course. Returns the count changed. */
@@ -621,6 +728,15 @@ export function AcademyBuilderPage() {
       `${open ? 'Opened' : 'Closed'} sign-ups for ${n} "${courseLabel}" sessions`
     );
     return n;
+  }
+
+  /** The course card's Close button — surfaces a failed write instead of dropping it. */
+  async function closeCourseSignups(courseLabel: string) {
+    try {
+      await setCourseSignups(courseLabel, false);
+    } catch (err) {
+      window.alert(`Could not close sign-ups for "${courseLabel}": ${friendlyError(err, 'unknown error')}`);
+    }
   }
 
   /**
@@ -778,10 +894,10 @@ export function AcademyBuilderPage() {
               <Badge tone={published ? 'green' : 'slate'}>{academy.status.replace('_', ' ')}</Badge>
               <Button
                 onClick={togglePublish}
-                disabled={!published && !canPublishNow}
+                disabled={publishing || (!published && !canPublishNow)}
                 title={!published && !canPublishNow ? 'Captain approval is required before publishing' : undefined}
               >
-                {published ? 'Unpublish' : 'Publish to calendar'}
+                {publishing ? 'Working…' : published ? 'Unpublish' : 'Publish to calendar'}
               </Button>
             </>
           )}
@@ -874,8 +990,6 @@ export function AcademyBuilderPage() {
         </section>
       )}
 
-      {/* Weekend scheduling — dismissable heads-up (a class/lunch on Sat/Sun is
-          often an unintended clone/recurring artifact). */}
       {/* Pending schedule-change notices — the quiet period in action. */}
       {pendingNotices.length > 0 && (
         <section className="mb-4 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
@@ -887,6 +1001,8 @@ export function AcademyBuilderPage() {
           back and nothing is sent.
         </section>
       )}
+      {/* Weekend scheduling — dismissable heads-up (a class/lunch on Sat/Sun is
+          often an unintended clone/recurring artifact). */}
       {weekendItems.length > 0 && !weekendDismissed && (
         <section className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
           <div className="mb-2 flex items-center justify-between gap-2">
@@ -1006,7 +1122,7 @@ export function AcademyBuilderPage() {
                             Notify…
                           </Button>
                         )}
-                        <Button variant="ghost" onClick={() => setCourseSignups(label, false)}>
+                        <Button variant="ghost" onClick={() => void closeCourseSignups(label)}>
                           Close
                         </Button>
                       </>
@@ -1087,7 +1203,12 @@ export function AcademyBuilderPage() {
           // can't fix the first render (the calendar ref isn't assigned yet, so
           // its gotoDate no-ops) — which left the initial 2-week view straddling
           // two pay periods until a view button was clicked.
-          initialDate={payPeriodStart(academy.startDate.toDate() > new Date() ? academy.startDate.toDate() : new Date())}
+          // Today when the class is running; otherwise its first day — a
+          // concluded class (or a template with past placeholder dates) used to
+          // open on today's empty fortnight, months of "next" clicks away.
+          initialDate={payPeriodStart(
+            academy.startDate.toDate() > new Date() || academy.endDate.toDate() < new Date() ? academy.startDate.toDate() : new Date()
+          )}
           firstDay={1}
           weekends={showWeekends}
           views={{ twoWeek: { type: 'timeGrid', duration: { weeks: 2 }, buttonText: '2 weeks' } }}
@@ -1219,8 +1340,10 @@ export function AcademyBuilderPage() {
         <PastSessionModal
           session={pastSession}
           onClose={() => setPastSession(null)}
-          onEditDetails={() => {
-            setPastGateSession(pastSession);
+          // `live` = the session AFTER any as-taught corrections just made in
+          // this modal (pastSession is the pre-correction snapshot).
+          onEditDetails={(live) => {
+            setPastGateSession(live);
             setPastSession(null);
           }}
         />
@@ -1288,17 +1411,18 @@ function OpenSignupsModal({
   const valid = choice !== 'users' || selectedUids.length > 0;
 
   // Preview of who "everyone eligible" actually emails — MIRRORS the server's
-  // onCoursePublished rule: active same-org users holding a verified qual that
-  // matches an UNFILLED slot of this course (or anyone, if a slot is
-  // unrestricted). For mode 'open' the sessions aren't open yet, so upcoming
-  // scheduled ones count as about-to-open.
+  // onCoursePublished rule: active same-org NON-GUEST users holding a verified
+  // qual that matches an UNFILLED slot of a not-yet-concluded session of this
+  // course (or anyone, if such a slot is unrestricted). For mode 'open' the
+  // sessions aren't open yet, so upcoming scheduled ones count as about-to-open.
   const eligibleNames = useMemo(() => {
     const slotQuals = new Set<string>();
     let anyUnrestricted = false;
     for (const s of courseSessions) {
       const relevant =
         mode === 'announce'
-          ? s.status === 'open' || s.status === 'fully_staffed'
+          ? // Days already taught stay 'open' forever — the server skips them.
+            (s.status === 'open' || s.status === 'fully_staffed') && s.end.toMillis() > Date.now()
           : s.end.toMillis() >= Date.now() &&
             (s.status === 'scheduled' || s.status === 'open' || s.status === 'fully_staffed');
       if (!relevant) continue;
@@ -1309,6 +1433,8 @@ function OpenSignupsModal({
       }
     }
     return users
+      // Guests are read-only (they can't sign up) — the server never mails them.
+      .filter((u) => u.role !== 'guest')
       .filter((u) => anyUnrestricted || (u.verifiedQualKeys ?? []).some((k) => slotQuals.has(k)))
       // Mirrors the server rule: the person opening sign-ups never emails
       // themselves about their own announcement.
@@ -1326,6 +1452,10 @@ function OpenSignupsModal({
     // 'none' → leave target null (open without emailing)
     try {
       await onConfirm(target);
+    } catch (err) {
+      window.alert(
+        `${mode === 'open' ? 'Could not open sign-ups' : 'Could not send the announcement'}: ${friendlyError(err, 'unknown error')}`
+      );
     } finally {
       setBusy(false);
     }
@@ -1591,26 +1721,35 @@ function EditAcademyModal({ academy, onClose }: { academy: WithId<AcademyDoc>; o
     }
     setBusy(true);
     const curriculum = curricula.find((c) => c.id === discipline);
-    await updateDoc(doc(db, 'academies', academy.id), {
-      name,
-      shortName,
-      discipline,
-      startDate: tsFromDate(new Date(`${startDate}T00:00:00`)),
-      endDate: tsFromDate(new Date(`${endDate}T23:59:59`)),
-      courseRoomDefaults: courseRooms,
-      color,
-      fdleProgram: curriculum?.fdleProgram ?? academy.fdleProgram,
-      defaultRoom,
-      defaultRoomId: defaultRoomId ?? deleteField(),
-      sequenceNo: sequenceNo.trim(),
-      targetTotalHours: targetHours,
-      // [0] = primary, [1] = secondary; drop empties and de-dup.
-      coordinatorIds: [...new Set([primary, secondary].filter(Boolean))],
-      updatedAt: serverTimestamp(),
-    });
-    await logAudit(firebaseUser!.uid, 'academy.update', 'academy', academy.id, `Edited ${name}`);
-    setBusy(false);
-    onClose();
+    try {
+      await updateDoc(doc(db, 'academies', academy.id), {
+        name,
+        shortName,
+        discipline,
+        startDate: tsFromDate(new Date(`${startDate}T00:00:00`)),
+        endDate: tsFromDate(new Date(`${endDate}T23:59:59`)),
+        courseRoomDefaults: courseRooms,
+        color,
+        // Same fallback chain as Create, so switching to a discipline with no
+        // program line doesn't leave the PREVIOUS program printed on the
+        // schedule cover / public portal (and never writes undefined). An
+        // inactive legacy discipline (not in `curricula`) keeps what's stored.
+        fdleProgram: curriculum?.fdleProgram || curriculum?.label || academy.fdleProgram || discipline,
+        defaultRoom,
+        defaultRoomId: defaultRoomId ?? deleteField(),
+        sequenceNo: sequenceNo.trim(),
+        targetTotalHours: targetHours,
+        // [0] = primary, [1] = secondary; drop empties and de-dup.
+        coordinatorIds: [...new Set([primary, secondary].filter(Boolean))],
+        updatedAt: serverTimestamp(),
+      });
+      await logAudit(firebaseUser!.uid, 'academy.update', 'academy', academy.id, `Edited ${name}`);
+      onClose();
+    } catch (err) {
+      window.alert(`Could not save the academy: ${friendlyError(err, 'unknown error')}`);
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -1789,7 +1928,7 @@ function ApprovalPanel({ academy }: { academy: WithId<AcademyDoc> }) {
       setNote('');
       setSubmitOpen(false);
     } catch (e) {
-      setErr(e instanceof Error ? e.message.replace(/^FirebaseError: /, '') : 'Action failed.');
+      setErr(friendlyError(e, 'Action failed.'));
     } finally {
       setBusy(false);
     }

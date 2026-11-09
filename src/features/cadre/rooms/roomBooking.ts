@@ -108,17 +108,25 @@ export async function findRoomConflict(opts: {
   labelFor: (s: SessionDoc & { id: string }) => string;
 }): Promise<RoomConflict | null> {
   let firstSoft: RoomConflict | null = null;
-  for (const s of await loadRoomBookings(opts.orgId, opts.roomId)) {
+  // Independent reads — fetch together (this runs on every room-booking save).
+  const [bookings, reservations] = await Promise.all([
+    loadRoomBookings(opts.orgId, opts.roomId),
+    loadRoomReservations(opts.orgId, opts.roomId),
+  ]);
+  for (const s of bookings) {
     if (s.id === opts.excludeSessionId) continue;
     if (s.status === 'cancelled') continue;
     if (opts.ignoreAcademy(s.academyId)) continue;
+    // A malformed session (missing a timestamp) holds no interval — skip it
+    // rather than throw and block every save that touches this room.
+    if (!s.start || !s.end) continue;
     if (overlaps(opts.start, opts.end, s.start.toDate(), s.end.toDate())) {
       const c = { label: opts.labelFor(s), start: s.start.toDate(), end: s.end.toDate(), soft: opts.softSession?.(s) === true };
       if (!c.soft) return c;
       firstSoft ??= c;
     }
   }
-  for (const r of await loadRoomReservations(opts.orgId, opts.roomId)) {
+  for (const r of reservations) {
     if (r.id === opts.excludeReservationId) continue;
     if (overlaps(opts.start, opts.end, r.start.toDate(), r.end.toDate())) {
       const c = { label: `🔒 ${r.title || 'Reservation'}`, start: r.start.toDate(), end: r.end.toDate(), soft: opts.softReservations === true };

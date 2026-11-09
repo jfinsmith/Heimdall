@@ -21,7 +21,7 @@
  * resets, purge warnings) intentionally ignores this and uses the sign-in email.
  */
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
-import { createHash, randomInt } from 'crypto';
+import { createHash, randomInt, timingSafeEqual } from 'crypto';
 import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { renderEmail, MAIL_FROM, MAIL_QUEUE } from '../gjallarhorn/templates';
 
@@ -31,6 +31,9 @@ const MAX_SENDS_PER_WINDOW = 5;
 const MAX_ATTEMPTS = 5;                  // wrong guesses before the code dies
 
 const codeHash = (uid: string, code: string) => createHash('sha256').update(`${uid}:${code}`).digest('hex');
+/** Constant-time string equality (both sides hashed first, so length never leaks or throws). */
+const safeEqual = (a: string, b: string) =>
+  timingSafeEqual(createHash('sha256').update(a).digest(), createHash('sha256').update(b).digest());
 const challengeRef = (uid: string) => getFirestore().doc(`users/${uid}/private/notificationEmail`);
 
 interface Challenge {
@@ -53,34 +56,40 @@ export const requestNotificationEmail = onCall<{ email: string }>(async (request
     throw new HttpsError('permission-denied', 'Your account is not active.');
   }
 
-  const emailLower = (request.data.email ?? '').trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(emailLower)) {
+  const rawEmail: unknown = request.data?.email;
+  const emailLower = typeof rawEmail === 'string' ? rawEmail.trim().toLowerCase() : '';
+  // 254 = the longest deliverable address; the pattern alone accepted megabytes.
+  if (emailLower.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(emailLower)) {
     throw new HttpsError('invalid-argument', 'Enter a valid email address.');
   }
   if (emailLower === (user.email ?? '').toLowerCase()) {
     throw new HttpsError('invalid-argument', 'That is already your sign-in email — notifications go there by default.');
   }
 
-  // Rolling-window send limit, tracked on the challenge doc itself.
+  // Rolling-window send limit, tracked on the challenge doc itself. The check
+  // and the bump run in ONE transaction: as a separate read and write, parallel
+  // requests all read the same count and every one of them got a code email
+  // sent to the (still unproven) address.
   const now = Date.now();
-  const prevSnap = await challengeRef(caller.uid).get();
-  const prev = prevSnap.exists ? (prevSnap.data() as Challenge) : null;
-  const windowLive = prev && now - prev.windowStart.toMillis() < SEND_WINDOW_MS;
-  if (windowLive && prev!.sendCount >= MAX_SENDS_PER_WINDOW) {
-    throw new HttpsError('resource-exhausted', 'Too many codes requested. Try again in an hour.');
-  }
-
   const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
-  await challengeRef(caller.uid).set({
-    emailLower,
-    codeHash: codeHash(caller.uid, code),
-    expiresAt: Timestamp.fromMillis(now + CODE_TTL_MS),
-    attempts: 0,
-    sendCount: windowLive ? prev!.sendCount + 1 : 1,
-    windowStart: windowLive ? prev!.windowStart : Timestamp.fromMillis(now),
-    ...(user.orgId ? { orgId: user.orgId } : {}),
-    createdAt: FieldValue.serverTimestamp(),
+  const allowed = await db.runTransaction(async (tx) => {
+    const prevSnap = await tx.get(challengeRef(caller.uid));
+    const prev = prevSnap.exists ? (prevSnap.data() as Challenge) : null;
+    const windowLive = !!prev && now - prev.windowStart.toMillis() < SEND_WINDOW_MS;
+    if (windowLive && prev!.sendCount >= MAX_SENDS_PER_WINDOW) return false;
+    tx.set(challengeRef(caller.uid), {
+      emailLower,
+      codeHash: codeHash(caller.uid, code),
+      expiresAt: Timestamp.fromMillis(now + CODE_TTL_MS),
+      attempts: 0,
+      sendCount: windowLive ? prev!.sendCount + 1 : 1,
+      windowStart: windowLive ? prev!.windowStart : Timestamp.fromMillis(now),
+      ...(user.orgId ? { orgId: user.orgId } : {}),
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    return true;
   });
+  if (!allowed) throw new HttpsError('resource-exhausted', 'Too many codes requested. Try again in an hour.');
   await db.doc(`users/${caller.uid}`).update({
     notificationEmailPending: emailLower,
     updatedAt: FieldValue.serverTimestamp(),
@@ -119,29 +128,41 @@ export const confirmNotificationEmail = onCall<{ code: string }>(async (request)
   if (!caller) throw new HttpsError('unauthenticated', 'Sign in required.');
   const db = getFirestore();
 
-  const snap = await challengeRef(caller.uid).get();
-  if (!snap.exists) throw new HttpsError('failed-precondition', 'No verification in progress — request a new code.');
-  const ch = snap.data() as Challenge;
-  if (Date.now() > ch.expiresAt.toMillis()) {
-    throw new HttpsError('deadline-exceeded', 'That code expired — request a new one.');
-  }
-  if (ch.attempts >= MAX_ATTEMPTS) {
-    throw new HttpsError('resource-exhausted', 'Too many incorrect attempts — request a new code.');
-  }
-  const code = (request.data.code ?? '').trim();
-  if (codeHash(caller.uid, code) !== ch.codeHash) {
-    await challengeRef(caller.uid).update({ attempts: FieldValue.increment(1) });
-    throw new HttpsError('invalid-argument', 'Incorrect code.');
-  }
-
-  await db.doc(`users/${caller.uid}`).update({
-    notificationEmail: ch.emailLower,
-    notificationEmailVerified: true,
-    notificationEmailPending: FieldValue.delete(),
-    updatedAt: FieldValue.serverTimestamp(),
+  const rawCode: unknown = request.data?.code;
+  const code = typeof rawCode === 'string' ? rawCode.trim() : '';
+  // Check, count and consume in ONE transaction. As separate steps, a burst of
+  // parallel guesses all read "attempts < 5" before any increment landed, so
+  // the five-try limit on a six-digit code did not hold.
+  const outcome = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(challengeRef(caller.uid));
+    if (!snap.exists) return { kind: 'none' as const };
+    const ch = snap.data() as Challenge;
+    if (Date.now() > ch.expiresAt.toMillis()) return { kind: 'expired' as const };
+    if (ch.attempts >= MAX_ATTEMPTS) return { kind: 'locked' as const };
+    if (!safeEqual(codeHash(caller.uid, code), ch.codeHash)) {
+      tx.update(challengeRef(caller.uid), { attempts: FieldValue.increment(1) });
+      return { kind: 'wrong' as const };
+    }
+    tx.update(db.doc(`users/${caller.uid}`), {
+      notificationEmail: ch.emailLower,
+      notificationEmailVerified: true,
+      notificationEmailPending: FieldValue.delete(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    tx.delete(challengeRef(caller.uid));
+    return { kind: 'ok' as const, email: ch.emailLower };
   });
-  await challengeRef(caller.uid).delete();
-  return { ok: true, email: ch.emailLower };
+
+  // 'failed-precondition' on purpose for the expired / used-up cases: the web
+  // client's friendlyError() replaces 'deadline-exceeded' and
+  // 'resource-exhausted' with generic transport text ("the server didn't
+  // respond in time", "wait a moment and try again"), which hid the one thing
+  // the member has to do — request a new code.
+  if (outcome.kind === 'none') throw new HttpsError('failed-precondition', 'No verification in progress — request a new code.');
+  if (outcome.kind === 'expired') throw new HttpsError('failed-precondition', 'That code expired — request a new one.');
+  if (outcome.kind === 'locked') throw new HttpsError('failed-precondition', 'Too many incorrect attempts — request a new code.');
+  if (outcome.kind === 'wrong') throw new HttpsError('invalid-argument', 'Incorrect code.');
+  return { ok: true, email: outcome.email };
 });
 
 export const clearNotificationEmail = onCall<{ pendingOnly?: boolean } | undefined>(async (request) => {
