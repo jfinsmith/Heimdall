@@ -91,21 +91,22 @@ export function LimboTrackerPage() {
     [roster, chosenAgencies.join('|')]
   );
 
-  // Window: the academy's END date (from the class itself) through the NMT
-  // start date — the whole limbo. Once today passes the end date the left edge
-  // becomes today, so passed days drop off and the chart rolls right. No NMT
-  // date yet = 60 days from the start. Scrolls horizontally.
+  // Window: TODAY through the NMT start date by default (rolls forward daily);
+  // the toolbar button above the chart flips the left edge to the academy's
+  // END date for the whole-limbo view (and back). No NMT date yet = 60 days
+  // from the left edge. Scrolls horizontally.
   const today = toDateInputValue(new Date());
   const nmtStart = plan?.nmtStart ?? '';
   const academyEnd = academy ? toDateInputValue(academy.endDate.toDate()) : '';
+  const [fromAcademyEnd, setFromAcademyEnd] = useState(false);
   const days = useMemo(() => {
-    const start = localDate(academyEnd && academyEnd > today ? academyEnd : today);
+    const start = localDate(fromAcademyEnd && academyEnd ? academyEnd : today);
     const nmt = nmtStart ? localDate(nmtStart) : null;
     const end = nmt && nmt >= start ? nmt : addDays(start, 60);
     const out: { key: string; date: Date }[] = [];
     for (let d = start; d <= end && out.length < MAX_DAYS; d = addDays(d, 1)) out.push({ key: toDateInputValue(d), date: d });
     return out;
-  }, [today, nmtStart, academyEnd]);
+  }, [today, nmtStart, academyEnd, fromAcademyEnd]);
   // NMT countdown — shown with the date so it's glaring even when the start
   // sits outside the two-week window.
   const nmtIn = plan?.nmtStart ? Math.round((localDate(plan.nmtStart).getTime() - localDate(today).getTime()) / 864e5) : null;
@@ -335,7 +336,7 @@ export function LimboTrackerPage() {
             </span>
           ))}
           <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-500">Unassigned {todaySummary.unassigned}</span>
-          <span className="ml-auto text-slate-400">Chart runs from the academy end date through NMT (passed days drop off); the &quot;Everyone&quot; row paints a whole day in one click.</span>
+          <span className="ml-auto text-slate-400">Chart runs from today through NMT; the &quot;Everyone&quot; row paints a whole day in one click.</span>
         </div>
       </div>
 
@@ -347,6 +348,16 @@ export function LimboTrackerPage() {
           No cadets from the selected agencies on this roster.
         </div>
       ) : (
+        <>
+        {/* View toolbar — sits above the scroller so it never scrolls away. */}
+        <div className="mb-2 flex flex-wrap items-center gap-3 text-xs text-slate-600">
+          <span>
+            Showing <span className="font-semibold text-watch-800">{fromAcademyEnd ? `academy end (${localDate(academyEnd).toLocaleDateString()})` : 'today'}</span> → {nmtStart ? 'NMT start' : '60 days out'}
+          </span>
+          <Button className="whitespace-nowrap !px-2.5 !py-1 text-xs" variant="secondary" onClick={() => setFromAcademyEnd((v) => !v)} disabled={!academyEnd}>
+            {fromAcademyEnd ? '← Back to today' : `Jump to academy end date (${academyEnd ? localDate(academyEnd).toLocaleDateString() : '—'})`}
+          </Button>
+        </div>
         <div className="overflow-x-auto rounded-lg border border-watch-100 bg-white shadow-sm">
           <table className="border-separate border-spacing-0 text-xs">
             <thead>
@@ -440,6 +451,7 @@ export function LimboTrackerPage() {
             </tbody>
           </table>
         </div>
+        </>
       )}
       {manageOpen && orgId && (
         <ManageActivitiesModal

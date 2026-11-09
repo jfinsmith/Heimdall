@@ -1050,17 +1050,18 @@ export function AcademyBuilderPage() {
               {/* Both buttons open the day-documents page — the same logic as
                   Roster → Attendance → "From schedule": one roster per course
                   run, plus the exam forms when a block that day is a test. */}
-              <div className="flex flex-col gap-1">
+              <div className="flex flex-col items-stretch gap-1">
                 <Button
+                  className="whitespace-nowrap !px-3 !py-1 text-xs"
                   onClick={() => rosterDate && window.open(`/roster/day/print/${academyId}/${rosterDate}`, '_blank', 'noopener')}
                   disabled={!rosterDate}
                   title="Print this day's attendance rosters (one per course) — plus the exam rules and instructor evaluation when a block is a test"
                 >
-                  Print
+                  Print this day
                 </Button>
                 <Button
-                  variant="ghost"
-                  className="!px-2 !py-1 text-xs"
+                  variant="secondary"
+                  className="whitespace-nowrap !px-3 !py-1 text-xs"
                   disabled={!rosterDate}
                   title="Same documents for the next day this class has anything scheduled (skips weekends and gaps)"
                   onClick={() => {
@@ -1072,7 +1073,7 @@ export function AcademyBuilderPage() {
                     window.open(`/roster/day/print/${academyId}/${next}`, '_blank', 'noopener');
                   }}
                 >
-                  Print next day&apos;s documents
+                Print next day
                 </Button>
               </div>
             </div>
