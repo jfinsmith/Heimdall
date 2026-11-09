@@ -721,6 +721,13 @@ export interface ReportConfigDoc {
   categories: ReportCategory[];
   /** Per report-type-id: optional display-name override + category assignment. */
   overrides?: Record<string, { name?: string; categoryKey?: string }>;
+  /**
+   * THIS org's written-exam facts, per curriculum id → course key (courseKey:
+   * CJK or name): question count + time limit. Org-owned even for the platform
+   * FDLE programs (which orgs can't edit) — set under Admin → Curriculum &
+   * Hours → Test info; auto-fills the Examination Rules & Disclosure form.
+   */
+  examInfo?: Record<string, Record<string, { questions?: number; minutes?: number }>>;
 }
 
 /** A filed academic-action report (e.g., exam-failure letter) for one cadet. */

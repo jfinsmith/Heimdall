@@ -125,3 +125,33 @@ export function buildDayRosters(
     };
   });
 }
+
+// ── Exam-day helpers (shared by the day-documents printout + the builder) ────
+const liveBlock = (s: WithId<SessionDoc>) => s.kind !== 'lunch' && s.status !== 'cancelled';
+
+/** A block that carries a topic's written exam: the session's "End-of-course
+ *  TEST" checkbox, or the legacy convention of writing "Test" in Notes. */
+export const isTestSession = (s: Pick<SessionDoc, 'includesTest' | 'notes'>): boolean =>
+  s.includesTest === true || /\btest\b/i.test(s.notes ?? '');
+
+/** Course names with a test block on `dateStr`, in start-time order. */
+export function examCoursesOnDay(sessions: WithId<SessionDoc>[], dateStr: string): string[] {
+  const out: string[] = [];
+  for (const s of [...sessions].sort((a, b) => a.start.toMillis() - b.start.toMillis())) {
+    if (!liveBlock(s) || localDateStr(s.start.toDate()) !== dateStr || !isTestSession(s)) continue;
+    if (!out.includes(s.courseName)) out.push(s.courseName);
+  }
+  return out;
+}
+
+/** The next calendar date after `afterDateStr` with any class scheduled (skips
+ *  weekends/holidays/gaps naturally), or null when the schedule ends. */
+export function nextSessionDate(sessions: WithId<SessionDoc>[], afterDateStr: string): string | null {
+  let best: string | null = null;
+  for (const s of sessions) {
+    if (!liveBlock(s)) continue;
+    const d = localDateStr(s.start.toDate());
+    if (d > afterDateStr && (best === null || d < best)) best = d;
+  }
+  return best;
+}

@@ -28,7 +28,8 @@ function progDate(ts: Parameters<typeof fmtDate>[0]): string {
   const d = ts instanceof Date ? ts : ts.toDate();
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
-import { buildDayRosters, localDateStr } from './attendanceRoster';
+import { buildDayRosters, examCoursesOnDay, localDateStr } from './attendanceRoster';
+import { DayExamDocuments } from './dayDocuments';
 import { lastFirst } from './rosterShared';
 import { Button, Field, Input, Select, TextArea } from '../../../components/ui';
 import type { GlobalSettings } from '../../../types';
@@ -287,6 +288,98 @@ function SheetEditor({
   );
 }
 
+/**
+ * "From schedule" for ONE date — shared by the roster's Attendance tab and the
+ * builder's day-print page, so both produce the SAME output: one attendance
+ * roster per contiguous course run (a 1-hour test followed by 9 hours of a
+ * different course = two rosters), then — when a block that day is a TEST —
+ * that course's Examination Rules & Disclosure and Instructor Evaluation
+ * forms. Every roster field stays editable before printing.
+ */
+export function ScheduleDayDocuments({
+  academy,
+  members,
+  curriculum,
+  dateStr,
+}: {
+  academy: WithId<AcademyDoc>;
+  members: WithId<RosterMemberDoc>[];
+  curriculum: WithId<CurriculumDoc> | null;
+  dateStr: string;
+}) {
+  const settings = useGlobalSettings();
+  const layout = curriculum?.attendanceLayout ?? 'grid';
+  const courses = useMemo(() => curriculum?.courses ?? [], [curriculum]);
+  const cadets = useMemo(() => members.filter((m) => !m.blockTaker), [members]);
+  const blockTakers = useMemo(() => members.filter((m) => m.blockTaker), [members]);
+  // Only official curriculum courses are rostered (custom/agency blocks excluded).
+  const officialCourses = useMemo(() => new Set(courses.map((c) => c.name)), [courses]);
+  const { data: sessions, loading: sLoading } = useCollection<SessionDoc>('sessions', [where('academyId', '==', academy.id)], [academy.id]);
+  const { data: users, loading: uLoading } = useCollection<UserDoc>('users');
+  const nameOf = (uid: string) => users.find((u) => u.id === uid)?.displayName ?? '';
+  const generated = useMemo(() => buildDayRosters(sessions, dateStr, officialCourses), [sessions, dateStr, officialCourses]);
+  const testCourses = useMemo(() => examCoursesOnDay(sessions, dateStr), [sessions, dateStr]);
+  // Exam forms are signed/filled per cadet — print one master, or a full set.
+  const [perCadet, setPerCadet] = useState(false);
+  const activeCount = cadets.filter((m) => m.status !== 'withdrawn' && m.status !== 'dismissed').length;
+  const totalHoursStr = String(curriculum?.totalHours ?? academy.targetTotalHours);
+
+  if (sLoading || uLoading) return <p className="text-sm text-slate-500">Loading the day&apos;s schedule…</p>;
+  if (generated.length === 0 && testCourses.length === 0) {
+    return <p className="text-sm text-slate-500">No instructional blocks scheduled on {displayDate(dateStr)}. Pick another date.</p>;
+  }
+  return (
+    <>
+      {testCourses.length > 0 && (
+        <div className="no-print mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-bifrost-200 bg-bifrost-50 px-4 py-2 text-sm text-bifrost-900">
+          <span className="font-semibold">Test day:</span>
+          <span>{testCourses.join(', ')} — exam forms are included after the roster{generated.length === 1 ? '' : 's'}.</span>
+          <label className="ml-auto flex items-center gap-2">
+            Exam form copies
+            <Select value={perCadet ? 'cadet' : 'one'} onChange={(e) => setPerCadet(e.target.value === 'cadet')} className="w-auto">
+              <option value="one">1 of each (photocopy)</option>
+              <option value="cadet">One per cadet ({activeCount})</option>
+            </Select>
+          </label>
+        </div>
+      )}
+      {generated.map((g, i) => (
+        <SheetEditor
+          key={`${dateStr}-${i}-${g.courseName}`}
+          init={{
+            courseName: g.courseName,
+            classDate: displayDate(dateStr),
+            classTime: g.timeLabel,
+            classHours: String(g.classHours),
+            lead: [...g.leadUids.map(nameOf), ...g.writeInLeads].filter(Boolean).join(', '),
+            additional: [...g.additionalUids.map(nameOf), ...g.writeInAdditional].filter(Boolean).join(', '),
+            seqNo: academy.sequenceNo || '',
+            lunch: g.lunch,
+            totalHours: totalHoursStr,
+          }}
+          academy={academy}
+          curriculum={curriculum}
+          settings={settings}
+          layout={layout}
+          courses={courses}
+          cadets={cadets}
+          blockTakers={blockTakers}
+          pageBreak={i > 0}
+        />
+      ))}
+      <DayExamDocuments
+        academy={academy}
+        curriculum={curriculum}
+        sessions={sessions}
+        users={users}
+        dateStr={dateStr}
+        copies={perCadet ? Math.max(1, activeCount) : 1}
+        pageBreakFirst={generated.length > 0}
+      />
+    </>
+  );
+}
+
 export function AttendanceTab({
   academy,
   members,
@@ -306,23 +399,7 @@ export function AttendanceTab({
 
   const [mode, setMode] = useState<'manual' | 'schedule' | 'blank'>('manual');
   const [genDate, setGenDate] = useState(localDateStr(new Date()));
-  // Only official curriculum courses are rostered (custom/agency blocks excluded).
-  const officialCourses = useMemo(() => new Set((curriculum?.courses ?? []).map((c) => c.name)), [curriculum]);
-
-  // Schedule mode pulls the day's blocks + instructor names from the calendar.
-  const { data: sessions, loading: sLoading } = useCollection<SessionDoc>(
-    mode === 'schedule' ? 'sessions' : null,
-    [where('academyId', '==', academy.id)],
-    [academy.id]
-  );
-  const { data: users, loading: uLoading } = useCollection<UserDoc>(mode === 'schedule' ? 'users' : null);
-  const nameOf = (uid: string) => users.find((u) => u.id === uid)?.displayName ?? '';
-
   const totalHoursStr = String(curriculum?.totalHours ?? academy.targetTotalHours);
-  const generated = useMemo(
-    () => (mode === 'schedule' ? buildDayRosters(sessions, genDate, officialCourses) : []),
-    [mode, sessions, genDate, officialCourses]
-  );
 
   const manualInit: SheetInit = {
     courseName: courses[0]?.name ?? '',
@@ -336,7 +413,6 @@ export function AttendanceTab({
     totalHours: totalHoursStr,
   };
 
-  const scheduleLoading = sLoading || uLoading;
   const tab = 'rounded px-3 py-1';
 
   return (
@@ -351,7 +427,7 @@ export function AttendanceTab({
           <Field label="Date" className="max-w-[11rem]"><Input type="date" value={genDate} onChange={(e) => setGenDate(e.target.value)} /></Field>
         )}
         <Button variant="primary" onClick={() => window.print()}>
-          Print {mode === 'blank' ? 'blank roster' : `attendance roster${mode === 'schedule' && generated.length > 1 ? 's' : ''}`}
+          Print {mode === 'blank' ? 'blank roster' : mode === 'schedule' ? "the day's documents" : 'attendance roster'}
         </Button>
         {mode === 'blank' && (
           <span className="text-xs text-slate-500">Class info + student list print; course, date, times, and instructors stay blank for handwriting, with 5 write-in rows at the bottom.</span>
@@ -396,35 +472,8 @@ export function AttendanceTab({
           cadets={cadets}
           blockTakers={blockTakers}
         />
-      ) : scheduleLoading ? (
-        <p className="text-sm text-slate-500">Loading the day's schedule…</p>
-      ) : generated.length === 0 ? (
-        <p className="text-sm text-slate-500">No instructional blocks scheduled on {displayDate(genDate)}. Pick another date.</p>
       ) : (
-        generated.map((g, i) => (
-          <SheetEditor
-            key={`${genDate}-${i}-${g.courseName}`}
-            init={{
-              courseName: g.courseName,
-              classDate: displayDate(genDate),
-              classTime: g.timeLabel,
-              classHours: String(g.classHours),
-              lead: [...g.leadUids.map(nameOf), ...g.writeInLeads].filter(Boolean).join(', '),
-              additional: [...g.additionalUids.map(nameOf), ...g.writeInAdditional].filter(Boolean).join(', '),
-              seqNo: academy.sequenceNo || '',
-              lunch: g.lunch,
-              totalHours: totalHoursStr,
-            }}
-            academy={academy}
-            curriculum={curriculum}
-            settings={settings}
-            layout={layout}
-            courses={courses}
-            cadets={cadets}
-            blockTakers={blockTakers}
-            pageBreak={i > 0}
-          />
-        ))
+        <ScheduleDayDocuments academy={academy} members={members} curriculum={curriculum} dateStr={genDate} />
       )}
     </div>
   );

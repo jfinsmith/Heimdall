@@ -33,6 +33,7 @@ import { PastEditGate } from './PastEditGate';
 import { PublicLinkSection } from './PublicLinkSection';
 import { LunchBlockModal } from './LunchBlockModal';
 import { RecurringGeneratorModal } from './RecurringGeneratorModal';
+import { nextSessionDate } from './roster/attendanceRoster';
 import { CloneAcademyModal } from './AcademiesPage';
 import { RoomSelect } from './rooms/RoomSelect';
 import { findRoomConflict, roomExemptAcademy, draftHolderAcademy, academyHolderLabel, loadRoomBookings, loadRoomReservations, overlaps } from './rooms/roomBooking';
@@ -88,8 +89,8 @@ export function AcademyBuilderPage() {
   const [recurringOpen, setRecurringOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [showWeekends, setShowWeekends] = useState(false);
-  // Daily sign-in roster: pick a date, print that day's course load for students
-  // to sign (replaces FullCalendar's unused all-day lane). Defaults to today.
+  // Day documents: pick a date, print that day's attendance rosters (+ exam
+  // forms on a test day). Defaults to today.
   const [rosterDate, setRosterDate] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -1037,7 +1038,7 @@ export function AcademyBuilderPage() {
           )}
           {!academy.isTemplate && (
             <div className="flex shrink-0 items-center gap-2">
-              <label htmlFor="day-roster-date" className="text-xs font-medium text-watch-700">Day sign-in roster</label>
+              <label htmlFor="day-roster-date" className="text-xs font-medium text-watch-700">Day documents</label>
               <Input
                 id="day-roster-date"
                 type="date"
@@ -1046,13 +1047,34 @@ export function AcademyBuilderPage() {
                 aria-label="Roster date"
                 className="w-auto"
               />
-              <Button
-                onClick={() => rosterDate && window.open(`/roster/day/print/${academyId}/${rosterDate}`, '_blank', 'noopener')}
-                disabled={!rosterDate}
-                title="Print this day's course load as a sign-in roster"
-              >
-                Print
-              </Button>
+              {/* Both buttons open the day-documents page — the same logic as
+                  Roster → Attendance → "From schedule": one roster per course
+                  run, plus the exam forms when a block that day is a test. */}
+              <div className="flex flex-col gap-1">
+                <Button
+                  onClick={() => rosterDate && window.open(`/roster/day/print/${academyId}/${rosterDate}`, '_blank', 'noopener')}
+                  disabled={!rosterDate}
+                  title="Print this day's attendance rosters (one per course) — plus the exam rules and instructor evaluation when a block is a test"
+                >
+                  Print
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="!px-2 !py-1 text-xs"
+                  disabled={!rosterDate}
+                  title="Same documents for the next day this class has anything scheduled (skips weekends and gaps)"
+                  onClick={() => {
+                    const next = nextSessionDate(sessions, rosterDate);
+                    if (!next) {
+                      window.alert('Nothing is scheduled after that date.');
+                      return;
+                    }
+                    window.open(`/roster/day/print/${academyId}/${next}`, '_blank', 'noopener');
+                  }}
+                >
+                  Print next day&apos;s documents
+                </Button>
+              </div>
             </div>
           )}
         </div>

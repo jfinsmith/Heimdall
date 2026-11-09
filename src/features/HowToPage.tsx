@@ -358,7 +358,7 @@ export function HowToPage() {
           <Sub title="Printable attendance rosters (the official paper record)">
             <Tips items={[
               <><B>Manual</B> — pick the course and fill the header fields yourself, then print.</>,
-              <><B>From schedule</B> — pick a date and HEIMDALL builds one roster per course block from the calendar: times, hours (lunch handled per the session&apos;s setting), lead + additional instructors from sign-ups. Tweak anything before printing.</>,
+              <><B>From schedule</B> — pick a date and HEIMDALL builds one roster per course block from the calendar: times, hours (lunch handled per the session&apos;s setting), lead + additional instructors from sign-ups. Tweak anything before printing. A 1-hour test followed by 9 hours of another course prints <B>two</B> rosters. On a <B>test day</B> (a session with the TEST box checked) the same print job adds that course&apos;s <B>Examination Rules &amp; Disclosure</B> form — question count and time limit filled from Admin → Curriculum &amp; Hours → Test info — and an <B>Instructor Evaluation</B> for each lead who taught the topic; choose 1 master of each or one per cadet.</>,
               <><B>Blank</B> — prints the class info (header, sequence #, class #, total hours, program dates) and the student list, with course/date/times/instructors left as empty boxes and <B>5 write-in rows</B> for additional course takers.</>,
               <>Rosters auto-shrink to fit <B>one page</B> (down to a readable floor). Instructor and Coordinator signature lines print side by side.</>,
             ]} />
@@ -424,7 +424,7 @@ export function HowToPage() {
         <Section id="printing" title="Printing guide" role="Staff">
           <Tips items={[
             <><B>Cadet & staffing schedules</B> — builder → Print: a branded cover, week-at-a-glance, day-by-day schedule with notes, Test/Scenario/PT highlights, and holidays. Cadet mode hides internal pay blocks; staff mode shows every role slot and open seats.</>,
-            <><B>Day sign-in roster</B> — builder → pick a date: the day&apos;s topics with times + instructors and a numbered signature sheet.</>,
+            <><B>Day documents</B> — builder → pick a date → <B>Print</B>: exactly the Roster → Attendance &quot;From schedule&quot; output for that day (one roster per course, plus the exam forms on a test day). <B>Print next day&apos;s documents</B> does the same for the next day the class has anything scheduled — tomorrow&apos;s stack in one click.</>,
             <><B>Attendance rosters</B> — Roster → Attendance (Manual / From schedule / Blank), one page each.</>,
             <><B>Certificate & transcript</B> — Roster → Members → Certificate link on each cadet.</>,
             <><B>Letters & documents</B> — Reports tab → open a filed report → Print.</>,
@@ -454,6 +454,7 @@ export function HowToPage() {
           <Tips items={[
             <>The five FDLE programs (LE 770h, CO, crossovers, EOT) ship as platform curricula — read-only, centrally verified. Your org can add its own disciplines.</>,
             <>Per course: FDLE minimum hours, CJK number, <B>Test</B> flag (gradable), <B>high-liability</B> flag, instructor ratio, lead qualification, default role slots.</>,
+            <><B>Test info</B> (on every curriculum card, including the read-only platform programs): your organization&apos;s <B>number of questions</B> and <B>time limit</B> for each course&apos;s written exam. It&apos;s yours alone — other organizations set their own — and it auto-fills the Examination Rules &amp; Disclosure form printed with a test day&apos;s documents.</>,
             <>Per discipline: which roster tabs are enabled (attendance, gradebook, discipline…), the attendance sheet layout (grid vs sign-in), report categories, and <B>printed-document branding overrides</B> (logo/name/tagline/address for that discipline&apos;s paperwork — e.g. a sheriff&apos;s-office program under a college org).</>,
           ]} />
         </Section>

@@ -4,27 +4,24 @@
  * is always the sum of its course hours; academies pick a discipline at
  * creation and the builder tracks per-course coverage against these minimums.
  */
-import React, { useEffect, useMemo, useState } from 'react';
-import { deleteDoc, doc, setDoc } from 'firebase/firestore';
+import React, { useMemo, useState } from 'react';
+import { deleteDoc, doc, FieldPath, setDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { httpsCallable } from 'firebase/functions';
-import { db, functions, storage } from '../../lib/firebase';
-import { useCollection, type WithId } from '../../lib/firestore';
+import { db, storage } from '../../lib/firebase';
+import { orgConfigPath, useCollection, useDoc, type WithId } from '../../lib/firestore';
 import { useAllCurricula } from '../../lib/curricula';
 import { useAuth } from '../../auth/AuthContext';
-import type { CurriculumCourse, CurriculumDoc, QualificationKey, RosterModuleKey } from '../../types';
+import type { CurriculumCourse, CurriculumDoc, QualificationKey, ReportConfigDoc, RosterModuleKey } from '../../types';
 import { QUALIFICATION_LABELS } from '../../types';
 import { Badge, Button, Field, Input, PageHeader, Select, TextArea } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import { logAudit } from '../sessions/audit';
 import { ROSTER_MODULES, DEFAULT_ROSTER_MODULES } from '../cadre/roster/rosterModules';
+import { courseKey } from '../cadre/roster/rosterShared';
 import { REPORT_TYPES } from '../cadre/reports/reportTypes';
 import { useOrgLibraryForms } from '../cadre/reports/documentLibrary';
-import { FDLE_DEFAULT_CURRICULA } from './fdleCurricula';
 import { friendlyError } from '../../lib/callableError';
 
-const ownerListOrgs = httpsCallable<void, { orgs: { orgId: string; legalName: string }[] }>(functions, 'ownerListOrgs');
-const importDefaultCurricula = httpsCallable<{ sourceOrgId: string }, { ok: boolean; count: number }>(functions, 'importDefaultCurricula');
 
 /**
  * Curriculum & Hours editor. scope='org' edits the active org's curricula;
@@ -32,8 +29,12 @@ const importDefaultCurricula = httpsCallable<{ sourceOrgId: string }, { ok: bool
  * new organization is seeded from.
  */
 export function CurriculumAdminPage({ scope = 'org' }: { scope?: 'org' | 'defaults' }) {
-  const { firebaseUser } = useAuth();
+  const { firebaseUser, orgId } = useAuth();
   const isDefaults = scope === 'defaults';
+  // This org's written-exam facts (question count + time limit per course) —
+  // org-owned even for the read-only platform programs.
+  const { data: reportCfg } = useDoc<ReportConfigDoc>(!isDefaults && orgId ? orgConfigPath('reportConfig', orgId) : null);
+  const [testInfoFor, setTestInfoFor] = useState<WithId<CurriculumDoc> | null>(null);
   const coll = isDefaults ? 'defaultCurricula' : 'curricula';
   // Owner edits the five platform FDLE programs (defaultCurricula). An org sees
   // those read-only — the single source of truth across all orgs — and may add or
@@ -90,10 +91,14 @@ export function CurriculumAdminPage({ scope = 'org' }: { scope?: 'org' | 'defaul
         ))}
       </ul>
       {readOnly ? (
-        <p className="text-xs text-slate-400">Managed by the platform owner — identical across every organization.</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={() => setTestInfoFor(c)} title="Your organization's question counts and time limits for this program's written exams">Test info</Button>
+          <p className="text-xs text-slate-400">Courses managed by the platform owner — identical across every organization.</p>
+        </div>
       ) : (
         <div className="flex gap-2">
           <Button onClick={() => setEditing(c)}>Edit</Button>
+          {!isDefaults && <Button onClick={() => setTestInfoFor(c)} title="Question counts and time limits for this curriculum's written exams">Test info</Button>}
           <Button variant="ghost" onClick={() => toggleActive(c)}>
             {c.active ? 'Deactivate' : 'Activate'}
           </Button>
@@ -118,10 +123,9 @@ export function CurriculumAdminPage({ scope = 'org' }: { scope?: 'org' | 'defaul
       />
       <p className="mb-4 max-w-2xl text-sm text-slate-500">
         {isDefaults
-          ? 'These templates seed every NEW organization’s curricula automatically (with org-namespaced ids, so tenants never collide). Edit them here, or import a starting set from an existing organization below. FDLE high-liability courses (Firearms, Defensive Tactics, Vehicle Operations, First Aid) get their recommended instructor ratios applied on import.'
+          ? 'The platform FDLE programs every organization sees read-only — the single source of truth across all tenants. Edit a program here to change it for everyone; organizations add their own curricula (and their own test info) from Admin → Curriculum & Hours.'
           : "The five platform FDLE programs (Law Enforcement, Corrections, both crossovers, and EOT) are managed by HEIMDALL and shown read-only — the single source of truth across every organization. Below them, add your ORG'S OWN curricula (course list, hours, high-liability ▲, lead-instructor qualification). The builder, roster, and reports all pull from here."}
       </p>
-      {isDefaults && <ImportDefaults />}
 
       {platformCards.length > 0 && (
         <section className="mb-6">
@@ -144,6 +148,14 @@ export function CurriculumAdminPage({ scope = 'org' }: { scope?: 'org' | 'defaul
         {[...editable].sort((a, b) => a.label.localeCompare(b.label)).map((c) => renderCard(c, false))}
       </div>
 
+      {testInfoFor && orgId && (
+        <TestInfoModal
+          curriculum={testInfoFor}
+          orgId={orgId}
+          current={reportCfg?.examInfo?.[testInfoFor.id] ?? {}}
+          onClose={() => setTestInfoFor(null)}
+        />
+      )}
       {editing && (
         <CurriculumEditorModal
           scope={scope}
@@ -155,66 +167,112 @@ export function CurriculumAdminPage({ scope = 'org' }: { scope?: 'org' | 'defaul
   );
 }
 
-/** Owner-only: seed the platform default curricula — from the built-in FDLE set
- *  (CJK + ratios baked in) or by copying an existing org's curricula. */
-function ImportDefaults() {
-  const [orgs, setOrgs] = useState<{ orgId: string; legalName: string }[]>([]);
-  const [src, setSrc] = useState('');
+
+/**
+ * Org-owned test facts for one curriculum: number of questions + time limit
+ * per course. Lives on reportConfig/{orgId}.examInfo[curriculumId] (admin
+ * write, already org-scoped by the rules) so an org can set them even for the
+ * read-only platform programs. Auto-fills the Examination Rules & Disclosure
+ * form printed with a test day's documents.
+ */
+function TestInfoModal({
+  curriculum,
+  orgId,
+  current,
+  onClose,
+}: {
+  curriculum: WithId<CurriculumDoc>;
+  orgId: string;
+  current: Record<string, { questions?: number; minutes?: number }>;
+  onClose: () => void;
+}) {
+  const [rows, setRows] = useState<Record<string, { questions: string; minutes: string }>>(() =>
+    Object.fromEntries(
+      curriculum.courses.map((c) => {
+        const cur = current[courseKey(c)];
+        return [courseKey(c), { questions: cur?.questions ? String(cur.questions) : '', minutes: cur?.minutes ? String(cur.minutes) : '' }];
+      })
+    )
+  );
+  const [showAll, setShowAll] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
-  useEffect(() => { ownerListOrgs().then((r) => setOrgs(r.data.orgs)).catch(() => setOrgs([])); }, []);
+  const [error, setError] = useState<string | null>(null);
+  const tested = curriculum.courses.filter((c) => c.tested);
+  // Programs with no courses flagged "tested" list everything.
+  const listed = showAll || tested.length === 0 ? curriculum.courses : tested;
 
-  async function loadFdle() {
-    if (!window.confirm('Load the built-in FDLE standard curricula? This writes the Law Enforcement program (with CJK numbers + high-liability ratios) and shells for Corrections, EOT, and the two crossovers — overwriting any default of the same key. Per-course HOURS are estimates to verify.')) return;
+  async function save() {
     setBusy(true);
-    setMsg(null);
+    setError(null);
     try {
-      for (const c of FDLE_DEFAULT_CURRICULA) {
-        await setDoc(doc(db, 'defaultCurricula', c.key), c, { merge: false });
+      const map: Record<string, { questions?: number; minutes?: number }> = {};
+      for (const [key, r] of Object.entries(rows)) {
+        const q = Math.round(Number(r.questions));
+        const m = Math.round(Number(r.minutes));
+        const entry = { ...(q > 0 ? { questions: q } : {}), ...(m > 0 ? { minutes: m } : {}) };
+        if (Object.keys(entry).length) map[key] = entry;
       }
-      setMsg(`Loaded ${FDLE_DEFAULT_CURRICULA.length} FDLE standard curricula. Verify/adjust hours, then they’ll seed every new org.`);
-    } catch (e) {
-      setMsg((e as Error).message || 'Load failed.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function run() {
-    if (!src) return;
-    if (!window.confirm('Replace the default curricula with a copy of the selected organization’s curricula? (Existing organizations are not affected — only the templates new orgs are seeded from.)')) return;
-    setBusy(true);
-    setMsg(null);
-    try {
-      const r = await importDefaultCurricula({ sourceOrgId: src });
-      setMsg(`Imported ${r.data.count} curricula as new-org defaults.`);
-    } catch (e) {
-      setMsg((e as Error).message || 'Import failed.');
-    } finally {
+      // mergeFields replaces ONLY this curriculum's sub-map (so a cleared row
+      // really clears) while leaving categories/overrides/other curricula alone.
+      await setDoc(doc(db, orgConfigPath('reportConfig', orgId)), { examInfo: { [curriculum.id]: map } }, { mergeFields: [new FieldPath('examInfo', curriculum.id)] });
+      onClose();
+    } catch (err) {
+      setError(friendlyError(err, 'Could not save the test info.'));
       setBusy(false);
     }
   }
 
   return (
-    <div className="mb-5 space-y-3 rounded-lg border border-watch-100 bg-white p-3 shadow-sm">
-      <div className="flex flex-wrap items-center gap-3">
-        <Button variant="primary" disabled={busy} onClick={loadFdle}>{busy ? 'Working…' : 'Load FDLE standard curricula'}</Button>
-        <span className="text-xs text-slate-500">Recommended starting point — LE fully populated (CJK + ratios); Corrections/EOT/crossovers as shells to fill.</span>
+    <Modal open onClose={onClose} title={`Test info — ${curriculum.label}`}>
+      <div className="space-y-3">
+        <p className="text-sm text-slate-600">
+          Your organization&apos;s written-exam details. When a session is marked as a test, the day&apos;s documents
+          print the <strong>Examination Rules &amp; Disclosure</strong> form with these filled in. Leave a row blank
+          if a course has no written exam.
+        </p>
+        {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
+        <div className="max-h-[55vh] overflow-y-auto rounded-md border border-watch-100">
+          <table className="w-full text-left text-sm">
+            <thead className="sticky top-0 bg-watch-50 text-xs uppercase tracking-wider text-watch-600">
+              <tr>
+                <th className="px-3 py-2">Course</th>
+                <th className="w-28 px-2 py-2">Questions</th>
+                <th className="w-32 px-2 py-2">Time limit (min)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-watch-50">
+              {listed.map((c) => {
+                const key = courseKey(c);
+                const r = rows[key] ?? { questions: '', minutes: '' };
+                const set = (patch: Partial<{ questions: string; minutes: string }>) => setRows((prev) => ({ ...prev, [key]: { ...r, ...patch } }));
+                return (
+                  <tr key={key}>
+                    <td className="px-3 py-1.5">
+                      {c.cjk && <span className="mr-1 font-mono text-xs text-slate-400">{c.cjk}</span>}
+                      {c.name}
+                    </td>
+                    <td className="px-2 py-1"><Input type="number" min={0} value={r.questions} onChange={(e) => set({ questions: e.target.value })} aria-label={`${c.name} questions`} /></td>
+                    <td className="px-2 py-1"><Input type="number" min={0} value={r.minutes} onChange={(e) => set({ minutes: e.target.value })} aria-label={`${c.name} time limit`} /></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {tested.length > 0 && (
+          <label className="flex items-center gap-2 text-xs text-slate-600">
+            <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
+            Show every course (not just the {tested.length} flagged as tested)
+          </label>
+        )}
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button type="button" variant="primary" disabled={busy} onClick={() => void save()}>Save test info</Button>
+        </div>
       </div>
-      <div className="flex flex-wrap items-end gap-3 border-t border-watch-50 pt-3">
-        <Field label="…or import defaults from an organization" className="min-w-[16rem] flex-1">
-          <Select value={src} onChange={(e) => setSrc(e.target.value)}>
-            <option value="">Choose an organization…</option>
-            {orgs.map((o) => <option key={o.orgId} value={o.orgId}>{o.legalName}</option>)}
-          </Select>
-        </Field>
-        <Button variant="secondary" disabled={!src || busy} onClick={run}>{busy ? 'Importing…' : 'Import'}</Button>
-      </div>
-      {msg && <span className="block text-sm text-slate-600">{msg}</span>}
-    </div>
+    </Modal>
   );
 }
-
 function CurriculumEditorModal({
   scope,
   curriculum,
