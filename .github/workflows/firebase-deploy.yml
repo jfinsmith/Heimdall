@@ -108,5 +108,8 @@ jobs:
           distribution: temurin
           java-version: 17
       - run: npm ci
-      - name: Firestore rules + signup-concurrency tests (emulator)
+      # The Viewer tests call the real Cloud Functions handlers against the
+      # emulator, so the functions' own dependencies must be installed too.
+      - run: npm ci --prefix functions
+      - name: Firestore rules + signup-concurrency + Viewer function tests (emulator)
         run: npx -y firebase-tools@13 emulators:exec --only firestore,auth,storage "npm run test:emulator"

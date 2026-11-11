@@ -41,6 +41,12 @@ export function RequireAuth() {
     return <Navigate to="/org-suspended" replace />;
   }
   if (!profile) return <Outlet />;
+  // A read-only Viewer account lives on ONE page. It skips the onboarding gates
+  // below on purpose — no date of birth, rank or password change is ever asked
+  // of it (it may not write anything, its own profile included) — and every
+  // other route sends it there. The rules + callables enforce read-only; this
+  // only keeps the UI honest.
+  if (profile.role === 'viewer') return location.pathname === '/viewer' ? <Outlet /> : <Navigate to="/viewer" replace />;
   // Onboarding gates, in priority order. Each gate HOLDS the user on its own
   // page (renders the Outlet there) and never lets a later gate fire — so two
   // outstanding gates can't bounce between each other (e.g. an admin-created
@@ -80,6 +86,14 @@ export function RequireAdmin() {
   const { role, loading } = useAuth();
   if (loading) return <FullPageSpinner />;
   if (!can.manageOrg(role)) return <Navigate to="/" replace />;
+  return <Outlet />;
+}
+
+/** The read-only Staffing page: Viewer accounts, plus the platform owner (preview). */
+export function RequireViewerPage() {
+  const { role, platformOwner, loading } = useAuth();
+  if (loading) return <FullPageSpinner />;
+  if (!can.viewViewerPage(role, platformOwner)) return <Navigate to="/" replace />;
   return <Outlet />;
 }
 

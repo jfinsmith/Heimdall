@@ -75,6 +75,7 @@ cd functions && npx tsc --noEmit    # functions type-check
 The rules tests need a Java runtime for the Firebase emulator:
 
 ```bash
+npm ci --prefix functions   # the Viewer tests call the functions directly
 firebase emulators:exec --only firestore,auth,storage --project demo-heimdall "npm run test:emulator"
 ```
 
@@ -110,6 +111,13 @@ Scheduled functions (Cloud Scheduler, America/New_York):
   Coordinator and above are staff; sergeant and above are admins. Lieutenant and
   director have identical permissions. Acting on another member requires a
   strictly lower rank.
+- `viewer` is a read-only staffing account outside the ranks, created only with
+  `scripts/create-viewer.ts`. The rules deny it every direct read except its own
+  profile and every write; its single data source is the `getViewerStaffing`
+  callable, which returns names, roles, counts and schedule facts only and logs
+  each sign-in to `auditLog`. Every write callable refuses it and `notify()`
+  skips it. Admins can suspend or deactivate it; only the platform owner can
+  change, edit or delete it.
 - The rules trust the **token claims** (`role`, `orgId`, `platformOwner`,
   `status`). Claims are minted only by callables. A `status` claim of
   `suspended`, `inactive` or `pending` blocks all organization reads; `pending`

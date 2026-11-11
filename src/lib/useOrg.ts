@@ -8,6 +8,8 @@ import { useDoc } from './firestore';
 import type { OrgDoc } from '../types';
 
 export function useOrg() {
-  const { orgId } = useAuth();
-  return useDoc<OrgDoc>(orgId ? `orgs/${orgId}` : null);
+  // A read-only Viewer may not read the org doc (rules deny it); its page gets
+  // the org name and suspension check from the getViewerStaffing callable.
+  const { orgId, role } = useAuth();
+  return useDoc<OrgDoc>(orgId && role !== 'viewer' ? `orgs/${orgId}` : null);
 }

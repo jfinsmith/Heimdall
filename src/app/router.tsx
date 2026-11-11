@@ -8,7 +8,7 @@
 import React, { Suspense, lazy } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AppShell } from './AppShell';
-import { RequireAdmin, RequireAuth, RequireStaff, RequirePlatformOwner } from '../auth/guards';
+import { RequireAdmin, RequireAuth, RequireStaff, RequirePlatformOwner, RequireViewerPage } from '../auth/guards';
 import { useAuth } from '../auth/AuthContext';
 import { Spinner } from '../components/ui';
 // Auth/entry pages stay eager — they're small and needed immediately on load.
@@ -22,6 +22,7 @@ import { CompleteProfilePage } from '../auth/CompleteProfilePage';
 import { ChangePasswordPage } from '../auth/ChangePasswordPage';
 
 // Lazy page chunks.
+const ViewerStaffingPage = lazy(() => import('../features/viewer/ViewerStaffingPage').then((m) => ({ default: m.ViewerStaffingPage })));
 const OverviewPage = lazy(() => import('../features/OverviewPage').then((m) => ({ default: m.OverviewPage })));
 const HowToPage = lazy(() => import('../features/HowToPage').then((m) => ({ default: m.HowToPage })));
 const NotificationsPage = lazy(() => import('../features/NotificationsPage').then((m) => ({ default: m.NotificationsPage })));
@@ -168,6 +169,11 @@ export function AppRouter() {
                 <Route path="/admin/gjallarhorn" element={<GjallarhornSettingsPage />} />
                 <Route path="/admin/billing" element={<BillingPage />} />
                 <Route path="/admin/compliance" element={<CompliancePage />} />
+              </Route>
+
+              {/* Read-only Viewer accounts (RequireAuth pins them here) + owner preview. */}
+              <Route element={<RequireViewerPage />}>
+                <Route path="/viewer" element={<ViewerStaffingPage />} />
               </Route>
 
               {/* Platform owner only — cross-org HEIMDALL operator console */}

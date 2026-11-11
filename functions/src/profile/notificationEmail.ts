@@ -21,6 +21,7 @@
  * resets, purge warnings) intentionally ignores this and uses the sign-in email.
  */
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { refuseViewer } from '../viewer/guard';
 import { createHash, randomInt, timingSafeEqual } from 'crypto';
 import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { renderEmail, MAIL_FROM, MAIL_QUEUE } from '../gjallarhorn/templates';
@@ -48,6 +49,7 @@ interface Challenge {
 export const requestNotificationEmail = onCall<{ email: string }>(async (request) => {
   const caller = request.auth;
   if (!caller) throw new HttpsError('unauthenticated', 'Sign in required.');
+  refuseViewer(caller.token);
   const db = getFirestore();
   const userSnap = await db.doc(`users/${caller.uid}`).get();
   if (!userSnap.exists) throw new HttpsError('failed-precondition', 'No profile found.');
@@ -55,6 +57,7 @@ export const requestNotificationEmail = onCall<{ email: string }>(async (request
   if (user.status === 'suspended' || user.status === 'inactive') {
     throw new HttpsError('permission-denied', 'Your account is not active.');
   }
+  refuseViewer(null, user);
 
   const rawEmail: unknown = request.data?.email;
   const emailLower = typeof rawEmail === 'string' ? rawEmail.trim().toLowerCase() : '';
@@ -126,6 +129,7 @@ export const requestNotificationEmail = onCall<{ email: string }>(async (request
 export const confirmNotificationEmail = onCall<{ code: string }>(async (request) => {
   const caller = request.auth;
   if (!caller) throw new HttpsError('unauthenticated', 'Sign in required.');
+  refuseViewer(caller.token);
   const db = getFirestore();
 
   const rawCode: unknown = request.data?.code;
@@ -168,9 +172,12 @@ export const confirmNotificationEmail = onCall<{ code: string }>(async (request)
 export const clearNotificationEmail = onCall<{ pendingOnly?: boolean } | undefined>(async (request) => {
   const caller = request.auth;
   if (!caller) throw new HttpsError('unauthenticated', 'Sign in required.');
+  refuseViewer(caller.token);
   // pendingOnly abandons an in-flight change while KEEPING any already-verified
   // address; the full clear reverts everything to the sign-in email.
   const pendingOnly = request.data?.pendingOnly === true;
+  // The stored role too: suspension strips the role claim from the token.
+  refuseViewer(null, (await getFirestore().doc(`users/${caller.uid}`).get()).data());
   await getFirestore().doc(`users/${caller.uid}`).update({
     ...(pendingOnly
       ? {}

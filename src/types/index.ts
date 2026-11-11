@@ -10,7 +10,15 @@ import type { Timestamp } from 'firebase/firestore';
 // Role KEYS are stable (claims + firestore.rules depend on them); display
 // labels are editable per-org via GlobalSettings.roleLabels. 'guest' is a
 // read-only rank (not staff, not admin — excluded from STAFF/ADMIN below).
-export type Role = 'director' | 'lieutenant' | 'sergeant' | 'coordinator' | 'instructor' | 'guest';
+/**
+ * 'viewer' is a READ-ONLY staffing account (e.g. an assistant checking staffing),
+ * OUTSIDE the rank ladder: never in STAFF_ROLES / ADMIN_ROLES, never assignable
+ * from the app (scripts/create-viewer.ts only). It sees only the /viewer page,
+ * fed by the getViewerStaffing callable; the rules deny it every direct read
+ * except its own profile, and every write.
+ */
+export type Role = 'director' | 'lieutenant' | 'sergeant' | 'coordinator' | 'instructor' | 'guest' | 'viewer';
+export const isViewerRole = (role?: Role | null): boolean => role === 'viewer';
 
 /** Roles that can build schedules / approve sign-ups ("coordinator+"). */
 export const STAFF_ROLES: Role[] = ['director', 'lieutenant', 'sergeant', 'coordinator'];

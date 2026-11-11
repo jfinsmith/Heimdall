@@ -16,10 +16,14 @@ service firebase.storage {
     // strips the role claim but keeps the orgId claim and mints a status claim
     // (same as firestore.rules' activeStatus) — without this a locked-out member
     // could still read the org's floor plans and keep uploading files.
+    function notViewer() { return request.auth.token.get('role', '') != 'viewer'; }
+    // A read-only Viewer account is never an active member here: it reads and
+    // uploads nothing (see isViewer in firestore.rules).
     function activeMember(orgId) {
       return signedIn()
         && orgId == request.auth.token.get('orgId', null)
-        && !(request.auth.token.get('status', 'active') in ['suspended', 'inactive', 'pending']);
+        && !(request.auth.token.get('status', 'active') in ['suspended', 'inactive', 'pending'])
+        && notViewer();
     }
 
     // Bug / feature report screenshots, partitioned by tenant: feedback/{orgId}/{uid}/…
@@ -29,13 +33,13 @@ service firebase.storage {
     // images. Images only, ≤ 10 MB.
     match /feedback/{orgId}/{uid}/{allPaths=**} {
       allow read: if (isAdmin() && orgId == request.auth.token.get('orgId', null))
-        || (signedIn() && request.auth.uid == uid);
+        || (signedIn() && request.auth.uid == uid && notViewer());
       allow write: if activeMember(orgId)
         && request.auth.uid == uid
         && request.resource.size < 10 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
       allow delete: if (isAdmin() && orgId == request.auth.token.get('orgId', null))
-        || (signedIn() && request.auth.uid == uid);
+        || (signedIn() && request.auth.uid == uid && notViewer());
     }
 
     // Per-org logo (branding). Public read — a logo is a non-sensitive brand
@@ -67,13 +71,13 @@ service firebase.storage {
     // quals, not just admins). Images only, ≤ 10 MB.
     match /certCards/{orgId}/{uid}/{allPaths=**} {
       allow read: if (isStaff() && orgId == request.auth.token.get('orgId', null))
-        || (signedIn() && request.auth.uid == uid);
+        || (signedIn() && request.auth.uid == uid && notViewer());
       allow write: if activeMember(orgId)
         && request.auth.uid == uid
         && request.resource.size < 10 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
       allow delete: if (isAdmin() && orgId == request.auth.token.get('orgId', null))
-        || (signedIn() && request.auth.uid == uid);
+        || (signedIn() && request.auth.uid == uid && notViewer());
     }
 
     // Everything else: locked down by default.

@@ -20,9 +20,17 @@ export const can = {
   verifyQualifications: (role?: Role | null) => isStaff(role),
   /** See draft (unpublished) academies and the staffing dashboard. */
   viewStaffing: (role?: Role | null) => isStaff(role),
-  /** Signed-in members (except read-only guests) may sign up for qualified slots. */
-  signUp: (role?: Role | null) => !!role && role !== 'guest',
+  /** Signed-in members (except the read-only guest and viewer) may sign up for qualified slots. */
+  signUp: (role?: Role | null) => !!role && role !== 'guest' && role !== 'viewer',
+  /** The read-only Staffing page (/viewer): Viewer accounts, plus the platform
+   *  owner previewing it. The server function enforces the same. */
+  viewViewerPage: (role: Role | null | undefined, platformOwner = false) => role === 'viewer' || platformOwner,
 };
+
+/** Display label for the read-only Viewer (not part of the editable rank names). */
+export const VIEWER_LABEL = 'Viewer';
+const VIEWER_SUMMARY =
+  'Read-only staffing account. Sees one Staffing page — classes, sessions, cadet counts, who is signed up, and open slots — and nothing else. Cannot change anything and receives no notifications. Created and managed by the platform owner; any admin can suspend it.';
 
 /** Single source of truth — ranks lowest → highest. Everything below derives from this. */
 export const RANKS: { key: Role; defaultLabel: string; summary: string }[] = [
@@ -71,7 +79,8 @@ export const RANKS: { key: Role; defaultLabel: string; summary: string }[] = [
  * admin may act on, and assign, only ranks STRICTLY below their own. A
  * role-less target (a pending join) ranks lowest.
  */
-const ROLE_RANK: Record<Role, number> = { guest: 0, instructor: 1, coordinator: 2, sergeant: 3, lieutenant: 4, director: 4 };
+// viewer: outside the ladder; lowest so any admin may suspend/deactivate it.
+const ROLE_RANK: Record<Role, number> = { guest: 0, instructor: 1, coordinator: 2, sergeant: 3, lieutenant: 4, director: 4, viewer: 0 };
 const TOP_RANK = 4;
 const rankOf = (role?: Role | null): number => (role ? ROLE_RANK[role] ?? 0 : 0);
 export function isTopAdmin(role?: Role | null): boolean {
@@ -81,22 +90,26 @@ export function isTopAdmin(role?: Role | null): boolean {
 export function mayActOn(caller?: Role | null, target?: Role | null): boolean {
   return !!caller && (isTopAdmin(caller) || rankOf(target) < rankOf(caller));
 }
-/** May `caller` assign `role` to someone (approve-as / role dropdown / add user)? */
+/** May `caller` assign `role` to someone (approve-as / role dropdown / add user)?
+ *  Never 'viewer' — Viewer accounts are created by script only. */
 export function mayAssignRole(caller: Role | null | undefined, role: Role): boolean {
-  return !!caller && (isTopAdmin(caller) || rankOf(role) < rankOf(caller));
+  return !!caller && role !== 'viewer' && (isTopAdmin(caller) || rankOf(role) < rankOf(caller));
 }
 
 /** Default labels (key → label). Per-org overrides applied via getRankLabel/rankLabels. */
-export const ROLE_LABELS: Record<Role, string> = Object.fromEntries(
-  RANKS.map((r) => [r.key, r.defaultLabel])
-) as Record<Role, string>;
+export const ROLE_LABELS: Record<Role, string> = {
+  ...(Object.fromEntries(RANKS.map((r) => [r.key, r.defaultLabel])) as Record<Role, string>),
+  viewer: VIEWER_LABEL,
+};
 
 /** One-line summary of each role, shown on the permissions reference page. */
-export const ROLE_SUMMARIES: Record<Role, string> = Object.fromEntries(
-  RANKS.map((r) => [r.key, r.summary])
-) as Record<Role, string>;
+export const ROLE_SUMMARIES: Record<Role, string> = {
+  ...(Object.fromEntries(RANKS.map((r) => [r.key, r.summary])) as Record<Role, string>),
+  viewer: VIEWER_SUMMARY,
+};
 
-/** Ranks lowest → highest (e.g. for user-list grouping / email role filters). */
+/** Ranks lowest → highest (e.g. for user-list grouping / email role filters).
+ *  The read-only Viewer is NOT a rank and is not listed. */
 export const RANK_ORDER_ASC: Role[] = RANKS.map((r) => r.key);
 
 /** Chain of command, highest first — used for escalation routing displays. */
@@ -104,12 +117,16 @@ export const CHAIN_OF_COMMAND: Role[] = [...RANKS].reverse().map((r) => r.key);
 
 /** Resolve a rank's display label, honoring the org's editable override. */
 export function getRankLabel(role: Role, settings?: GlobalSettings | null): string {
+  if (role === 'viewer') return VIEWER_LABEL;
   return settings?.roleLabels?.[role]?.trim() || ROLE_LABELS[role];
 }
 
 /** Full key→label map with per-org overrides applied. */
 export function rankLabels(settings?: GlobalSettings | null): Record<Role, string> {
-  return Object.fromEntries(RANKS.map((r) => [r.key, getRankLabel(r.key, settings)])) as Record<Role, string>;
+  return {
+    ...(Object.fromEntries(RANKS.map((r) => [r.key, getRankLabel(r.key, settings)])) as Record<Role, string>),
+    viewer: VIEWER_LABEL,
+  };
 }
 
 /**
@@ -131,19 +148,20 @@ export function mayDeleteAcademy(
  * is documentation and must be kept in sync with them.
  */
 export const PERMISSION_MATRIX: { capability: string; roles: Record<Role, boolean> }[] = [
-  { capability: 'View published academies, calendar & open sessions', roles: { director: true, lieutenant: true, sergeant: true, coordinator: true, instructor: true, guest: true } },
-  { capability: 'Sign up / withdraw for qualified slots', roles: { director: true, lieutenant: true, sergeant: true, coordinator: true, instructor: true, guest: false } },
-  { capability: 'Edit own profile & claim qualifications', roles: { director: true, lieutenant: true, sergeant: true, coordinator: true, instructor: true, guest: true } },
-  { capability: 'View draft academies, staffing board & reports', roles: { director: true, lieutenant: true, sergeant: true, coordinator: true, instructor: false, guest: false } },
-  { capability: 'Create / edit / clone academies & schedules', roles: { director: true, lieutenant: true, sergeant: true, coordinator: true, instructor: false, guest: false } },
-  { capability: 'Delete an academy (coordinators: only classes they created)', roles: { director: true, lieutenant: true, sergeant: true, coordinator: false, instructor: false, guest: false } },
-  { capability: 'Create / edit / cancel sessions & role slots', roles: { director: true, lieutenant: true, sergeant: true, coordinator: true, instructor: false, guest: false } },
-  { capability: 'Approve / override instructor sign-ups', roles: { director: true, lieutenant: true, sergeant: true, coordinator: true, instructor: false, guest: false } },
-  { capability: 'Verify instructor qualifications', roles: { director: true, lieutenant: true, sergeant: true, coordinator: true, instructor: false, guest: false } },
-  { capability: 'Send bulk messages (Gjallarhorn)', roles: { director: true, lieutenant: true, sergeant: true, coordinator: true, instructor: false, guest: false } },
-  { capability: 'Receive escalation / understaffing alerts', roles: { director: true, lieutenant: true, sergeant: true, coordinator: true, instructor: false, guest: false } },
-  { capability: 'Approve pending users & deactivate accounts', roles: { director: true, lieutenant: true, sergeant: true, coordinator: false, instructor: false, guest: false } },
-  { capability: 'Assign roles (writes the auth claim)', roles: { director: true, lieutenant: true, sergeant: true, coordinator: false, instructor: false, guest: false } },
-  { capability: 'Org settings, branding & allowed domains', roles: { director: true, lieutenant: true, sergeant: true, coordinator: false, instructor: false, guest: false } },
-  { capability: 'Gjallarhorn settings & email automations', roles: { director: true, lieutenant: true, sergeant: true, coordinator: false, instructor: false, guest: false } },
+  { capability: 'View published academies, calendar & open sessions', roles: { director: true, lieutenant: true, sergeant: true, coordinator: true, instructor: true, guest: true, viewer: false } },
+  { capability: 'Sign up / withdraw for qualified slots', roles: { director: true, lieutenant: true, sergeant: true, coordinator: true, instructor: true, guest: false, viewer: false } },
+  { capability: 'Edit own profile & claim qualifications', roles: { director: true, lieutenant: true, sergeant: true, coordinator: true, instructor: true, guest: true, viewer: false } },
+  { capability: 'View draft academies, staffing board & reports', roles: { director: true, lieutenant: true, sergeant: true, coordinator: true, instructor: false, guest: false, viewer: false } },
+  { capability: 'Create / edit / clone academies & schedules', roles: { director: true, lieutenant: true, sergeant: true, coordinator: true, instructor: false, guest: false, viewer: false } },
+  { capability: 'Delete an academy (coordinators: only classes they created)', roles: { director: true, lieutenant: true, sergeant: true, coordinator: false, instructor: false, guest: false, viewer: false } },
+  { capability: 'Create / edit / cancel sessions & role slots', roles: { director: true, lieutenant: true, sergeant: true, coordinator: true, instructor: false, guest: false, viewer: false } },
+  { capability: 'Approve / override instructor sign-ups', roles: { director: true, lieutenant: true, sergeant: true, coordinator: true, instructor: false, guest: false, viewer: false } },
+  { capability: 'Verify instructor qualifications', roles: { director: true, lieutenant: true, sergeant: true, coordinator: true, instructor: false, guest: false, viewer: false } },
+  { capability: 'Send bulk messages (Gjallarhorn)', roles: { director: true, lieutenant: true, sergeant: true, coordinator: true, instructor: false, guest: false, viewer: false } },
+  { capability: 'Receive escalation / understaffing alerts', roles: { director: true, lieutenant: true, sergeant: true, coordinator: true, instructor: false, guest: false, viewer: false } },
+  { capability: 'Approve pending users & deactivate accounts', roles: { director: true, lieutenant: true, sergeant: true, coordinator: false, instructor: false, guest: false, viewer: false } },
+  { capability: 'Assign roles (writes the auth claim)', roles: { director: true, lieutenant: true, sergeant: true, coordinator: false, instructor: false, guest: false, viewer: false } },
+  { capability: 'Org settings, branding & allowed domains', roles: { director: true, lieutenant: true, sergeant: true, coordinator: false, instructor: false, guest: false, viewer: false } },
+  { capability: 'Gjallarhorn settings & email automations', roles: { director: true, lieutenant: true, sergeant: true, coordinator: false, instructor: false, guest: false, viewer: false } },
+  { capability: 'Read-only Staffing page (classes, sessions, cadet counts, sign-ups, open slots)', roles: { director: false, lieutenant: false, sergeant: false, coordinator: false, instructor: false, guest: false, viewer: true } },
 ];

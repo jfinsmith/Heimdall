@@ -55,6 +55,16 @@ service cloud.firestore {
     function isOwner(uid) {
       return signedIn() && request.auth.uid == uid;
     }
+    // Viewer: a read-only staffing account (e.g. an assistant checking staffing).
+    // It gets NO direct database access beyond reading its own user doc — all of
+    // its data comes from the getViewerStaffing callable, which returns names,
+    // roles and staffing facts only (member records hold phone numbers, birth
+    // dates and feed links, and rules cannot hide fields inside a document).
+    // Every org-data rule below goes through inOrg() or adds !isViewer(), so a
+    // Viewer is denied every org read and every write. Token-only — list-safe.
+    function isViewer() {
+      return signedIn() && request.auth.token.get('role', '') == 'viewer';
+    }
     function unchanged(field) {
       return request.resource.data.get(field, null) == resource.data.get(field, null);
     }
@@ -73,7 +83,7 @@ service cloud.firestore {
     // member could sign in again and still read the org's schedule, rooms and
     // sign-ups as a default 'instructor'. Token-only check — list-query safe.
     function inOrg(data) {
-      return tokenOrgId() != null && activeStatus() && data.get('orgId', null) == tokenOrgId();
+      return tokenOrgId() != null && activeStatus() && !isViewer() && data.get('orgId', null) == tokenOrgId();
     }
     // A class may be published only after the captain's approval. Templates are
     // exempt. (Repeated get() on the same path is cached → one read.)
@@ -97,7 +107,7 @@ service cloud.firestore {
     // Read your own org; the platform owner reads all (owner console). Writes are
     // the createOrg callable (Admin SDK) only.
     match /orgs/{orgId} {
-      allow read: if signedIn() && activeStatus() && (orgId == tokenOrgId() || isPlatformOwner());
+      allow read: if signedIn() && activeStatus() && !isViewer() && (orgId == tokenOrgId() || isPlatformOwner());
       allow write: if false;
     }
 
@@ -176,7 +186,12 @@ service cloud.firestore {
             && inOrg(resource.data)
             && (request.auth.uid != uid || (unchanged('status') && verifiedQualsOnlyRemoved())))
         // Self-service: profile fields only (+ removal-only verified quals).
+        // A Viewer is read-only, its own profile included. The stored role is
+        // checked too: suspending an account strips the role CLAIM, and a
+        // suspended Viewer must stay read-only.
         || (isOwner(uid)
+            && !isViewer()
+            && resource.data.get('role', '') != 'viewer'
             && unchanged('status')
             && verifiedQualsOnlyRemoved()));
       // NO client deletes — deletion goes through adminDeleteAccount (rank
@@ -196,7 +211,7 @@ service cloud.firestore {
     // Read/write ONLY your own org's settings doc. (The legacy 'global' doc is no
     // longer client-readable post-cutover; the Admin SDK still reads it server-side.)
     match /settings/{docId} {
-      allow read: if signedIn() && activeStatus() && docId == tokenOrgId();
+      allow read: if signedIn() && activeStatus() && !isViewer() && docId == tokenOrgId();
       allow write: if isAdmin() && docId == tokenOrgId();
       // Coordinators manage the Limbo activity dropdown + its colors in place
       // — those fields (plus the timestamp); everything else stays admin-only.
@@ -206,7 +221,7 @@ service cloud.firestore {
 
     // ── reportConfig/{orgId} (per-tenant written-exam facts) ───────────────
     match /reportConfig/{docId} {
-      allow read: if signedIn() && activeStatus() && docId == tokenOrgId();
+      allow read: if signedIn() && activeStatus() && !isViewer() && docId == tokenOrgId();
       allow write: if isAdmin() && docId == tokenOrgId();
     }
 
@@ -214,7 +229,7 @@ service cloud.firestore {
     // A member files their own (stamped with their org); same-org admins triage.
     // (Cross-org owner visibility is a later phase.)
     match /feedbackReports/{id} {
-      allow read: if (isAdmin() && inOrg(resource.data)) || isOwner(resource.data.submittedByUid);
+      allow read: if (isAdmin() && inOrg(resource.data)) || (isOwner(resource.data.submittedByUid) && !isViewer());
       allow create: if signedIn()
         && request.resource.data.submittedByUid == request.auth.uid
         && inOrg(request.resource.data)
@@ -237,7 +252,7 @@ service cloud.firestore {
       // platform program (curricula/{orgId}__{key}) that usually doesn't exist;
       // a denied listener never fires if the copy is created later. Reveals
       // only nonexistence (get only); LIST stays strictly org-scoped.
-      allow get: if signedIn() && (resource == null || inOrg(resource.data));
+      allow get: if signedIn() && !isViewer() && (resource == null || inOrg(resource.data));
       allow list: if signedIn() && inOrg(resource.data);
       allow create: if isAdmin() && inOrg(request.resource.data);
       allow update: if isAdmin() && inOrg(resource.data) && unchanged('orgId');
@@ -283,7 +298,7 @@ service cloud.firestore {
     // read-only across EVERY org, so any signed-in user may read them; only the
     // platform owner may write. (No orgId — they belong to the platform.)
     match /defaultCurricula/{key} {
-      allow read: if signedIn();
+      allow read: if signedIn() && !isViewer();
       allow write: if isPlatformOwner();
     }
 
@@ -479,12 +494,14 @@ service cloud.firestore {
     // Per-recipient (uid is the scope; a user belongs to one tenant). Function-
     // written; owner may read and mark read.
     match /notifications/{notificationId} {
-      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+      // A Viewer never receives notifications (notify() skips it) and may not
+      // mark or delete anything — read-only means no writes at all.
+      allow read: if signedIn() && !isViewer() && resource.data.uid == request.auth.uid;
       allow create: if false; // Gjallarhorn (Admin SDK) only
-      allow update: if signedIn()
+      allow update: if signedIn() && !isViewer()
         && resource.data.uid == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
-      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+      allow delete: if signedIn() && !isViewer() && resource.data.uid == request.auth.uid;
     }
 
     // ── mailQueue ──────────────────────────────────────────────────────────

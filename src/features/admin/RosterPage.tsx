@@ -74,6 +74,8 @@ export function RosterPage() {
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return users.filter((u) => {
+      // Read-only Viewer accounts hold no certifications — Users & Roles lists them.
+      if (u.role === 'viewer') return false;
       if (needle && !`${u.displayName} ${u.email} ${u.agency ?? ''} ${u.rank ?? ''}`.toLowerCase().includes(needle)) return false;
       if (!expFilter) return true;
       const st = expStatus(u);

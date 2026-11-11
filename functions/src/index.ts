@@ -50,3 +50,5 @@ export { requestNotificationEmail, confirmNotificationEmail, clearNotificationEm
 export { createCheckoutSession, createBillingPortalSession, stripeWebhook } from './billing/stripe';
 // Public class portal — the only unauthenticated read surface (token link + tiered passwords)
 export { getPublicClassPortal } from './public/portal';
+// Read-only Viewer accounts — the only data source for role 'viewer' (no direct DB access).
+export { getViewerStaffing } from './viewer/staffing';

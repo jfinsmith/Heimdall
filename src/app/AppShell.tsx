@@ -79,7 +79,7 @@ function NavItem({ to, label, end = false }: { to: string; label: string; end?: 
 }
 
 /** Avatar dropdown — closes on outside click / Escape, not just re-click. */
-function UserMenu({ displayName, onSignOut }: { displayName?: string; onSignOut: () => void }) {
+function UserMenu({ displayName, onSignOut, showProfile = true }: { displayName?: string; onSignOut: () => void; showProfile?: boolean }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useClickOutside(ref, () => setOpen(false), open);
@@ -99,14 +99,16 @@ function UserMenu({ displayName, onSignOut }: { displayName?: string; onSignOut:
       </button>
       {open && (
         <div role="menu" className="absolute right-0 z-40 mt-2 w-44 rounded-lg border border-watch-100 bg-white py-1 shadow-xl">
-          <NavLink
-            to="/profile"
-            role="menuitem"
-            className="block px-4 py-2 text-sm text-slate-700 hover:bg-watch-50"
-            onClick={() => setOpen(false)}
-          >
-            Profile
-          </NavLink>
+          {showProfile && (
+            <NavLink
+              to="/profile"
+              role="menuitem"
+              className="block px-4 py-2 text-sm text-slate-700 hover:bg-watch-50"
+              onClick={() => setOpen(false)}
+            >
+              Profile
+            </NavLink>
+          )}
           <button
             role="menuitem"
             className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-watch-50"
@@ -138,7 +140,10 @@ export function AppShell() {
   const admin = can.manageOrg(role);
   // Instructor tools: anyone with a teaching-track role — guests see only
   // Overview and How To.
-  const instructorTools = !!role && role !== 'guest';
+  const instructorTools = !!role && role !== 'guest' && role !== 'viewer';
+  // Read-only Viewer: one page, no bell (it receives nothing and may not mark
+  // anything read), no Overview / How To (RequireAuth pins it to /viewer).
+  const viewer = role === 'viewer';
   const { orgs: switchOrgs, switchTo, busy: switchBusy } = useOrgSwitch(platformOwner);
   const impersonating = platformOwner && !!profile?.homeOrgId && profile.orgId !== profile.homeOrgId;
   const activeOrgName = switchOrgs.find((o) => o.orgId === profile?.orgId)?.legalName ?? profile?.orgId ?? '';
@@ -160,8 +165,14 @@ export function AppShell() {
     >
       {/* Visibility ladder: everyone → instructors (Instructor tools) →
           coordinator+ (CADRE) → sergeant+ (Admin) → platform owner. */}
-      <NavItem to="/overview" label="Overview" end />
-      <NavItem to="/how-to" label="How To" />
+      {viewer ? (
+        <NavItem to="/viewer" label="Staffing" />
+      ) : (
+        <>
+          <NavItem to="/overview" label="Overview" end />
+          <NavItem to="/how-to" label="How To" />
+        </>
+      )}
       {instructorTools && (
         <>
           <SectionLabel title="Instructor tools">Instructor</SectionLabel>
@@ -210,6 +221,7 @@ export function AppShell() {
           <NavItem to="/owner/report-forms" label="Report Forms" />
           <NavItem to="/owner/feedback" label="Bug & Feature Reports" />
           <NavItem to="/owner/audit" label="Audit Log (all orgs)" />
+          <NavItem to="/viewer" label="Viewer page (preview)" />
         </>
       )}
     </nav>
@@ -282,8 +294,8 @@ export function AppShell() {
                 + Create
               </Button>
             )}
-            <NotificationBell />
-            <UserMenu displayName={profile?.displayName} onSignOut={() => signOut()} />
+            {!viewer && <NotificationBell />}
+            <UserMenu displayName={profile?.displayName} onSignOut={() => signOut()} showProfile={!viewer} />
           </div>
         </header>
         {impersonating && (

@@ -4,7 +4,10 @@
  */
 import type { Timestamp } from 'firebase-admin/firestore';
 
-export type Role = 'director' | 'lieutenant' | 'sergeant' | 'coordinator' | 'instructor' | 'guest';
+/** 'viewer' = read-only staffing account: OUTSIDE the rank ladder, never in
+ *  STAFF_ROLES / ADMIN_ROLES / VALID_ROLES (no admin can assign it). It reads
+ *  only through getViewerStaffing and is refused by every write callable. */
+export type Role = 'director' | 'lieutenant' | 'sergeant' | 'coordinator' | 'instructor' | 'guest' | 'viewer';
 export type UserStatus = 'pending' | 'active' | 'inactive' | 'suspended';
 export type SlotRole = 'lead' | 'assistant' | 'role_player' | 'safety_officer' | 'coordinator';
 /** 'scheduled' = published + calendar-visible, sign-ups not opened yet. */

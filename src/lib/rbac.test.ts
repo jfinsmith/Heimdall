@@ -92,3 +92,31 @@ describe('capability gates', () => {
     expect(new Set(RANKS.map((r) => r.key)).size).toBe(ROLES.length);
   });
 });
+
+describe('viewer — read-only, outside the ranks', () => {
+  it('has no capability except its own Staffing page', () => {
+    for (const [name, gate] of Object.entries(can)) {
+      expect((gate as (r: Role) => boolean)('viewer'), name).toBe(name === 'viewViewerPage');
+    }
+    expect(can.viewViewerPage('director')).toBe(false);
+    expect(can.viewViewerPage('director', true)).toBe(true); // platform owner preview
+    expect(mayDeleteAcademy('viewer', 'v1', { createdBy: 'v1' })).toBe(false);
+  });
+  it('no role — not even a top admin — can assign it from the app', () => {
+    for (const r of ROLES) expect(mayAssignRole(r, 'viewer'), r).toBe(false);
+  });
+  it('is not a rank: absent from rank order, chain of command and the rank list', () => {
+    expect(RANK_ORDER_ASC).not.toContain('viewer');
+    expect(CHAIN_OF_COMMAND).not.toContain('viewer');
+    expect(RANKS.map((r) => r.key)).not.toContain('viewer');
+  });
+  it('the permission matrix grants it only the Staffing page', () => {
+    for (const row of PERMISSION_MATRIX) expect(row.roles.viewer, row.capability).toBe(row.capability.startsWith('Read-only Staffing page'));
+  });
+  it('adding it changed nothing for the existing roles', () => {
+    for (const r of ROLES) {
+      expect(can.signUp(r)).toBe(r !== 'guest');
+      expect(mayActOn('sergeant', r)).toBe(['guest', 'instructor', 'coordinator'].includes(r));
+    }
+  });
+});

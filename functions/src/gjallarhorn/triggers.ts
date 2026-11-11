@@ -620,7 +620,8 @@ export const onCoursePublished = onDocumentCreated('coursePublishEvents/{id}', a
     recipientIds = users.docs
       .filter((d) => {
         const u = d.data() as UserDoc;
-        if (u.role === 'guest') return false; // read-only rank — submitSignup rejects guests
+        // Read-only ranks — submitSignup rejects both (notify() also skips Viewers).
+        if (u.role === 'guest' || u.role === 'viewer') return false;
         if (target.mode === 'qualification') {
           return (u.verifiedQualKeys ?? []).includes(target.qualificationKey);
         }

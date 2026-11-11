@@ -1433,8 +1433,8 @@ function OpenSignupsModal({
       }
     }
     return users
-      // Guests are read-only (they can't sign up) — the server never mails them.
-      .filter((u) => u.role !== 'guest')
+      // Guests and Viewers are read-only (they can't sign up) — the server never mails them.
+      .filter((u) => u.role !== 'guest' && u.role !== 'viewer')
       .filter((u) => anyUnrestricted || (u.verifiedQualKeys ?? []).some((k) => slotQuals.has(k)))
       // Mirrors the server rule: the person opening sign-ups never emails
       // themselves about their own announcement.

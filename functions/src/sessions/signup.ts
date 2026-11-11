@@ -18,10 +18,12 @@ import type { AssignmentDoc, SessionDoc, SignupDoc, UserDoc } from '../types';
 import { STAFF_ROLES } from '../types';
 import { overlaps, qualifies, certBlocks, recomputeStatus } from './validation';
 import { isSilentAcademy, notify } from '../gjallarhorn/notify';
+import { refuseViewer } from '../viewer/guard';
 
 export const submitSignup = onCall<{ sessionId: string; slotId: string; allowWaitlist?: boolean }>(async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  refuseViewer(request.auth?.token);
   const db = getFirestore();
   const sessionId = (request.data.sessionId ?? '').trim();
   const slotId = (request.data.slotId ?? '').trim();
@@ -64,6 +66,7 @@ export const submitSignup = onCall<{ sessionId: string; slotId: string; allowWai
     const user = userSnap.data() as UserDoc & { instructorCertExpires?: Timestamp };
     if (user.status !== 'active') throw new HttpsError('permission-denied', 'Your account is not active.');
     if (user.role === 'guest') throw new HttpsError('permission-denied', 'Guests cannot sign up for sessions.');
+    refuseViewer(null, user);
     if ((user.orgId ?? null) !== sOrg) throw new HttpsError('permission-denied', 'This session belongs to another organization.');
 
     const slot = session.roleSlots.find((s) => s.slotId === slotId);
@@ -124,6 +127,7 @@ export const submitSignup = onCall<{ sessionId: string; slotId: string; allowWai
 export const withdrawSignup = onCall<{ sessionId: string }>(async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  refuseViewer(request.auth?.token);
   const db = getFirestore();
   const sessionId = (request.data.sessionId ?? '').trim();
   if (!sessionId) throw new HttpsError('invalid-argument', 'Missing session.');
@@ -208,6 +212,7 @@ export const withdrawSignup = onCall<{ sessionId: string }>(async (request) => {
 export const checkInstructorConflict = onCall<{ uid: string; startMs: number; endMs: number; excludeSessionId?: string }>(async (request) => {
   const callerUid = request.auth?.uid;
   if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  refuseViewer(request.auth?.token);
   const db = getFirestore();
   const callerSnap = await db.doc(`users/${callerUid}`).get();
   const caller = callerSnap.data() as UserDoc | undefined;
@@ -248,6 +253,7 @@ export const checkInstructorConflict = onCall<{ uid: string; startMs: number; en
 export const confirmReservation = onCall<{ sessionId: string }>(async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  refuseViewer(request.auth?.token);
   const db = getFirestore();
   const sessionId = (request.data.sessionId ?? '').trim();
   if (!sessionId) throw new HttpsError('invalid-argument', 'Missing session.');
@@ -256,6 +262,7 @@ export const confirmReservation = onCall<{ sessionId: string }>(async (request) 
   const callerSnap = await db.doc(`users/${uid}`).get();
   const callerStatus = callerSnap.exists ? (callerSnap.data() as UserDoc).status : null;
   if (callerStatus !== 'active') throw new HttpsError('permission-denied', 'Your account is not active.');
+  refuseViewer(null, callerSnap.data());
 
   // One transaction: the check and both writes must see the same signup. The
   // old read-then-merge-set raced the builder's un-reserve (deleteDoc) and a

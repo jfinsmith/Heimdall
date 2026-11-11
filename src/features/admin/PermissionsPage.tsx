@@ -11,6 +11,9 @@ import { useAuth } from '../../auth/AuthContext';
 import { orgConfigPath } from '../../lib/firestore';
 import { useGlobalSettings } from '../../app/providers';
 import { CHAIN_OF_COMMAND, PERMISSION_MATRIX, RANKS, ROLE_SUMMARIES, getRankLabel } from '../../lib/rbac';
+
+/** The ranks in chain-of-command order, then the read-only Viewer (not a rank). */
+const MATRIX_ROLES: Role[] = [...CHAIN_OF_COMMAND, 'viewer'];
 import type { Role } from '../../types';
 import { Button, Field, Input, PageHeader } from '../../components/ui';
 import { logAudit } from '../sessions/audit';
@@ -90,9 +93,9 @@ export function PermissionsPage() {
         </div>
       </section>
 
-      {/* Role summaries, chain-of-command order */}
+      {/* Role summaries, chain-of-command order, then the read-only Viewer */}
       <div className="mb-6 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {CHAIN_OF_COMMAND.map((role) => (
+        {MATRIX_ROLES.map((role) => (
           <div key={role} className="rounded-lg border border-watch-100 bg-white p-4 shadow-sm">
             <h2 className="mb-1 text-sm font-bold text-watch-900">{label(role)}</h2>
             <p className="text-sm text-slate-600">{ROLE_SUMMARIES[role]}</p>
@@ -105,7 +108,7 @@ export function PermissionsPage() {
           <thead className="bg-watch-50 text-xs uppercase tracking-wider text-watch-600">
             <tr>
               <th className="px-4 py-3">Capability</th>
-              {CHAIN_OF_COMMAND.map((role) => (
+              {MATRIX_ROLES.map((role) => (
                 <th key={role} className="px-3 py-3 text-center">
                   {stripTitle(label(role))}
                 </th>
@@ -116,7 +119,7 @@ export function PermissionsPage() {
             {PERMISSION_MATRIX.map((row) => (
               <tr key={row.capability}>
                 <td className="px-4 py-2.5 text-watch-800">{row.capability}</td>
-                {CHAIN_OF_COMMAND.map((role) => (
+                {MATRIX_ROLES.map((role) => (
                   <td key={role} className="px-3 py-2.5 text-center">
                     {row.roles[role] ? (
                       <span className="font-bold text-status-staffed" aria-label="allowed">✓</span>
@@ -135,7 +138,9 @@ export function PermissionsPage() {
         {label('director')} and {label('lieutenant')} are intentionally identical full administrators.
         {' '}{stripTitle(label('sergeant'))} also holds site administration (Users &amp; Roles, settings) on
         top of full academy and scheduling authority. {label('coordinator')}s are the hands-on schedule builders. {label('instructor')}s
-        view and sign up. {label('guest')}s are read-only. Changing what a role can <em>do</em> requires a
+        view and sign up. {label('guest')}s are read-only. A {label('viewer')} is a read-only staffing account
+        outside the ranks: it sees one Staffing page, cannot change anything, and is created and managed by
+        the platform owner — any admin can suspend it. Changing what a role can <em>do</em> requires a
         code/rules change — labels are editable above; people are assigned roles under Users &amp; Roles.
       </p>
     </div>

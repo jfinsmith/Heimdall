@@ -102,7 +102,9 @@ export function UsersAdminPage() {
   // is refused by every one of those callables unless the caller is the owner.
   const canAct = (u: WithId<UserDoc>) =>
     u.id !== firebaseUser?.uid && (platformOwner || (u.platformOwner !== true && mayActOn(myRole, u.role)));
-  const allRoles = (Object.keys(roleLabels) as Role[]).sort((a, b) => roleLabels[a].localeCompare(roleLabels[b]));
+  // The ranks only — the read-only Viewer is never offered in a role picker
+  // (scripts/create-viewer.ts creates it; the server refuses it everywhere else).
+  const allRoles = [...RANK_ORDER_ASC].sort((a, b) => roleLabels[a].localeCompare(roleLabels[b]));
   const assignableRoles = allRoles.filter((r) => platformOwner || mayAssignRole(myRole, r));
   // Naturally bounded by org headcount; the cap is a defensive ceiling far above
   // any realistic agency size (add search/pagination only if it's ever exceeded).
@@ -134,7 +136,8 @@ export function UsersAdminPage() {
 
   // Lowest rank (guest) at top, most-permissive (captain) at the bottom — derived
   // from the single RANKS registry so it never drifts from the rest of the app.
-  const GROUP_ORDER: Role[] = RANK_ORDER_ASC;
+  // Viewer accounts (read-only, outside the ladder) list first.
+  const GROUP_ORDER: Role[] = ['viewer', ...RANK_ORDER_ASC];
   const [qualUser, setQualUser] = useState<WithId<UserDoc> | null>(null);
   const [editTarget, setEditTarget] = useState<WithId<UserDoc> | null>(null);
   const [suspendTarget, setSuspendTarget] = useState<WithId<UserDoc> | null>(null);
@@ -400,19 +403,26 @@ export function UsersAdminPage() {
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <Select
-                          value={u.role}
-                          disabled={busy === u.id || !canAct(u)}
-                          onChange={(e) => changeRole(u, e.target.value as Role)}
-                          aria-label={`Role for ${u.displayName}`}
-                        >
-                          {/* A locked select still lists every rank so the current one renders. */}
-                          {(canAct(u) ? assignableRoles : allRoles).map((r) => (
-                            <option key={r} value={r}>
-                              {roleLabels[r]}
-                            </option>
-                          ))}
-                        </Select>
+                        {u.role === 'viewer' ? (
+                          // A Viewer's role is the platform owner's to change (server-enforced).
+                          <span className="text-sm text-slate-600" title="Read-only account. Managed by the platform owner.">
+                            {roleLabels.viewer} (read-only)
+                          </span>
+                        ) : (
+                          <Select
+                            value={u.role}
+                            disabled={busy === u.id || !canAct(u)}
+                            onChange={(e) => changeRole(u, e.target.value as Role)}
+                            aria-label={`Role for ${u.displayName}`}
+                          >
+                            {/* A locked select still lists every rank so the current one renders. */}
+                            {(canAct(u) ? assignableRoles : allRoles).map((r) => (
+                              <option key={r} value={r}>
+                                {roleLabels[r]}
+                              </option>
+                            ))}
+                          </Select>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <Badge tone={u.status === 'active' ? 'green' : u.status === 'suspended' ? 'red' : 'slate'}>
@@ -420,10 +430,14 @@ export function UsersAdminPage() {
                         </Badge>
                       </td>
                       <td className={`px-4 py-3 ${qualTone}`}>
-                        <button className="text-bifrost-700 hover:underline" onClick={() => setQualUser(u)}>
-                          {verified} verified / {claimed} claimed
-                        </button>
-                        {claimed > verified && (
+                        {u.role === 'viewer' ? (
+                          <span className="text-slate-400">—</span>
+                        ) : (
+                          <button className="text-bifrost-700 hover:underline" onClick={() => setQualUser(u)}>
+                            {verified} verified / {claimed} claimed
+                          </button>
+                        )}
+                        {u.role !== 'viewer' && claimed > verified && (
                           // Loud on purpose — a pending claim means an admin has
                           // review work to do before this member can take
                           // restricted slots. The whole pill opens the same modal.
@@ -439,10 +453,13 @@ export function UsersAdminPage() {
                         {canAct(u) && (
                           <>
                             {/* Edit is status-independent — a suspended member's
-                                email or name may be exactly what needs fixing. */}
-                            <Button variant="ghost" disabled={busy === u.id} onClick={() => setEditTarget(u)}>
-                              Edit
-                            </Button>
+                                email or name may be exactly what needs fixing.
+                                A Viewer is edited by the platform owner only. */}
+                            {(u.role !== 'viewer' || platformOwner) && (
+                              <Button variant="ghost" disabled={busy === u.id} onClick={() => setEditTarget(u)}>
+                                Edit
+                              </Button>
+                            )}
                             {u.status === 'suspended' ? (
                               <Button variant="ghost" disabled={busy === u.id} onClick={() => liftSuspension(u)}>
                                 Lift suspension
@@ -466,7 +483,7 @@ export function UsersAdminPage() {
                                 </Button>
                               )
                             )}
-                            {u.platformOwner !== true && (
+                            {u.platformOwner !== true && (u.role !== 'viewer' || platformOwner) && (
                               // adminDeleteAccount refuses a platform-owner target for every caller.
                               <Button
                                 variant="ghost"
@@ -825,7 +842,7 @@ function AddUserModal({ onClose }: { onClose: () => void }) {
   const { role: myRole, platformOwner } = useAuth();
   const roleLabels = useRoleLabels();
   // createUserAccount applies the rank ladder to the role being created.
-  const assignableRoles = (Object.keys(roleLabels) as Role[])
+  const assignableRoles = [...RANK_ORDER_ASC]
     .filter((r) => platformOwner || mayAssignRole(myRole, r))
     .sort((a, b) => roleLabels[a].localeCompare(roleLabels[b]));
   const [displayName, setDisplayName] = useState('');

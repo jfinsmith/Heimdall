@@ -887,3 +887,148 @@ describe('auditLog — staff-only create', () => {
     await assertFails(addDoc(collection(as('carol', 'coordinator'), 'auditLog'), { actorUid: 'carol', action: 'x', summary: 's' }));
   });
 });
+
+// ── Read-only Viewer ─────────────────────────────────────────────────────────
+// A Viewer (role 'viewer') reads ONLY its own profile directly; all of its data
+// comes from the getViewerStaffing callable (tests/emulator/viewer.functions.test.ts).
+// Every direct read of org data and every write is denied — including its own
+// profile and notifications. Each case below is one explicit attempt.
+describe('viewer — read-only, no direct org data', () => {
+  const asViewer = () => testEnv.authenticatedContext('vic', { role: 'viewer', orgId: ORG }).firestore();
+
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, 'users/vic'), user({ role: 'viewer', status: 'active', orgId: ORG, displayName: 'Claude Assistant' }));
+      await setDoc(doc(db, 'notifications/nV'), { uid: 'vic', type: 'x', title: 't', body: 'b', read: false, createdAt: new Date() });
+      await setDoc(doc(db, 'assignments/asA'), { orgId: ORG, uid: 'alice', sessionId: 's1', academyId: 'aA', role: 'lead', status: 'confirmed', start: new Date(), end: new Date() });
+      await setDoc(doc(db, 'sessions/s1/signups/alice'), { orgId: ORG, uid: 'alice', displayName: 'Alice', role: 'lead', slotId: 'x', status: 'confirmed', signedUpAt: new Date() });
+      await setDoc(doc(db, 'academies/aA/roster/m1'), { orgId: ORG, fullName: 'Cadet One', dob: '2000-01-01', phone: '555-0100', status: 'active' });
+      await setDoc(doc(db, 'academies/aA/attendance/2026-11-16'), { orgId: ORG, entries: {} });
+      await setDoc(doc(db, 'academies/aA/reports/r1'), { orgId: ORG, type: 'general_memo' });
+      await setDoc(doc(db, 'academies/aA/limbo/plan'), { orgId: ORG, cells: {} });
+      await setDoc(doc(db, 'academies/aA/private/portal'), { orgId: ORG, enabled: true, token: 't' });
+      await setDoc(doc(db, 'coursePublishEvents/e1'), { orgId: ORG, academyId: 'aA', requestedBy: 'carol' });
+      await setDoc(doc(db, 'bulkMessages/b1'), { orgId: ORG, requestedBy: 'carol', status: 'sent', subject: 's', body: 'b' });
+      await setDoc(doc(db, 'scheduleChangeQueue/s1'), { orgId: ORG });
+      await setDoc(doc(db, 'mailQueue/m1'), { orgId: ORG, to: ['x@y.z'] });
+      await setDoc(doc(db, 'documentAssignments/d1'), { scope: 'all' });
+      await setDoc(doc(db, 'feedbackReports/fbV'), { orgId: ORG, kind: 'bug', title: 'T', description: 'D', submittedByUid: 'vic', status: 'new' });
+    });
+  });
+
+  it('reads its OWN profile (the app needs it to sign in)', async () => {
+    await assertSucceeds(getDoc(doc(asViewer(), 'users/vic')));
+  });
+
+  const readCases: [string, (db: ReturnType<typeof asViewer>) => Promise<unknown>][] = [
+    ['another member profile', (db) => getDoc(doc(db, 'users/alice'))],
+    ['the member list', (db) => getDocs(query(collection(db, 'users'), where('orgId', '==', ORG)))],
+    ['an academy', (db) => getDoc(doc(db, 'academies/aA'))],
+    ['the academy list', (db) => getDocs(query(collection(db, 'academies'), where('orgId', '==', ORG)))],
+    ['a published session', (db) => getDoc(doc(db, 'sessions/s1'))],
+    ['the session list', (db) => getDocs(query(collection(db, 'sessions'), where('orgId', '==', ORG)))],
+    ['a sign-up', (db) => getDoc(doc(db, 'sessions/s1/signups/alice'))],
+    ['the sign-up list', (db) => getDocs(query(collection(db, 'sessions/s1/signups'), where('orgId', '==', ORG)))],
+    ['an assignment', (db) => getDoc(doc(db, 'assignments/asA'))],
+    ['the assignment list', (db) => getDocs(query(collection(db, 'assignments'), where('orgId', '==', ORG)))],
+    ['a cadet record', (db) => getDoc(doc(db, 'academies/aA/roster/m1'))],
+    ['attendance', (db) => getDoc(doc(db, 'academies/aA/attendance/2026-11-16'))],
+    ['a filed report', (db) => getDoc(doc(db, 'academies/aA/reports/r1'))],
+    ['a Limbo plan', (db) => getDoc(doc(db, 'academies/aA/limbo/plan'))],
+    ['public-link secrets', (db) => getDoc(doc(db, 'academies/aA/private/portal'))],
+    ['org settings', (db) => getDoc(doc(db, `settings/${ORG}`))],
+    ['report config', (db) => getDoc(doc(db, `reportConfig/${ORG}`))],
+    ['the org record', (db) => getDoc(doc(db, `orgs/${ORG}`))],
+    ['a curriculum', (db) => getDoc(doc(db, `curricula/${ORG}__le_brt`))],
+    ['a missing curriculum', (db) => getDoc(doc(db, `curricula/${ORG}__nope`))],
+    ['the curriculum list', (db) => getDocs(query(collection(db, 'curricula'), where('orgId', '==', ORG)))],
+    ['a platform curriculum', (db) => getDoc(doc(db, 'defaultCurricula/le_brt'))],
+    ['a room', (db) => getDoc(doc(db, 'rooms/roomA'))],
+    ['a room category', (db) => getDoc(doc(db, 'roomCategories/catA'))],
+    ['a room reservation', (db) => getDoc(doc(db, 'roomReservations/resA'))],
+    ['a remediation case', (db) => getDoc(doc(db, 'remediations/remA'))],
+    ['a course-publish event', (db) => getDoc(doc(db, 'coursePublishEvents/e1'))],
+    ['a bulk message', (db) => getDoc(doc(db, 'bulkMessages/b1'))],
+    ['a queued schedule change', (db) => getDoc(doc(db, 'scheduleChangeQueue/s1'))],
+    ['queued mail', (db) => getDoc(doc(db, 'mailQueue/m1'))],
+    ['the audit log', (db) => getDoc(doc(db, 'auditLog/lA'))],
+    ['document assignments', (db) => getDoc(doc(db, 'documentAssignments/d1'))],
+    ['its own notification', (db) => getDoc(doc(db, 'notifications/nV'))],
+    ['its own notification list', (db) => getDocs(query(collection(db, 'notifications'), where('uid', '==', 'vic')))],
+    ['its own feedback report', (db) => getDoc(doc(db, 'feedbackReports/fbV'))],
+  ];
+  for (const [label, read] of readCases) {
+    it(`cannot read ${label}`, async () => {
+      await assertFails(read(asViewer()));
+    });
+  }
+
+  const now = new Date();
+  const writeCases: [string, (db: ReturnType<typeof asViewer>) => Promise<unknown>][] = [
+    ['edit its own profile', (db) => updateDoc(doc(db, 'users/vic'), { displayName: 'Changed' })],
+    ['change its own preferences', (db) => updateDoc(doc(db, 'users/vic'), { 'notificationPrefs.email': true })],
+    ['edit another member', (db) => updateDoc(doc(db, 'users/alice'), { phone: '555' })],
+    ['approve a pending account', (db) => updateDoc(doc(db, 'users/pat'), { status: 'active' })],
+    ['create a profile', (db) => setDoc(doc(db, 'users/vic2'), user({ role: 'instructor', status: 'pending' }))],
+    ['delete a profile', (db) => deleteDoc(doc(db, 'users/alice'))],
+    ['create an academy', (db) => setDoc(doc(db, 'academies/aNew'), { orgId: ORG, status: 'draft', isTemplate: false, title: 'X', createdBy: 'vic' })],
+    ['edit an academy', (db) => updateDoc(doc(db, 'academies/aA'), { title: 'Changed' })],
+    ['delete an academy', (db) => deleteDoc(doc(db, 'academies/aA'))],
+    ['create a session', (db) => setDoc(doc(db, 'sessions/sNew'), { orgId: ORG, academyId: 'aDraft', status: 'draft', roleSlots: [], start: now })],
+    ['edit a session', (db) => updateDoc(doc(db, 'sessions/s1'), { title: 'Changed' })],
+    ['delete a session', (db) => deleteDoc(doc(db, 'sessions/s1'))],
+    ['sign itself up', (db) => setDoc(doc(db, 'sessions/s1/signups/vic'), { orgId: ORG, uid: 'vic', displayName: 'V', role: 'lead', slotId: 'x', status: 'confirmed', signedUpAt: now })],
+    ['edit a sign-up', (db) => updateDoc(doc(db, 'sessions/s1/signups/alice'), { status: 'withdrawn' })],
+    ['delete a sign-up', (db) => deleteDoc(doc(db, 'sessions/s1/signups/alice'))],
+    ['create an assignment', (db) => setDoc(doc(db, 'assignments/asNew'), { orgId: ORG, uid: 'vic', sessionId: 's1', status: 'confirmed' })],
+    ['edit an assignment', (db) => updateDoc(doc(db, 'assignments/asA'), { status: 'withdrawn' })],
+    ['delete an assignment', (db) => deleteDoc(doc(db, 'assignments/asA'))],
+    ['add a cadet', (db) => setDoc(doc(db, 'academies/aA/roster/m2'), { orgId: ORG, fullName: 'New', status: 'active' })],
+    ['edit a cadet', (db) => updateDoc(doc(db, 'academies/aA/roster/m1'), { status: 'withdrawn' })],
+    ['delete a cadet', (db) => deleteDoc(doc(db, 'academies/aA/roster/m1'))],
+    ['record attendance', (db) => setDoc(doc(db, 'academies/aA/attendance/2026-11-17'), { orgId: ORG, entries: {} })],
+    ['file a report', (db) => setDoc(doc(db, 'academies/aA/reports/r2'), { orgId: ORG, type: 'general_memo' })],
+    ['edit a Limbo plan', (db) => updateDoc(doc(db, 'academies/aA/limbo/plan'), { nmtStart: '2027-01-04' })],
+    ['change public-link secrets', (db) => updateDoc(doc(db, 'academies/aA/private/portal'), { enabled: false })],
+    ['edit org settings', (db) => updateDoc(doc(db, `settings/${ORG}`), { orgName: 'X' })],
+    ['edit report config', (db) => updateDoc(doc(db, `reportConfig/${ORG}`), { examInfo: { x: 1 } })],
+    ['create a curriculum', (db) => setDoc(doc(db, `curricula/${ORG}__x`), { orgId: ORG, key: 'x' })],
+    ['edit a curriculum', (db) => updateDoc(doc(db, `curricula/${ORG}__le_brt`), { label: 'X' })],
+    ['edit a platform curriculum', (db) => updateDoc(doc(db, 'defaultCurricula/le_brt'), { label: 'X' })],
+    ['create a room', (db) => setDoc(doc(db, 'rooms/rNew'), { orgId: ORG, categoryId: 'catA', name: 'X', active: true })],
+    ['edit a room', (db) => updateDoc(doc(db, 'rooms/roomA'), { name: 'X' })],
+    ['create a room category', (db) => setDoc(doc(db, 'roomCategories/cNew'), { orgId: ORG, name: 'X' })],
+    ['delete a room reservation', (db) => deleteDoc(doc(db, 'roomReservations/resA'))],
+    ['create a remediation case', (db) => setDoc(doc(db, 'remediations/rNew'), { orgId: ORG, personName: 'X', status: 'awaiting', blocks: [] })],
+    ['edit a remediation case', (db) => updateDoc(doc(db, 'remediations/remA'), { status: 'scheduled' })],
+    ['open a course for sign-up', (db) => addDoc(collection(db, 'coursePublishEvents'), { orgId: ORG, academyId: 'aA', requestedBy: 'vic', courseLabel: 'X' })],
+    ['send a bulk message', (db) => addDoc(collection(db, 'bulkMessages'), { orgId: ORG, requestedBy: 'vic', status: 'pending', subject: 'S', body: 'B', target: 'all' })],
+    ['file a feedback report', (db) => addDoc(collection(db, 'feedbackReports'), { orgId: ORG, kind: 'bug', title: 'T', description: 'D', submittedByUid: 'vic', status: 'new' })],
+    ['write the audit log', (db) => addDoc(collection(db, 'auditLog'), { actorUid: 'vic', action: 'x', summary: 's', orgId: ORG })],
+    ['mark its own notification read', (db) => updateDoc(doc(db, 'notifications/nV'), { read: true })],
+    ['delete its own notification', (db) => deleteDoc(doc(db, 'notifications/nV'))],
+    ['queue an email', (db) => addDoc(collection(db, 'mailQueue'), { orgId: ORG, to: ['x@y.z'] })],
+    ['queue a schedule change', (db) => setDoc(doc(db, 'scheduleChangeQueue/sX'), { orgId: ORG })],
+    ['change document availability', (db) => setDoc(doc(db, 'documentAssignments/d2'), { scope: 'all' })],
+  ];
+  for (const [label, write] of writeCases) {
+    it(`cannot ${label}`, async () => {
+      await assertFails(write(asViewer()));
+    });
+  }
+
+  it('stays read-only when suspended (the role claim is stripped, the stored role is not)', async () => {
+    const suspended = testEnv.authenticatedContext('vic', { orgId: ORG, status: 'suspended' }).firestore();
+    await assertFails(updateDoc(doc(suspended, 'users/vic'), { displayName: 'Changed' }));
+    await assertFails(getDoc(doc(suspended, 'sessions/s1')));
+  });
+
+  it('existing roles keep their access (controls for the same documents)', async () => {
+    await assertSucceeds(getDoc(doc(as('alice', 'instructor'), 'sessions/s1')));
+    await assertSucceeds(getDoc(doc(as('alice', 'instructor'), `settings/${ORG}`)));
+    await assertSucceeds(getDoc(doc(as('carol', 'coordinator'), 'academies/aA/roster/m1')));
+    await assertSucceeds(updateDoc(doc(as('carol', 'coordinator'), 'sessions/s1'), { academyId: 'a1', title: 'Edited' }));
+    await assertSucceeds(updateDoc(doc(as('alice', 'instructor'), 'users/alice'), { phone: '555-1212' }));
+  });
+});

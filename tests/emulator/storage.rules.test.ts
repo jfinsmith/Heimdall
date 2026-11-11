@@ -68,6 +68,15 @@ describe.skipIf(!hasStorageEmulator)('storage.rules', () => {
     await assertFails(getBytes(ref(as('bob', { role: 'instructor', orgId: ORG }), `certCards/${ORG}/alice/cpr.png`)));
     await assertFails(getBytes(ref(as('erin', { role: 'director', orgId: BETA }), `certCards/${ORG}/alice/cpr.png`)));
   });
+  it('a read-only Viewer reads no org files and uploads nothing', async () => {
+    const viewer = as('vic', { role: 'viewer', orgId: ORG });
+    await assertFails(getBytes(ref(viewer, `rooms/${ORG}/plan.png`)));
+    await assertFails(getBytes(ref(viewer, `certCards/${ORG}/alice/cpr.png`)));
+    await assertFails(uploadBytes(ref(viewer, `certCards/${ORG}/vic/card.png`), PNG, png));
+    await assertFails(uploadBytes(ref(viewer, `feedback/${ORG}/vic/shot.png`), PNG, png));
+    await assertFails(uploadBytes(ref(viewer, `rooms/${ORG}/x.png`), PNG, png));
+    await assertFails(uploadBytes(ref(viewer, `branding/${ORG}/logo.png`), PNG, png));
+  });
   // Suspension/deactivation strips the role claim, keeps orgId, mints `status`.
   for (const status of ['suspended', 'inactive', 'pending']) {
     it(`a ${status} member cannot read floor plans or upload anything`, async () => {

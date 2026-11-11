@@ -122,6 +122,10 @@ export async function notify(opts: NotifyOptions): Promise<void> {
     const userSnap = await db().doc(`users/${opts.uid}`).get();
     const user = userSnap.exists ? (userSnap.data() as UserDoc) : null;
     if (opts.orgId && user?.orgId && user.orgId !== opts.orgId) return; // cross-tenant: stale recipient list
+    // A read-only Viewer account never receives notifications — no bell, no
+    // email — whatever list it ended up on (coordinatorIds, an "everyone
+    // eligible" announcement, an escalation list), even with `force`.
+    if (user?.role === 'viewer') return;
     if (
       !opts.force &&
       opts.curriculumKey &&

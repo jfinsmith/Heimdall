@@ -35,7 +35,10 @@ function assertActiveCaller(data: { status?: unknown } | undefined): void {
  * rank — without this, adding sergeant to ADMIN_ROLES would let a sergeant
  * reset a director's password or promote themselves (vertical escalation).
  */
-const ROLE_RANK: Record<Role, number> = { guest: 0, instructor: 1, coordinator: 2, sergeant: 3, lieutenant: 4, director: 4 };
+// viewer: read-only staffing account OUTSIDE the ladder (ranked lowest so any
+// admin can suspend or deactivate it as a kill switch; everything else about a
+// Viewer account is the platform owner's — see assertNotViewerTarget).
+const ROLE_RANK: Record<Role, number> = { guest: 0, instructor: 1, coordinator: 2, sergeant: 3, lieutenant: 4, director: 4, viewer: 0 };
 const TOP_RANK = 4;
 function assertMayActOn(callerRole: Role, targetRole: Role | null | undefined, what: string): void {
   const caller = ROLE_RANK[callerRole] ?? 0;
@@ -66,7 +69,22 @@ function idOf(v: unknown): string {
 /** Production sign-in URL used in account emails. */
 const SITE_URL = 'https://heimdallscheduling.com';
 
+// 'viewer' is deliberately NOT here: no admin (or owner) callable can grant it.
+// Viewer accounts are created by scripts/create-viewer.ts only.
 const VALID_ROLES: Role[] = ['director', 'lieutenant', 'sergeant', 'coordinator', 'instructor', 'guest'];
+
+/**
+ * A read-only Viewer account is managed by the platform owner alone: an org
+ * admin may suspend or deactivate it (an instant kill switch), but may not
+ * change its role, edit its email or password, re-send credentials, or delete
+ * it. Turning the Viewer into a staff account would hand member records
+ * (phones, birth dates) to whatever holds its password.
+ */
+function assertNotViewerTarget(target: { role?: unknown } | undefined, callerIsOwner: boolean, what: string): void {
+  if (!callerIsOwner && target?.role === 'viewer') {
+    throw new HttpsError('permission-denied', `Only the platform owner can ${what} a Viewer account. You can suspend or deactivate it.`);
+  }
+}
 
 export const setUserRole = onCall<{ uid: string; role: Role }>(async (request) => {
   const caller = request.auth;
@@ -115,6 +133,7 @@ export const setUserRole = onCall<{ uid: string; role: Role }>(async (request) =
   if (!callerIsPlatformOwner && tdata.platformOwner === true) {
     throw new HttpsError('permission-denied', "The platform owner's role cannot be changed here.");
   }
+  assertNotViewerTarget(tdata, callerIsPlatformOwner, 'change the role of');
   if (!callerIsPlatformOwner) {
     assertMayActOn(callerRole, (tdata.role as Role) ?? null, 'change the role of');
     if (ROLE_RANK[callerRole] < TOP_RANK && (ROLE_RANK[role] ?? 0) >= ROLE_RANK[callerRole]) {
@@ -413,6 +432,7 @@ export const sendActivationEmail = onCall<{ uid: string; password: string }>(asy
   // sent to an account the caller just created (createUserAccount already
   // limits that to lower ranks). Without it a sergeant could mail a director an
   // official-looking "your temporary password is …" message.
+  assertNotViewerTarget(user, callerIsOwnerAct, 'send credentials to');
   if (!callerIsOwnerAct) assertMayActOn(callerRole, user.role ?? null, 'send an activation email to');
   const email = (user.email ?? '').trim();
   const displayName = (user.displayName ?? '').trim() || 'there';
@@ -1494,6 +1514,7 @@ export const adminDeleteAccount = onCall<{ uid: string }>(async (request) => {
   if (!callerIsOwner && !target.orgId) {
     throw new HttpsError('permission-denied', 'That account is not in your organization.');
   }
+  assertNotViewerTarget(target, callerIsOwner, 'delete');
   assertMayActOn(callerRole, target.role, 'permanently delete');
 
   const email = target.email ?? uid;
@@ -1708,6 +1729,7 @@ export const adminUpdateUser = onCall<{
   }
   // Rank ladder: a sergeant must never reset a lieutenant's/director's (or
   // another sergeant's) password or email — that's account takeover upward.
+  assertNotViewerTarget(target, callerIsOwner, 'edit');
   if (!callerIsOwner) assertMayActOn(callerRole, target.role ?? null, 'edit');
 
   // Undefined field = leave alone. Provided = validate, and only write when it
