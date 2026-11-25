@@ -39,6 +39,19 @@ export function agencyLabel(m: Pick<RosterMemberDoc, 'agency' | 'agencyOther'>):
   return ROSTER_AGENCIES.find((a) => a.key === m.agency)?.label ?? m.agency;
 }
 
+/** Same person on two rosters? CJIS number decides when both have one; otherwise
+ *  the name, unless their dates of birth disagree. MUST match sameCadet() in
+ *  functions/src/admin/rosterLink.ts (the server decides; this previews it). */
+type CadetIdentity = Pick<RosterMemberDoc, 'fullName' | 'cjis' | 'dob'>;
+export function sameCadet(a: CadetIdentity, b: CadetIdentity): boolean {
+  const key = (v?: string) => (v ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (key(a.cjis) && key(b.cjis)) return key(a.cjis) === key(b.cjis);
+  if (!key(a.fullName) || key(a.fullName) !== key(b.fullName)) return false;
+  const aDob = (a.dob ?? '').trim();
+  const bDob = (b.dob ?? '').trim();
+  return !aDob || !bDob || aDob === bDob;
+}
+
 const NAME_SUFFIX = /^(jr\.?|sr\.?|ii|iii|iv|v)$/i;
 /** "Jane Q Smith" → "Smith, Jane Q" (suffix-aware: "John Smith Jr." → "Smith Jr., John"). */
 export function lastFirst(name: string): string {

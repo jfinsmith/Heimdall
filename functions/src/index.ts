@@ -44,6 +44,8 @@ export { accountPurgeDaily } from './admin/purge';
 export { setUserRole, createUserAccount, createOrg, academyApproval, sendActivationEmail, setUserSuspension, setUserActive, listAllFeedback, joinOrgByCode, assignUserToOrg, denyUser, listOwnerQueue, getOrgDetail, setOrgComplimentary, setOrgSuspension, createOrgAdmin, deleteUnassignedAccount, listAllAuditLog, ownerListOrgs, ownerSwitchOrg, acceptOrgDpa, adminUpdateUser, setFeedbackStatus, adminDeleteAccount } from './admin/callables';
 // Academy roster — member creation (no SSN stored; college holds SSNs locally)
 export { rosterCreateMember } from './admin/roster';
+// Roster links — import cadets from another class; withdrawn/dismissed at the source hides the copy
+export { rosterImportMembers, onRosterMemberUpdated } from './admin/rosterLink';
 // Profile — code-verified secondary notification email
 export { requestNotificationEmail, confirmNotificationEmail, clearNotificationEmail } from './profile/notificationEmail';
 // Billing (Phase 14) — Stripe subscriptions (checkout, portal, webhook)

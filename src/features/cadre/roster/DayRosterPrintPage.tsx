@@ -27,7 +27,7 @@ export function DayRosterPrintPage() {
   const { data: curriculum } = useCurriculum(academy?.discipline);
   // Canonical roster order (alphabetical by last name, withdrawn/dismissed
   // last) — exactly what the roster page hands its Attendance tab.
-  const members = useMemo(() => [...rosterRaw].sort(rosterCompare), [rosterRaw]);
+  const members = useMemo(() => rosterRaw.filter((m) => !m.sourceSeparated).sort(rosterCompare), [rosterRaw]);
 
   if (aLoading || rLoading) return <div className="flex h-screen items-center justify-center"><Spinner className="text-bifrost-400" /></div>;
   if (!academy) return <p className="p-8 text-sm text-slate-500">Academy not found.</p>;

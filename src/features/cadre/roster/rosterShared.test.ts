@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import { Timestamp } from 'firebase/firestore';
 import type { CurriculumCourse, RosterMemberDoc, ViolationEntry } from '../../../types';
-import { agencyOptions, defaultAgency, disciplineTally, effectiveScore, courseResult, memberStanding, courseKey, lastFirst, rosterCompare } from './rosterShared';
+import { agencyOptions, defaultAgency, disciplineTally, effectiveScore, courseResult, memberStanding, courseKey, lastFirst, rosterCompare, sameCadet } from './rosterShared';
 
 const ts = (y = 2026, m = 5, d = 1) => Timestamp.fromDate(new Date(y, m - 1, d, 12));
 
@@ -180,5 +180,17 @@ describe('memberStanding', () => {
     const s = memberStanding(member({ grades: { Intro: { score: 70, reexamScore: 70 } } }), courses);
     expect(s.nonHlFails).toBe(1);
     expect(s.warnings.some((w) => /one more/i.test(w))).toBe(true);
+  });
+});
+
+describe('sameCadet — is this person already on the roster?', () => {
+  it('a CJIS number decides when both have one', () => {
+    expect(sameCadet({ fullName: 'Jane Smith', cjis: 'FL-01 23' }, { fullName: 'Jane A Smith', cjis: 'fl0123' })).toBe(true);
+    expect(sameCadet({ fullName: 'Jane Smith', cjis: '1' }, { fullName: 'Jane Smith', cjis: '2' })).toBe(false);
+  });
+  it('otherwise the name, unless the birth dates disagree', () => {
+    expect(sameCadet({ fullName: 'Jane  Smith' }, { fullName: 'jane smith', dob: '2000-01-01' })).toBe(true);
+    expect(sameCadet({ fullName: 'Jane Smith', dob: '2000-01-01' }, { fullName: 'Jane Smith', dob: '1999-01-01' })).toBe(false);
+    expect(sameCadet({ fullName: '' }, { fullName: '' })).toBe(false);
   });
 });

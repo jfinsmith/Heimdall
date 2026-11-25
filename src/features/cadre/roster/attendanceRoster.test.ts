@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { Timestamp } from 'firebase/firestore';
 import type { WithId } from '../../../lib/firestore';
 import type { SessionDoc } from '../../../types';
-import { buildDayRosters, examCoursesOnDay, isTestSession, nextSessionDate } from './attendanceRoster';
+import { buildClassDays, buildDayRosters, classDateRange, examCoursesOnDay, isTestSession, nextSessionDate } from './attendanceRoster';
 
 const ts = (h: number, m = 0) => Timestamp.fromDate(new Date(2026, 5, 1, h, m, 0)); // 2026-06-01 local
 
@@ -142,5 +142,37 @@ describe('exam-day helpers', () => {
     expect(nextSessionDate(sessions, '2026-06-05')).toBe('2026-06-08'); // Fri → Mon, skipping the cancelled Sat + lunch-only Sun
     expect(nextSessionDate(sessions, '2026-06-08')).toBe('2026-06-09');
     expect(nextSessionDate(sessions, '2026-06-09')).toBeNull();
+  });
+});
+
+describe('buildClassDays — the whole-class packet', () => {
+  const at = (day: number, h: number, m = 0) => Timestamp.fromDate(new Date(2026, 5, day, h, m, 0));
+  const sessions = [
+    sess({ id: 'd2', courseName: 'Traffic Stops', start: at(2, 8), end: at(2, 12), hours: 4 }),
+    sess({ id: 'a', courseName: 'Orientation', start: at(1, 8), end: at(1, 10), hours: 2 }),
+    sess({ id: 'b', courseName: 'FOP', start: at(1, 10), end: at(1, 12), hours: 2.1 }),
+    sess({ id: 'lunch', kind: 'lunch', courseName: 'Lunch', start: at(1, 12), end: at(1, 13), hours: 0 }),
+    sess({ id: 'c', courseName: 'Orientation', start: at(1, 13), end: at(1, 17), hours: 4.2 }),
+    sess({ id: 'gone', courseName: 'Cancelled topic', start: at(3, 8), end: at(3, 12), hours: 4, status: 'cancelled' }),
+    sess({ id: 'onlyLunch', kind: 'lunch', courseName: 'Lunch', start: at(4, 12), end: at(4, 13), hours: 0 }),
+  ];
+
+  it('makes one entry per day, in date order, with every topic and its hours', () => {
+    const days = buildClassDays(sessions, '2026-06-01', '2026-06-30', null);
+    expect(days.map((d) => d.dateStr)).toEqual(['2026-06-01', '2026-06-02']); // nothing for cancelled / lunch-only days
+    expect(days[0].topics.map((t) => [t.courseName, t.classHours])).toEqual([['Orientation', 2], ['FOP', 2.1], ['Orientation', 4.2]]);
+    expect(days[0]).toMatchObject({ timeLabel: '0800 - 1700', totalHours: 8.3, lunch: '1200 - 1300' });
+  });
+  it('can leave out blocks that are not in the curriculum, dropping days left empty', () => {
+    const days = buildClassDays(sessions, '2026-06-01', '2026-06-30', new Set(['Orientation']));
+    expect(days.map((d) => d.dateStr)).toEqual(['2026-06-01']);
+    expect(days[0].topics.map((t) => t.courseName)).toEqual(['Orientation']);
+  });
+  it('honors the date range, both ends included', () => {
+    expect(buildClassDays(sessions, '2026-06-02', '2026-06-02', null).map((d) => d.dateStr)).toEqual(['2026-06-02']);
+  });
+  it('the default range spans live blocks only', () => {
+    expect(classDateRange(sessions)).toEqual({ from: '2026-06-01', to: '2026-06-02' });
+    expect(classDateRange([])).toBeNull();
   });
 });

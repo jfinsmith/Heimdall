@@ -129,6 +129,62 @@ export function buildDayRosters(
   });
 }
 
+// ── Whole-class packet: one sheet per day, all of that day's topics ──────────
+export interface ClassDay {
+  dateStr: string;
+  /** Clock span of the whole day, e.g. "0800 - 1700". */
+  timeLabel: string;
+  totalHours: number;
+  /** The day's lunch window(s), or ''. */
+  lunch: string;
+  /** Contiguous same-course runs in time order (see buildDayRosters). */
+  topics: DayRoster[];
+}
+
+/**
+ * Every day from `from` to `to` (inclusive, yyyy-mm-dd) with anything taught.
+ * `only` limits the topics to those course names; null = every block, custom
+ * ones included (buildDayRosters itself rosters official courses only).
+ */
+export function buildClassDays(sessions: WithId<SessionDoc>[], from: string, to: string, only: Set<string> | null): ClassDay[] {
+  const byDay = new Map<string, WithId<SessionDoc>[]>();
+  for (const s of sessions) {
+    const d = localDateStr(s.start.toDate());
+    if (d < from || d > to) continue;
+    const list = byDay.get(d);
+    if (list) list.push(s);
+    else byDay.set(d, [s]);
+  }
+  const days: ClassDay[] = [];
+  for (const [dateStr, list] of [...byDay].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const topics = buildDayRosters(list, dateStr, only ?? new Set(list.map((s) => s.courseName)))
+      .map((t) => ({ ...t, classHours: Math.round(t.classHours * 100) / 100 }));
+    if (topics.length === 0) continue;
+    // A standalone lunch usually sits BETWEEN two courses, inside neither run.
+    const placeholders = list
+      .filter((s) => s.kind === 'lunch' && s.status !== 'cancelled')
+      .sort((a, b) => a.start.toMillis() - b.start.toMillis())
+      .map((s) => `${mil(s.start.toDate())} - ${mil(s.end.toDate())}`);
+    const lunches = placeholders.length ? placeholders : topics.map((t) => t.lunch).filter(Boolean);
+    const start = new Date(Math.min(...topics.map((t) => t.start.getTime())));
+    const end = new Date(Math.max(...topics.map((t) => t.end.getTime())));
+    days.push({
+      dateStr,
+      timeLabel: `${mil(start)} - ${mil(end)}`,
+      totalHours: Math.round(topics.reduce((n, t) => n + t.classHours, 0) * 100) / 100,
+      lunch: [...new Set(lunches)].join(', '),
+      topics,
+    });
+  }
+  return days;
+}
+
+/** First and last day with a live block, or null when nothing is scheduled. */
+export function classDateRange(sessions: WithId<SessionDoc>[]): { from: string; to: string } | null {
+  const dates = sessions.filter((s) => s.kind !== 'lunch' && s.status !== 'cancelled').map((s) => localDateStr(s.start.toDate())).sort();
+  return dates.length ? { from: dates[0], to: dates[dates.length - 1] } : null;
+}
+
 // ── Exam-day helpers (shared by the day-documents printout + the builder) ────
 const liveBlock = (s: WithId<SessionDoc>) => s.kind !== 'lunch' && s.status !== 'cancelled';
 

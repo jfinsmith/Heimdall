@@ -75,7 +75,7 @@ export function AcademyReports({ academy, seed, onSeedConsumed }: { academy: Wit
   const { data: rosterRaw } = useCollection<RosterMemberDoc>(`academies/${academyId}/roster`, [], [academyId]);
   // Canonical roster order (A–Z by last name, withdrawn/dismissed last) — the
   // pickers list "Last, First", so intake order made a cadet hard to find.
-  const roster = useMemo(() => [...rosterRaw].sort(rosterCompare), [rosterRaw]);
+  const roster = useMemo(() => rosterRaw.filter((m) => !m.sourceSeparated).sort(rosterCompare), [rosterRaw]);
   const { data: reportsRaw, error: reportsError } = useCollection<AcademyReportDoc>(`academies/${academyId}/reports`, [], [academyId]);
   const reports = useMemo(
     () => [...reportsRaw].sort((a, b) => ((b.createdAt as { toMillis?: () => number })?.toMillis?.() ?? 0) - ((a.createdAt as { toMillis?: () => number })?.toMillis?.() ?? 0)),

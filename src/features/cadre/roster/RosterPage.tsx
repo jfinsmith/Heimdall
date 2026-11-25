@@ -21,6 +21,7 @@ import { buildCadetRecords } from './exportRecords';
 import { downloadCsv } from '../../../lib/csv';
 import { BulkImportModal, type ImportColumn } from '../../../components/BulkImportModal';
 import { AttendanceTab } from './AttendanceTab';
+import { ImportRosterModal } from './ImportRosterModal';
 import { localDateStr } from './attendanceRoster';
 import { AttendanceLogTab } from './AttendanceLogTab';
 import { DisciplineTab } from './DisciplineTab';
@@ -51,7 +52,10 @@ export function RosterPage() {
   // Canonical order for EVERY roster tab: alphabetical by last name, with
   // withdrawn/dismissed members sinking to the bottom. A newly added cadet
   // slots straight into place; `no` remains a stable intake-order identifier.
-  const members = useMemo(() => [...membersRaw].sort(rosterCompare), [membersRaw]);
+  // Members hidden because they left the class they were imported from are kept
+  // out of every tab, print and export; the Members tab lists them separately.
+  const members = useMemo(() => membersRaw.filter((m) => !m.sourceSeparated).sort(rosterCompare), [membersRaw]);
+  const hidden = useMemo(() => membersRaw.filter((m) => m.sourceSeparated).sort(rosterCompare), [membersRaw]);
   const { data: curriculum } = useCurriculum(academy?.discipline);
   const [tab, setTab] = useState<Tab>('members');
   // "Generate letter" from grades/discipline → jump to Reports with a pre-fill.
@@ -159,7 +163,7 @@ export function RosterPage() {
         </div>
       </div>
 
-      {activeTab === 'members' && <MembersTab academyId={academyId} members={members} curriculum={curriculum} />}
+      {activeTab === 'members' && <MembersTab academy={academy} members={members} hidden={hidden} curriculum={curriculum} />}
       {activeModule?.attendanceFormat && <AttendanceTab academy={academy} members={members} curriculum={curriculum} />}
       {activeTab === 'attendance_log' && <AttendanceLogTab academyId={academyId} members={members} />}
       {activeTab === 'discipline' && <DisciplineTab academyId={academyId} members={members} onGenerateLetter={generateLetter} />}
@@ -219,14 +223,19 @@ function toCadetMember(r: Record<string, string>, known: { key: string; label: s
 }
 
 function MembersTab({
-  academyId,
+  academy,
   members,
+  hidden,
   curriculum,
 }: {
-  academyId: string;
+  academy: WithId<AcademyDoc>;
   members: WithId<RosterMemberDoc>[];
+  /** Linked cadets who left the class they were imported from. */
+  hidden: WithId<RosterMemberDoc>[];
   curriculum: WithId<CurriculumDoc> | null;
 }) {
+  const academyId = academy.id;
+  const [importOpen, setImportOpen] = useState(false);
   const settings = useGlobalSettings();
   const [addOpen, setAddOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -255,7 +264,7 @@ function MembersTab({
     // gradebook/transcript/export read WD from the wrong course.
     await attempt(updateDoc(doc(db, 'academies', academyId, 'roster', m.id), {
       status: 'active', completedAt: deleteField(), dismissalReason: deleteField(), dismissalType: deleteField(),
-      withdrawnAt: deleteField(), withdrawnAfterCourse: deleteField(), updatedAt: serverTimestamp(),
+      withdrawnAt: deleteField(), withdrawnAfterCourse: deleteField(), sourceSeparated: deleteField(), updatedAt: serverTimestamp(),
     }), `Could not reinstate ${m.fullName} — try again.`);
   }
   async function graduate(m: WithId<RosterMemberDoc>) {
@@ -275,6 +284,7 @@ function MembersTab({
   return (
     <div>
       <div className="mb-3 flex justify-end gap-2">
+        <Button variant="ghost" onClick={() => setImportOpen(true)}>Import from another class</Button>
         <Button variant="ghost" onClick={() => setBulkOpen(true)}>Bulk import</Button>
         <Button variant="primary" onClick={() => setAddOpen(true)}>+ Add member</Button>
       </div>
@@ -321,6 +331,23 @@ function MembersTab({
         </table>
       </div>
 
+      {hidden.length > 0 && (
+        <details className="mt-3 rounded-lg border border-watch-100 bg-watch-50 px-4 py-2 text-sm">
+          <summary className="cursor-pointer text-slate-600">
+            {hidden.length} linked cadet{hidden.length === 1 ? '' : 's'} not shown (left the class they were imported from)
+          </summary>
+          <ul className="mt-2 space-y-1">
+            {hidden.map((m) => (
+              <li key={m.id} className="flex items-center justify-between gap-3">
+                <span>{lastFirst(m.fullName)} <span className="text-xs text-slate-500">{m.sourceSeparated?.status}</span></span>
+                <Button variant="ghost" onClick={() => reinstate(m)}>Put back on this roster</Button>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      {importOpen && <ImportRosterModal academy={academy} members={[...members, ...hidden]} onClose={() => setImportOpen(false)} />}
       {addOpen && <IntakeWizard academyId={academyId} onClose={() => setAddOpen(false)} />}
       {bulkOpen && (
         <BulkImportModal

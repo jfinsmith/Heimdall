@@ -30,7 +30,8 @@ function progDate(ts: Parameters<typeof fmtDate>[0]): string {
 }
 import { buildDayRosters, examCoursesOnDay, localDateStr } from './attendanceRoster';
 import { DayExamDocuments } from './dayDocuments';
-import { lastFirst } from './rosterShared';
+import { RosterTable, SignInTable } from './rosterTables';
+import { ClassRosterPacket } from './ClassRosterPacket';
 import { Button, Field, Input, Select, TextArea } from '../../../components/ui';
 import type { GlobalSettings } from '../../../types';
 
@@ -400,7 +401,9 @@ export function AttendanceTab({
   const cadets = useMemo(() => members.filter((m) => !m.blockTaker), [members]);
   const blockTakers = useMemo(() => members.filter((m) => m.blockTaker), [members]);
 
-  const [mode, setMode] = useState<'manual' | 'schedule' | 'blank'>('manual');
+  const [mode, setMode] = useState<'manual' | 'schedule' | 'blank' | 'packet'>('manual');
+  // Tucked away on purpose: the packet prints a page for every class day.
+  const [moreOpen, setMoreOpen] = useState(false);
   const [genDate, setGenDate] = useState(localDateStr(new Date()));
   const totalHoursStr = String(curriculum?.totalHours ?? academy.targetTotalHours ?? '');
 
@@ -429,15 +432,26 @@ export function AttendanceTab({
         {mode === 'schedule' && (
           <Field label="Date" className="max-w-[11rem]"><Input type="date" value={genDate} onChange={(e) => setGenDate(e.target.value)} /></Field>
         )}
-        <Button variant="primary" onClick={() => window.print()}>
+        {mode !== 'packet' && <Button variant="primary" onClick={() => window.print()}>
           Print {mode === 'blank' ? 'blank roster' : mode === 'schedule' ? "the day's documents" : 'attendance roster'}
-        </Button>
+        </Button>}
         {mode === 'blank' && (
           <span className="text-xs text-slate-500">Class info + student list print; course, date, times, and instructors stay blank for handwriting, with 5 write-in rows at the bottom.</span>
         )}
+        <div className="ml-auto text-xs">
+          {mode === 'packet' ? (
+            <button type="button" className="text-slate-500 hover:underline" onClick={() => { setMode('manual'); setMoreOpen(false); }}>← Back to daily rosters</button>
+          ) : moreOpen ? (
+            <button type="button" className="text-slate-600 underline" onClick={() => setMode('packet')}>Whole-class roster packet…</button>
+          ) : (
+            <button type="button" className="text-slate-400 hover:underline" onClick={() => setMoreOpen(true)}>More options</button>
+          )}
+        </div>
       </div>
 
-      {mode === 'blank' ? (
+      {mode === 'packet' ? (
+        <ClassRosterPacket academy={academy} members={members} curriculum={curriculum} />
+      ) : mode === 'blank' ? (
         // Blank roster: class-specific facts stay printed (header, program dates,
         // sequence #, class #, total hours, the student list); the per-day fields
         // (course, date, time, hours, instructors, lunch) print as empty boxes to
@@ -479,88 +493,5 @@ export function AttendanceTab({
         <ScheduleDayDocuments academy={academy} members={members} curriculum={curriculum} dateStr={genDate} />
       )}
     </div>
-  );
-}
-
-/** Sign-in sheet layout (NMT/ARGUS): NO. / CJIS & Name / Signature, active cadets
- *  only, positionally numbered. */
-function SignInTable({ rows }: { rows: WithId<RosterMemberDoc>[] }) {
-  // Dismissed cadets are gone like withdrawn ones — no blank signature lines
-  // for people no longer in the class.
-  const active = rows.filter((m) => m.status !== 'withdrawn' && m.status !== 'dismissed');
-  return (
-    <table className="mt-3 w-full border-collapse text-[11px]">
-      <thead>
-        <tr className="bg-watch-100/60">
-          <th className="w-8 border border-black px-1 py-0.5">No.</th>
-          <th className="w-[44%] border border-black px-1 py-0.5 text-left">CJIS &amp; Name</th>
-          <th className="border border-black px-1 py-0.5 text-left">Signature</th>
-        </tr>
-      </thead>
-      <tbody>
-        {active.map((m, i) => (
-          <tr key={m.id}>
-            <td className="border border-black px-1 py-2 text-center tabular-nums">{i + 1}</td>
-            <td className="border border-black px-1 py-2">
-              {m.cjis ? <span className="mr-2 font-semibold tabular-nums">{m.cjis}</span> : null}{lastFirst(m.fullName)}
-            </td>
-            <td className="border border-black" />
-          </tr>
-        ))}
-        {active.length === 0 && (
-          <tr><td colSpan={3} className="border border-black px-1 py-3 text-center text-slate-500">No active cadets.</td></tr>
-        )}
-      </tbody>
-    </table>
-  );
-}
-
-function RosterTable({
-  title,
-  rows,
-  renumber,
-}: {
-  title: string | null;
-  rows: { id: string; no: number; fullName: string; status: string }[];
-  renumber?: boolean;
-}) {
-  return (
-    <>
-      {title && <div className="mt-3 bg-black px-1 py-0.5 text-[10px] font-bold uppercase text-white">{title}</div>}
-      <table className="mt-1 w-full border-collapse text-[10px]">
-        <thead>
-          <tr className="bg-watch-100/60">
-            <th className="w-6 border border-black px-1 py-0.5">No.</th>
-            <th className="border border-black px-1 py-0.5 text-left">Name</th>
-            <th className="w-[26%] border border-black px-1 py-0.5">Signature</th>
-            <th className="w-12 border border-black px-1 py-0.5">In</th>
-            <th className="w-12 border border-black px-1 py-0.5">Out</th>
-            <th className="w-8 border border-black px-1 py-0.5" title="Approved">APP</th>
-            <th className="w-8 border border-black px-1 py-0.5" title="Disciplinary action">D/A</th>
-            <th className="w-12 border border-black px-1 py-0.5">Makeup</th>
-            <th className="w-12 border border-black px-1 py-0.5">Sgt</th>
-            <th className="w-12 border border-black px-1 py-0.5">Dir</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((m, i) => (
-            <tr key={m.id}>
-              <td className="border border-black px-1 py-1 text-center tabular-nums">{renumber ? i + 1 : m.no}</td>
-              <td className="border border-black px-1 py-1">{lastFirst(m.fullName)}</td>
-              <td className="border border-black px-1 py-1 text-center text-[9px] font-bold uppercase text-slate-500">
-                {m.status === 'withdrawn' ? 'Withdrawn' : m.status === 'dismissed' ? 'Dismissed' : ''}
-              </td>
-              <td className="h-7 border border-black" />
-              <td className="border border-black" />
-              <td className="border border-black" />
-              <td className="border border-black" />
-              <td className="border border-black" />
-              <td className="border border-black" />
-              <td className="border border-black" />
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </>
   );
 }

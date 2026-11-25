@@ -128,7 +128,8 @@ export const getPublicClassPortal = onCall<PortalRequest>(async (request) => {
     if (verdict === 'bad') throw new HttpsError('permission-denied', 'Incorrect academic password.');
 
     const rosterSnap = await db.collection(`academies/${academyId}/roster`).get();
-    const members = rosterSnap.docs.map((d) => {
+    // Cadets hidden here because they left the class they were imported from.
+    const members = rosterSnap.docs.filter((d) => !d.data().sourceSeparated).map((d) => {
       const m = d.data() as Record<string, unknown>;
       const violations = ((m.violations as Record<string, unknown>[] | undefined) ?? []).map((v) => ({
         dateMs: (v.date as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0,

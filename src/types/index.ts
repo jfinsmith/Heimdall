@@ -555,6 +555,8 @@ export interface AcademyDoc {
   isTemplate?: boolean;
   /** Ordered: [0] = primary coordinator, [1] = secondary. */
   coordinatorIds: string[];
+  /** Classes this roster has imported cadets from (server-written). */
+  rosterSources?: string[];
   /**
    * Course sign-ups switch (absent = true). When FALSE, every "Open sign-ups"
    * button for this academy is hidden — a guardrail so agency-funded programs
@@ -657,6 +659,11 @@ export interface RosterMemberDoc {
   withdrawnAfterCourse?: string;
   /** Additional block taker (printed in a separate roster section), not a full cadet. */
   blockTaker?: boolean;
+  /** Tied to a member of ANOTHER class's roster (rosterImportMembers). */
+  importedFrom?: { academyId: string; memberId: string };
+  /** Set by the server when the linked cadet was withdrawn/dismissed from that
+   *  class: this member is hidden (status 'withdrawn'), never deleted. */
+  sourceSeparated?: { status: 'withdrawn' | 'dismissed'; at?: Timestamp };
   violations?: ViolationEntry[];
   /** Grades keyed by curriculum course name. */
   grades?: Record<string, GradeCell>;

@@ -245,6 +245,7 @@ describe.skipIf(!hasEmulators)('Viewer — server functions', () => {
       denyUser: { uid: 'alice' },
       academyApproval: { academyId: 'aA', action: 'submit' },
       rosterCreateMember: { academyId: 'aA', member: { fullName: 'New Cadet' } },
+      rosterImportMembers: { academyId: 'aA', sourceAcademyId: 'aArch', memberIds: ['c1'] },
       joinOrgByCode: { code: 'JOINSECRET' },
       acceptOrgDpa: { version: '2026-11-09' },
       createCheckoutSession: {},

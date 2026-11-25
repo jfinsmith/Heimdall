@@ -11,7 +11,7 @@ import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import type { Role } from '../types';
 import { STAFF_ROLES } from '../types';
 
-async function requireStaff(uid: string | undefined): Promise<{ uid: string; name: string; orgId?: string; platformOwner: boolean }> {
+export async function requireStaff(uid: string | undefined): Promise<{ uid: string; name: string; orgId?: string; platformOwner: boolean }> {
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
   const snap = await getFirestore().doc(`users/${uid}`).get();
   const data = snap.data();

@@ -801,7 +801,9 @@ export function CloneAcademyModal({
     // credentials would open the new class's grades.
     // Omit via destructure — never re-add as undefined (Firestore rejects it).
     const {
-      id: _id, approval: _approval, sequenceNo: _sequenceNo, statusBeforeArchive: _sba, portal: _portal, ...sourceData
+      id: _id, approval: _approval, sequenceNo: _sequenceNo, statusBeforeArchive: _sba, portal: _portal,
+      // The roster doesn't copy, so neither does its tie to other classes.
+      rosterSources: _rosterSources, ...sourceData
     } = source;
     const academyRef = await addDoc(collection(db, 'academies'), {
       ...sourceData,
